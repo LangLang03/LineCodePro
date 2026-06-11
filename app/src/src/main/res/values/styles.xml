@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppThemeBase" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">@color/line_accent</item>
+        <item name="android:windowBackground">@color/line_bg</item>
+        <item name="android:navigationBarColor">@color/line_bg</item>
+        <item name="android:statusBarColor">@color/line_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="AppTheme" parent="@style/AppThemeBase" />
+</resources>

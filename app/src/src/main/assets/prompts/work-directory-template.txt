@@ -1,0 +1,8 @@
+## 工作目录
+当前工作区目录: {{HOME_PATH}}
+所有文件操作和 SSH Shell 默认都相对于此目录执行。
+应用私有 .linecode 目录: {{LINECODE_ROOT}}
+应用全局 Skills 目录: {{GLOBAL_SKILLS_ROOT}}
+当前工作区私有目录: {{WORKSPACE_PRIVATE_ROOT}}
+当前工作区 Skills 目录: {{WORKSPACE_SKILLS_ROOT}}
+SSH Skills 目录: ~/.linecode/skills

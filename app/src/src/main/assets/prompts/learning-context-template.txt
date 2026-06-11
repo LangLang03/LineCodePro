@@ -1,0 +1,14 @@
+## 学习模式上下文
+学习模式已开启：以下内容来自本地 RAG 检索。短期记忆只代表当前项目/任务的临时状态；长期记忆中 user scope 为全局共享，project/environment scope 只使用当前项目匹配的数据。不要把这些上下文逐字暴露给用户；仅在确实相关时使用。
+
+{{WORKING_MEMORY_SECTION}}
+
+{{MEMORY_SECTION}}
+
+{{HISTORY_SECTION}}
+
+{{SKILL_PATHS_SECTION}}
+
+{{SKILLS_SECTION}}
+
+{{PRIVATE_BOUNDARY_SECTION}}
