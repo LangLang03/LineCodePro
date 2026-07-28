@@ -1,6 +1,46 @@
 # 更新日志
 
+## v1.2.4
+
+### 历史对话丢失修复
+
+- **消息 ID 跨会话冲突根因修复** - 原先 `ChatSessionStore.nextMessageId()` 全局生成 `m1` / `m2`…，而 `messages.id` 为 PRIMARY KEY 且保存走 `INSERT OR REPLACE`，新建会话会覆盖旧会话同 ID 消息行，导致侧边栏只剩最近一次对话；`conversation_index` 无外键清理，检索仍能搜到「幽灵」旧记录。现改为 `{conversationId}_m{n}` 按会话隔离
+- **落库兼容旧裸 ID** - `ConversationRepository.scopedMessageId` 对历史 `m1` 形式写入时加会话前缀（`{convId}:m1`），避免再保存时撞车；`ChatSessionStore.sequenceFromMessageId` 同时解析 `mN` / `{id}_mN` / `{id}:mN`
+- **删除/清空同步清索引** - `deleteConversation` / `clearAll` / `StorageStatsRepository.clearChatHistory` 同步删除 `conversation_index`（及 FTS），避免删会话后检索残留
+- **进后台主动落盘** - `MainCoordinator.onEnterBackground` 调用 `persistCurrentConversation()`，降低 `onPause` 后被系统杀进程丢未落库内容的概率
+
+### 文件编辑工具与工具结果对齐
+
+- **`file_edit` 默认唯一匹配** - 多处匹配且未设 `replace_all=true` 时失败不写盘，并提示提供更唯一的 `old_string` 或开启全量替换；默认只替换唯一匹配的第一处
+- **用户撤销写操作后模型不再读成功文案** - `ToolMessageController.updateToolReview` 在 `rejected` 时将 tool 消息标 `isError=true` 并改写 content 为明确「用户已拒绝并还原」说明；嵌套 agent 结果同步更新 `is_error` / `content`
+- **OpenAI 工具错误前缀** - `OpenAiMessageSerializer` 对 `isToolError` 结果加 `Tool <name> failed:\n` 前缀（与 Codex 路径一致），避免协议无结构化 error 字段时模型误判成功
+- **`ToolArgsCleaner` 保留多行空白** - 字符串内未转义的 `\n` / `\r` / `\t` 转为 JSON 转义，避免增量 `old_string` 被拍扁导致匹配失败
+
+### 扩展与 Skill
+
+- **从 GitHub 安装 Skill** - 新增 `GitHubSkillInstaller`：支持 `github.com/org/repo`、blob/tree 路径、`raw.githubusercontent.com` 的 `SKILL.md`；仓库用 codeload zip 下载并查找 `SKILL.md`。扩展 → Skills → 添加菜单新增「从 GitHub 安装」
+- **Skills 多选批量删除** - 扩展详情页长按 Skill 进入多选，顶部显示已选数量，可批量删除；`ExtensionStore.deleteSkills` / `ExtensionManagementController.deleteExtensions` 贯通
+- **工作区 FileProvider** - 新增 `WorkspaceFileProvider`（`content://{appId}.workspace/...`）暴露内部 `files/.linecode`；Skills 页增加「分享工作区目录」入口（`WorkspaceShareHelper`）
+
+### 思考深度与模型预设
+
+- **思考深度 Auto** - `AiBehaviorSettings.REASONING_AUTO`；LLM 设置与 `/model` 级别列表增加 Auto；协议层 `auto` 视为开启思考，具体 effort 映射为 `medium`（MiniMax 仍走 adaptive）
+- **新增模型提供商预设** - Groq、Together AI、SiliconFlow、MiniMax、Ollama、LM Studio（OpenAI 兼容），`ModelProviderPresets` + 三语文案同步
+
+### 测试
+
+- 新增 `ConversationMessageIdScopeTest`、`GitHubSkillInstallerTest`、`AiBehaviorSettingsAutoTest`
+- 扩展 `ChatSessionStoreTest`、`ToolMessageControllerTest`、`ToolBuiltinsTest`（file_edit 唯一/全量）、`ToolArgsCleanerTest`、`OpenAiCompatibleProtocolTest`、`SlashCommandCatalogTest`
+
+### 版本
+
+- 版本号升级到 `1.2.4`
+- `versionCode` 升级到 `27`
+
+---
+
 ## v1.2.3
+
 
 ### 国际化与多语言
 
