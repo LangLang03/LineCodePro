@@ -183,11 +183,38 @@ public final class ConversationRepository extends BaseRepository implements Conv
     }
 
     public synchronized void deleteConversation(String id) {
-        database.getWritableDatabase().delete("conversations", "id = ?", new String[] {id});
+        if (id == null || id.length() == 0) {
+            return;
+        }
+        SQLiteDatabase db = database.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            db.delete("conversation_index", "conversation_id = ?", new String[] {id});
+            try {
+                db.delete("conversation_index_fts", "conversation_id = ?", new String[] {id});
+            } catch (RuntimeException ignored) {
+            }
+            db.delete("conversations", "id = ?", new String[] {id});
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
     }
 
     public synchronized void clearAll() {
-        database.getWritableDatabase().delete("conversations", null, null);
+        SQLiteDatabase db = database.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            db.delete("conversation_index", null, null);
+            try {
+                db.delete("conversation_index_fts", null, null);
+            } catch (RuntimeException ignored) {
+            }
+            db.delete("conversations", null, null);
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
     }
 
     private void saveConversationOnly(SQLiteDatabase db, ConversationRecord conversation) {
@@ -205,7 +232,7 @@ public final class ConversationRepository extends BaseRepository implements Conv
 
     private void saveMessage(SQLiteDatabase db, String conversationId, MessageRecord message, int order) {
         long timestamp = message.getTimestamp() > 0 ? message.getTimestamp() : System.currentTimeMillis();
-        String messageId = message.getId().length() == 0 ? conversationId + ":" + order : message.getId();
+        String messageId = scopedMessageId(conversationId, message.getId(), order);
         ContentValues values = new ContentValues();
         values.put("id", messageId);
         values.put("conversation_id", conversationId);
@@ -319,5 +346,29 @@ public final class ConversationRepository extends BaseRepository implements Conv
             return ChatMessage.Role.TOOL;
         }
         return ChatMessage.Role.USER;
+    }
+
+    static String scopedMessageId(String conversationId, String messageId, int order) {
+        String safeConversationId = conversationId == null ? "" : conversationId;
+        String id = messageId == null ? "" : messageId;
+        if (id.length() == 0) {
+            return safeConversationId + ":" + order;
+        }
+        if (isBareLegacyMessageId(id) && safeConversationId.length() > 0 && !id.startsWith(safeConversationId)) {
+            return safeConversationId + ":" + id;
+        }
+        return id;
+    }
+
+    private static boolean isBareLegacyMessageId(String id) {
+        if (id == null || id.length() < 2 || id.charAt(0) != 'm') {
+            return false;
+        }
+        for (int i = 1; i < id.length(); i++) {
+            if (!Character.isDigit(id.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 }

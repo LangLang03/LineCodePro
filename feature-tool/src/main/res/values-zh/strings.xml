@@ -16,6 +16,7 @@
     <string name="tool_file_edit_not_found">文件不存在: %1$s</string>
     <string name="tool_file_edit_is_directory">路径是一个目录，无法编辑文件: %1$s\n如需编辑文件，请指定具体文件路径。</string>
     <string name="tool_file_edit_no_match">未找到匹配的文本</string>
+    <string name="tool_file_edit_multiple_matches">old_string 匹配到 %1$d 处。请提供更唯一的 old_string，或设置 replace_all=true 以替换全部匹配。</string>
     <string name="tool_file_edit_success">成功编辑文件 %1$s (%2$d 处匹配已替换)</string>
     <string name="tool_file_edit_failed">编辑文件失败: %1$s</string>
 

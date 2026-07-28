@@ -220,16 +220,32 @@ final class ToolMessageController {
         return "";
     }
 
+    private static final String REJECTED_MODEL_CONTENT =
+            "User rejected this change and the file was reverted. "
+                    + "The previous tool success is void; re-read the file before editing again.";
+
     void updateToolReview(String toolCallId, String diffId, String reviewState, String reviewMessage) {
         if (toolCallId == null || toolCallId.length() == 0) {
             return;
         }
+        boolean rejected = "rejected".equals(reviewState);
+        String modelContent = rejectedModelContent(reviewMessage);
         for (int i = 0; i < messages.size(); i++) {
             ChatMessage message = messages.get(i);
             ChatMessage next = message;
             if (message.getRole() == ChatMessage.Role.TOOL && toolCallId.equals(message.getToolCallId())) {
                 String resolvedDiffId = diffId == null || diffId.length() == 0 ? message.getDiffId() : diffId;
-                next = next.withToolReview(resolvedDiffId, reviewState, reviewMessage);
+                if (rejected) {
+                    next = next.withToolReview(
+                            resolvedDiffId,
+                            reviewState,
+                            reviewMessage,
+                            true,
+                            modelContent
+                    );
+                } else {
+                    next = next.withToolReview(resolvedDiffId, reviewState, reviewMessage);
+                }
             }
             if (message.getRole() == ChatMessage.Role.TOOL) {
                 String updatedContent = updateNestedToolReviewContent(
@@ -237,7 +253,8 @@ final class ToolMessageController {
                         toolCallId,
                         diffId,
                         reviewState,
-                        reviewMessage
+                        reviewMessage,
+                        modelContent
                 );
                 if (!updatedContent.equals(next.getContent())) {
                     next = next.withContent(updatedContent, next.getReasoningContent(), next.isStreaming());
@@ -247,6 +264,13 @@ final class ToolMessageController {
                 messages.set(i, next);
             }
         }
+    }
+
+    private static String rejectedModelContent(String reviewMessage) {
+        if (reviewMessage != null && reviewMessage.trim().length() > 0) {
+            return REJECTED_MODEL_CONTENT + " " + reviewMessage.trim();
+        }
+        return REJECTED_MODEL_CONTENT;
     }
 
     void addTerminatedResultsForUnfinishedToolCalls(String terminatedMessage) {
@@ -287,14 +311,15 @@ final class ToolMessageController {
             String toolCallId,
             String diffId,
             String reviewState,
-            String reviewMessage
+            String reviewMessage,
+            String modelContent
     ) {
         if (content == null || content.trim().length() == 0) {
             return content == null ? "" : content;
         }
         try {
             JSONObject object = new JSONObject(content);
-            return updateNestedToolReview(object, toolCallId, diffId, reviewState, reviewMessage)
+            return updateNestedToolReview(object, toolCallId, diffId, reviewState, reviewMessage, modelContent)
                     ? object.toString()
                     : content;
         } catch (Exception ignored) {
@@ -307,7 +332,8 @@ final class ToolMessageController {
             String toolCallId,
             String diffId,
             String reviewState,
-            String reviewMessage
+            String reviewMessage,
+            String modelContent
     ) throws Exception {
         if (object == null) {
             return false;
@@ -317,7 +343,8 @@ final class ToolMessageController {
                 toolCallId,
                 diffId,
                 reviewState,
-                reviewMessage
+                reviewMessage,
+                modelContent
         );
         JSONArray agents = object.optJSONArray("agents");
         if (agents != null) {
@@ -331,7 +358,8 @@ final class ToolMessageController {
                         toolCallId,
                         diffId,
                         reviewState,
-                        reviewMessage
+                        reviewMessage,
+                        modelContent
                 ) || changed;
             }
         }
@@ -343,12 +371,14 @@ final class ToolMessageController {
             String toolCallId,
             String diffId,
             String reviewState,
-            String reviewMessage
+            String reviewMessage,
+            String modelContent
     ) throws Exception {
         if (calls == null) {
             return false;
         }
         boolean changed = false;
+        boolean rejected = "rejected".equals(reviewState);
         for (int i = 0; i < calls.length(); i++) {
             JSONObject item = calls.optJSONObject(i);
             if (item == null) {
@@ -366,9 +396,13 @@ final class ToolMessageController {
                 result.put("diff_id", resolvedDiffId == null ? "" : resolvedDiffId);
                 result.put("review_state", reviewState == null ? "" : reviewState);
                 result.put("review_message", reviewMessage == null ? "" : reviewMessage);
+                if (rejected) {
+                    result.put("is_error", true);
+                    result.put("content", modelContent == null ? REJECTED_MODEL_CONTENT : modelContent);
+                }
                 changed = true;
             }
-            changed = updateNestedToolReview(item, toolCallId, diffId, reviewState, reviewMessage) || changed;
+            changed = updateNestedToolReview(item, toolCallId, diffId, reviewState, reviewMessage, modelContent) || changed;
         }
         return changed;
     }

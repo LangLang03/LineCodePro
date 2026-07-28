@@ -38,9 +38,10 @@ final class CodexRequestBuilder {
         JSONArray tools = toolsJson(requestOptions.getTools());
         body.put("tools", tools);
         body.put("tool_choice", "auto");
-        if (!AiBehaviorSettings.REASONING_OFF.equals(requestOptions.getReasoningEffort())) {
+        if (AiBehaviorSettings.isReasoningEnabled(requestOptions.getReasoningEffort())) {
+            String effort = AiBehaviorSettings.concreteReasoningEffort(requestOptions.getReasoningEffort());
             body.put("reasoning", new JSONObject()
-                    .put("effort", AiBehaviorSettings.REASONING_MAX.equals(requestOptions.getReasoningEffort()) ? "high" : requestOptions.getReasoningEffort())
+                    .put("effort", AiBehaviorSettings.REASONING_MAX.equals(effort) ? "high" : effort)
                     .put("summary", "auto"));
             include.put("reasoning.encrypted_content");
         }

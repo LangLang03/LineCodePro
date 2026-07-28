@@ -16,6 +16,7 @@
     <string name="tool_file_edit_not_found">Файл не найден: %1$s</string>
     <string name="tool_file_edit_is_directory">Путь является каталогом, нельзя редактировать: %1$s\nДля редактирования файла укажите точный путь к файлу.</string>
     <string name="tool_file_edit_no_match">Совпадений текста не найдено</string>
+    <string name="tool_file_edit_multiple_matches">old_string совпал %1$d раз. Укажите более уникальный old_string или задайте replace_all=true для замены всех вхождений.</string>
     <string name="tool_file_edit_success">Успешно отредактирован %1$s (%2$d совпадений заменено)</string>
     <string name="tool_file_edit_failed">Не удалось отредактировать файл: %1$s</string>
 

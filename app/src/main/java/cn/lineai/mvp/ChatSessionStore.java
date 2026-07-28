@@ -78,7 +78,10 @@ public final class ChatSessionStore {
     }
 
     public String nextMessageId() {
-        return "m" + messageSequence++;
+        if (currentConversationId.length() == 0) {
+            return "m" + System.currentTimeMillis() + "_" + (messageSequence++);
+        }
+        return currentConversationId + "_m" + (messageSequence++);
     }
 
     public int nextGenerationId() {
@@ -104,14 +107,44 @@ public final class ChatSessionStore {
     private void resetMessageSequence() {
         int max = 0;
         for (ChatMessage message : messages) {
-            String id = message.getId();
-            if (id != null && id.startsWith("m")) {
-                try {
-                    max = Math.max(max, Integer.parseInt(id.substring(1)));
-                } catch (NumberFormatException ignored) {
-                }
-            }
+            max = Math.max(max, sequenceFromMessageId(message == null ? null : message.getId()));
         }
         messageSequence = Math.max(max + 1, messages.size() + 1);
+    }
+
+    static int sequenceFromMessageId(String id) {
+        if (id == null || id.length() == 0) {
+            return 0;
+        }
+        int underscore = id.lastIndexOf("_m");
+        if (underscore >= 0 && underscore + 2 < id.length()) {
+            return parseTrailingDigits(id.substring(underscore + 2));
+        }
+        int colon = id.lastIndexOf(":m");
+        if (colon >= 0 && colon + 2 < id.length()) {
+            return parseTrailingDigits(id.substring(colon + 2));
+        }
+        if (id.charAt(0) == 'm') {
+            return parseTrailingDigits(id.substring(1));
+        }
+        return 0;
+    }
+
+    private static int parseTrailingDigits(String value) {
+        if (value == null || value.length() == 0) {
+            return 0;
+        }
+        int end = 0;
+        while (end < value.length() && Character.isDigit(value.charAt(end))) {
+            end++;
+        }
+        if (end == 0) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(value.substring(0, end));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
     }
 }

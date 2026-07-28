@@ -4,6 +4,7 @@ import cn.lineai.data.repository.WebSearchConfigRepository;
 import cn.lineai.model.WebSearchConfig;
 import cn.lineai.tool.builtin.FileReadTool;
 import cn.lineai.tool.builtin.FileDeleteTool;
+import cn.lineai.tool.builtin.FileEditTool;
 import cn.lineai.tool.builtin.FileWriteTool;
 import cn.lineai.tool.builtin.GlobTool;
 import cn.lineai.tool.builtin.AgentTool;
@@ -97,6 +98,56 @@ public final class ToolBuiltinsTest {
 
         Assert.assertFalse(result.isError());
         Assert.assertEquals("hello", new String(Files.readAllBytes(new File(folder.getRoot(), "src/main.txt").toPath()), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    public void fileEditReplacesUniqueMatchOnce() throws Exception {
+        File file = folder.newFile("edit.txt");
+        Files.write(file.toPath(), "alpha\nbeta\nalpha\n".getBytes(StandardCharsets.UTF_8));
+
+        ToolResult result = new FileEditTool().execute(new JSONObject()
+                .put("file_path", "edit.txt")
+                .put("old_string", "beta")
+                .put("new_string", "gamma"), context());
+
+        Assert.assertFalse(result.isError());
+        Assert.assertEquals(
+                "alpha\ngamma\nalpha\n",
+                new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8)
+        );
+        Assert.assertTrue(result.getContent().contains("1 match"));
+    }
+
+    @Test
+    public void fileEditRejectsMultipleMatchesWithoutReplaceAll() throws Exception {
+        File file = folder.newFile("edit-multi.txt");
+        Files.write(file.toPath(), "x\nx\n".getBytes(StandardCharsets.UTF_8));
+
+        ToolResult result = new FileEditTool().execute(new JSONObject()
+                .put("file_path", "edit-multi.txt")
+                .put("old_string", "x")
+                .put("new_string", "y"), context());
+
+        Assert.assertTrue(result.isError());
+        Assert.assertTrue(result.getContent().contains("matched 2 places")
+                || result.getContent().contains("replace_all"));
+        Assert.assertEquals("x\nx\n", new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    public void fileEditReplaceAllReplacesEveryOccurrence() throws Exception {
+        File file = folder.newFile("edit-all.txt");
+        Files.write(file.toPath(), "x\nx\n".getBytes(StandardCharsets.UTF_8));
+
+        ToolResult result = new FileEditTool().execute(new JSONObject()
+                .put("file_path", "edit-all.txt")
+                .put("old_string", "x")
+                .put("new_string", "y")
+                .put("replace_all", true), context());
+
+        Assert.assertFalse(result.isError());
+        Assert.assertEquals("y\ny\n", new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8));
+        Assert.assertTrue(result.getContent().contains("2 match"));
     }
 
     @Test

@@ -154,6 +154,8 @@
 
     <string name="screen_llm_thinking_off_label">Off</string>
     <string name="screen_llm_thinking_off_desc">Disable thinking mode, faster response</string>
+    <string name="screen_llm_thinking_auto_label">Auto</string>
+    <string name="screen_llm_thinking_auto">Let the model decide thinking depth (providers that support adaptive/auto)</string>
     <string name="screen_llm_thinking_low_label">Low</string>
     <string name="screen_llm_thinking_medium_label">Medium</string>
     <string name="screen_llm_thinking_high_label">High</string>
@@ -203,9 +205,47 @@
     <string name="model_provider_preset_openrouter_label">OpenRouter</string>
     <string name="model_provider_preset_openrouter_desc">Multi-model aggregation</string>
     <string name="model_provider_preset_openrouter_hint">OpenRouter uses OpenAI compatible protocol, Base URL ends with /api/v1.</string>
+    <string name="model_provider_preset_groq_label">Groq</string>
+    <string name="model_provider_preset_groq_desc">Groq OpenAI-compatible API</string>
+    <string name="model_provider_preset_groq_hint">Groq uses OpenAI compatible protocol, Base URL ends with /openai/v1.</string>
+    <string name="model_provider_preset_together_label">Together AI</string>
+    <string name="model_provider_preset_together_desc">Together OpenAI-compatible API</string>
+    <string name="model_provider_preset_together_hint">Together uses OpenAI compatible protocol, Base URL ends with /v1.</string>
+    <string name="model_provider_preset_siliconflow_label">SiliconFlow</string>
+    <string name="model_provider_preset_siliconflow_desc">SiliconFlow (硅基流动)</string>
+    <string name="model_provider_preset_siliconflow_hint">SiliconFlow uses OpenAI compatible protocol, Base URL ends with /v1.</string>
+    <string name="model_provider_preset_minimax_label">MiniMax</string>
+    <string name="model_provider_preset_minimax_desc">MiniMax OpenAI-compatible API</string>
+    <string name="model_provider_preset_minimax_hint">MiniMax uses OpenAI compatible protocol, Base URL ends with /v1.</string>
+    <string name="model_provider_preset_ollama_label">Ollama</string>
+    <string name="model_provider_preset_ollama_desc">Local Ollama OpenAI endpoint</string>
+    <string name="model_provider_preset_ollama_hint">Ollama local server, Base URL like http://127.0.0.1:11434/v1 (use device LAN IP on phone).</string>
+    <string name="model_provider_preset_lmstudio_label">LM Studio</string>
+    <string name="model_provider_preset_lmstudio_desc">Local LM Studio OpenAI endpoint</string>
+    <string name="model_provider_preset_lmstudio_hint">LM Studio local server, Base URL like http://127.0.0.1:1234/v1 (use device LAN IP on phone).</string>
     <string name="model_provider_preset_codex_label">Codex</string>
     <string name="model_provider_preset_codex_desc">Responses API</string>
     <string name="model_provider_preset_codex_hint">Codex uses Responses API, Base URL ends with /v1, do not add /responses.</string>
+
+    <string name="screen_extension_detail_install_github">Install from GitHub</string>
+    <string name="screen_extension_detail_install_github_desc">Paste a GitHub repo or SKILL.md raw URL</string>
+    <string name="screen_extension_detail_dialog_github_skill">Import Skill from GitHub</string>
+    <string name="screen_extension_detail_field_github_url">GitHub URL</string>
+    <string name="screen_extension_detail_hint_github_url">https://github.com/org/repo or raw SKILL.md URL</string>
+    <string name="screen_extension_detail_helper_github_url">Supports github.com repo, tree/blob path, or raw.githubusercontent.com SKILL.md</string>
+    <string name="screen_extension_detail_multi_select">Multi-select</string>
+    <string name="screen_extension_detail_multi_select_desc">Select multiple items to delete</string>
+    <string name="screen_extension_detail_selected_count">%1$d selected</string>
+    <string name="screen_extension_detail_delete_multi_title">Delete selected</string>
+    <string name="screen_extension_detail_delete_multi_message">Delete %1$d selected item(s)?</string>
+    <string name="screen_extension_detail_delete_multi_warning">This cannot be undone</string>
+    <string name="screen_extension_detail_workspace_share">Share workspace folder</string>
+    <string name="screen_extension_detail_workspace_share_desc">Open internal .linecode home via system file picker / FileProvider</string>
+    <string name="skill_github_invalid_url">Invalid GitHub URL</string>
+    <string name="skill_github_fetch_failed">Failed to download Skill from GitHub: %1$s</string>
+    <string name="skill_github_no_skill_md">No SKILL.md found in the repository</string>
+    <string name="workspace_provider_open_title">LineCode workspace</string>
+    <string name="workspace_provider_open_failed">Unable to open workspace folder</string>
 
     <string name="screen_model_add_title_edit">Edit model</string>
     <string name="screen_model_add_title_add">Add model</string>

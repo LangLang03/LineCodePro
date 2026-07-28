@@ -20,7 +20,7 @@ public final class ChatSessionStoreTest {
 
         Assert.assertEquals("42", store.getCurrentConversationId());
         Assert.assertEquals(42L, store.getCurrentConversationCreatedAt());
-        Assert.assertEquals("m1", firstMessageId);
+        Assert.assertEquals("42_m1", firstMessageId);
         Assert.assertTrue(store.isActiveGeneration(generationId));
 
         store.invalidateActiveGeneration();
@@ -59,7 +59,29 @@ public final class ChatSessionStoreTest {
 
         Assert.assertEquals("c1", store.getCurrentConversationId());
         Assert.assertEquals("hello", store.messages().get(0).getContent());
-        Assert.assertEquals("m8", store.nextMessageId());
+        Assert.assertEquals("c1_m8", store.nextMessageId());
+    }
+
+    @Test
+    public void messageIdsAreUniqueAcrossConversations() {
+        ChatSessionStore store = new ChatSessionStore();
+        store.startNewConversation(100L);
+        String first = store.nextMessageId();
+        store.startNewConversation(200L);
+        String second = store.nextMessageId();
+
+        Assert.assertEquals("100_m1", first);
+        Assert.assertEquals("200_m1", second);
+        Assert.assertNotEquals(first, second);
+    }
+
+    @Test
+    public void sequenceFromMessageIdParsesScopedAndLegacyForms() {
+        Assert.assertEquals(7, ChatSessionStore.sequenceFromMessageId("m7"));
+        Assert.assertEquals(8, ChatSessionStore.sequenceFromMessageId("c1_m8"));
+        Assert.assertEquals(9, ChatSessionStore.sequenceFromMessageId("c1:m9"));
+        Assert.assertEquals(3, ChatSessionStore.sequenceFromMessageId("42_m3_extra"));
+        Assert.assertEquals(0, ChatSessionStore.sequenceFromMessageId(""));
     }
 
     @Test

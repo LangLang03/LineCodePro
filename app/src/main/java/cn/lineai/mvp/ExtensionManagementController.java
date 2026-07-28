@@ -89,6 +89,30 @@ final class ExtensionManagementController {
         return skill;
     }
 
+    SkillRecord installSkillFromGitHub(String location, String githubUrl) throws Exception {
+        SkillRecord skill = extensionRepository.installSkillFromGitHub(host.projectPath(), location, githubUrl);
+        host.returnToScreen("extension:skills");
+        host.render();
+        return skill;
+    }
+
+    void deleteExtensions(String kind, List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        if ("skills".equals(kind)) {
+            extensionRepository.deleteSkills(ids);
+        } else {
+            for (String id : ids) {
+                deleteExtension(kind, id);
+            }
+            return;
+        }
+        reloadExtensions();
+        host.refreshVisibleScreen("extension:" + kind);
+        host.render();
+    }
+
     void setExtensionEnabled(String kind, String id, boolean enabled) {
         ExtensionKindDescriptor descriptor = ExtensionKindRegistry.getInstance().get(kind);
         if (descriptor != null) {

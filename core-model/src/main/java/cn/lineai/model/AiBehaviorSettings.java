@@ -5,6 +5,7 @@ public final class AiBehaviorSettings {
     public static final String TONE_CHAT = "chat";
 
     public static final String REASONING_OFF = "off";
+    public static final String REASONING_AUTO = "auto";
     public static final String REASONING_LOW = "low";
     public static final String REASONING_MEDIUM = "medium";
     public static final String REASONING_HIGH = "high";
@@ -66,11 +67,24 @@ public final class AiBehaviorSettings {
 
     public static String normalizeReasoningEffort(String effort) {
         if (REASONING_OFF.equals(effort)
+                || REASONING_AUTO.equals(effort)
                 || REASONING_LOW.equals(effort)
                 || REASONING_HIGH.equals(effort)
                 || REASONING_MAX.equals(effort)) {
             return effort;
         }
         return REASONING_MEDIUM;
+    }
+
+    public static String concreteReasoningEffort(String effort) {
+        String normalized = normalizeReasoningEffort(effort);
+        if (REASONING_AUTO.equals(normalized)) {
+            return REASONING_MEDIUM;
+        }
+        return normalized;
+    }
+
+    public static boolean isReasoningEnabled(String effort) {
+        return !REASONING_OFF.equals(normalizeReasoningEffort(effort));
     }
 }

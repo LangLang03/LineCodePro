@@ -73,7 +73,7 @@ public final class ToolSettingsRepositoryTest {
         );
 
         Assert.assertTrue(prompt.contains("file_read [read]"));
-        Assert.assertTrue(prompt.contains("读取文件内容"));
+        Assert.assertTrue(prompt.contains("Read file contents"));
         Assert.assertTrue(prompt.contains("\"file_path\""));
         Assert.assertTrue(prompt.contains("web_search [read]"));
         Assert.assertTrue(prompt.contains("\"query\""));
@@ -187,9 +187,9 @@ public final class ToolSettingsRepositoryTest {
 
         Assert.assertTrue(prompt.contains("shell_execute"));
         Assert.assertTrue(prompt.contains("image_understanding"));
-        Assert.assertTrue(prompt.contains("通过 SFTP 读取 SSH 工作区图片"));
+        Assert.assertTrue(prompt.contains("via SFTP"));
         Assert.assertTrue(prompt.contains("image_generation"));
-        Assert.assertTrue(prompt.contains("以内联 Markdown 图片返回"));
+        Assert.assertTrue(prompt.contains("inline Markdown image"));
         Assert.assertTrue(prompt.contains("mcpx_test_lookup"));
         Assert.assertTrue(prompt.contains("调用测试 MCP"));
         Assert.assertTrue(prompt.contains("Local file read/write and file search are disabled"));
@@ -281,11 +281,11 @@ public final class ToolSettingsRepositoryTest {
 
         Assert.assertTrue(prompt.contains("shell_execute"));
         Assert.assertTrue(prompt.contains("image_understanding"));
-        Assert.assertTrue(prompt.contains("通过 IPC 读取终端提供者环境图片"));
+        Assert.assertTrue(prompt.contains("via IPC"));
         Assert.assertTrue(prompt.contains("image_generation"));
-        Assert.assertTrue(prompt.contains("以内联 Markdown 图片返回"));
+        Assert.assertTrue(prompt.contains("inline Markdown image"));
         Assert.assertTrue(prompt.contains("Terminal Provider"));
-        Assert.assertTrue(prompt.contains("通过终端提供者 IPC 执行"));
+        Assert.assertTrue(prompt.contains("terminal provider environment"));
         Assert.assertTrue(prompt.contains("Local file read/write and file search are disabled"));
         Assert.assertTrue(prompt.contains("Agent, Agent Pipeline, and todo list remain available"));
     }

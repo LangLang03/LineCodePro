@@ -770,6 +770,11 @@ public final class MainCoordinator implements MainUiController {
     }
 
     @Override
+    public SkillRecord onSkillInstalledFromGitHub(String location, String githubUrl) throws Exception {
+        return extensionManagementController.installSkillFromGitHub(location, githubUrl);
+    }
+
+    @Override
     public void onExtensionEnabledChanged(String kind, String id, boolean enabled) {
         extensionManagementController.setExtensionEnabled(kind, id, enabled);
     }
@@ -777,6 +782,11 @@ public final class MainCoordinator implements MainUiController {
     @Override
     public void onExtensionDeleted(String kind, String id) {
         extensionManagementController.deleteExtension(kind, id);
+    }
+
+    @Override
+    public void onExtensionsDeleted(String kind, List<String> ids) {
+        extensionManagementController.deleteExtensions(kind, ids);
     }
 
     @Override
@@ -860,6 +870,7 @@ public final class MainCoordinator implements MainUiController {
     @Override
     public void onEnterBackground() {
         viewProxy.hideOverlays();
+        persistCurrentConversation();
     }
 
     void reloadAfterLineCodeImport() {

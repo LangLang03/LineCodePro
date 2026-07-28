@@ -1231,6 +1231,15 @@ public final class ScreenFactories {
                 }
 
                 @Override
+                public void onInstallSkillFromGitHub(String location, String githubUrl) {
+                    try {
+                        controller.onSkillInstalledFromGitHub(location, githubUrl);
+                    } catch (Exception e) {
+                        Toast.makeText(view.getContext(), e.getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                }
+
+                @Override
                 public void onEnabledChanged(String kind, String id, boolean enabled) {
                     controller.onExtensionEnabledChanged(kind, id, enabled);
                 }
@@ -1238,6 +1247,16 @@ public final class ScreenFactories {
                 @Override
                 public void onDelete(String kind, String id) {
                     controller.onExtensionDeleted(kind, id);
+                }
+
+                @Override
+                public void onDeleteMany(String kind, List<String> ids) {
+                    controller.onExtensionsDeleted(kind, ids);
+                }
+
+                @Override
+                public void onShareWorkspace() {
+                    cn.lineai.workspace.WorkspaceShareHelper.shareHome(view.getContext());
                 }
             });
         }

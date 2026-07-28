@@ -154,6 +154,8 @@
 
     <string name="screen_llm_thinking_off_label">Выкл</string>
     <string name="screen_llm_thinking_off_desc">Отключить режим размышлений, более быстрый ответ</string>
+    <string name="screen_llm_thinking_auto_label">Авто</string>
+    <string name="screen_llm_thinking_auto">Модель сама выбирает глубину размышления (adaptive/auto)</string>
     <string name="screen_llm_thinking_low_label">Низкий</string>
     <string name="screen_llm_thinking_medium_label">Средний</string>
     <string name="screen_llm_thinking_high_label">Высокий</string>
@@ -203,9 +205,47 @@
     <string name="model_provider_preset_openrouter_label">OpenRouter</string>
     <string name="model_provider_preset_openrouter_desc">Мультимодельная агрегация</string>
     <string name="model_provider_preset_openrouter_hint">OpenRouter использует OpenAI совместимый протокол, Base URL заканчивается на /api/v1.</string>
+    <string name="model_provider_preset_groq_label">Groq</string>
+    <string name="model_provider_preset_groq_desc">Groq OpenAI-совместимый API</string>
+    <string name="model_provider_preset_groq_hint">Groq использует OpenAI-совместимый протокол, Base URL заканчивается на /openai/v1.</string>
+    <string name="model_provider_preset_together_label">Together AI</string>
+    <string name="model_provider_preset_together_desc">Together OpenAI-совместимый API</string>
+    <string name="model_provider_preset_together_hint">Together использует OpenAI-совместимый протокол, Base URL заканчивается на /v1.</string>
+    <string name="model_provider_preset_siliconflow_label">SiliconFlow</string>
+    <string name="model_provider_preset_siliconflow_desc">SiliconFlow</string>
+    <string name="model_provider_preset_siliconflow_hint">SiliconFlow использует OpenAI-совместимый протокол, Base URL заканчивается на /v1.</string>
+    <string name="model_provider_preset_minimax_label">MiniMax</string>
+    <string name="model_provider_preset_minimax_desc">MiniMax OpenAI-совместимый API</string>
+    <string name="model_provider_preset_minimax_hint">MiniMax использует OpenAI-совместимый протокол, Base URL заканчивается на /v1.</string>
+    <string name="model_provider_preset_ollama_label">Ollama</string>
+    <string name="model_provider_preset_ollama_desc">Локальный Ollama OpenAI endpoint</string>
+    <string name="model_provider_preset_ollama_hint">Локальный Ollama, Base URL вида http://127.0.0.1:11434/v1 (на телефоне укажите LAN IP ПК).</string>
+    <string name="model_provider_preset_lmstudio_label">LM Studio</string>
+    <string name="model_provider_preset_lmstudio_desc">Локальный LM Studio OpenAI endpoint</string>
+    <string name="model_provider_preset_lmstudio_hint">Локальный LM Studio, Base URL вида http://127.0.0.1:1234/v1 (на телефоне укажите LAN IP ПК).</string>
     <string name="model_provider_preset_codex_label">Codex</string>
     <string name="model_provider_preset_codex_desc">Responses API</string>
     <string name="model_provider_preset_codex_hint">Codex использует Responses API, Base URL заканчивается на /v1, не добавляйте /responses.</string>
+
+    <string name="screen_extension_detail_install_github">Установить из GitHub</string>
+    <string name="screen_extension_detail_install_github_desc">Вставьте URL репозитория или raw SKILL.md</string>
+    <string name="screen_extension_detail_dialog_github_skill">Импорт Skill из GitHub</string>
+    <string name="screen_extension_detail_field_github_url">URL GitHub</string>
+    <string name="screen_extension_detail_hint_github_url">https://github.com/org/repo или raw SKILL.md</string>
+    <string name="screen_extension_detail_helper_github_url">Поддерживает github.com repo, tree/blob или raw.githubusercontent.com SKILL.md</string>
+    <string name="screen_extension_detail_multi_select">Множественный выбор</string>
+    <string name="screen_extension_detail_multi_select_desc">Выберите несколько элементов для удаления</string>
+    <string name="screen_extension_detail_selected_count">Выбрано: %1$d</string>
+    <string name="screen_extension_detail_delete_multi_title">Удалить выбранное</string>
+    <string name="screen_extension_detail_delete_multi_message">Удалить %1$d выбранных элементов?</string>
+    <string name="screen_extension_detail_delete_multi_warning">Это действие нельзя отменить</string>
+    <string name="screen_extension_detail_workspace_share">Поделиться рабочей папкой</string>
+    <string name="screen_extension_detail_workspace_share_desc">Открыть внутренний .linecode через FileProvider</string>
+    <string name="skill_github_invalid_url">Неверный URL GitHub</string>
+    <string name="skill_github_fetch_failed">Не удалось скачать Skill с GitHub: %1$s</string>
+    <string name="skill_github_no_skill_md">В репозитории не найден SKILL.md</string>
+    <string name="workspace_provider_open_title">Рабочая область LineCode</string>
+    <string name="workspace_provider_open_failed">Не удалось открыть рабочую папку</string>
 
     <string name="screen_model_add_title_edit">Редактировать модель</string>
     <string name="screen_model_add_title_add">Добавить модель</string>

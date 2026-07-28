@@ -120,12 +120,13 @@ public final class SlashCommandCatalogTest {
 
     @Test
     public void filterReasoningLevelsReturnsAllForEmptyQuery() {
-        Assert.assertEquals(5, SlashCommandCatalog.filterReasoningLevels("").size());
+        Assert.assertEquals(6, SlashCommandCatalog.filterReasoningLevels("").size());
     }
 
     @Test
     public void reasoningLevelsExposeAllStandardValues() {
         Assert.assertTrue(SlashCommandCatalog.REASONING_LEVELS.contains(AiBehaviorSettings.REASONING_OFF));
+        Assert.assertTrue(SlashCommandCatalog.REASONING_LEVELS.contains(AiBehaviorSettings.REASONING_AUTO));
         Assert.assertTrue(SlashCommandCatalog.REASONING_LEVELS.contains(AiBehaviorSettings.REASONING_LOW));
         Assert.assertTrue(SlashCommandCatalog.REASONING_LEVELS.contains(AiBehaviorSettings.REASONING_MEDIUM));
         Assert.assertTrue(SlashCommandCatalog.REASONING_LEVELS.contains(AiBehaviorSettings.REASONING_HIGH));

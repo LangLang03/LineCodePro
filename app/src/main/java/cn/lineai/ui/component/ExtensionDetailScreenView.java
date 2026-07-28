@@ -20,6 +20,7 @@ import cn.lineai.model.ExtensionKindUiModel;
 import cn.lineai.model.SkillRecord;
 import cn.lineai.ui.MainChatView;
 import cn.lineai.ui.theme.LineTheme;
+import java.util.ArrayList;
 import java.util.List;
 
 public final class ExtensionDetailScreenView extends ScreenScaffoldView {
@@ -40,14 +41,23 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
 
         void onInstallSkillFromUri(String location, String uri, String displayName);
 
+        void onInstallSkillFromGitHub(String location, String githubUrl);
+
         void onEnabledChanged(String kind, String id, boolean enabled);
 
         void onDelete(String kind, String id);
+
+        void onDeleteMany(String kind, List<String> ids);
+
+        void onShareWorkspace();
     }
 
     private final String kind;
     private final Listener listener;
     private final ExtensionKindUiModel uiModel;
+    private final java.util.LinkedHashSet<String> multiSelectedIds = new java.util.LinkedHashSet<>();
+    private final android.widget.FrameLayout headerHost;
+    private final LinearLayout installedHost;
 
     public ExtensionDetailScreenView(Context context, ExtensionKindUiModel uiModel, Listener listener) {
         super(context, uiModel != null ? uiModel.getTitle() : context.getString(R.string.screen_extensions_section_linecode), listener::onBack, addButton(context, uiModel, listener));
@@ -58,6 +68,9 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
         LinearLayout content = getContent();
         LineTheme.padding(content, 0, 0, 0, 100);
 
+        headerHost = new android.widget.FrameLayout(context);
+        content.addView(headerHost, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
         String sectionTitle = uiModel != null ? uiModel.getSectionTitle() : context.getString(R.string.screen_extension_detail_section_install_other);
         int sectionIcon = uiModel != null ? uiModel.getIconType() : IconButtonView.PACKAGE;
         String sectionInlineTitle = uiModel != null ? uiModel.getInlineTitle() : context.getString(R.string.screen_extension_detail_inline_title_linecode);
@@ -67,9 +80,24 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
         add.addRow(new ActionRowView(context, sectionIcon, sectionInlineTitle, sectionInlineDesc, false, true, this::handleAdd), false);
         content.addView(add, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
-        SettingsSectionView installed = new SettingsSectionView(context, context.getString(R.string.screen_extension_detail_section_installed));
-        renderInstalled(installed);
-        content.addView(installed, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        if ("skills".equals(kind)) {
+            SettingsSectionView workspace = new SettingsSectionView(context, context.getString(R.string.screen_extension_detail_workspace_share));
+            workspace.addRow(new ActionRowView(
+                    context,
+                    IconButtonView.FOLDER_OPEN,
+                    context.getString(R.string.screen_extension_detail_workspace_share),
+                    context.getString(R.string.screen_extension_detail_workspace_share_desc),
+                    false,
+                    true,
+                    () -> listener.onShareWorkspace()
+            ), false);
+            content.addView(workspace, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        }
+
+        installedHost = new LinearLayout(context);
+        installedHost.setOrientation(VERTICAL);
+        content.addView(installedHost, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        renderInstalledSection();
     }
 
     private void handleAdd() {
@@ -91,6 +119,44 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
         Toast.makeText(getContext(), getContext().getString(R.string.screen_extension_detail_empty_linecode), Toast.LENGTH_SHORT).show();
     }
 
+    private void renderInstalledSection() {
+        headerHost.removeAllViews();
+        installedHost.removeAllViews();
+        if (!multiSelectedIds.isEmpty() && "skills".equals(kind)) {
+            LinearLayout bar = new LinearLayout(getContext());
+            bar.setOrientation(HORIZONTAL);
+            bar.setGravity(Gravity.CENTER_VERTICAL);
+            LineTheme.padding(bar, LineTheme.LG, LineTheme.SM, LineTheme.LG, LineTheme.SM);
+            TextView count = LineTheme.text(
+                    getContext(),
+                    getContext().getString(R.string.screen_extension_detail_selected_count, multiSelectedIds.size()),
+                    LineTheme.FONT_MD,
+                    LineTheme.TEXT,
+                    Typeface.BOLD
+            );
+            bar.addView(count, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+            TextView cancel = LineTheme.textMedium(getContext(), getContext().getString(R.string.common_cancel), LineTheme.FONT_SM, LineTheme.TEXT_SECONDARY);
+            cancel.setOnClickListener(v -> {
+                multiSelectedIds.clear();
+                renderInstalledSection();
+            });
+            bar.addView(cancel, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+            TextView delete = LineTheme.textMedium(getContext(), getContext().getString(R.string.common_delete), LineTheme.FONT_SM, LineTheme.DANGER);
+            LinearLayout.LayoutParams deleteParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+            deleteParams.leftMargin = LineTheme.dp(getContext(), LineTheme.MD);
+            delete.setOnClickListener(v -> showDeleteManyConfirm());
+            bar.addView(delete, deleteParams);
+            headerHost.addView(bar, new android.widget.FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        }
+
+        SettingsSectionView installed = new SettingsSectionView(
+                getContext(),
+                getContext().getString(R.string.screen_extension_detail_section_installed)
+        );
+        renderInstalled(installed);
+        installedHost.addView(installed, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+    }
+
     private void renderInstalled(SettingsSectionView installed) {
         if (uiModel == null) {
             installed.addRow(empty(getContext().getString(R.string.screen_extension_detail_empty_linecode)), false);
@@ -101,21 +167,93 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
             installed.addRow(empty(uiModel.getEmptyMessage()), false);
             return;
         }
+        boolean multi = !multiSelectedIds.isEmpty() && "skills".equals(kind);
         for (int i = 0; i < items.size(); i++) {
             ExtensionItemUiModel item = items.get(i);
-            installed.addRow(extensionRow(uiModel.getKind(), item.getId(), uiModel.getIconType(), item.getName(),
-                    item.getDescription(), item.isEnabled()), i < items.size() - 1);
+            installed.addRow(
+                    extensionRow(
+                            uiModel.getKind(),
+                            item.getId(),
+                            uiModel.getIconType(),
+                            item.getName(),
+                            item.getDescription(),
+                            item.isEnabled(),
+                            multi
+                    ),
+                    i < items.size() - 1
+            );
         }
     }
 
-    private LinearLayout extensionRow(String rowKind, String id, int iconType, String title, String desc, boolean enabled) {
+    private LinearLayout extensionRow(
+            String rowKind,
+            String id,
+            int iconType,
+            String title,
+            String desc,
+            boolean enabled,
+            boolean multiMode
+    ) {
+        if (multiMode) {
+            boolean selected = multiSelectedIds.contains(id);
+            OptionRowView row = new OptionRowView(getContext(), iconType, title, desc, selected, () -> {
+                if (multiSelectedIds.contains(id)) {
+                    multiSelectedIds.remove(id);
+                } else {
+                    multiSelectedIds.add(id);
+                }
+                renderInstalledSection();
+            });
+            return row;
+        }
         SwitchRowView row = new SwitchRowView(getContext(), iconType, title, desc, enabled,
                 (button, checked) -> listener.onEnabledChanged(rowKind, id, checked));
         row.setOnLongClickListener(v -> {
-            confirmDelete(rowKind, id, title);
+            if ("skills".equals(rowKind)) {
+                multiSelectedIds.clear();
+                multiSelectedIds.add(id);
+                renderInstalledSection();
+            } else {
+                confirmDelete(rowKind, id, title);
+            }
             return true;
         });
         return row;
+    }
+
+    private void showDeleteManyConfirm() {
+        if (multiSelectedIds.isEmpty()) {
+            return;
+        }
+        Dialog dialog = createBottomDialog();
+        LinearLayout panel = createBottomPanel();
+        addHandle(panel);
+        addSheetTitle(panel, getContext().getString(R.string.screen_extension_detail_delete_multi_title));
+        TextView desc = LineTheme.text(
+                getContext(),
+                getContext().getString(R.string.screen_extension_detail_delete_multi_message, multiSelectedIds.size()),
+                LineTheme.FONT_SM,
+                LineTheme.TEXT_TERTIARY,
+                Typeface.NORMAL
+        );
+        LineTheme.padding(desc, LineTheme.LG, 0, LineTheme.LG, LineTheme.MD);
+        panel.addView(desc, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        addDivider(panel);
+        addActionRow(panel, getContext().getString(R.string.common_cancel), "", dialog::dismiss);
+        addActionRow(
+                panel,
+                getContext().getString(R.string.common_delete),
+                getContext().getString(R.string.screen_extension_detail_delete_multi_warning),
+                () -> {
+                    ArrayList<String> ids = new ArrayList<>(multiSelectedIds);
+                    dialog.dismiss();
+                    multiSelectedIds.clear();
+                    listener.onDeleteMany(kind, ids);
+                },
+                LineTheme.DANGER
+        );
+        addBottomInset(panel);
+        showBottomDialog(dialog, panel);
     }
 
     private TextView empty(String text) {
@@ -135,6 +273,10 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
             dialog.dismiss();
             chooseSkillDocument();
         });
+        addActionRow(panel, getContext().getString(R.string.screen_extension_detail_install_github), getContext().getString(R.string.screen_extension_detail_install_github_desc), () -> {
+            dialog.dismiss();
+            showGitHubSkillDialog();
+        });
         addActionRow(panel, getContext().getString(R.string.screen_extension_detail_create_skill), getContext().getString(R.string.screen_extension_detail_create_skill_desc), () -> {
             dialog.dismiss();
             showCreateSkillDialog();
@@ -143,8 +285,44 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
             dialog.dismiss();
             showInstallSkillDialog();
         });
+        if (!multiSelectedIds.isEmpty() || (uiModel != null && uiModel.getInstalledItems() != null && !uiModel.getInstalledItems().isEmpty())) {
+            addActionRow(panel, getContext().getString(R.string.screen_extension_detail_multi_select), getContext().getString(R.string.screen_extension_detail_multi_select_desc), () -> {
+                dialog.dismiss();
+                if (multiSelectedIds.isEmpty() && uiModel != null && !uiModel.getInstalledItems().isEmpty()) {
+                    multiSelectedIds.add(uiModel.getInstalledItems().get(0).getId());
+                }
+                renderInstalledSection();
+            });
+        }
         addBottomInset(panel);
         showBottomDialog(dialog, panel);
+    }
+
+    private void showGitHubSkillDialog() {
+        Dialog dialog = createDialog();
+        LinearLayout panel = panel(getContext().getString(R.string.screen_extension_detail_dialog_github_skill));
+        FormTextFieldView url = new FormTextFieldView(
+                getContext(),
+                getContext().getString(R.string.screen_extension_detail_field_github_url),
+                "",
+                getContext().getString(R.string.screen_extension_detail_hint_github_url),
+                getContext().getString(R.string.screen_extension_detail_helper_github_url),
+                false,
+                false
+        );
+        RadioGroup scope = locationGroup();
+        panel.addView(url);
+        panel.addView(scope, top());
+        panel.addView(actionButton(getContext().getString(R.string.common_install), () -> {
+            String value = value(url);
+            if (value.length() == 0) {
+                Toast.makeText(getContext(), getContext().getString(R.string.skill_github_invalid_url), Toast.LENGTH_SHORT).show();
+                return;
+            }
+            listener.onInstallSkillFromGitHub(checkedLocation(scope), value);
+            dialog.dismiss();
+        }), top());
+        showPanel(dialog, panel);
     }
 
     private void chooseSkillDocument() {
@@ -260,6 +438,26 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
     }
 
     private void confirmDelete(String rowKind, String id, String title) {
+        if ("skills".equals(rowKind)) {
+            Dialog dialog = createBottomDialog();
+            LinearLayout panel = createBottomPanel();
+            addHandle(panel);
+            addSheetTitle(panel, title);
+            addDivider(panel);
+            addActionRow(panel, getContext().getString(R.string.screen_extension_detail_multi_select), getContext().getString(R.string.screen_extension_detail_multi_select_desc), () -> {
+                dialog.dismiss();
+                multiSelectedIds.clear();
+                multiSelectedIds.add(id);
+                renderInstalledSection();
+            });
+            addActionRow(panel, getContext().getString(R.string.screen_extension_detail_delete), getContext().getString(R.string.screen_extension_detail_delete_desc), () -> {
+                dialog.dismiss();
+                confirmDeleteOnly(rowKind, id, title);
+            }, LineTheme.DANGER);
+            addBottomInset(panel);
+            showBottomDialog(dialog, panel);
+            return;
+        }
         if (uiModel != null && uiModel.hasModifyAction()) {
             Dialog dialog = createBottomDialog();
             LinearLayout panel = createBottomPanel();
