@@ -14,7 +14,7 @@ public final class DefaultReasoningStrategy implements ReasoningRequestStrategy 
     @Override
     public void apply(JSONObject body, ReasoningRequestContext context) throws Exception {
         if (context.isEnabled()) {
-            String effort = context.getEffort();
+            String effort = AiBehaviorSettings.concreteReasoningEffort(context.getEffort());
             if (AiBehaviorSettings.REASONING_MAX.equals(effort)) {
                 effort = "xhigh";
             }

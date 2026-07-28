@@ -66,6 +66,30 @@ public final class ModelProviderPresetStrings {
                 R.string.model_provider_preset_openrouter_label,
                 R.string.model_provider_preset_openrouter_desc,
                 R.string.model_provider_preset_openrouter_hint);
+        register("groq",
+                R.string.model_provider_preset_groq_label,
+                R.string.model_provider_preset_groq_desc,
+                R.string.model_provider_preset_groq_hint);
+        register("together",
+                R.string.model_provider_preset_together_label,
+                R.string.model_provider_preset_together_desc,
+                R.string.model_provider_preset_together_hint);
+        register("siliconflow",
+                R.string.model_provider_preset_siliconflow_label,
+                R.string.model_provider_preset_siliconflow_desc,
+                R.string.model_provider_preset_siliconflow_hint);
+        register("minimax",
+                R.string.model_provider_preset_minimax_label,
+                R.string.model_provider_preset_minimax_desc,
+                R.string.model_provider_preset_minimax_hint);
+        register("ollama",
+                R.string.model_provider_preset_ollama_label,
+                R.string.model_provider_preset_ollama_desc,
+                R.string.model_provider_preset_ollama_hint);
+        register("lmstudio",
+                R.string.model_provider_preset_lmstudio_label,
+                R.string.model_provider_preset_lmstudio_desc,
+                R.string.model_provider_preset_lmstudio_hint);
         register("codex",
                 R.string.model_provider_preset_codex_label,
                 R.string.model_provider_preset_codex_desc,

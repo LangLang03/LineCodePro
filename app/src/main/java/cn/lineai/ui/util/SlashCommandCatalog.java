@@ -88,6 +88,7 @@ public final class SlashCommandCatalog {
         MAIN_COMMANDS = Collections.unmodifiableList(main);
         REASONING_LEVELS = Collections.unmodifiableList(Arrays.asList(
                 AiBehaviorSettings.REASONING_OFF,
+                AiBehaviorSettings.REASONING_AUTO,
                 AiBehaviorSettings.REASONING_LOW,
                 AiBehaviorSettings.REASONING_MEDIUM,
                 AiBehaviorSettings.REASONING_HIGH,

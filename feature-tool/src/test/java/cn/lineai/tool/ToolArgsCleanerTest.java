@@ -89,11 +89,11 @@ public final class ToolArgsCleanerTest {
     }
 
     @Test
-    public void unescapedControlCharactersAreRemoved() throws JSONException {
-        String raw = "{\"a\":\"line1\nline2\"}";
+    public void unescapedWhitespaceControlCharactersAreEscaped() throws JSONException {
+        String raw = "{\"a\":\"line1\nline2\ttab\"}";
         String cleaned = ToolArgsCleaner.clean(raw);
-        Assert.assertEquals("{\"a\":\"line1line2\"}", cleaned);
-        Assert.assertEquals("line1line2", new JSONObject(cleaned).optString("a"));
+        Assert.assertEquals("{\"a\":\"line1\\nline2\\ttab\"}", cleaned);
+        Assert.assertEquals("line1\nline2\ttab", new JSONObject(cleaned).optString("a"));
     }
 
     @Test

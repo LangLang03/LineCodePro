@@ -174,8 +174,14 @@ public final class StorageStatsRepository {
         SQLiteDatabase db = database.getWritableDatabase();
         db.beginTransaction();
         try {
+            db.delete("message_text_chunks", null, null);
             db.delete("messages", null, null);
             db.delete("conversations", null, null);
+            db.delete("conversation_index", null, null);
+            try {
+                db.delete("conversation_index_fts", null, null);
+            } catch (RuntimeException ignored) {
+            }
             db.delete("tool_calls", null, null);
             db.delete("tool_results", null, null);
             db.delete("message_blocks", null, null);

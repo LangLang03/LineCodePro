@@ -105,7 +105,13 @@ public final class ToolArgsCleaner {
                 continue;
             }
             if (inString) {
-                if (c >= 32) {
+                if (c == '\n') {
+                    out.append("\\n");
+                } else if (c == '\r') {
+                    out.append("\\r");
+                } else if (c == '\t') {
+                    out.append("\\t");
+                } else if (c >= 32) {
                     out.append(c);
                 }
                 i++;

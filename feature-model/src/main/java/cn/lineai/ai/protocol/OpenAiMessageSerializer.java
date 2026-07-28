@@ -20,7 +20,7 @@ final class OpenAiMessageSerializer {
             object.put("role", message.getRole());
             if ("tool".equals(message.getRole())) {
                 object.put("tool_call_id", message.getToolCallId());
-                object.put("content", message.getContent());
+                object.put("content", toolContentForModel(message));
                 array.put(object);
                 continue;
             }
@@ -54,6 +54,16 @@ final class OpenAiMessageSerializer {
 
     JSONArray messagesJsonForTest(List<ModelMessage> messages) throws Exception {
         return messagesJson(messages);
+    }
+
+    private static String toolContentForModel(ModelMessage message) {
+        String content = message.getContent();
+        if (!message.isToolError()) {
+            return content == null ? "" : content;
+        }
+        String label = message.getToolName().length() > 0 ? message.getToolName() : message.getToolCallId();
+        String body = content == null ? "" : content;
+        return "Tool " + label + " failed:\n" + body;
     }
 
     private JSONArray imageContent(ModelMessage message) throws Exception {

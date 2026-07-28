@@ -30,9 +30,13 @@ public interface ExtensionController {
 
     SkillRecord onSkillInstalledFromUri(String location, String uri, String displayName) throws Exception;
 
+    SkillRecord onSkillInstalledFromGitHub(String location, String githubUrl) throws Exception;
+
     void onExtensionEnabledChanged(String kind, String id, boolean enabled);
 
     void onExtensionDeleted(String kind, String id);
+
+    void onExtensionsDeleted(String kind, List<String> ids);
 
     List<ScannedProvider> onTerminalProviderScan();
 

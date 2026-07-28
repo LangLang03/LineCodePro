@@ -91,7 +91,8 @@ public final class AnthropicMessagesProtocol extends AbstractHttpModelProtocol {
             ModelRequestOptions requestOptions
     ) throws Exception {
         String effort = requestOptions.getReasoningEffort();
-        boolean thinkingEnabled = !AiBehaviorSettings.REASONING_OFF.equals(effort);
+        boolean thinkingEnabled = AiBehaviorSettings.isReasoningEnabled(effort);
+        effort = AiBehaviorSettings.concreteReasoningEffort(effort);
         int thinkingBudget = thinkingEnabled ? thinkingBudget(effort) : 0;
         JSONObject body = new JSONObject();
         body.put("model", ModelContextParser.apiModelId(config));

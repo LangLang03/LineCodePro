@@ -86,6 +86,11 @@ public interface ExtensionStore {
     SkillRecord installSkillFromUri(String homePath, String location, String uri, String displayName) throws Exception;
 
     /**
+     * 从 GitHub 仓库或 raw SKILL.md URL 安装 Skill。
+     */
+    SkillRecord installSkillFromGitHub(String homePath, String location, String githubUrl) throws Exception;
+
+    /**
      * 设置 Skill 启用状态。
      */
     void setSkillEnabled(String id, boolean enabled);
@@ -94,6 +99,11 @@ public interface ExtensionStore {
      * 删除 Skill。
      */
     void deleteSkill(String id);
+
+    /**
+     * 批量删除 Skill。
+     */
+    void deleteSkills(List<String> ids);
 
     /**
      * 构造注入到 system prompt 的扩展文本。

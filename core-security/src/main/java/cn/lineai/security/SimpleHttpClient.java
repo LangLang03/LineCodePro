@@ -60,6 +60,10 @@ public final class SimpleHttpClient {
     }
 
     public static DownloadResult download(String url, int connectTimeoutMs, int readTimeoutMs) throws Exception {
+        return download(url, connectTimeoutMs, readTimeoutMs, Integer.MAX_VALUE);
+    }
+
+    public static DownloadResult download(String url, int connectTimeoutMs, int readTimeoutMs, int maxBytes) throws Exception {
         String safeUrl = UrlPolicy.requireHttpOrLocalCleartextUrl(url, "URL");
         HttpURLConnection connection = null;
         try {
@@ -67,20 +71,22 @@ public final class SimpleHttpClient {
             connection.setRequestMethod("GET");
             connection.setConnectTimeout(connectTimeoutMs);
             connection.setReadTimeout(readTimeoutMs);
+            connection.setInstanceFollowRedirects(true);
+            connection.setRequestProperty("User-Agent", "LineCode/1.0");
             int code = connection.getResponseCode();
             if (code < 200 || code >= 300) {
                 throw new Exception("HTTP download failed: " + code);
             }
             String mimeType = connection.getContentType();
-            if (mimeType == null || !mimeType.toLowerCase(java.util.Locale.ROOT).startsWith("image/")) {
-                mimeType = "image/png";
+            if (mimeType == null || mimeType.length() == 0) {
+                mimeType = "application/octet-stream";
             } else {
                 int semicolon = mimeType.indexOf(';');
                 if (semicolon > 0) {
                     mimeType = mimeType.substring(0, semicolon).trim();
                 }
             }
-            return new DownloadResult(mimeType, readBytes(connection.getInputStream(), Integer.MAX_VALUE));
+            return new DownloadResult(mimeType, readBytes(connection.getInputStream(), maxBytes));
         } finally {
             if (connection != null) {
                 connection.disconnect();

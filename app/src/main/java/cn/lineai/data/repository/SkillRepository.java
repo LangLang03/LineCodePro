@@ -6,6 +6,7 @@ import android.database.sqlite.SQLiteDatabase;
 import cn.lineai.R;
 import cn.lineai.ai.SkillPromptProvider;
 import cn.lineai.data.db.LineCodeDatabase;
+import cn.lineai.data.service.GitHubSkillInstaller;
 import cn.lineai.data.service.SkillFileManager;
 import cn.lineai.model.ExtensionAgentConfig;
 import cn.lineai.model.ExtensionMcpConfig;
@@ -109,6 +110,30 @@ public final class SkillRepository extends BaseRepository {
             return installSkill(homePath, location, tempFile.getAbsolutePath(), fileManager.stripExtension(fileName));
         } finally {
             fileManager.deleteRecursive(tempDir);
+        }
+    }
+
+    public synchronized SkillRecord installSkillFromGitHub(String homePath, String location, String githubUrl) throws Exception {
+        fileManager.ensureSkillRoots(homePath);
+        GitHubSkillInstaller installer = new GitHubSkillInstaller(
+                resourceProvider,
+                fileManager.getWorkspacePaths(),
+                fileManager
+        );
+        File downloaded = installer.downloadToTemp(githubUrl);
+        try {
+            return installSkill(homePath, location, downloaded.getAbsolutePath(), downloaded.getName());
+        } finally {
+            fileManager.deleteRecursive(downloaded);
+        }
+    }
+
+    public synchronized void deleteSkills(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        for (String id : ids) {
+            deleteSkill(id);
         }
     }
 

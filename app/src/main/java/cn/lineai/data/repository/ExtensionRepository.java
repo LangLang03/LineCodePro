@@ -101,6 +101,11 @@ public final class ExtensionRepository extends BaseRepository implements Extensi
     }
 
     @Override
+    public synchronized SkillRecord installSkillFromGitHub(String homePath, String location, String githubUrl) throws Exception {
+        return skillRepository.installSkillFromGitHub(homePath, location, githubUrl);
+    }
+
+    @Override
     public synchronized void setSkillEnabled(String id, boolean enabled) {
         skillRepository.setSkillEnabled(id, enabled);
     }
@@ -108,6 +113,11 @@ public final class ExtensionRepository extends BaseRepository implements Extensi
     @Override
     public synchronized void deleteSkill(String id) {
         skillRepository.deleteSkill(id);
+    }
+
+    @Override
+    public synchronized void deleteSkills(List<String> ids) {
+        skillRepository.deleteSkills(ids);
     }
 
     @Override

@@ -243,9 +243,10 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         String base = config.getBaseUrl().toLowerCase(java.util.Locale.ROOT);
         String model = ModelContextParser.apiModelId(config).toLowerCase(java.util.Locale.ROOT);
         String effort = options.getReasoningEffort();
-        boolean enabled = !AiBehaviorSettings.REASONING_OFF.equals(effort);
+        boolean enabled = AiBehaviorSettings.isReasoningEnabled(effort);
+        String concrete = AiBehaviorSettings.concreteReasoningEffort(effort);
         ReasoningRequestContext context = new ReasoningRequestContext(
-                enabled, effort, options.isPreserveReasoning(), base, model, thinkingBudget(effort));
+                enabled, concrete, options.isPreserveReasoning(), base, model, thinkingBudget(concrete));
         ReasoningRequestStrategy strategy = reasoningStrategyRegistry.find(base, model);
         if (strategy != null) {
             strategy.apply(body, context);

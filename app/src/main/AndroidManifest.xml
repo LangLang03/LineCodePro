@@ -88,6 +88,12 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/share_file_paths" />
         </provider>
+
+        <provider
+            android:name="cn.lineai.workspace.WorkspaceFileProvider"
+            android:authorities="${applicationId}.workspace"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 
 </manifest>

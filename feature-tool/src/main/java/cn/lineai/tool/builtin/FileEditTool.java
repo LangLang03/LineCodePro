@@ -46,8 +46,11 @@ public final class FileEditTool extends BaseTool {
                 .put("type", "object")
                 .put("properties", new JSONObject()
                         .put("file_path", new JSONObject().put("type", "string").put("description", "Absolute or relative file path"))
-                        .put("old_string", new JSONObject().put("type", "string").put("description", "Original text to search for; must be unique or unambiguous"))
-                        .put("new_string", new JSONObject().put("type", "string").put("description", "Replacement text")))
+                        .put("old_string", new JSONObject().put("type", "string").put("description", "Original text to search for; must be unique unless replace_all is true"))
+                        .put("new_string", new JSONObject().put("type", "string").put("description", "Replacement text"))
+                        .put("replace_all", new JSONObject()
+                                .put("type", "boolean")
+                                .put("description", "If true, replace every occurrence of old_string. Default false: require a unique match and replace only once.")))
                 .put("required", new org.json.JSONArray().put("file_path").put("old_string").put("new_string"));
     }
 
@@ -57,6 +60,7 @@ public final class FileEditTool extends BaseTool {
             String path = input.optString("file_path");
             String oldString = input.optString("old_string");
             String newString = input.optString("new_string");
+            boolean replaceAll = input.optBoolean("replace_all", false);
             ToolArgs.requireNonEmpty(path, "file_path");
             if (oldString.length() == 0) {
                 return error(context.getString(R.string.tool_file_edit_old_string_empty));
@@ -73,17 +77,35 @@ public final class FileEditTool extends BaseTool {
                 return error(context.getString(R.string.tool_file_edit_no_match));
             }
             int count = countOccurrences(content, oldString);
-            String next = content.replace(oldString, newString);
+            if (count > 1 && !replaceAll) {
+                return error(context.getString(R.string.tool_file_edit_multiple_matches, count));
+            }
+            String next = replaceAll
+                    ? content.replace(oldString, newString)
+                    : replaceFirst(content, oldString, newString);
+            int replaced = replaceAll ? count : 1;
             FileOutputStream output = new FileOutputStream(file, false);
             try {
                 output.write(next.getBytes(StandardCharsets.UTF_8));
             } finally {
                 output.close();
             }
-            return ok(context.getString(R.string.tool_file_edit_success, FileToolPathPolicy.displayPath(context.getHomePath(), file), count));
+            return ok(context.getString(
+                    R.string.tool_file_edit_success,
+                    FileToolPathPolicy.displayPath(context.getHomePath(), file),
+                    replaced
+            ));
         } catch (Exception e) {
             return error(context.getString(R.string.tool_file_edit_failed, e.getMessage()));
         }
+    }
+
+    private static String replaceFirst(String content, String oldString, String newString) {
+        int index = content.indexOf(oldString);
+        if (index < 0) {
+            return content;
+        }
+        return content.substring(0, index) + newString + content.substring(index + oldString.length());
     }
 
     private int countOccurrences(String content, String value) {
