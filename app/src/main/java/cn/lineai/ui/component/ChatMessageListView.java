@@ -386,51 +386,12 @@ public final class ChatMessageListView extends FrameLayout {
         descParams.topMargin = LineTheme.dp(context, LineTheme.MD);
         box.addView(desc, descParams);
 
-        box.addView(actionRow(context, listener, true),
+        box.addView(actionRow(context, listener),
                 new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         return box;
     }
 
-    private static View createWelcomeState(Context context, EmptyStateListener listener) {
-        LinearLayout box = new LinearLayout(context);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setGravity(Gravity.CENTER);
-        LineTheme.padding(box, LineTheme.XL, 80, LineTheme.XL, 80);
-
-        TextView prompt = LineTheme.text(context, "›_", LineTheme.FONT_XL, LineTheme.ACCENT, Typeface.NORMAL);
-        prompt.setTypeface(Typeface.MONOSPACE);
-        box.addView(prompt, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        ));
-
-        TextView title = LineTheme.text(context, context.getString(R.string.empty_state_welcome_title), LineTheme.FONT_DISPLAY, LineTheme.TEXT, Typeface.BOLD);
-        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        titleParams.topMargin = LineTheme.dp(context, LineTheme.MD);
-        box.addView(title, titleParams);
-
-        TextView desc = LineTheme.text(context,
-                context.getString(R.string.empty_state_welcome_desc),
-                LineTheme.FONT_MD,
-                LineTheme.TEXT_SECONDARY,
-                Typeface.NORMAL);
-        desc.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        descParams.topMargin = LineTheme.dp(context, LineTheme.MD);
-        box.addView(desc, descParams);
-
-        box.addView(actionRow(context, listener, false),
-                new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        return box;
-    }
-
-    private static LinearLayout actionRow(Context context, EmptyStateListener listener, boolean includeAddModel) {
+    private static LinearLayout actionRow(Context context, EmptyStateListener listener) {
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER);
@@ -439,16 +400,14 @@ public final class ChatMessageListView extends FrameLayout {
         rowParams.topMargin = LineTheme.dp(context, LineTheme.XL);
         row.setLayoutParams(rowParams);
 
-        if (includeAddModel) {
-            TextView addModel = actionButton(context, context.getString(R.string.empty_state_add_model), true);
-            addModel.setOnClickListener(v -> {
-                if (listener != null) {
-                    listener.onAddModel();
-                }
-            });
-            row.addView(addModel, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        }
+        TextView addModel = actionButton(context, context.getString(R.string.empty_state_add_model), true);
+        addModel.setOnClickListener(v -> {
+            if (listener != null) {
+                listener.onAddModel();
+            }
+        });
+        row.addView(addModel, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
         TextView openWorkspace = actionButton(context, context.getString(R.string.empty_state_open_workspace), false);
         openWorkspace.setOnClickListener(v -> {
@@ -458,9 +417,7 @@ public final class ChatMessageListView extends FrameLayout {
         });
         LinearLayout.LayoutParams workspaceParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        if (includeAddModel) {
-            workspaceParams.leftMargin = LineTheme.dp(context, LineTheme.MD);
-        }
+        workspaceParams.leftMargin = LineTheme.dp(context, LineTheme.MD);
         row.addView(openWorkspace, workspaceParams);
         return row;
     }
@@ -501,13 +458,11 @@ public final class ChatMessageListView extends FrameLayout {
         private static final int VIEW_TYPE_USER = 1;
         private static final int VIEW_TYPE_ASSISTANT = 2;
         private static final int VIEW_TYPE_NOTICE = 3;
-        private static final int VIEW_TYPE_WELCOME = 4;
 
         private final Context context;
         private final ArrayList<ChatMessage> visibleMessages = new ArrayList<>();
         private final LinkedHashMap<String, View> rowCache = new LinkedHashMap<>(32, 0.75f, true);
         private boolean showConfigureState;
-        private boolean showWelcomeState;
         private boolean thinkingAutoExpand;
         private boolean thinkingScroll;
         private boolean codeWrapEnabled;
@@ -552,7 +507,6 @@ public final class ChatMessageListView extends FrameLayout {
                 }
             }
             boolean nextShowConfigureState = nextMessages.isEmpty() && state != null && !state.hasConfiguredModel();
-            boolean nextShowWelcomeState = nextMessages.isEmpty() && state != null && state.hasConfiguredModel();
             boolean nextThinkingAutoExpand = state != null && state.isThinkingAutoExpandEnabled();
             boolean nextThinkingScroll = state == null || state.isThinkingScrollEnabled();
             boolean nextCodeWrapEnabled = state != null && state.isCodeWrapEnabled();
@@ -561,7 +515,6 @@ public final class ChatMessageListView extends FrameLayout {
             boolean conversationChanged = !stringEquals(conversationId, nextConversationId);
 
             if (showConfigureState == nextShowConfigureState
-                    && showWelcomeState == nextShowWelcomeState
                     && thinkingAutoExpand == nextThinkingAutoExpand
                     && thinkingScroll == nextThinkingScroll
                     && codeWrapEnabled == nextCodeWrapEnabled
@@ -577,7 +530,6 @@ public final class ChatMessageListView extends FrameLayout {
             visibleMessages.clear();
             visibleMessages.addAll(nextMessages);
             showConfigureState = nextShowConfigureState;
-            showWelcomeState = nextShowWelcomeState;
             thinkingAutoExpand = nextThinkingAutoExpand;
             thinkingScroll = nextThinkingScroll;
             codeWrapEnabled = nextCodeWrapEnabled;
@@ -590,7 +542,7 @@ public final class ChatMessageListView extends FrameLayout {
 
         @Override
         public int getCount() {
-            if (showConfigureState || showWelcomeState) {
+            if (showConfigureState) {
                 return 1;
             }
             return visibleMessages.size();
@@ -598,7 +550,7 @@ public final class ChatMessageListView extends FrameLayout {
 
         @Override
         public Object getItem(int position) {
-            if (showConfigureState || showWelcomeState) {
+            if (showConfigureState) {
                 return null;
             }
             return visibleMessages.get(position);
@@ -606,7 +558,7 @@ public final class ChatMessageListView extends FrameLayout {
 
         @Override
         public long getItemId(int position) {
-            if (showConfigureState || showWelcomeState) {
+            if (showConfigureState) {
                 return -1L;
             }
             String id = visibleMessages.get(position).getId();
@@ -620,16 +572,13 @@ public final class ChatMessageListView extends FrameLayout {
 
         @Override
         public int getViewTypeCount() {
-            return 5;
+            return 4;
         }
 
         @Override
         public int getItemViewType(int position) {
             if (showConfigureState) {
                 return VIEW_TYPE_CONFIGURE;
-            }
-            if (showWelcomeState) {
-                return VIEW_TYPE_WELCOME;
             }
             ChatMessage message = visibleMessages.get(position);
             if (message.isModelSwitchNotification()) {
@@ -643,11 +592,6 @@ public final class ChatMessageListView extends FrameLayout {
             if (showConfigureState) {
                 return convertView == null
                         ? createConfigureState(context, emptyStateListener)
-                        : convertView;
-            }
-            if (showWelcomeState) {
-                return convertView == null
-                        ? createWelcomeState(context, emptyStateListener)
                         : convertView;
             }
             ChatMessage message = visibleMessages.get(position);

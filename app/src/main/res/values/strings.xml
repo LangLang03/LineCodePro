@@ -983,8 +983,6 @@
     <string name="message_list_scroll_to_bottom_desc">Scroll to bottom</string>
     <string name="message_list_configure_title">Configure a model first</string>
     <string name="message_list_configure_desc">Open Settings → Model management → Add model, then send a message.</string>
-    <string name="empty_state_welcome_title">Start coding</string>
-    <string name="empty_state_welcome_desc">Open a project folder and send a message. LineCode reads, edits and runs code on your device.</string>
     <string name="empty_state_add_model">Add model</string>
     <string name="empty_state_open_workspace">Open workspace</string>
 
@@ -1205,4 +1203,6 @@
     <string name="screen_output_toolcall_preview_desc">Preview every tool card with sample data</string>
     <string name="screen_toolcall_preview_title">Tool call cards</string>
     <string name="toolcall_preview_section_note">Sample data — states shown below may not reflect real tool runs.</string>
+    <string name="settings_row_tutorial_title">Tutorial</string>
+    <string name="settings_row_tutorial_desc">Beginner to advanced: models, workspace, Termux, SSH and MCP</string>
 </resources>

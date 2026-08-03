@@ -825,6 +825,19 @@ public final class ScreenFactories {
         }
     }
 
+    /** 设置页顶部的教程入口：返回时回到设置页（区别于聊天"更多"菜单的 tutorial）。 */
+    public static final class TutorialFromSettingsScreenFactory implements ScreenFactory {
+        @Override
+        public View createScreen(MainChatView view, MainUiController controller, Context context) {
+            return new TutorialScreenView(context, view::handleScreenBack);
+        }
+
+        @Override
+        public String screenId() {
+            return "tutorialFromSettings";
+        }
+    }
+
     // ===== Model screens =====
 
     public static final class ModelListScreenFactory implements ScreenFactory {

@@ -983,8 +983,6 @@
     <string name="message_list_scroll_to_bottom_desc">Прокрутить вниз</string>
     <string name="message_list_configure_title">Сначала настройте модель</string>
     <string name="message_list_configure_desc">Откройте Настройки → Управление моделями → Добавить модель, затем отправьте сообщение.</string>
-    <string name="empty_state_welcome_title">Начните писать код</string>
-    <string name="empty_state_welcome_desc">Откройте папку проекта и отправьте сообщение. LineCode читает, редактирует и запускает код на вашем устройстве.</string>
     <string name="empty_state_add_model">Добавить модель</string>
     <string name="empty_state_open_workspace">Открыть рабочее пространство</string>
 
@@ -1203,4 +1201,6 @@
     <string name="screen_output_toolcall_preview_desc">Просмотр всех карточек инструментов с тестовыми данными</string>
     <string name="screen_toolcall_preview_title">Карточки вызовов инструментов</string>
     <string name="toolcall_preview_section_note">Тестовые данные — состояния не отражают реальные запуски инструментов.</string>
+    <string name="settings_row_tutorial_title">Руководство</string>
+    <string name="settings_row_tutorial_desc">От новичка до профи: модели, рабочее пространство, Termux, SSH и MCP</string>
 </resources>

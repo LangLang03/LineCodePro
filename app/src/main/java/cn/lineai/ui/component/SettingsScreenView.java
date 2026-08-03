@@ -37,6 +37,13 @@ public final class SettingsScreenView extends LinearLayout {
         scrollView.addView(content, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         addView(scrollView, new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
 
+        content.addView(new ActionRowView(context, IconButtonView.SPARKLES,
+                context.getString(R.string.settings_row_tutorial_title),
+                context.getString(R.string.settings_row_tutorial_desc),
+                false, true,
+                () -> listener.onItem("tutorialFromSettings")),
+                new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
         addSection(content, context.getString(R.string.screen_settings_section_ai), new RowSpec[] {
                 new RowSpec("models", context.getString(R.string.settings_row_models_title), context.getString(R.string.settings_row_models_desc), IconButtonView.BOX),
                 new RowSpec("llm", context.getString(R.string.screen_llm_title), context.getString(R.string.settings_row_llm_desc), IconButtonView.BRAIN),

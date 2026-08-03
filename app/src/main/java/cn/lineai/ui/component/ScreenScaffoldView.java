@@ -8,6 +8,7 @@ import android.widget.ScrollView;
 
 public class ScreenScaffoldView extends LinearLayout {
     private final LinearLayout content;
+    private final ScrollView scrollView;
     private final View rightAction;
 
     public ScreenScaffoldView(Context context, String title, Runnable onBack, View rightAction) {
@@ -17,7 +18,7 @@ public class ScreenScaffoldView extends LinearLayout {
         setBackgroundColor(LineTheme.BG);
         addView(new ScreenHeaderView(context, title, onBack, rightAction), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
-        ScrollView scrollView = new ScrollView(context);
+        scrollView = new ScrollView(context);
         scrollView.setFillViewport(false);
         content = new LinearLayout(context);
         content.setOrientation(VERTICAL);
@@ -28,6 +29,10 @@ public class ScreenScaffoldView extends LinearLayout {
 
     public LinearLayout getContent() {
         return content;
+    }
+
+    public ScrollView getScrollView() {
+        return scrollView;
     }
 
     protected View getRightAction() {

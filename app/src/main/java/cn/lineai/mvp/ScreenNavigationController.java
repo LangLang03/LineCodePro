@@ -135,6 +135,9 @@ public final class ScreenNavigationController {
                 || "termuxIntegration".equals(safeScreenId)) {
             return "mcp";
         }
+        if ("tutorialFromSettings".equals(safeScreenId)) {
+            return "settings";
+        }
         if ("imageUnderstandingModel".equals(safeScreenId)) {
             return "toolSettings";
         }

@@ -984,8 +984,6 @@
     <string name="message_list_scroll_to_bottom_desc">滚动到底部</string>
     <string name="message_list_configure_title">请先配置模型</string>
     <string name="message_list_configure_desc">进入 设置 → 模型管理 → 添加模型，保存后再发送消息。</string>
-    <string name="empty_state_welcome_title">开始写代码</string>
-    <string name="empty_state_welcome_desc">打开一个项目文件夹，然后发送消息。LineCode 会在你的设备上读取、修改并运行代码。</string>
     <string name="empty_state_add_model">添加模型</string>
     <string name="empty_state_open_workspace">选择工作区</string>
 
@@ -1206,4 +1204,6 @@
     <string name="screen_output_toolcall_preview_desc">用模拟数据预览所有工具卡片</string>
     <string name="screen_toolcall_preview_title">工具调用卡片</string>
     <string name="toolcall_preview_section_note">以下为模拟数据，状态不代表真实工具运行结果。</string>
+    <string name="settings_row_tutorial_title">查看教程</string>
+    <string name="settings_row_tutorial_desc">从零到进阶：模型配置、工作区、Termux、SSH 与 MCP</string>
 </resources>

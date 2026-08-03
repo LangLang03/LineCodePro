@@ -55,7 +55,6 @@ public final class LineTheme {
     public static final int FONT_XL = 20;
     public static final int FONT_TITLE = 24;
     public static final int FONT_XXL = 28;
-    public static final int FONT_DISPLAY = 32;
 
     private LineTheme() {
     }

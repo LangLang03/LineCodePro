@@ -7,6 +7,7 @@ import android.graphics.Typeface;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -40,6 +41,9 @@ public final class TutorialScreenView extends ScreenScaffoldView {
     private View simpleRow;
     private View proRow;
     private LinearLayout contentHost;
+    private LinearLayout sectionChips;
+    private java.util.List<String> simpleSections = java.util.Collections.emptyList();
+    private java.util.List<String> proSections = java.util.Collections.emptyList();
 
     public TutorialScreenView(Context context, Listener listener) {
         super(context, context.getString(R.string.screen_tutorial_title), listener::onBack, null);
@@ -47,6 +51,8 @@ public final class TutorialScreenView extends ScreenScaffoldView {
         this.fallbackMarkdown = context.getString(R.string.screen_tutorial_fallback);
         this.simpleMarkdown = readAsset(context, ASSET_SIMPLE, fallbackMarkdown);
         this.proMarkdown = readAsset(context, ASSET_PRO, fallbackMarkdown);
+        this.simpleSections = parseSections(simpleMarkdown);
+        this.proSections = parseSections(proMarkdown);
         buildLayout();
     }
 
@@ -89,6 +95,16 @@ public final class TutorialScreenView extends ScreenScaffoldView {
         subtitleParams.bottomMargin = LineTheme.dp(getContext(), LineTheme.MD);
         content.addView(subtitle, subtitleParams);
 
+        // 章节目录：横向 chips，点击跳转到对应章节
+        HorizontalScrollView sectionScroll = new HorizontalScrollView(getContext());
+        sectionScroll.setHorizontalScrollBarEnabled(false);
+        sectionChips = new LinearLayout(getContext());
+        sectionChips.setOrientation(LinearLayout.HORIZONTAL);
+        sectionScroll.addView(sectionChips, new HorizontalScrollView.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams sectionParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        sectionParams.bottomMargin = LineTheme.dp(getContext(), LineTheme.MD);
+        content.addView(sectionScroll, sectionParams);
+
         contentHost = new LinearLayout(getContext());
         contentHost.setOrientation(LinearLayout.VERTICAL);
         content.addView(contentHost, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
@@ -121,6 +137,101 @@ public final class TutorialScreenView extends ScreenScaffoldView {
         markdownView.setCodeWrapEnabled(true);
         markdownView.setMarkdown(markdown);
         container.addView(markdownView, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        rebuildSectionChips(mode);
+    }
+
+    private void rebuildSectionChips(TutorialMode mode) {
+        sectionChips.removeAllViews();
+        java.util.List<String> sections = mode == TutorialMode.PRO ? proSections : simpleSections;
+        for (int i = 0; i < sections.size(); i++) {
+            final String title = sections.get(i);
+            TextView chip = LineTheme.text(getContext(),
+                    (i + 1) + " " + shortSectionTitle(title),
+                    LineTheme.FONT_XS, LineTheme.TEXT_SECONDARY, Typeface.BOLD);
+            chip.setGravity(Gravity.CENTER);
+            chip.setBackground(LineTheme.roundedStroke(getContext(), LineTheme.SURFACE_ELEVATED, 14, LineTheme.BORDER_LIGHT));
+            chip.setPadding(LineTheme.dp(getContext(), LineTheme.MD), LineTheme.dp(getContext(), 5),
+                    LineTheme.dp(getContext(), LineTheme.MD), LineTheme.dp(getContext(), 5));
+            chip.setClickable(true);
+            chip.setOnClickListener(v -> scrollToSection(title));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+            if (i > 0) {
+                params.leftMargin = LineTheme.dp(getContext(), LineTheme.SM);
+            }
+            sectionChips.addView(chip, params);
+        }
+    }
+
+    private void scrollToSection(String title) {
+        java.util.List<View> candidates = new java.util.ArrayList<>();
+        collectHeadingViews(contentHost, candidates);
+        for (View view : candidates) {
+            if (view instanceof TextView) {
+                String text = ((TextView) view).getText().toString().trim();
+                if (text.equals(title) || text.startsWith(title)) {
+                    int y = absoluteTop(view);
+                    getScrollView().smoothScrollTo(0, Math.max(0, y - LineTheme.dp(getContext(), LineTheme.SM)));
+                    return;
+                }
+            }
+        }
+    }
+
+    private void collectHeadingViews(View parent, java.util.List<View> out) {
+        if (parent instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) parent;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View child = group.getChildAt(i);
+                if (child instanceof cn.lineai.ui.markdown.MarkdownTextBlockView) {
+                    out.add(child);
+                }
+                collectHeadingViews(child, out);
+            }
+        }
+    }
+
+    private int absoluteTop(View view) {
+        int y = 0;
+        View current = view;
+        while (current != null && current != getScrollView()) {
+            y += current.getTop();
+            current = (View) current.getParent();
+        }
+        return y;
+    }
+
+    /** 解析 `## ` 章节标题（跳过 ``` 围栏代码块）。 */
+    private static java.util.List<String> parseSections(String markdown) {
+        java.util.List<String> sections = new java.util.ArrayList<>();
+        if (markdown == null) {
+            return sections;
+        }
+        boolean inCode = false;
+        for (String line : markdown.split("\n")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("```")) {
+                inCode = !inCode;
+                continue;
+            }
+            if (!inCode && trimmed.startsWith("## ")) {
+                String title = trimmed.substring(3).trim();
+                if (title.length() > 0) {
+                    sections.add(title);
+                }
+            }
+        }
+        return sections;
+    }
+
+    private static String shortSectionTitle(String title) {
+        // 去掉"设置详解："这类前缀的序号部分，如 "11. 设置详解：模型管理" → "模型管理"
+        int dot = title.indexOf('.');
+        String rest = dot >= 0 ? title.substring(dot + 1).trim() : title;
+        int colon = rest.indexOf('：');
+        if (colon >= 0) {
+            return rest.substring(colon + 1).trim();
+        }
+        return rest;
     }
 
     private View addVariant(LinearLayout selector, String title, String desc, boolean active, final Runnable onClick) {
