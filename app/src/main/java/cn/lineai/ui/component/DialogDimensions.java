@@ -1,7 +1,7 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
-import cn.lineai.ui.theme.LineTheme;
 
 /**
  * Shared width math for the dialogs the chat workspace shows (file-action sheet, image

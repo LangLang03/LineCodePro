@@ -1,4 +1,5 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Typeface;
@@ -9,9 +10,10 @@ import android.widget.TextView;
 import cn.lineai.R;
 import cn.lineai.model.ChatMessage;
 import cn.lineai.model.InputAttachment;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class UserMessageView extends LinearLayout {
+    private static final long ENTRANCE_FADE_MS = 220L;
+
     private final TextView contentText;
     private final LinearLayout attachmentList;
     private final MessageActionBarView actionBar;
@@ -20,6 +22,7 @@ public final class UserMessageView extends LinearLayout {
     private final int defaultPaddingRight;
     private final int defaultPaddingBottom;
     private String lastContent = "";
+    private String lastAnimatedMessageId = "";
     private ChatMessage currentMessage;
     private MessageActionListener actionListener;
 
@@ -110,6 +113,12 @@ public final class UserMessageView extends LinearLayout {
 
     public void bind(ChatMessage message) {
         currentMessage = message;
+        String messageId = message.getId() == null ? "" : message.getId();
+        if (!lastAnimatedMessageId.equals(messageId)) {
+            lastAnimatedMessageId = messageId;
+            setAlpha(0f);
+            animate().alpha(1f).setDuration(ENTRANCE_FADE_MS).start();
+        }
         String content = visibleUserContent(message);
         if (!lastContent.equals(content)) {
             contentText.setText(content);

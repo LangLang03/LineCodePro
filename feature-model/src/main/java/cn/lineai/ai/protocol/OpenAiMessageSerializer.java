@@ -1,8 +1,8 @@
 package cn.lineai.ai.protocol;
+import cn.lineai.model.tool.ToolCall;
 
 import cn.lineai.ai.ImageInputPayload;
 import cn.lineai.ai.message.ModelMessage;
-import cn.lineai.tool.ToolCall;
 import java.util.List;
 import org.json.JSONArray;
 import org.json.JSONObject;

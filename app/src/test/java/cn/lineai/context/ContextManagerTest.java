@@ -1,10 +1,10 @@
 package cn.lineai.context;
+import cn.lineai.model.tool.ToolCall;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import cn.lineai.model.ChatMessage;
-import cn.lineai.tool.ToolCall;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;

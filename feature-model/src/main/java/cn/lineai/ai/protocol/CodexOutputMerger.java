@@ -1,7 +1,7 @@
 package cn.lineai.ai.protocol;
+import cn.lineai.model.tool.ToolCall;
 
 import cn.lineai.ai.ModelStreamCallback;
-import cn.lineai.tool.ToolCall;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

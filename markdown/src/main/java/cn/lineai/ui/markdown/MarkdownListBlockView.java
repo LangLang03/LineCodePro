@@ -1,11 +1,11 @@
 package cn.lineai.ui.markdown;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Typeface;
 import android.view.Gravity;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class MarkdownListBlockView extends LinearLayout {
     public MarkdownListBlockView(Context context) {

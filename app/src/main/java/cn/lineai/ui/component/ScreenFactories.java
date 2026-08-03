@@ -15,7 +15,7 @@ import cn.lineai.ipc.IpcProviderConfig;
 import cn.lineai.log.ErrorLogEntry;
 import cn.lineai.model.ExtensionAgentConfig;
 import cn.lineai.model.ExtensionMcpConfig;
-import cn.lineai.model.ExtensionOverviewState;
+import cn.lineai.data.model.ExtensionOverviewState;
 import cn.lineai.model.McpRequestHeader;
 import cn.lineai.model.McpToolConfig;
 import cn.lineai.model.McpToolSummary;
@@ -87,7 +87,7 @@ public final class ScreenFactories {
     }
 
     private static cn.lineai.model.ExtensionKindUiModel buildExtensionKindUiModel(
-            Context context, String kind, cn.lineai.model.ExtensionOverviewState state) {
+            Context context, String kind, cn.lineai.data.model.ExtensionOverviewState state) {
         cn.lineai.mvp.ExtensionKindDescriptor d = cn.lineai.mvp.ExtensionKindRegistry.getInstance().get(kind);
         if (d == null) {
             return null;
@@ -359,12 +359,29 @@ public final class ScreenFactories {
                 public void onBrowserJavaScriptChanged(boolean enabled) {
                     controller.onBrowserJavaScriptChanged(enabled);
                 }
+
+                @Override
+                public void onToolCallPreviewClicked() {
+                    controller.onSettingsItemSelected("toolcall_preview");
+                }
             });
         }
 
         @Override
         public String screenId() {
             return "output";
+        }
+    }
+
+    public static final class ToolCallPreviewScreenFactory implements ScreenFactory {
+        @Override
+        public View createScreen(MainChatView view, MainUiController controller, Context context) {
+            return new ToolCallPreviewScreenView(context, view::handleScreenBack);
+        }
+
+        @Override
+        public String screenId() {
+            return "toolcall_preview";
         }
     }
 

@@ -1,9 +1,9 @@
 package cn.lineai.ui.markdown;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.text.TextPaint;
 import android.text.style.ClickableSpan;
 import android.view.View;
-import cn.lineai.ui.theme.LineTheme;
 
 final class MarkdownLinkSpan extends ClickableSpan {
     private final String url;

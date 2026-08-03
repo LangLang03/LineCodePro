@@ -1,4 +1,5 @@
 package cn.lineai.ai.protocol;
+import cn.lineai.model.tool.ToolCall;
 
 import cn.lineai.ai.ModelCompletionException;
 import cn.lineai.ai.ModelCompletionResponse;
@@ -16,7 +17,6 @@ import cn.lineai.ai.protocol.reasoning.DefaultReasoningStrategy;
 import cn.lineai.ai.protocol.reasoning.MinimaxReasoningStrategy;
 import cn.lineai.ai.protocol.reasoning.MoonshotReasoningStrategy;
 import cn.lineai.ai.protocol.reasoning.ReasoningDeltaExtractor;
-import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolInfo;
 import cn.lineai.util.StringUtils;
 import java.util.ArrayList;

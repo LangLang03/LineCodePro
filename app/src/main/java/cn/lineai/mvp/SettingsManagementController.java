@@ -1,4 +1,5 @@
 package cn.lineai.mvp;
+import cn.lineai.ui.theme.LineTheme;
 
 import cn.lineai.data.repository.AiBehaviorSettingsRepository;
 import cn.lineai.data.repository.InputSettingsRepository;
@@ -16,7 +17,6 @@ import cn.lineai.model.OutputSettings;
 import cn.lineai.model.PromptTemplateItem;
 import cn.lineai.model.ThemeSettingsState;
 import cn.lineai.model.WebSearchConfig;
-import cn.lineai.ui.theme.LineTheme;
 import java.util.List;
 import java.util.Map;
 

@@ -1,13 +1,11 @@
 <resources>
+        <string name="common_cancel">取消</string>
+    <string name="common_delete">删除</string>
     <string name="app_name">LineCode Pro</string>
     <string name="status_title_message">%1$s\n%2$s</string>
     <string name="theme_current_editing">当前编辑：%1$s</string>
-    <string name="shell_output_line_count">%1$d 行</string>
 
-    <string name="common_cancel">取消</string>
     <string name="common_confirm">确定</string>
-    <string name="common_delete">删除</string>
-    <string name="common_edit">编辑</string>
     <string name="common_save">保存</string>
     <string name="common_reset">重置</string>
     <string name="common_refresh">刷新</string>
@@ -706,26 +704,9 @@
     <string name="sheet_parent_dir">上一级</string>
     <string name="in_app_browser_exit">退出</string>
 
-    <string name="tool_call_shell_executing">正在执行…</string>
-    <string name="tool_call_shell_failed">执行失败</string>
-    <string name="tool_call_shell_completed">执行完成</string>
     <string name="tool_call_image_generation">图片生成</string>
     <string name="tool_call_image_understanding">图片理解</string>
-    <string name="tool_call_status_done">完成</string>
-    <string name="tool_call_status_running">运行中</string>
-    <string name="tool_call_status_failed">失败</string>
-    <string name="tool_call_status_pending_review">需要确认</string>
-    <string name="tool_call_delete_confirm_title">确认删除</string>
     <string name="tool_call_delete_confirm_message">删除此项？</string>
-    <string name="tool_call_agent_running">正在执行任务…</string>
-    <string name="tool_call_agent_failed">执行失败</string>
-    <string name="tool_call_agent_done">任务完成</string>
-    <string name="tool_call_pipeline_running">正在创建 Agent 流水线…</string>
-    <string name="tool_call_todo_empty">暂无 TODO 项。可通过调用 todo_update 工具维护任务列表。</string>
-    <string name="tool_call_input">输入</string>
-    <string name="tool_call_progress">进度</string>
-    <string name="tool_call_output">返回值</string>
-    <string name="tool_call_diff_truncated">… (diff 已截断，共 %1$d 行)</string>
 
     <string name="screen_about_title">关于</string>
     <string name="screen_about_section_version">版本</string>
@@ -1003,6 +984,10 @@
     <string name="message_list_scroll_to_bottom_desc">滚动到底部</string>
     <string name="message_list_configure_title">请先配置模型</string>
     <string name="message_list_configure_desc">进入 设置 → 模型管理 → 添加模型，保存后再发送消息。</string>
+    <string name="empty_state_welcome_title">开始写代码</string>
+    <string name="empty_state_welcome_desc">打开一个项目文件夹，然后发送消息。LineCode 会在你的设备上读取、修改并运行代码。</string>
+    <string name="empty_state_add_model">添加模型</string>
+    <string name="empty_state_open_workspace">选择工作区</string>
 
     <string name="thinking_label">思考中…</string>
     <string name="thinking_done_label">思考完毕</string>
@@ -1079,57 +1064,21 @@
     <string name="fallback_screen_licenses_title">开源许可</string>
     <string name="sheet_attachment_selected_count">已选择 %1$d 个文件</string>
 
-    <string name="tool_call_shell_full">完整</string>
-    <string name="tool_call_shell_auto_run">自动运行</string>
-    <string name="tool_call_shell_skip">跳过</string>
-    <string name="tool_call_shell_run">运行</string>
-    <string name="tool_call_shell_folded">[LineCode 已折叠 %1$d 个字符的 shell 输出]</string>
 
     <string name="tool_call_action_search">搜索</string>
     <string name="tool_call_action_fetch">抓取</string>
     <string name="tool_call_action_match">匹配</string>
     <string name="tool_call_action_list_dir">列目录</string>
-    <string name="tool_call_action_read">读取</string>
-    <string name="tool_call_action_write">写入</string>
     <string name="tool_call_action_agent">Agent</string>
     <string name="tool_call_agent_fetch_hint">完整输出：agent_output(agent_id=%1$s)</string>
 
-    <string name="tool_call_write_unnamed">未命名文件</string>
-    <string name="tool_call_write_revert">撤销</string>
-    <string name="tool_call_write_accept">同意</string>
-    <string name="tool_call_view_diff">查看 Diff</string>
 
-    <string name="tool_call_delete_no_reason">未提供删除原因</string>
-    <string name="tool_call_delete_no_path">未指定删除路径</string>
-    <string name="tool_call_delete_pending">已确认删除，等待执行。</string>
-    <string name="tool_call_delete_rejected">已拒绝删除。</string>
-    <string name="tool_call_delete_status_pending">等待确认</string>
-    <string name="tool_call_delete_status_rejected">已拒绝</string>
-    <string name="tool_call_delete_status_executed">已执行</string>
-    <string name="tool_call_delete_status_accepted">已确认</string>
-    <string name="tool_call_delete_reject">拒绝</string>
-    <string name="tool_call_delete_confirm">确认删除</string>
-    <string name="tool_call_delete_count_suffix"> · %1$d 项</string>
 
-    <string name="tool_call_agent_tool_count">%1$d 工具</string>
-    <string name="tool_call_agent_type_explore">探索</string>
-    <string name="tool_call_agent_type_coding">编程</string>
-    <string name="tool_call_agent_tool_calls_label">工具调用</string>
 
-    <string name="tool_call_pipeline_title">Agent Pipeline</string>
-    <string name="tool_call_pipeline_completed">%1$d 完成</string>
-    <string name="tool_call_pipeline_summary_running">%1$d 运行</string>
-    <string name="tool_call_pipeline_summary_pending_review">%1$d 需要确认</string>
-    <string name="tool_call_pipeline_summary_waiting">%1$d 等待中</string>
-    <string name="tool_call_pipeline_summary_failed">%1$d 失败</string>
-    <string name="tool_call_pipeline_status_waiting">等待中</string>
 
-    <string name="tool_call_block_mcp">MCP 调用</string>
 
-    <string name="tool_call_generic_mcp">MCP 调用</string>
 
     <!-- Phone control tool label used by ToolCallInputParser in :app -->
-    <string name="tool_call_phone_action_default">手机操作</string>
 
 
     <!-- MainCoordinator agent messages -->
@@ -1252,4 +1201,9 @@
     <string name="agent_fallback_role_coding_remote">你是一个远程 Shell 环境下的编程 Agent（当前工作区位于 SSH 远端或终端提供者容器内，本地 file_read / file_write / file_edit / glob / list_dir 不一定可用）。\n规则：\n- 必须通过 shell_execute 完成绝大多数工作：先 cat/ls/grep 读取，写入用 sed/awk/python heredoc 或 tee，确认 cat 验证。\n- 只能修改 write_scope 中列出的文件或目录；没有 write_scope 时禁止写入文件。</string>
     <string name="agent_fallback_role_explore_local">你是一个代码探索 Agent。你的任务是快速定位和分析代码。\n规则：\n- 只读取代码，不做任何修改，不调用任何写入类工具。\n- 优先使用只读工具搜索和读取关键文件；可以使用 shell_execute 执行只读命令。\n- 给出简洁准确的中文回答。</string>
     <string name="agent_fallback_role_coding_local">你是一个编程 Agent。你的任务是完成边界清晰的编程子任务。\n规则：\n- 只能修改 write_scope 中列出的文件或目录；没有 write_scope 时禁止写入文件。\n- 优先使用 file_read / file_write / file_edit / glob / list_dir 完成工作；只有 file 类工具确实无法满足时才使用 shell_execute。</string>
+    <string name="screen_output_section_toolcall">工具调用 UI</string>
+    <string name="screen_output_toolcall_preview_label">工具调用卡片预览</string>
+    <string name="screen_output_toolcall_preview_desc">用模拟数据预览所有工具卡片</string>
+    <string name="screen_toolcall_preview_title">工具调用卡片</string>
+    <string name="toolcall_preview_section_note">以下为模拟数据，状态不代表真实工具运行结果。</string>
 </resources>

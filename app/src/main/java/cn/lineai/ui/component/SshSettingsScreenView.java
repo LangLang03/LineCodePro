@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Typeface;
@@ -11,7 +13,6 @@ import android.os.Handler;
 import android.os.Looper;
 import cn.lineai.R;
 import cn.lineai.model.SshConfig;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class SshSettingsScreenView extends ScreenScaffoldView {
     public interface Listener {

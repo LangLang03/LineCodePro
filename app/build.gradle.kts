@@ -236,6 +236,7 @@ dependencies {
     implementation(project(":feature-model"))
     implementation(project(":ui-theme"))
     implementation(project(":markdown"))
+    implementation(project(":tool-ui"))
     testImplementation(libs.junit)
     testImplementation(libs.json)
 }

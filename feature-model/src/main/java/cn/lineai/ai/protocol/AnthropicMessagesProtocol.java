@@ -1,4 +1,5 @@
 package cn.lineai.ai.protocol;
+import cn.lineai.model.tool.ToolCall;
 
 import cn.lineai.ai.ModelCompletionException;
 import cn.lineai.ai.ModelCompletionResponse;
@@ -10,7 +11,6 @@ import cn.lineai.ai.message.ModelMessage;
 import cn.lineai.model.AiBehaviorSettings;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelContextParser;
-import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolInfo;
 import java.util.ArrayList;
 import java.util.HashMap;

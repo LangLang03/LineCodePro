@@ -1,4 +1,5 @@
 package cn.lineai.tool.builtin;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.R;
@@ -6,7 +7,6 @@ import cn.lineai.tool.ToolArgs;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
-import cn.lineai.tool.ToolResult;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -116,5 +116,10 @@ public final class FileEditTool extends BaseTool {
             index += value.length();
         }
         return count;
+    }
+
+    @Override
+    public Class<? extends cn.lineai.tool.ToolCallCardView> getToolCallViewClass() {
+        return cn.lineai.tool.ui.ToolCallWriteView.class;
     }
 }

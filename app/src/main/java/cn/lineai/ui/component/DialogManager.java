@@ -1,4 +1,5 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.app.AlertDialog;
 import android.content.Context;
@@ -6,7 +7,6 @@ import android.text.InputType;
 import android.view.WindowManager;
 import android.widget.EditText;
 import cn.lineai.R;
-import cn.lineai.ui.theme.LineTheme;
 
 /**
  * Centralised helper that builds and shows the {@link AlertDialog}s used by the chat workspace.

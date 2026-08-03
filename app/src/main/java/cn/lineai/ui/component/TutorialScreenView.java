@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Typeface;
@@ -10,7 +12,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 import cn.lineai.R;
 import cn.lineai.ui.markdown.MarkdownView;
-import cn.lineai.ui.theme.LineTheme;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;

@@ -1,4 +1,6 @@
 package cn.lineai.mvp;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.ai.ImageInputPayload;
 import cn.lineai.ai.ModelCancellationToken;
@@ -185,8 +187,8 @@ final class ChatInteractionController {
         ChatMessage userMessage = new ChatMessage(
                 host.nextId(), ChatMessage.Role.USER, userContent, "",
                 false, false, false,
-                Collections.<cn.lineai.tool.ToolCall>emptyList(),
-                Collections.<cn.lineai.tool.ToolResult>emptyList(),
+                Collections.<cn.lineai.model.tool.ToolCall>emptyList(),
+                Collections.<cn.lineai.model.tool.ToolResult>emptyList(),
                 "", "", false, "", "", "",
                 "", rawInputJson, safeAttachments);
         messages.add(userMessage);

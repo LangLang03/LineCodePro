@@ -1,4 +1,5 @@
 package cn.lineai.tool;
+import cn.lineai.model.tool.ToolCall;
 
 import java.util.Arrays;
 import org.junit.Assert;

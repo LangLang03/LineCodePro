@@ -1,4 +1,7 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.FlowLayoutView;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
@@ -12,7 +15,6 @@ import android.widget.TextView;
 import cn.lineai.R;
 import cn.lineai.model.McpSettingsState;
 import cn.lineai.model.McpToolConfig;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class MCPSettingsScreenView extends ScreenScaffoldView {
     private static final String EXECUTION_LOCAL = "local";

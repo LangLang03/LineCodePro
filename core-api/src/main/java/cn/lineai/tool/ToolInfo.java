@@ -1,4 +1,5 @@
 package cn.lineai.tool;
+import cn.lineai.model.tool.ToolCall;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -15,6 +16,14 @@ public interface ToolInfo {
     String promptSupplement(String executionMode, boolean isSsh);
     JSONObject getParameters() throws JSONException;
     JSONObject toJson() throws JSONException;
+
+    /**
+     * 声明本工具使用的 ToolCall 卡片视图实现类；返回 null 时按
+     * {@link ToolDisplayCategory} 回退到默认视图。
+     */
+    default Class<? extends ToolCallCardView> getToolCallViewClass() {
+        return null;
+    }
 
     /** 将 ToolInfo 集合序列化为 OpenAI tools 格式的 JSONArray */
     static org.json.JSONArray toJsonArray(java.util.Collection<? extends ToolInfo> tools) throws JSONException {

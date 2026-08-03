@@ -1,4 +1,5 @@
 package cn.lineai.tool.builtin;
+import cn.lineai.model.tool.ToolResult;
 
 import android.content.Context;
 import cn.lineai.data.repository.ToolSettingsStore;
@@ -13,7 +14,6 @@ import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
-import cn.lineai.tool.ToolResult;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -210,5 +210,10 @@ public final class ImageGenerationTool extends BaseTool {
             return text.substring(0, 497) + "...";
         }
         return text;
+    }
+
+    @Override
+    public Class<? extends cn.lineai.tool.ToolCallCardView> getToolCallViewClass() {
+        return cn.lineai.tool.ui.ToolCallReadView.class;
     }
 }

@@ -1,9 +1,9 @@
 package cn.lineai.mvp.agent;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
 import android.os.SystemClock;
 import cn.lineai.ai.ToolCallTextParser;
-import cn.lineai.tool.ToolCall;
-import cn.lineai.tool.ToolResult;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;

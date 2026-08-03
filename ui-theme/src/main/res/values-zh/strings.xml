@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="thinking_label">思考中…</string>
+    <string name="thinking_done_label">思考完毕</string>
+</resources>

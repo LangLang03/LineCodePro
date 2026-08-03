@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.app.Dialog;
 import android.content.Context;
@@ -20,7 +22,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 import cn.lineai.R;
 import cn.lineai.model.MemoryOverviewState;
-import cn.lineai.ui.theme.LineTheme;
 import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Date;

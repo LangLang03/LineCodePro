@@ -1,4 +1,6 @@
 package cn.lineai.ai.protocol;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -14,10 +16,8 @@ import cn.lineai.model.AiBehaviorSettings;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelProtocolType;
 import cn.lineai.tool.BaseTool;
-import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
-import cn.lineai.tool.ToolResult;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.OutputStream;

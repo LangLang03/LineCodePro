@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.app.Activity;
 import android.content.ClipData;
@@ -14,7 +16,6 @@ import android.widget.TextView;
 import cn.lineai.R;
 import cn.lineai.model.SshConfig;
 import cn.lineai.ssh.TermuxHelper;
-import cn.lineai.ui.theme.LineTheme;
 import java.util.regex.Pattern;
 
 public final class TermuxIntegrationScreenView extends ScreenScaffoldView {

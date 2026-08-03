@@ -1,4 +1,8 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Color;
@@ -18,11 +22,8 @@ import cn.lineai.R;
 import cn.lineai.model.ChatMessage;
 import cn.lineai.model.ChatUiState;
 import cn.lineai.model.InputAttachment;
-import cn.lineai.tool.ToolCall;
-import cn.lineai.tool.ToolResult;
-import cn.lineai.ui.component.toolcall.ToolReviewListener;
+import cn.lineai.tool.ToolReviewListener;
 import cn.lineai.ui.markdown.MarkdownLinkHandler;
-import cn.lineai.ui.theme.LineTheme;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -47,6 +48,12 @@ public final class ChatMessageListView extends FrameLayout {
     private LinearLayout multiSelectBar;
     private TextView multiSelectCountText;
     private MultiSelectListener multiSelectListener;
+
+    public interface EmptyStateListener {
+        void onAddModel();
+
+        void onOpenWorkspace();
+    }
 
     public ChatMessageListView(Context context) {
         super(context);
@@ -147,6 +154,10 @@ public final class ChatMessageListView extends FrameLayout {
 
     public void setMultiSelectListener(MultiSelectListener listener) {
         multiSelectListener = listener;
+    }
+
+    public void setEmptyStateListener(EmptyStateListener listener) {
+        adapter.emptyStateListener = listener;
     }
 
     public boolean isMultiSelectMode() {
@@ -341,17 +352,26 @@ public final class ChatMessageListView extends FrameLayout {
         return lastChild.getBottom() <= viewportBottom + LineTheme.dp(getContext(), 2);
     }
 
-    private static View createConfigureState(Context context) {
+    private static View createConfigureState(Context context, EmptyStateListener listener) {
         LinearLayout box = new LinearLayout(context);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER);
         LineTheme.padding(box, LineTheme.XL, 80, LineTheme.XL, 80);
 
-        TextView title = LineTheme.text(context, context.getString(R.string.message_list_configure_title), LineTheme.FONT_XL, LineTheme.TEXT, Typeface.BOLD);
-        box.addView(title, new LinearLayout.LayoutParams(
+        TextView prompt = LineTheme.text(context, "›_", LineTheme.FONT_XL, LineTheme.ACCENT, Typeface.NORMAL);
+        prompt.setTypeface(Typeface.MONOSPACE);
+        box.addView(prompt, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         ));
+
+        TextView title = LineTheme.text(context, context.getString(R.string.message_list_configure_title), LineTheme.FONT_TITLE, LineTheme.TEXT, Typeface.BOLD);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        titleParams.topMargin = LineTheme.dp(context, LineTheme.MD);
+        box.addView(title, titleParams);
 
         TextView desc = LineTheme.text(context,
                 context.getString(R.string.message_list_configure_desc),
@@ -365,7 +385,98 @@ public final class ChatMessageListView extends FrameLayout {
         );
         descParams.topMargin = LineTheme.dp(context, LineTheme.MD);
         box.addView(desc, descParams);
+
+        box.addView(actionRow(context, listener, true),
+                new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         return box;
+    }
+
+    private static View createWelcomeState(Context context, EmptyStateListener listener) {
+        LinearLayout box = new LinearLayout(context);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        LineTheme.padding(box, LineTheme.XL, 80, LineTheme.XL, 80);
+
+        TextView prompt = LineTheme.text(context, "›_", LineTheme.FONT_XL, LineTheme.ACCENT, Typeface.NORMAL);
+        prompt.setTypeface(Typeface.MONOSPACE);
+        box.addView(prompt, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+
+        TextView title = LineTheme.text(context, context.getString(R.string.empty_state_welcome_title), LineTheme.FONT_DISPLAY, LineTheme.TEXT, Typeface.BOLD);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        titleParams.topMargin = LineTheme.dp(context, LineTheme.MD);
+        box.addView(title, titleParams);
+
+        TextView desc = LineTheme.text(context,
+                context.getString(R.string.empty_state_welcome_desc),
+                LineTheme.FONT_MD,
+                LineTheme.TEXT_SECONDARY,
+                Typeface.NORMAL);
+        desc.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        descParams.topMargin = LineTheme.dp(context, LineTheme.MD);
+        box.addView(desc, descParams);
+
+        box.addView(actionRow(context, listener, false),
+                new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        return box;
+    }
+
+    private static LinearLayout actionRow(Context context, EmptyStateListener listener, boolean includeAddModel) {
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        rowParams.topMargin = LineTheme.dp(context, LineTheme.XL);
+        row.setLayoutParams(rowParams);
+
+        if (includeAddModel) {
+            TextView addModel = actionButton(context, context.getString(R.string.empty_state_add_model), true);
+            addModel.setOnClickListener(v -> {
+                if (listener != null) {
+                    listener.onAddModel();
+                }
+            });
+            row.addView(addModel, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        }
+
+        TextView openWorkspace = actionButton(context, context.getString(R.string.empty_state_open_workspace), false);
+        openWorkspace.setOnClickListener(v -> {
+            if (listener != null) {
+                listener.onOpenWorkspace();
+            }
+        });
+        LinearLayout.LayoutParams workspaceParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        if (includeAddModel) {
+            workspaceParams.leftMargin = LineTheme.dp(context, LineTheme.MD);
+        }
+        row.addView(openWorkspace, workspaceParams);
+        return row;
+    }
+
+    private static TextView actionButton(Context context, String label, boolean primary) {
+        TextView button = LineTheme.text(context, label, LineTheme.FONT_MD,
+                primary ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT, Typeface.NORMAL);
+        button.setGravity(Gravity.CENTER);
+        button.setClickable(true);
+        button.setFocusable(true);
+        button.setBackground(primary
+                ? LineTheme.rounded(context, LineTheme.ACCENT, 22)
+                : LineTheme.roundedStroke(context, LineTheme.SURFACE_LIGHT, 22, LineTheme.BORDER_LIGHT));
+        button.setPadding(LineTheme.dp(context, LineTheme.LG), LineTheme.dp(context, LineTheme.SM),
+                LineTheme.dp(context, LineTheme.LG), LineTheme.dp(context, LineTheme.SM));
+        return button;
     }
 
     private static View createNoticeView(Context context, String noticeText) {
@@ -390,11 +501,13 @@ public final class ChatMessageListView extends FrameLayout {
         private static final int VIEW_TYPE_USER = 1;
         private static final int VIEW_TYPE_ASSISTANT = 2;
         private static final int VIEW_TYPE_NOTICE = 3;
+        private static final int VIEW_TYPE_WELCOME = 4;
 
         private final Context context;
         private final ArrayList<ChatMessage> visibleMessages = new ArrayList<>();
         private final LinkedHashMap<String, View> rowCache = new LinkedHashMap<>(32, 0.75f, true);
         private boolean showConfigureState;
+        private boolean showWelcomeState;
         private boolean thinkingAutoExpand;
         private boolean thinkingScroll;
         private boolean codeWrapEnabled;
@@ -405,6 +518,7 @@ public final class ChatMessageListView extends FrameLayout {
         private ToolReviewListener toolReviewListener;
         private MarkdownLinkHandler markdownLinkHandler;
         private MessageActionListener messageActionListener;
+        private EmptyStateListener emptyStateListener;
 
         MessageAdapter(Context context) {
             this.context = context;
@@ -438,6 +552,7 @@ public final class ChatMessageListView extends FrameLayout {
                 }
             }
             boolean nextShowConfigureState = nextMessages.isEmpty() && state != null && !state.hasConfiguredModel();
+            boolean nextShowWelcomeState = nextMessages.isEmpty() && state != null && state.hasConfiguredModel();
             boolean nextThinkingAutoExpand = state != null && state.isThinkingAutoExpandEnabled();
             boolean nextThinkingScroll = state == null || state.isThinkingScrollEnabled();
             boolean nextCodeWrapEnabled = state != null && state.isCodeWrapEnabled();
@@ -446,6 +561,7 @@ public final class ChatMessageListView extends FrameLayout {
             boolean conversationChanged = !stringEquals(conversationId, nextConversationId);
 
             if (showConfigureState == nextShowConfigureState
+                    && showWelcomeState == nextShowWelcomeState
                     && thinkingAutoExpand == nextThinkingAutoExpand
                     && thinkingScroll == nextThinkingScroll
                     && codeWrapEnabled == nextCodeWrapEnabled
@@ -461,6 +577,7 @@ public final class ChatMessageListView extends FrameLayout {
             visibleMessages.clear();
             visibleMessages.addAll(nextMessages);
             showConfigureState = nextShowConfigureState;
+            showWelcomeState = nextShowWelcomeState;
             thinkingAutoExpand = nextThinkingAutoExpand;
             thinkingScroll = nextThinkingScroll;
             codeWrapEnabled = nextCodeWrapEnabled;
@@ -473,17 +590,23 @@ public final class ChatMessageListView extends FrameLayout {
 
         @Override
         public int getCount() {
-            return showConfigureState ? 1 : visibleMessages.size();
+            if (showConfigureState || showWelcomeState) {
+                return 1;
+            }
+            return visibleMessages.size();
         }
 
         @Override
         public Object getItem(int position) {
-            return showConfigureState ? null : visibleMessages.get(position);
+            if (showConfigureState || showWelcomeState) {
+                return null;
+            }
+            return visibleMessages.get(position);
         }
 
         @Override
         public long getItemId(int position) {
-            if (showConfigureState) {
+            if (showConfigureState || showWelcomeState) {
                 return -1L;
             }
             String id = visibleMessages.get(position).getId();
@@ -497,13 +620,16 @@ public final class ChatMessageListView extends FrameLayout {
 
         @Override
         public int getViewTypeCount() {
-            return 4;
+            return 5;
         }
 
         @Override
         public int getItemViewType(int position) {
             if (showConfigureState) {
                 return VIEW_TYPE_CONFIGURE;
+            }
+            if (showWelcomeState) {
+                return VIEW_TYPE_WELCOME;
             }
             ChatMessage message = visibleMessages.get(position);
             if (message.isModelSwitchNotification()) {
@@ -515,7 +641,14 @@ public final class ChatMessageListView extends FrameLayout {
         @Override
         public View getView(int position, View convertView, android.view.ViewGroup parent) {
             if (showConfigureState) {
-                return convertView == null ? createConfigureState(context) : convertView;
+                return convertView == null
+                        ? createConfigureState(context, emptyStateListener)
+                        : convertView;
+            }
+            if (showWelcomeState) {
+                return convertView == null
+                        ? createWelcomeState(context, emptyStateListener)
+                        : convertView;
             }
             ChatMessage message = visibleMessages.get(position);
 

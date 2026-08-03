@@ -1,22 +1,26 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.ThinkingBlockView;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.view.Gravity;
 import android.widget.LinearLayout;
 import cn.lineai.model.ChatMessage;
-import cn.lineai.tool.ToolCall;
-import cn.lineai.tool.ToolResult;
-import cn.lineai.ui.component.toolcall.ToolCallBlockView;
-import cn.lineai.ui.component.toolcall.ToolReviewListener;
-import cn.lineai.ui.theme.LineTheme;
+import cn.lineai.tool.ui.ToolCallBlockView;
+import cn.lineai.tool.ToolReviewListener;
 import cn.lineai.ui.markdown.MarkdownLinkHandler;
 import cn.lineai.ui.markdown.MarkdownView;
 import java.util.ArrayList;
 
 public final class AssistantMessageView extends LinearLayout {
+    private static final long ENTRANCE_FADE_MS = 220L;
+
     private final ContextCompactBlockView compactBlockView;
     private final ThinkingBlockView thinkingBlockView;
     private final MarkdownView contentView;
+    private final StreamingCursorView cursorView;
     private final LinearLayout toolCallsContainer;
     private final MessageActionBarView actionBar;
     private final int defaultPaddingLeft;
@@ -32,6 +36,7 @@ public final class AssistantMessageView extends LinearLayout {
     private boolean lastThinkingScrollable = true;
     private String lastCompactStatus = "";
     private String lastToolSignature = "";
+    private String lastAnimatedMessageId = "";
     private String projectPath = "";
     private MarkdownLinkHandler markdownLinkHandler;
     private ToolReviewListener toolReviewListener;
@@ -61,6 +66,12 @@ public final class AssistantMessageView extends LinearLayout {
 
         contentView = new MarkdownView(context);
         addView(contentView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
+        cursorView = new StreamingCursorView(context);
+        LinearLayout.LayoutParams cursorParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        cursorParams.leftMargin = LineTheme.dp(context, 2);
+        cursorParams.topMargin = LineTheme.dp(context, 2);
+        addView(cursorView, cursorParams);
 
         toolCallsContainer = new LinearLayout(context);
         toolCallsContainer.setOrientation(VERTICAL);
@@ -130,6 +141,7 @@ public final class AssistantMessageView extends LinearLayout {
             compactBlockView.bind(message.getCompactStatus());
             thinkingBlockView.setVisibility(GONE);
             contentView.setVisibility(GONE);
+            setCursorVisible(false);
             toolCallsContainer.setVisibility(GONE);
             toolCallsContainer.removeAllViews();
             actionBar.setVisibility(GONE);
@@ -173,6 +185,13 @@ public final class AssistantMessageView extends LinearLayout {
         }
         bindToolCalls(message);
         actionBar.setVisibility(message.isStreaming() || message.getContent().trim().isEmpty() ? GONE : VISIBLE);
+        boolean streamingText = message.isStreaming() && message.getContent().trim().length() > 0;
+        setCursorVisible(streamingText);
+        if (!lastAnimatedMessageId.equals(messageId)) {
+            lastAnimatedMessageId = messageId;
+            setAlpha(0f);
+            animate().alpha(1f).setDuration(ENTRANCE_FADE_MS).start();
+        }
         lastMessageId = messageId;
         lastReasoning = safeReasoning;
         lastContent = content;
@@ -181,6 +200,18 @@ public final class AssistantMessageView extends LinearLayout {
         lastThinkingAutoExpand = thinkingAutoExpand;
         lastThinkingScrollable = thinkingScrollable;
         lastCompactStatus = "";
+    }
+
+    private void setCursorVisible(boolean visible) {
+        if (visible) {
+            if (cursorView.getVisibility() != VISIBLE) {
+                cursorView.setVisibility(VISIBLE);
+                cursorView.startBlinking();
+            }
+        } else if (cursorView.getVisibility() != GONE) {
+            cursorView.stopBlinking();
+            cursorView.setVisibility(GONE);
+        }
     }
 
     public void setToolReviewListener(ToolReviewListener listener) {

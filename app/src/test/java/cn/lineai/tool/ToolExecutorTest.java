@@ -1,4 +1,6 @@
 package cn.lineai.tool;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.data.repository.ToolSettingsStore;
 import cn.lineai.model.McpSettingsState;

@@ -1,11 +1,12 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.widget.LinearLayout;
 import cn.lineai.R;
 import cn.lineai.model.OutputSettings;
 import cn.lineai.ui.markdown.MarkdownView;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class OutputSettingsScreenView extends ScreenScaffoldView {
     public interface Listener {
@@ -16,6 +17,8 @@ public final class OutputSettingsScreenView extends ScreenScaffoldView {
         void onBrowserModeChanged(String mode);
 
         void onBrowserJavaScriptChanged(boolean enabled);
+
+        void onToolCallPreviewClicked();
     }
 
     private final String PREVIEW_MARKDOWN;
@@ -71,6 +74,12 @@ public final class OutputSettingsScreenView extends ScreenScaffoldView {
         previewBox.addView(previewView, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         preview.addRow(previewBox, false);
         content.addView(preview, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
+        SettingsSectionView toolCall = new SettingsSectionView(context, context.getString(R.string.screen_output_section_toolcall));
+        toolCall.addRow(new ActionRowView(context, IconButtonView.FILE_CODE, context.getString(R.string.screen_output_toolcall_preview_label),
+                context.getString(R.string.screen_output_toolcall_preview_desc), false, true,
+                () -> listener.onToolCallPreviewClicked()), false);
+        content.addView(toolCall, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
     }
 
     private void setBrowserMode(String mode) {

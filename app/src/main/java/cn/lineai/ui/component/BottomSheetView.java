@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.app.AlertDialog;
 import android.content.Context;
@@ -18,7 +20,6 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import cn.lineai.R;
 import cn.lineai.model.SheetOption;
-import cn.lineai.ui.theme.LineTheme;
 import java.util.List;
 
 public final class BottomSheetView extends FrameLayout {

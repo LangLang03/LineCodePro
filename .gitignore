@@ -32,4 +32,5 @@ feature-model/build/*
 feature-tool/build/*
 markdown/build/*
 ui-theme/build/*
+tool-ui/build/*
 .omo/

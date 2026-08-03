@@ -1,4 +1,5 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Insets;
@@ -9,7 +10,6 @@ import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import cn.lineai.ui.theme.LineTheme;
 
 /**
  * Builds the primitive layout containers that {@link cn.lineai.ui.MainChatView} stacks

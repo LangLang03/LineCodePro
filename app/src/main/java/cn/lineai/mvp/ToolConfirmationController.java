@@ -1,10 +1,10 @@
 package cn.lineai.mvp;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.ai.ModelCancellationToken;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.mvp.agent.PendingToolExecution;
-import cn.lineai.tool.ToolCall;
-import cn.lineai.tool.ToolResult;
 import cn.lineai.tool.builtin.ShellExecuteTool;
 import java.util.HashMap;
 import java.util.HashSet;

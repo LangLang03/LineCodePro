@@ -1,4 +1,5 @@
 package cn.lineai.mvp;
+import cn.lineai.model.tool.ToolCall;
 
 import cn.lineai.ai.ModelRequestOptions;
 import cn.lineai.ai.message.AssistantModelMessage;
@@ -169,7 +170,7 @@ final class ModelPromptController {
                 continue;
             }
             if (message.getRole() == ChatMessage.Role.ASSISTANT) {
-                for (cn.lineai.tool.ToolCall call : message.getToolCalls()) {
+                for (cn.lineai.model.tool.ToolCall call : message.getToolCalls()) {
                     if (call != null && call.getId().length() > 0) {
                         toolCallIds.add(call.getId());
                     }
@@ -191,7 +192,7 @@ final class ModelPromptController {
             if (message.getRole() != ChatMessage.Role.ASSISTANT || !message.hasToolCalls()) {
                 continue;
             }
-            for (cn.lineai.tool.ToolCall call : message.getToolCalls()) {
+            for (cn.lineai.model.tool.ToolCall call : message.getToolCalls()) {
                 if (call == null || call.getId().length() == 0 || emittedToolResults.contains(call.getId())) {
                     continue;
                 }

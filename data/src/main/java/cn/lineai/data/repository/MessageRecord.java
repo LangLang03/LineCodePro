@@ -1,8 +1,8 @@
 package cn.lineai.data.repository;
+import cn.lineai.model.tool.ToolCall;
 
 import cn.lineai.model.ChatMessage;
 import cn.lineai.model.InputAttachment;
-import cn.lineai.tool.ToolCall;
 import java.util.ArrayList;
 import org.json.JSONArray;
 import org.json.JSONObject;

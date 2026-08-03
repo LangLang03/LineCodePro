@@ -1,4 +1,5 @@
 package cn.lineai.context;
+import cn.lineai.model.tool.ToolCall;
 
 import cn.lineai.model.ChatMessage;
 import cn.lineai.model.InputAttachment;
@@ -136,7 +137,7 @@ public final class ContextManager {
         if (message == null || toolCallId == null || toolCallId.length() == 0) {
             return false;
         }
-        for (cn.lineai.tool.ToolCall call : message.getToolCalls()) {
+        for (cn.lineai.model.tool.ToolCall call : message.getToolCalls()) {
             if (call != null && toolCallId.equals(call.getId())) {
                 return true;
             }
@@ -169,7 +170,7 @@ public final class ContextManager {
             return 0;
         }
         int total = 0;
-        for (cn.lineai.tool.ToolCall call : message.getToolCalls()) {
+        for (cn.lineai.model.tool.ToolCall call : message.getToolCalls()) {
             total += estimateTokens(call.getName()) + estimateTokens(call.getArguments());
         }
         return total;

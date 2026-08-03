@@ -1,10 +1,11 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.view.Gravity;
 import android.widget.LinearLayout;
 import cn.lineai.R;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class MessageActionBarView extends LinearLayout {
     public static final int ALIGN_LEFT = 0;

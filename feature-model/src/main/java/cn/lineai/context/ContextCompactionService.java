@@ -1,4 +1,6 @@
 package cn.lineai.context;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.ai.ModelCancellationToken;
 import cn.lineai.ai.ModelClient;
@@ -19,9 +21,7 @@ import cn.lineai.model.ChatMessage;
 import cn.lineai.model.MessageContentSanitizer;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelProtocolType;
-import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolInfo;
-import cn.lineai.tool.ToolResult;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;

@@ -1,4 +1,6 @@
 package cn.lineai.mvp.agent;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -13,10 +15,8 @@ import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolInfo;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
-import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolExecutor;
 import cn.lineai.tool.ToolRegistry;
-import cn.lineai.tool.ToolResult;
 import cn.lineai.tool.builtin.AgentTool;
 import java.util.Collection;
 import java.util.Collections;

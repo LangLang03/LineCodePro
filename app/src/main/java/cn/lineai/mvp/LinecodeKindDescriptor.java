@@ -1,10 +1,10 @@
 package cn.lineai.mvp;
+import cn.lineai.ui.theme.IconButtonView;
 
 import android.content.Context;
 import cn.lineai.R;
 import cn.lineai.data.repository.ExtensionStore;
-import cn.lineai.model.ExtensionOverviewState;
-import cn.lineai.ui.component.IconButtonView;
+import cn.lineai.data.model.ExtensionOverviewState;
 import java.util.Collections;
 import java.util.List;
 

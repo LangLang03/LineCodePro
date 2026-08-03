@@ -1,4 +1,6 @@
 package cn.lineai.mvp.agent;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
 import android.content.Context;
 import cn.lineai.R;
@@ -22,14 +24,12 @@ import cn.lineai.model.AiBehaviorSettings;
 import cn.lineai.ai.ModelCancellationToken;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.tool.BaseTool;
-import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolExecutor;
 import cn.lineai.tool.ToolInfo;
 import cn.lineai.tool.ToolRegistry;
-import cn.lineai.tool.ToolResult;
 import cn.lineai.tool.builtin.AgentTool;
 import cn.lineai.tool.builtin.AgentPipelineTool;
 import cn.lineai.tool.builtin.FileDeleteTool;

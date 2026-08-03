@@ -1,4 +1,5 @@
 package cn.lineai.tool.builtin;
+import cn.lineai.model.tool.ToolResult;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -6,7 +7,6 @@ import static org.junit.Assert.assertTrue;
 
 import cn.lineai.tool.StoredAgentResult;
 import cn.lineai.tool.ToolContext;
-import cn.lineai.tool.ToolResult;
 import java.util.HashMap;
 import java.util.Map;
 import org.json.JSONObject;

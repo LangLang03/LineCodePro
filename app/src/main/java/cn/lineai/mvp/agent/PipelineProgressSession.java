@@ -1,7 +1,7 @@
 package cn.lineai.mvp.agent;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.tool.ToolContext;
-import cn.lineai.tool.ToolResult;
 import cn.lineai.tool.builtin.AgentPipelineTool;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

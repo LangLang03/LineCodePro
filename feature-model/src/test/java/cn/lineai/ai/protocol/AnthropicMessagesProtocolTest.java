@@ -1,11 +1,11 @@
 package cn.lineai.ai.protocol;
+import cn.lineai.model.tool.ToolCall;
 
 import cn.lineai.ai.message.AssistantModelMessage;
 import cn.lineai.ai.ImageInputPayload;
 import cn.lineai.ai.message.ModelMessage;
 import cn.lineai.ai.message.ToolModelMessage;
 import cn.lineai.ai.message.UserModelMessage;
-import cn.lineai.tool.ToolCall;
 import java.util.ArrayList;
 import java.util.Collections;
 import org.json.JSONArray;

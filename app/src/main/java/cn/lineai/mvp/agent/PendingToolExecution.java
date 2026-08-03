@@ -1,8 +1,8 @@
 package cn.lineai.mvp.agent;
+import cn.lineai.model.tool.ToolCall;
 
 import cn.lineai.model.ModelConfig;
 import cn.lineai.ai.ModelCancellationToken;
-import cn.lineai.tool.ToolCall;
 import java.util.ArrayList;
 
 public final class PendingToolExecution {

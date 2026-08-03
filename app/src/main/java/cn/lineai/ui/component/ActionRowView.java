@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Typeface;
@@ -6,7 +8,6 @@ import android.view.Gravity;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class ActionRowView extends LinearLayout {
     public ActionRowView(Context context, int iconType, String label, String desc, boolean destructive, boolean showChevron, Runnable onClick) {

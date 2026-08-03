@@ -1,4 +1,6 @@
 package cn.lineai.mvp;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.ai.ModelCancellationToken;
 import cn.lineai.ai.ModelClient;
@@ -20,12 +22,10 @@ import cn.lineai.mvp.agent.AgentProgressSession;
 import cn.lineai.mvp.agent.PendingToolExecution;
 import cn.lineai.mvp.agent.ToolExecutionBatch;
 import cn.lineai.state.TodoStateStore;
-import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolExecutor;
 import cn.lineai.tool.ToolExecutionCoordinator;
 import cn.lineai.tool.ToolRegistry;
-import cn.lineai.tool.ToolResult;
 import cn.lineai.util.StringUtils;
 import java.util.ArrayList;
 import java.util.HashSet;

@@ -1,8 +1,8 @@
 package cn.lineai.mvp;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.ai.ModelCancellationToken;
 import cn.lineai.model.ChatMessage;
-import cn.lineai.tool.ToolResult;
 import cn.lineai.mvp.agent.AgentExecutionController;
 import java.lang.reflect.Field;
 import java.util.ArrayList;

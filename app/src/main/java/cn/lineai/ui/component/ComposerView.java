@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Canvas;
@@ -11,6 +13,7 @@ import android.text.InputType;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
@@ -28,7 +31,6 @@ import cn.lineai.model.InputAttachment;
 import cn.lineai.model.InputSettings;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.mvp.QuoteController;
-import cn.lineai.ui.theme.LineTheme;
 import cn.lineai.ui.util.SlashCommandCatalog;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -297,6 +299,7 @@ public final class ComposerView extends LinearLayout implements QuoteController.
         sendButton = new IconButtonView(context, IconButtonView.ARROW_UP);
         sendButton.setIconSizeDp(40, 22);
         sendButton.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
             if (streaming) {
                 if (canSend()) {
                     // 输入框有内容：追加排队（不打断AI）

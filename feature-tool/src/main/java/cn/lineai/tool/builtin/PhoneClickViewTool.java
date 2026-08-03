@@ -1,4 +1,5 @@
 package cn.lineai.tool.builtin;
+import cn.lineai.model.tool.ToolResult;
 
 import android.content.Context;
 import cn.lineai.tool.R;
@@ -7,7 +8,6 @@ import cn.lineai.tool.PhoneControlService;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
-import cn.lineai.tool.ToolResult;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -103,5 +103,10 @@ public final class PhoneClickViewTool extends BaseTool {
             return success ? ok(this.context.getString(R.string.phone_tool_click_point_success, x, y)) : error(this.context.getString(R.string.phone_tool_click_point_failed, x, y));
         }
         return error(this.context.getString(R.string.phone_tool_click_view_missing_target));
+    }
+
+    @Override
+    public Class<? extends cn.lineai.tool.ToolCallCardView> getToolCallViewClass() {
+        return cn.lineai.tool.ui.ToolCallReadView.class;
     }
 }

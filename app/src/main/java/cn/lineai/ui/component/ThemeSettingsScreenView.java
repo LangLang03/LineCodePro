@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Color;
@@ -18,7 +20,6 @@ import android.widget.Toast;
 import cn.lineai.R;
 import cn.lineai.model.ThemePalette;
 import cn.lineai.model.ThemeSettingsState;
-import cn.lineai.ui.theme.LineTheme;
 import java.util.LinkedHashMap;
 import java.util.Map;
 

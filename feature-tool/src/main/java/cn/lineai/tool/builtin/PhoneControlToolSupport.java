@@ -1,10 +1,10 @@
 package cn.lineai.tool.builtin;
+import cn.lineai.model.tool.ToolResult;
 
 import android.content.Context;
 import cn.lineai.tool.R;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.PhoneControlService;
-import cn.lineai.tool.ToolResult;
 
 /**
  * Shared helper for Phone control tools. Provides accessibility service lookup

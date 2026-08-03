@@ -1,9 +1,9 @@
 package cn.lineai.mvp;
+import cn.lineai.model.tool.ToolCall;
 
 import cn.lineai.data.repository.ConversationRecord;
 import cn.lineai.data.repository.MessageRecord;
 import cn.lineai.model.ChatMessage;
-import cn.lineai.tool.ToolCall;
 import java.util.ArrayList;
 import java.util.HashSet;
 import org.json.JSONArray;

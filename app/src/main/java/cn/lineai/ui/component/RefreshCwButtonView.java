@@ -1,11 +1,11 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.view.View;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class RefreshCwButtonView extends View {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);

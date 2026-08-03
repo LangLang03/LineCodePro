@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.content.Intent;
@@ -10,7 +12,6 @@ import android.widget.Toast;
 import cn.lineai.R;
 import cn.lineai.log.ErrorLogEntry;
 import cn.lineai.log.ErrorLogFileProvider;
-import cn.lineai.ui.theme.LineTheme;
 import java.util.List;
 
 public final class ErrorLogsScreenView extends ScreenScaffoldView {
