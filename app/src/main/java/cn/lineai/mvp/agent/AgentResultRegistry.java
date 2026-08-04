@@ -67,17 +67,17 @@ public final class AgentResultRegistry implements ToolContext.AgentResultStore {
         }
     }
 
-    public void setFullOutput(
+    public void updateFullOutput(
             String agentId,
             String fullOutput,
             String thinking,
             String progressJson,
             int toolCallCount
     ) {
-        setFullOutput(agentId, fullOutput, thinking, progressJson, toolCallCount, false);
+        updateFullOutput(agentId, fullOutput, thinking, progressJson, toolCallCount, false);
     }
 
-    public void setFullOutput(
+    public void updateFullOutput(
             String agentId,
             String fullOutput,
             String thinking,

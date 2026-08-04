@@ -142,13 +142,13 @@ public final class StorageManagementScreenView extends ScreenScaffoldView {
     private void updateViews(StorageStatsUiModel stats) {
         totalSizeView.setText(stats.formatTotalSize());
         diffSizeView.setText(stats.formatDiffCacheSize());
-        diffCountView.setText(stats.diffCacheCount + context.getString(R.string.screen_storage_unit_items));
+        diffCountView.setText(stats.getDiffCacheCount() + context.getString(R.string.screen_storage_unit_items));
         chatSizeView.setText(stats.formatChatSize());
-        chatCountView.setText(stats.chatCount + context.getString(R.string.screen_storage_unit_items));
+        chatCountView.setText(stats.getChatCount() + context.getString(R.string.screen_storage_unit_items));
         configSizeView.setText(stats.formatConfigSize());
-        configCountView.setText(stats.configCount + context.getString(R.string.screen_storage_unit_items));
+        configCountView.setText(stats.getConfigCount() + context.getString(R.string.screen_storage_unit_items));
         homeSizeView.setText(stats.formatHomeSize());
-        homeCountView.setText(stats.homeCount + context.getString(R.string.screen_storage_unit_items));
+        homeCountView.setText(stats.getHomeCount() + context.getString(R.string.screen_storage_unit_items));
     }
 
     public void refresh() {

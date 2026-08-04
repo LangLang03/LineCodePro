@@ -46,7 +46,7 @@ final class ProjectRuntimeState {
         source = WorkspacePaths.SOURCE_DEFAULT;
     }
 
-    void setPathFromRemoteRoot(String newPath) {
+    void applyPathFromRemoteRoot(String newPath) {
         path = newPath == null ? "" : newPath;
     }
 

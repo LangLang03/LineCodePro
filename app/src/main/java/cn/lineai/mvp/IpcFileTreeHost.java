@@ -32,6 +32,6 @@ class IpcFileTreeHost extends HostBase implements IpcFileTreeController.Host {
 
     @Override
     public void setProjectPathFromIpcRoot(String path) {
-        coordinator().projectState().setPathFromRemoteRoot(path);
+        coordinator().projectState().applyPathFromRemoteRoot(path);
     }
 }

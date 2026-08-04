@@ -32,6 +32,6 @@ class SshFileTreeHost extends HostBase implements SshFileTreeController.Host {
 
     @Override
     public void setProjectPathFromSshRoot(String path) {
-        coordinator().projectState().setPathFromRemoteRoot(path);
+        coordinator().projectState().applyPathFromRemoteRoot(path);
     }
 }

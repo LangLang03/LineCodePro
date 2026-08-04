@@ -86,7 +86,7 @@ public final class AgentProgressSession {
         }
     }
 
-    public synchronized void setTurnResult(String nextOutput, String nextThinking) {
+    public synchronized void applyTurnResult(String nextOutput, String nextThinking) {
         output = nextOutput == null ? "" : nextOutput;
         if (nextThinking != null && nextThinking.trim().length() > 0) {
             thinking = nextThinking;
@@ -134,13 +134,13 @@ public final class AgentProgressSession {
         displayToolResults.put(displayId, result.withCall(displayId, originalCall.getName()));
     }
 
-    public synchronized void setFinished(String nextStatus, boolean nextError, String nextModelContent) {
+    public synchronized void markFinished(String nextStatus, boolean nextError, String nextModelContent) {
         status = nextStatus == null || nextStatus.length() == 0 ? "done" : nextStatus;
         error = nextError;
         modelContent = nextModelContent == null ? "" : nextModelContent;
     }
 
-    public synchronized void setStatus(String nextStatus, boolean nextError) {
+    public synchronized void markStatus(String nextStatus, boolean nextError) {
         status = nextStatus == null || nextStatus.length() == 0 ? status : nextStatus;
         error = nextError;
     }

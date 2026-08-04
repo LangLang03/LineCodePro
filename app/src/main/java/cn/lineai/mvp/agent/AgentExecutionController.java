@@ -267,7 +267,7 @@ public final class AgentExecutionController {
             }
         } catch (Exception ignored) {
         }
-        agentResultRegistry.setFullOutput(
+        agentResultRegistry.updateFullOutput(
                 agentId,
                 fullOutput,
                 "",
@@ -380,8 +380,8 @@ public final class AgentExecutionController {
                         .append('\n').append(result.getOutput());
                 if (result.isError() && result.getOutput().contains(AGENT_TOOL_LIMIT_MESSAGE)) {
                     String message = "Agent 流水线因工具调用次数达到主流程上限，已提前结束：\n" + result.getOutput();
-                    pipelineProgress.setFinalSummary(message);
-                    pipelineProgress.setStatus("error", true);
+                    pipelineProgress.markFinalSummary(message);
+                    pipelineProgress.markStatus("error", true);
                     pipelineProgress.publish(true);
                     ToolResult finalProgress = pipelineProgressFinalToolResult(parentContext, pipelineProgress, message, true);
                     host.addOrReplaceToolResult(finalProgress);
@@ -391,14 +391,14 @@ public final class AgentExecutionController {
         }
         summary.append("\n\n总工具调用: ").append(totalToolCalls);
         String finalSummaryText = summary.toString().trim();
-        pipelineProgress.setFinalSummary(finalSummaryText);
-        pipelineProgress.setStatus(hasError ? "error" : "done", hasError);
+        pipelineProgress.markFinalSummary(finalSummaryText);
+        pipelineProgress.markStatus(hasError ? "error" : "done", hasError);
         String toolCallId = parentContext == null ? "" : parentContext.getToolCallId();
         String agentId = agentResultRegistry.allocateId();
         agentResultRegistry.put(AgentResultRecord.running(
                 agentId, toolCallId, AgentPipelineTool.NAME, "pipeline",
                 agents.size() + " agents", false, generationId));
-        agentResultRegistry.setFullOutput(
+        agentResultRegistry.updateFullOutput(
                 agentId, finalSummaryText, "", pipelineProgress.payload(), totalToolCalls, hasError);
         AgentResultRecord finished = agentResultRegistry.getRecord(agentId);
         String compact = AgentResultRegistry.toCompactJson(finished);
@@ -422,13 +422,13 @@ public final class AgentExecutionController {
             String message
     ) {
         pipelineProgress.terminate();
-        pipelineProgress.setFinalSummary(message);
-        pipelineProgress.setStatus("error", true);
+        pipelineProgress.markFinalSummary(message);
+        pipelineProgress.markStatus("error", true);
         String toolCallId = parentContext == null ? "" : parentContext.getToolCallId();
         String agentId = agentResultRegistry.allocateId();
         agentResultRegistry.put(AgentResultRecord.running(
                 agentId, toolCallId, AgentPipelineTool.NAME, "pipeline", "pipeline", false, 0));
-        agentResultRegistry.setFullOutput(agentId, message, "", "", 0, true);
+        agentResultRegistry.updateFullOutput(agentId, message, "", "", 0, true);
         String compact = AgentResultRegistry.toCompactJson(agentResultRegistry.getRecord(agentId));
         ToolResult finalProgress = ToolResult.withReview(
                 toolCallId, AgentPipelineTool.NAME, compact, true, "", "error", "");
@@ -645,7 +645,7 @@ public final class AgentExecutionController {
         while (true) {
             if (cancellationToken != null && cancellationToken.isCancelled()) {
                 if (progress != null) {
-                    progress.setFinished("error", true, AGENT_TERMINATED_MESSAGE);
+                    progress.markFinished("error", true, AGENT_TERMINATED_MESSAGE);
                     host.addOrReplaceToolResult(progress.snapshotResult());
                     host.render();
                 }
@@ -654,7 +654,7 @@ public final class AgentExecutionController {
             if (toolCallLimit > 0 && budget.get() >= toolCallLimit) {
                 String message = AGENT_TOOL_LIMIT_MESSAGE + "\n" + lastOutput;
                 if (progress != null) {
-                    progress.setFinished("error", true, message);
+                    progress.markFinished("error", true, message);
                     host.addOrReplaceToolResult(progress.snapshotResult());
                     host.render();
                 }
@@ -664,7 +664,7 @@ public final class AgentExecutionController {
                 String timeoutMessage = "Agent 达到总时长预算 " + (AGENT_TOTAL_BUDGET_MS / 60000L)
                         + " 分钟，最后输出：\n" + lastOutput;
                 if (progress != null) {
-                    progress.setFinished("error", true, timeoutMessage);
+                    progress.markFinished("error", true, timeoutMessage);
                     host.addOrReplaceToolResult(progress.snapshotResult());
                     host.render();
                 }
@@ -698,8 +698,8 @@ public final class AgentExecutionController {
                 ModelCompletionResponse response = modelClient.stream(selectedModel, agentMessages, callback, cancellationToken, options);
                 if (cancellationToken != null && cancellationToken.isCancelled()) {
                     if (progress != null) {
-                        progress.setTurnResult(AGENT_TERMINATED_MESSAGE, response.getReasoningContent());
-                        progress.setFinished("error", true, AGENT_TERMINATED_MESSAGE);
+                        progress.applyTurnResult(AGENT_TERMINATED_MESSAGE, response.getReasoningContent());
+                        progress.markFinished("error", true, AGENT_TERMINATED_MESSAGE);
                         host.addOrReplaceToolResult(progress.snapshotResult());
                         host.render();
                     }
@@ -709,7 +709,7 @@ public final class AgentExecutionController {
                 List<ToolCall> calls = mergeToolCalls(response.getToolCalls(), parsedTextToolCalls.getToolCalls());
                 String output = parsedTextToolCalls.hasToolMarkup() ? parsedTextToolCalls.getText() : response.getText();
                 if (progress != null) {
-                    progress.setTurnResult(output, response.getReasoningContent());
+                    progress.applyTurnResult(output, response.getReasoningContent());
                     progress.addToolCalls(calls);
                     host.addOrReplaceToolResult(progress.snapshotResult());
                     host.render();
@@ -726,7 +726,7 @@ public final class AgentExecutionController {
                 for (ToolCall call : calls) {
                     if (cancellationToken != null && cancellationToken.isCancelled()) {
                         if (progress != null) {
-                            progress.setFinished("error", true, AGENT_TERMINATED_MESSAGE);
+                            progress.markFinished("error", true, AGENT_TERMINATED_MESSAGE);
                             host.addOrReplaceToolResult(progress.snapshotResult());
                             host.render();
                         }
@@ -735,7 +735,7 @@ public final class AgentExecutionController {
                     if (toolCallLimit > 0 && budget.get() >= toolCallLimit) {
                         String message = AGENT_TOOL_LIMIT_MESSAGE + "\n" + lastOutput;
                         if (progress != null) {
-                            progress.setFinished("error", true, message);
+                            progress.markFinished("error", true, message);
                             host.addOrReplaceToolResult(progress.snapshotResult());
                             host.render();
                         }
@@ -758,14 +758,14 @@ public final class AgentExecutionController {
                 }
             } catch (ModelCompletionException e) {
                 if (progress != null) {
-                    progress.setFinished("error", true, "Agent 模型通信失败：\n" + e.getMessage());
+                    progress.markFinished("error", true, "Agent 模型通信失败：\n" + e.getMessage());
                     host.addOrReplaceToolResult(progress.snapshotResult());
                     host.render();
                 }
                 return new AgentRunResult("Agent 模型通信失败：\n" + e.getMessage(), toolCallCount, true);
             } catch (Exception e) {
                 if (progress != null) {
-                    progress.setFinished("error", true, "Agent 执行失败：\n" + e.getMessage());
+                    progress.markFinished("error", true, "Agent 执行失败：\n" + e.getMessage());
                     host.addOrReplaceToolResult(progress.snapshotResult());
                     host.render();
                 }
@@ -934,13 +934,13 @@ public final class AgentExecutionController {
         String displayToolCallId = progress.displayToolCallId(call);
         ToolResult pending = ToolResult.withReview(call.getId(), call.getName(), "", false, "", "pending", "");
         progress.putToolResult(call, pending);
-        progress.setFinished("pending", false, "");
+        progress.markFinished("pending", false, "");
         host.addOrReplaceToolResult(progress.snapshotResult());
         host.requestAgentToolReview(displayToolCallId, call, pending);
         host.render();
         try {
             String state = toolReviewAwaiter.awaitReview(displayToolCallId, call, cancellationToken);
-            progress.setStatus("running", false);
+            progress.markStatus("running", false);
             if ("rejected".equals(state)) {
                 ToolResult rejected = ToolResult.withReview(call.getId(), call.getName(), string(R.string.user_rejected_tool, "User rejected this tool."), true, "", "rejected", "");
                 progress.putToolResult(call, rejected);

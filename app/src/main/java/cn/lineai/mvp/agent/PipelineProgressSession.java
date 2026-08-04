@@ -40,14 +40,14 @@ public final class PipelineProgressSession {
         }
     }
 
-    public void setStatus(String nextStatus, boolean nextError) {
+    public void markStatus(String nextStatus, boolean nextError) {
         synchronized (lock) {
             this.status = nextStatus == null ? "running" : nextStatus;
             this.error = nextError;
         }
     }
 
-    public void setFinalSummary(String summary) {
+    public void markFinalSummary(String summary) {
         synchronized (lock) {
             this.finalSummary = summary == null ? "" : summary;
         }
@@ -63,7 +63,7 @@ public final class PipelineProgressSession {
         synchronized (lock) {
             PipelineAgentState state = stateById.get(agent.getId());
             if (state != null) {
-                state.setStatus("running");
+                state.markStatus("running");
             }
             publishLocked(false);
         }
@@ -77,17 +77,17 @@ public final class PipelineProgressSession {
             }
             try {
                 JSONObject object = new JSONObject(agentProgressPayload);
-                state.setStatus(object.optString("status", state.getStatus()));
-                state.setOutput(object.optString("output", state.getOutput()));
-                state.setThinking(object.optString("thinking", state.getThinking()));
-                state.setToolCallCount(object.optInt("tool_call_count", state.getToolCallCount()));
+                state.markStatus(object.optString("status", state.getStatus()));
+                state.updateOutput(object.optString("output", state.getOutput()));
+                state.updateThinking(object.optString("thinking", state.getThinking()));
+                state.updateToolCallCount(object.optInt("tool_call_count", state.getToolCallCount()));
                 JSONArray toolCalls = object.optJSONArray("tool_calls");
                 if (toolCalls != null) {
-                    state.setToolCalls(new JSONArray(toolCalls.toString()));
+                    state.replaceToolCalls(new JSONArray(toolCalls.toString()));
                 }
                 state.setError(agentError || object.optBoolean("error", false) || "error".equals(state.getStatus()));
             } catch (Exception ignored) {
-                state.setOutput(agentProgressPayload == null ? state.getOutput() : agentProgressPayload);
+                state.updateOutput(agentProgressPayload == null ? state.getOutput() : agentProgressPayload);
                 state.setError(agentError);
             }
             error = error || state.isError();
@@ -99,9 +99,9 @@ public final class PipelineProgressSession {
         synchronized (lock) {
             PipelineAgentState state = stateById.get(agent.getId());
             if (state != null) {
-                state.setStatus(result.isError() ? "error" : "done");
-                state.setOutput(result.getOutput());
-                state.setToolCallCount(result.getToolCallCount());
+                state.markStatus(result.isError() ? "error" : "done");
+                state.updateOutput(result.getOutput());
+                state.updateToolCallCount(result.getToolCallCount());
                 state.setError(result.isError());
             }
             error = error || result.isError();
@@ -115,9 +115,9 @@ public final class PipelineProgressSession {
             error = true;
             for (PipelineAgentState state : stateById.values()) {
                 if ("running".equals(state.getStatus()) || "waiting".equals(state.getStatus())) {
-                    state.setStatus("error");
+                    state.markStatus("error");
                     state.setError(true);
-                    state.setOutput(AGENT_TERMINATED_MESSAGE);
+                    state.updateOutput(AGENT_TERMINATED_MESSAGE);
                 }
             }
             publishLocked(true);

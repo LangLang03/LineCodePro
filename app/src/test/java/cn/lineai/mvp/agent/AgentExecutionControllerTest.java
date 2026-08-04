@@ -321,19 +321,19 @@ public final class AgentExecutionControllerTest {
     @Test
     public void snapshotResultPropagatesStatusToOuterReviewState() {
         AgentProgressSession progress = new AgentProgressSession(1, "agent_call", "agent", AgentTool.TYPE_SUB_CODING, "run shell");
-        progress.setStatus("pending", false);
+        progress.markStatus("pending", false);
         ToolResult pending = progress.snapshotResult();
         assertEquals("pending", pending.getReviewState());
 
-        progress.setStatus("running", false);
+        progress.markStatus("running", false);
         ToolResult running = progress.snapshotResult();
         assertEquals("running", running.getReviewState());
 
-        progress.setFinished("done", false, "");
+        progress.markFinished("done", false, "");
         ToolResult done = progress.snapshotResult();
         assertEquals("done", done.getReviewState());
 
-        progress.setFinished("error", true, "");
+        progress.markFinished("error", true, "");
         ToolResult error = progress.snapshotResult();
         assertEquals("error", error.getReviewState());
     }
