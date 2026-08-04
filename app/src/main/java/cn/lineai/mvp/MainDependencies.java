@@ -10,6 +10,7 @@ import cn.lineai.ai.protocol.OpenAiResponsesCompactionProtocol;
 import cn.lineai.context.ContextCompactionService;
 import cn.lineai.context.ContextManager;
 import cn.lineai.context.MemoryExtractionService;
+import cn.lineai.context.TokenUsageTracker;
 import cn.lineai.data.db.LineCodeDatabase;
 import cn.lineai.data.importer.LineCodeArchiveService;
 import cn.lineai.data.repository.AiBehaviorSettingsRepository;
@@ -105,6 +106,7 @@ public final class MainDependencies {
     final ContextManager contextManager;
     final ContextCompactionService contextCompactionService;
     final ModelClient modelClient;
+    final TokenUsageTracker tokenUsageTracker;
     final ToolRegistry toolRegistry;
     final ToolExecutor toolExecutor;
     final ToolExecutionCoordinator toolExecutionCoordinator;
@@ -188,11 +190,13 @@ public final class MainDependencies {
         ipcFileTreeRepository = new IpcFileTreeRepository(ipcProviderManager);
         contextManager = new ContextManager();
         modelClient = new ModelClient();
+        tokenUsageTracker = new TokenUsageTracker();
         contextCompactionService = new ContextCompactionService(
                 modelClient,
                 new OpenAiResponsesCompactionProtocol(),
                 new CodexResponsesProtocol(),
-                promptTemplateRepository);
+                promptTemplateRepository,
+                tokenUsageTracker);
         toolRegistry = new ToolRegistry(context, ipcProviderManager);
         toolRegistry.setExtensionStore((ExtensionStore) extensionRepository);
         toolSettingsRepo.setToolRegistry(toolRegistry);

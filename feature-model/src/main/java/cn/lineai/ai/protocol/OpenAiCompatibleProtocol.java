@@ -75,7 +75,10 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                     .getJSONObject(0)
                     .getJSONObject("message")
                     .optString("content");
-            return new ModelCompletionResponse(text);
+            JSONObject usage = response.optJSONObject("usage");
+            int inputTokens = usage == null ? 0 : usage.optInt("prompt_tokens", 0);
+            int outputTokens = usage == null ? 0 : usage.optInt("completion_tokens", 0);
+            return new ModelCompletionResponse(text, "", java.util.Collections.emptyList(), inputTokens, outputTokens);
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {
@@ -112,6 +115,8 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             StringBuilder reasoning = new StringBuilder();
             ThinkTagParser thinkTagParser = new ThinkTagParser();
             HashMap<Integer, ToolCallBuilder> toolCallBuilders = new HashMap<>();
+            final int[] usageInputTokens = new int[1];
+            final int[] usageOutputTokens = new int[1];
 
             postJsonSse(endpoint(config.getBaseUrl(), "/chat/completions"), body, headers, cancellationToken, (eventType, data) -> {
                 if ("[DONE]".equals(data.trim())) {
@@ -120,6 +125,12 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                 JSONObject event = new JSONObject(data);
                 if (event.has("error")) {
                     throw new ModelCompletionException("OpenAI stream error: " + describeError(event.opt("error")));
+                }
+                // 部分兼容端点会在最后一个 chunk（含空 choices）携带 usage，先于 choices 处理。
+                JSONObject usage = event.optJSONObject("usage");
+                if (usage != null) {
+                    usageInputTokens[0] = Math.max(usageInputTokens[0], usage.optInt("prompt_tokens", 0));
+                    usageOutputTokens[0] = Math.max(usageOutputTokens[0], usage.optInt("completion_tokens", 0));
                 }
                 JSONArray choices = event.optJSONArray("choices");
                 if (choices == null || choices.length() == 0) {
@@ -157,7 +168,13 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             });
 
             appendParsedDelta(text, reasoning, thinkTagParser.flush(), callback);
-            return new ModelCompletionResponse(text.toString(), reasoning.toString(), buildToolCalls(toolCallBuilders));
+            return new ModelCompletionResponse(
+                    text.toString(),
+                    reasoning.toString(),
+                    buildToolCalls(toolCallBuilders),
+                    usageInputTokens[0],
+                    usageOutputTokens[0]
+            );
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {

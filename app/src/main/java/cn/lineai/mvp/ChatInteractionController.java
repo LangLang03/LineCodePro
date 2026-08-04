@@ -93,6 +93,7 @@ final class ChatInteractionController {
         host.stopGenerationKeepAlive();
         host.persistCurrentConversation();
         chatSessionStore.startNewConversation(System.currentTimeMillis());
+        contextCompactionController.onConversationChanged();
         generationFlowController.clearSessionAutoToolConfirmations();
         lastMessageModelId = "";
         host.hideOverlays();
@@ -135,6 +136,7 @@ final class ChatInteractionController {
             chatSessionStore.setStreaming(false);
             host.stopGenerationKeepAlive();
             chatSessionStore.clearCurrentConversation();
+            contextCompactionController.onConversationChanged();
             generationFlowController.clearSessionAutoToolConfirmations();
             host.resetTodoState();
             lastMessageModelId = "";
@@ -304,6 +306,7 @@ final class ChatInteractionController {
             conversationRepository.deleteConversation(currentConversationId);
         }
         chatSessionStore.clearCurrentConversation();
+        contextCompactionController.onConversationChanged();
         generationFlowController.clearSessionAutoToolConfirmations();
     }
 

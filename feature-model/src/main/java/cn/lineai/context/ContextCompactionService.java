@@ -58,6 +58,19 @@ public final class ContextCompactionService {
      */
     private static final int TRANSCRIPT_SEGMENT_MAX_CHARS = 256 * 1024;
 
+    /**
+     * 硬压缩后保留最近真实用户消息（原文保留，不做摘要）的 token 预算，
+     * 与 codex 本地压缩的 COMPACT_USER_MESSAGE_MAX_TOKENS 对齐。
+     */
+    public static final int COMPACT_USER_MESSAGE_MAX_TOKENS = 20_000;
+
+    /**
+     * 压缩调用（生成摘要的模型请求）失败时的重试次数，与 codex 的压缩重试语义对齐。
+     */
+    private static final int MAX_COMPACT_RETRIES = 2;
+
+    private static final long COMPACT_RETRY_DELAY_MS = 1000L;
+
     private static final Pattern ANALYSIS_PATTERN = Pattern.compile("<analysis>[\\s\\S]*?</analysis>", Pattern.CASE_INSENSITIVE);
     private static final Pattern SUMMARY_PATTERN = Pattern.compile("<summary>([\\s\\S]*?)</summary>", Pattern.CASE_INSENSITIVE);
 
@@ -65,17 +78,20 @@ public final class ContextCompactionService {
     private final OpenAiResponsesCompactionProtocol responsesCompactionProtocol;
     private final CodexResponsesProtocol responsesSummaryProtocol;
     private final PromptTemplateRepository promptTemplateRepository;
+    private final TokenUsageTracker tokenUsageTracker;
 
     public ContextCompactionService(
             ModelClient modelClient,
             OpenAiResponsesCompactionProtocol responsesCompactionProtocol,
             CodexResponsesProtocol responsesSummaryProtocol,
-            PromptTemplateRepository promptTemplateRepository
+            PromptTemplateRepository promptTemplateRepository,
+            TokenUsageTracker tokenUsageTracker
     ) {
         this.modelClient = modelClient;
         this.responsesCompactionProtocol = responsesCompactionProtocol;
         this.responsesSummaryProtocol = responsesSummaryProtocol;
         this.promptTemplateRepository = promptTemplateRepository;
+        this.tokenUsageTracker = tokenUsageTracker;
     }
 
     public ContextCompactionResult compact(
@@ -119,6 +135,17 @@ public final class ContextCompactionService {
     }
 
     /**
+     * codex 式硬触发判断：优先使用服务器观测到的 input tokens（真实 usage，
+     * 已含 system prompt 与工具定义），观测不到时回退到本地估算。
+     */
+    public boolean shouldCompact(List<ChatMessage> messages, int contextTokens, ContextManager contextManager, boolean includeReasoning, int observedInputTokens) {
+        if (observedInputTokens > 0) {
+            return observedInputTokens >= Math.max(1, contextTokens) * COMPACT_TRIGGER_RATIO;
+        }
+        return shouldCompact(messages, contextTokens, contextManager, includeReasoning);
+    }
+
+    /**
      * 判断是否达到软触发压缩阈值（50%）。软触发会做增量压缩：只对最早的一部分
      * 消息生成摘要，保留近期消息不动，避免上下文继续增长到 80% 时才一次性处理
      * 大量历史。
@@ -130,14 +157,32 @@ public final class ContextCompactionService {
             return false;
         }
         int contextTokensSafe = Math.max(1, contextTokens);
-        if (contextManager.estimateTokens(messages, includeReasoning) < contextTokensSafe * SOFT_COMPACT_TRIGGER_RATIO) {
+        int usageTokens = contextManager.estimateTokens(messages, includeReasoning);
+        if (usageTokens < contextTokensSafe * SOFT_COMPACT_TRIGGER_RATIO) {
             return false;
         }
         // 已经达到硬触发阈值时让 shouldCompact 处理，不重复软触发。
-        if (contextManager.estimateTokens(messages, includeReasoning) >= contextTokensSafe * COMPACT_TRIGGER_RATIO) {
+        if (usageTokens >= contextTokensSafe * COMPACT_TRIGGER_RATIO) {
             return false;
         }
         return compactableMessageCount(messages) >= 8;
+    }
+
+    /**
+     * codex 式软触发判断：优先使用服务器观测到的 input tokens，观测不到时回退到本地估算。
+     */
+    public boolean shouldSoftCompact(List<ChatMessage> messages, int contextTokens, ContextManager contextManager, boolean includeReasoning, int observedInputTokens) {
+        if (observedInputTokens > 0) {
+            int contextTokensSafe = Math.max(1, contextTokens);
+            if (observedInputTokens < contextTokensSafe * SOFT_COMPACT_TRIGGER_RATIO) {
+                return false;
+            }
+            if (observedInputTokens >= contextTokensSafe * COMPACT_TRIGGER_RATIO) {
+                return false;
+            }
+            return compactableMessageCount(messages) >= 8;
+        }
+        return shouldSoftCompact(messages, contextTokens, contextManager, includeReasoning);
     }
 
     private int compactableMessageCount(List<ChatMessage> messages) {
@@ -202,7 +247,7 @@ public final class ContextCompactionService {
         for (ChatMessage message : contextMessages) {
             input.add(toResponsesModelMessage(message));
         }
-        String compactItem = responsesCompactionProtocol.compact(selectedModel, input, cancellationToken);
+        String compactItem = compactResponsesItemWithRetry(selectedModel, input, cancellationToken);
         if (cancellationToken != null && cancellationToken.isCancelled()) {
             return new ContextCompactionResult("", "");
         }
@@ -217,12 +262,16 @@ public final class ContextCompactionService {
         String transcript = buildTranscript(contextMessages);
         ArrayList<ModelMessage> request = new ArrayList<>();
         request.add(new UserModelMessage(prompt() + "\n\nConversation transcript:\n" + transcript));
-        ModelRequestOptions options = new ModelRequestOptions(
-                AiBehaviorSettings.REASONING_OFF,
-                false,
-                new ArrayList<ToolInfo>()
+        ModelCompletionResponse response = streamSummaryWithRetry(
+                () -> modelClient.stream(
+                        selectedModel,
+                        request,
+                        null,
+                        cancellationToken,
+                        new ModelRequestOptions(AiBehaviorSettings.REASONING_OFF, false, new ArrayList<ToolInfo>())
+                ),
+                cancellationToken
         );
-        ModelCompletionResponse response = modelClient.stream(selectedModel, request, null, cancellationToken, options);
         if (cancellationToken != null && cancellationToken.isCancelled()) {
             return new ContextCompactionResult("", "");
         }
@@ -237,17 +286,77 @@ public final class ContextCompactionService {
         String transcript = buildTranscript(contextMessages);
         ArrayList<ModelMessage> request = new ArrayList<>();
         request.add(new UserModelMessage(prompt() + "\n\nConversation transcript:\n" + transcript));
-        ModelCompletionResponse response = responsesSummaryProtocol.stream(
-                selectedModel.withModelId(selectedModel.getEffectiveCompressionModelId()),
-                request,
-                null,
-                cancellationToken,
-                new ModelRequestOptions(AiBehaviorSettings.REASONING_OFF, false, new ArrayList<cn.lineai.tool.ToolInfo>())
+        ModelCompletionResponse response = streamSummaryWithRetry(
+                () -> responsesSummaryProtocol.stream(
+                        selectedModel.withModelId(selectedModel.getEffectiveCompressionModelId()),
+                        request,
+                        null,
+                        cancellationToken,
+                        new ModelRequestOptions(AiBehaviorSettings.REASONING_OFF, false, new ArrayList<cn.lineai.tool.ToolInfo>())
+                ),
+                cancellationToken
         );
         if (cancellationToken != null && cancellationToken.isCancelled()) {
             return new ContextCompactionResult("", "");
         }
         return new ContextCompactionResult(createCompactSummaryContent(response.getText()), "");
+    }
+
+    /**
+     * codex 式压缩调用：独立模型请求生成摘要，失败时带退避重试，成功后把
+     * 服务器观测到的 usage 记入 {@link TokenUsageTracker}（压缩后上下文的新基线）。
+     */
+    private ModelCompletionResponse streamSummaryWithRetry(
+            SummaryStreamCall call,
+            ModelCancellationToken cancellationToken
+    ) throws ModelCompletionException {
+        int attempt = 0;
+        while (true) {
+            try {
+                ModelCompletionResponse response = call.call();
+                if (tokenUsageTracker != null) {
+                    tokenUsageTracker.record(response);
+                }
+                return response;
+            } catch (ModelCompletionException e) {
+                if (attempt >= MAX_COMPACT_RETRIES || (cancellationToken != null && cancellationToken.isCancelled())) {
+                    throw e;
+                }
+                attempt++;
+                sleepQuietly(COMPACT_RETRY_DELAY_MS * attempt);
+            }
+        }
+    }
+
+    private String compactResponsesItemWithRetry(
+            ModelConfig selectedModel,
+            List<ModelMessage> input,
+            ModelCancellationToken cancellationToken
+    ) throws ModelCompletionException {
+        int attempt = 0;
+        while (true) {
+            try {
+                return responsesCompactionProtocol.compact(selectedModel, input, cancellationToken);
+            } catch (ModelCompletionException e) {
+                if (attempt >= MAX_COMPACT_RETRIES || (cancellationToken != null && cancellationToken.isCancelled())) {
+                    throw e;
+                }
+                attempt++;
+                sleepQuietly(COMPACT_RETRY_DELAY_MS * attempt);
+            }
+        }
+    }
+
+    private void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private interface SummaryStreamCall {
+        ModelCompletionResponse call() throws ModelCompletionException;
     }
 
     private boolean shouldUseResponsesCompaction(ModelConfig selectedModel) {
@@ -258,6 +367,45 @@ public final class ContextCompactionService {
     private boolean shouldUseOpenAiResponsesSummary(ModelConfig selectedModel) {
         return selectedModel.isCompressionModelEnabled()
                 && selectedModel.getProtocolType() == ModelProtocolType.OPENAI_COMPATIBLE;
+    }
+
+    /**
+     * codex 式保留尾部：从最新往回收集真实用户消息（跳过已排除消息、隐藏摘要、
+     * 压缩进度块），直到 token 预算耗尽，返回按时间正序的列表。
+     * <p>
+     * 硬压缩后这些最近用户消息原样保留在上下文中（不转成摘要），摘要作为压缩后
+     * 历史的一项。对应 codex 本地压缩的 COMPACT_USER_MESSAGE_MAX_TOKENS 语义。
+     */
+    public List<ChatMessage> selectRecentUserMessages(List<ChatMessage> messages, int maxTokens, ContextManager contextManager) {
+        ArrayList<ChatMessage> selected = new ArrayList<>();
+        if (messages == null || messages.isEmpty() || maxTokens <= 0 || contextManager == null) {
+            return selected;
+        }
+        int remaining = maxTokens;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessage message = messages.get(i);
+            if (message == null || message.isExcludeFromContext() || message.isCompactBlock()) {
+                continue;
+            }
+            // 已压缩产生的隐藏摘要不再保留为"最近用户消息"。
+            if (message.isHidden() && message.getResponseInputItemJson().length() > 0) {
+                continue;
+            }
+            if (message.getRole() != ChatMessage.Role.USER) {
+                continue;
+            }
+            if (message.getContent().trim().length() == 0 && message.getReasoningContent().trim().length() == 0) {
+                continue;
+            }
+            int tokens = contextManager.estimateTokens(message);
+            if (tokens > remaining) {
+                break;
+            }
+            selected.add(message);
+            remaining -= tokens;
+        }
+        java.util.Collections.reverse(selected);
+        return selected;
     }
 
     private ArrayList<ChatMessage> compactableMessages(List<ChatMessage> messages) {

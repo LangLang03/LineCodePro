@@ -30,6 +30,8 @@ public final class GenerationFlowControllerTest {
                 null,
                 new MainThreadDispatcher(null, true),
                 new BackgroundTaskRunner(),
+                null,
+                null,
                 new FakeHost()
         );
 

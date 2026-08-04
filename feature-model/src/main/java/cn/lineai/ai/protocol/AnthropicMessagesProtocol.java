@@ -72,12 +72,20 @@ public final class AnthropicMessagesProtocol extends AbstractHttpModelProtocol {
             StringBuilder text = new StringBuilder();
             StringBuilder reasoning = new StringBuilder();
             HashMap<Integer, ToolUseBuilder> toolUseBuilders = new HashMap<>();
+            final int[] usageInputTokens = new int[1];
+            final int[] usageOutputTokens = new int[1];
 
             postJsonSse(endpoint(config.getBaseUrl(), "/v1/messages"), body, headers, cancellationToken, (eventType, data) -> {
-                handleSseEvent(data, callback, text, reasoning, toolUseBuilders);
+                handleSseEvent(data, callback, text, reasoning, toolUseBuilders, usageInputTokens, usageOutputTokens);
             });
 
-            return new ModelCompletionResponse(text.toString(), reasoning.toString(), buildToolCalls(toolUseBuilders));
+            return new ModelCompletionResponse(
+                    text.toString(),
+                    reasoning.toString(),
+                    buildToolCalls(toolUseBuilders),
+                    usageInputTokens[0],
+                    usageOutputTokens[0]
+            );
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {
@@ -120,7 +128,9 @@ public final class AnthropicMessagesProtocol extends AbstractHttpModelProtocol {
             ModelStreamCallback callback,
             StringBuilder text,
             StringBuilder reasoning,
-            HashMap<Integer, ToolUseBuilder> toolUseBuilders
+            HashMap<Integer, ToolUseBuilder> toolUseBuilders,
+            int[] usageInputTokens,
+            int[] usageOutputTokens
     ) throws Exception {
         if ("[DONE]".equals(data.trim())) {
             return;
@@ -130,6 +140,23 @@ public final class AnthropicMessagesProtocol extends AbstractHttpModelProtocol {
             throw new ModelCompletionException("Anthropic stream error: " + event.opt("error"));
         }
         String type = event.optString("type");
+
+        if ("message_start".equals(type)) {
+            JSONObject message = event.optJSONObject("message");
+            JSONObject usage = message == null ? null : message.optJSONObject("usage");
+            if (usage != null) {
+                usageInputTokens[0] = Math.max(usageInputTokens[0], usage.optInt("input_tokens", 0));
+            }
+            return;
+        }
+
+        if ("message_delta".equals(type)) {
+            JSONObject usage = event.optJSONObject("usage");
+            if (usage != null) {
+                usageOutputTokens[0] = Math.max(usageOutputTokens[0], usage.optInt("output_tokens", 0));
+            }
+            return;
+        }
 
         if ("content_block_start".equals(type)) {
             JSONObject block = event.optJSONObject("content_block");

@@ -204,6 +204,11 @@ public final class ScreenFactories {
                 }
 
                 @Override
+                public void onSoftCompactionChanged(boolean enabled) {
+                    controller.onAiSoftCompactionChanged(enabled);
+                }
+
+                @Override
                 public void onOpenPromptTemplates() {
                     controller.onSettingsItemSelected("promptTemplates");
                 }

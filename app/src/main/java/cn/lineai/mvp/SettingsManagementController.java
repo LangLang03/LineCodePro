@@ -50,6 +50,8 @@ public final class SettingsManagementController {
 
         void setLearningModeEnabled(boolean enabled);
 
+        void setSoftCompactionEnabled(boolean enabled);
+
         InputSettings getInputSettings();
 
         void setEnterKeyBehavior(String behavior);
@@ -168,6 +170,11 @@ public final class SettingsManagementController {
         @Override
         public void setLearningModeEnabled(boolean enabled) {
             aiBehaviorSettingsRepository.setLearningModeEnabled(enabled);
+        }
+
+        @Override
+        public void setSoftCompactionEnabled(boolean enabled) {
+            aiBehaviorSettingsRepository.setSoftCompactionEnabled(enabled);
         }
 
         @Override
@@ -368,6 +375,10 @@ public final class SettingsManagementController {
 
     public void setAiLearningModeEnabled(boolean enabled) {
         settingsStore.setLearningModeEnabled(enabled);
+    }
+
+    public void setAiSoftCompactionEnabled(boolean enabled) {
+        settingsStore.setSoftCompactionEnabled(enabled);
     }
 
     public InputSettings getInputSettings() {

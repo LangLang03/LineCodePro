@@ -514,6 +514,7 @@ final class MainControllerInitializer {
                 aiBehaviorSettingsRepository,
                 contextCompactionService,
                 contextManager,
+                dependencies.tokenUsageTracker,
                 backgroundTasks,
                 mainThread,
                 new ContextCompactionHost(coordinator)
@@ -583,6 +584,8 @@ final class MainControllerInitializer {
                 todoStateStore,
                 mainThread,
                 backgroundTasks,
+                coordinator.contextCompactionController,
+                dependencies.tokenUsageTracker,
                 new GenerationFlowHost(coordinator)
         );
         coordinator.generationLifecycleController.setGenerationFlowController(coordinator.generationFlowController);

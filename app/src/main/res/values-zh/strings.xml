@@ -317,6 +317,8 @@
     <string name="screen_llm_section_learning">学习与记忆</string>
     <string name="screen_llm_learning_label">学习模式</string>
     <string name="screen_llm_learning_desc">启用自动 Skills、长期记忆、项目记忆、短期记忆和聊天记录检索</string>
+    <string name="screen_llm_soft_compact_label">启用软压缩</string>
+    <string name="screen_llm_soft_compact_desc">开启后上下文占用达到 50%% 时，将最早的部分历史增量压缩为摘要；关闭后仅保留 80%% 硬触发压缩（codex 风格）</string>
     <string name="screen_llm_section_tone">交流语气</string>
     <string name="screen_llm_tone_coding">编程模式</string>
     <string name="screen_llm_tone_chat">聊天模式</string>

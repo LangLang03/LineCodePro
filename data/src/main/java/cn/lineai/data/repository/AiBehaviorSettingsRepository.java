@@ -9,6 +9,7 @@ public final class AiBehaviorSettingsRepository {
     public static final String KEY_REASONING_EFFORT = "@lineai_reasoning_effort";
     public static final String KEY_PRESERVE_REASONING = "@lineai_preserve_reasoning";
     public static final String KEY_LEARNING_MODE = "@linecode_learning_mode_enabled";
+    public static final String KEY_SOFT_COMPACTION = "@lineai_soft_compaction";
 
     private final SettingsRepository settingsRepository;
 
@@ -23,7 +24,8 @@ public final class AiBehaviorSettingsRepository {
                 settingsRepository.getBoolean(KEY_THINKING_AUTO_EXPAND, false),
                 settingsRepository.getString(KEY_REASONING_EFFORT, AiBehaviorSettings.REASONING_MEDIUM),
                 settingsRepository.getBoolean(KEY_PRESERVE_REASONING, false),
-                settingsRepository.getBoolean(KEY_LEARNING_MODE, false)
+                settingsRepository.getBoolean(KEY_LEARNING_MODE, false),
+                settingsRepository.getBoolean(KEY_SOFT_COMPACTION, true)
         );
     }
 
@@ -49,5 +51,9 @@ public final class AiBehaviorSettingsRepository {
 
     public synchronized void setLearningModeEnabled(boolean value) {
         settingsRepository.setBoolean(KEY_LEARNING_MODE, value);
+    }
+
+    public synchronized void setSoftCompactionEnabled(boolean value) {
+        settingsRepository.setBoolean(KEY_SOFT_COMPACTION, value);
     }
 }

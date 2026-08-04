@@ -317,6 +317,8 @@
     <string name="screen_llm_section_learning">Обучение и память</string>
     <string name="screen_llm_learning_label">Режим обучения</string>
     <string name="screen_llm_learning_desc">Включить авто Skills, долгосрочную память, память проекта, краткосрочную память и индексацию чатов</string>
+    <string name="screen_llm_soft_compact_label">Мягкое сжатие</string>
+    <string name="screen_llm_soft_compact_desc">При включении ранняя история инкрементально сжимается в резюме при 50%% заполнении контекста; при выключении срабатывает только жёсткое сжатие на 80%% (в стиле codex)</string>
     <string name="screen_llm_section_tone">Тон общения</string>
     <string name="screen_llm_tone_coding">Режим кодинга</string>
     <string name="screen_llm_tone_chat">Режим чата</string>

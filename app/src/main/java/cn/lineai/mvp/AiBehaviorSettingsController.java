@@ -18,6 +18,8 @@ public interface AiBehaviorSettingsController {
 
     void onAiLearningModeChanged(boolean enabled);
 
+    void onAiSoftCompactionChanged(boolean enabled);
+
     MemoryOverviewState getMemoryOverview();
 
     void onMemorySaved(String id, String scope, String content);

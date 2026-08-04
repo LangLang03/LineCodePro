@@ -24,6 +24,8 @@ public final class LLMSettingsScreenView extends ScreenScaffoldView {
 
         void onLearningModeChanged(boolean enabled);
 
+        void onSoftCompactionChanged(boolean enabled);
+
         void onOpenPromptTemplates();
     }
 
@@ -54,6 +56,14 @@ public final class LLMSettingsScreenView extends ScreenScaffoldView {
                 context.getString(R.string.screen_llm_learning_desc),
                 value.isLearningModeEnabled(),
                 (buttonView, isChecked) -> listener.onLearningModeChanged(isChecked)
+        ), true);
+        learning.addRow(new SwitchRowView(
+                context,
+                IconButtonView.ROTATE_CCW,
+                context.getString(R.string.screen_llm_soft_compact_label),
+                context.getString(R.string.screen_llm_soft_compact_desc),
+                value.isSoftCompactionEnabled(),
+                (buttonView, isChecked) -> listener.onSoftCompactionChanged(isChecked)
         ), false);
         content.addView(learning, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 

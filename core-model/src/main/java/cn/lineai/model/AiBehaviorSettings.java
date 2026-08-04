@@ -17,6 +17,7 @@ public final class AiBehaviorSettings {
     private final String reasoningEffort;
     private final boolean preserveReasoningEnabled;
     private final boolean learningModeEnabled;
+    private final boolean softCompactionEnabled;
 
     public AiBehaviorSettings(
             String toneMode,
@@ -26,12 +27,26 @@ public final class AiBehaviorSettings {
             boolean preserveReasoningEnabled,
             boolean learningModeEnabled
     ) {
+        this(toneMode, thinkingScrollEnabled, thinkingAutoExpandEnabled, reasoningEffort,
+                preserveReasoningEnabled, learningModeEnabled, true);
+    }
+
+    public AiBehaviorSettings(
+            String toneMode,
+            boolean thinkingScrollEnabled,
+            boolean thinkingAutoExpandEnabled,
+            String reasoningEffort,
+            boolean preserveReasoningEnabled,
+            boolean learningModeEnabled,
+            boolean softCompactionEnabled
+    ) {
         this.toneMode = normalizeTone(toneMode);
         this.thinkingScrollEnabled = thinkingScrollEnabled;
         this.thinkingAutoExpandEnabled = thinkingAutoExpandEnabled;
         this.reasoningEffort = normalizeReasoningEffort(reasoningEffort);
         this.preserveReasoningEnabled = preserveReasoningEnabled;
         this.learningModeEnabled = learningModeEnabled;
+        this.softCompactionEnabled = softCompactionEnabled;
     }
 
     public String getToneMode() {
@@ -56,6 +71,14 @@ public final class AiBehaviorSettings {
 
     public boolean isLearningModeEnabled() {
         return learningModeEnabled;
+    }
+
+    /**
+     * 软压缩开关（50% 增量压缩）。关闭后只保留 80% 硬触发，压缩行为对齐 codex：
+     * 仅在上下文占用达到硬阈值时全量压缩并保留最近用户消息。
+     */
+    public boolean isSoftCompactionEnabled() {
+        return softCompactionEnabled;
     }
 
     public static String normalizeTone(String tone) {

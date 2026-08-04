@@ -44,6 +44,16 @@ class ContextCompactionHost implements ContextCompactionController.Host {
     }
 
     @Override
+    public void continueToolLoop(
+            int generationId,
+            ModelConfig selectedModel,
+            ModelCancellationToken cancellationToken,
+            int usedToolCallCount
+    ) {
+        coordinator.generationFlowController.continueToolLoop(generationId, selectedModel, cancellationToken, usedToolCallCount);
+    }
+
+    @Override
     public void startGenerationKeepAlive() {
         coordinator.generationLifecycleController.startKeepAlive();
     }

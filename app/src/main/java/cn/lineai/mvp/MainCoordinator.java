@@ -565,6 +565,11 @@ public final class MainCoordinator implements MainUiController {
     }
 
     @Override
+    public void onAiSoftCompactionChanged(boolean enabled) {
+        settingsManagementController.setAiSoftCompactionEnabled(enabled);
+    }
+
+    @Override
     public InputSettings getInputSettings() {
         return settingsManagementController.getInputSettings();
     }
@@ -1039,6 +1044,7 @@ public final class MainCoordinator implements MainUiController {
 
     void loadConversation(String id) {
         conversationPersistenceController.loadConversation(id);
+        contextCompactionController.onConversationChanged();
         chatInteractionController.resetModelTracking();
     }
 

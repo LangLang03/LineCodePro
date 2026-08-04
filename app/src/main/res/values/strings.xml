@@ -317,6 +317,8 @@
     <string name="screen_llm_section_learning">Learning &amp; memory</string>
     <string name="screen_llm_learning_label">Learning mode</string>
     <string name="screen_llm_learning_desc">Enable auto skills, long-term memory, project memory, short-term memory and chat indexing</string>
+    <string name="screen_llm_soft_compact_label">Soft compaction</string>
+    <string name="screen_llm_soft_compact_desc">When enabled, early history is incrementally summarized at 50%% context usage; when disabled, only the 80%% hard compaction triggers (codex-style)</string>
     <string name="screen_llm_section_tone">Conversation tone</string>
     <string name="screen_llm_tone_coding">Coding mode</string>
     <string name="screen_llm_tone_chat">Chat mode</string>
