@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Typeface;
@@ -9,7 +11,6 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import cn.lineai.R;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class SettingsScreenView extends LinearLayout {
     public interface Listener {
@@ -35,6 +36,13 @@ public final class SettingsScreenView extends LinearLayout {
         LineTheme.padding(content, 0, 0, 0, 100);
         scrollView.addView(content, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         addView(scrollView, new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
+
+        content.addView(new ActionRowView(context, IconButtonView.SPARKLES,
+                context.getString(R.string.settings_row_tutorial_title),
+                context.getString(R.string.settings_row_tutorial_desc),
+                false, true,
+                () -> listener.onItem("tutorialFromSettings")),
+                new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         addSection(content, context.getString(R.string.screen_settings_section_ai), new RowSpec[] {
                 new RowSpec("models", context.getString(R.string.settings_row_models_title), context.getString(R.string.settings_row_models_desc), IconButtonView.BOX),

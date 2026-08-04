@@ -1,4 +1,5 @@
 package cn.lineai.tool.builtin;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.model.ExtensionMcpConfig;
 import cn.lineai.model.McpRequestHeader;
@@ -9,7 +10,6 @@ import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
-import cn.lineai.tool.ToolResult;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.json.JSONObject;

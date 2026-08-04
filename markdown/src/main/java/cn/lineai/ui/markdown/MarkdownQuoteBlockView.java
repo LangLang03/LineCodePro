@@ -1,9 +1,9 @@
 package cn.lineai.ui.markdown;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.view.View;
 import android.widget.LinearLayout;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class MarkdownQuoteBlockView extends LinearLayout {
     private final LinearLayout content;

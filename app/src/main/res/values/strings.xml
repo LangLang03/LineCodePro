@@ -1,13 +1,11 @@
 <resources>
+        <string name="common_cancel">Cancel</string>
+    <string name="common_delete">Delete</string>
     <string name="app_name">LineCode Pro</string>
     <string name="status_title_message">%1$s\n%2$s</string>
     <string name="theme_current_editing">Editing: %1$s</string>
-    <string name="shell_output_line_count">%1$d lines</string>
 
-    <string name="common_cancel">Cancel</string>
     <string name="common_confirm">Confirm</string>
-    <string name="common_delete">Delete</string>
-    <string name="common_edit">Edit</string>
     <string name="common_save">Save</string>
     <string name="common_reset">Reset</string>
     <string name="common_refresh">Refresh</string>
@@ -319,6 +317,8 @@
     <string name="screen_llm_section_learning">Learning &amp; memory</string>
     <string name="screen_llm_learning_label">Learning mode</string>
     <string name="screen_llm_learning_desc">Enable auto skills, long-term memory, project memory, short-term memory and chat indexing</string>
+    <string name="screen_llm_soft_compact_label">Soft compaction</string>
+    <string name="screen_llm_soft_compact_desc">When enabled, early history is incrementally summarized at 50%% context usage; when disabled, only the 80%% hard compaction triggers (codex-style)</string>
     <string name="screen_llm_section_tone">Conversation tone</string>
     <string name="screen_llm_tone_coding">Coding mode</string>
     <string name="screen_llm_tone_chat">Chat mode</string>
@@ -707,26 +707,9 @@
     <string name="sheet_parent_dir">Up one level</string>
     <string name="in_app_browser_exit">Exit</string>
 
-    <string name="tool_call_shell_executing">Executing…</string>
-    <string name="tool_call_shell_failed">Execution failed</string>
-    <string name="tool_call_shell_completed">Execution completed</string>
     <string name="tool_call_image_generation">Image generation</string>
     <string name="tool_call_image_understanding">Image understanding</string>
-    <string name="tool_call_status_done">Done</string>
-    <string name="tool_call_status_running">Running</string>
-    <string name="tool_call_status_failed">Failed</string>
-    <string name="tool_call_status_pending_review">Needs confirmation</string>
-    <string name="tool_call_delete_confirm_title">Confirm deletion</string>
     <string name="tool_call_delete_confirm_message">Delete this item?</string>
-    <string name="tool_call_agent_running">Running task…</string>
-    <string name="tool_call_agent_failed">Task failed</string>
-    <string name="tool_call_agent_done">Task completed</string>
-    <string name="tool_call_pipeline_running">Building Agent pipeline…</string>
-    <string name="tool_call_todo_empty">No TODO items yet. Use the todo_update tool to maintain the list.</string>
-    <string name="tool_call_input">Input</string>
-    <string name="tool_call_progress">Progress</string>
-    <string name="tool_call_output">Output</string>
-    <string name="tool_call_diff_truncated">… (diff truncated, total %1$d lines)</string>
 
     <string name="screen_about_title">About</string>
     <string name="screen_about_section_version">Version</string>
@@ -1002,6 +985,8 @@
     <string name="message_list_scroll_to_bottom_desc">Scroll to bottom</string>
     <string name="message_list_configure_title">Configure a model first</string>
     <string name="message_list_configure_desc">Open Settings → Model management → Add model, then send a message.</string>
+    <string name="empty_state_add_model">Add model</string>
+    <string name="empty_state_open_workspace">Open workspace</string>
 
     <string name="thinking_label">Thinking…</string>
     <string name="thinking_done_label">Done thinking</string>
@@ -1078,57 +1063,21 @@
     <string name="fallback_screen_licenses_title">Open source licenses</string>
     <string name="sheet_attachment_selected_count">Selected %1$d file(s)</string>
 
-    <string name="tool_call_shell_full">Full</string>
-    <string name="tool_call_shell_auto_run">Auto run</string>
-    <string name="tool_call_shell_skip">Skip</string>
-    <string name="tool_call_shell_run">Run</string>
-    <string name="tool_call_shell_folded">[LineCode folded %1$d characters of shell output]</string>
 
     <string name="tool_call_action_search">Search</string>
     <string name="tool_call_action_fetch">Fetch</string>
     <string name="tool_call_action_match">Match</string>
     <string name="tool_call_action_list_dir">List dir</string>
-    <string name="tool_call_action_read">Read</string>
-    <string name="tool_call_action_write">Write</string>
     <string name="tool_call_action_agent">Agent</string>
     <string name="tool_call_agent_fetch_hint">Full output: agent_output(agent_id=%1$s)</string>
 
-    <string name="tool_call_write_unnamed">Unnamed file</string>
-    <string name="tool_call_write_revert">Revert</string>
-    <string name="tool_call_write_accept">Accept</string>
-    <string name="tool_call_view_diff">View diff</string>
 
-    <string name="tool_call_delete_no_reason">No deletion reason provided</string>
-    <string name="tool_call_delete_no_path">No deletion path specified</string>
-    <string name="tool_call_delete_pending">Deletion confirmed, waiting to execute.</string>
-    <string name="tool_call_delete_rejected">Deletion rejected.</string>
-    <string name="tool_call_delete_status_pending">Waiting for confirmation</string>
-    <string name="tool_call_delete_status_rejected">Rejected</string>
-    <string name="tool_call_delete_status_executed">Executed</string>
-    <string name="tool_call_delete_status_accepted">Confirmed</string>
-    <string name="tool_call_delete_reject">Reject</string>
-    <string name="tool_call_delete_confirm">Confirm deletion</string>
-    <string name="tool_call_delete_count_suffix"> · %1$d item(s)</string>
 
-    <string name="tool_call_agent_tool_count">%1$d tools</string>
-    <string name="tool_call_agent_type_explore">Explore</string>
-    <string name="tool_call_agent_type_coding">Coding</string>
-    <string name="tool_call_agent_tool_calls_label">Tool calls</string>
 
-    <string name="tool_call_pipeline_title">Agent Pipeline</string>
-    <string name="tool_call_pipeline_completed">%1$d done</string>
-    <string name="tool_call_pipeline_summary_running">%1$d running</string>
-    <string name="tool_call_pipeline_summary_pending_review">%1$d need confirmation</string>
-    <string name="tool_call_pipeline_summary_waiting">%1$d waiting</string>
-    <string name="tool_call_pipeline_summary_failed">%1$d failed</string>
-    <string name="tool_call_pipeline_status_waiting">Waiting</string>
 
-    <string name="tool_call_block_mcp">MCP call</string>
 
-    <string name="tool_call_generic_mcp">MCP call</string>
 
     <!-- Phone control tool label used by ToolCallInputParser in :app -->
-    <string name="tool_call_phone_action_default">Phone action</string>
 
 
     <!-- MainCoordinator agent messages -->
@@ -1251,4 +1200,11 @@
     <string name="agent_fallback_role_coding_remote">You are a coding Agent in a remote Shell environment (the current workspace is on an SSH remote or terminal provider container; local file_read / file_write / file_edit / glob / list_dir may not be available).\nRules:\n- Most work must be done via shell_execute: read with cat/ls/grep, write with sed/awk/python heredoc or tee, verify with cat.\n- Only modify files or directories listed in write_scope; when there is no write_scope, writing to files is prohibited.</string>
     <string name="agent_fallback_role_explore_local">You are a code exploration Agent. Your task is to quickly locate and analyze code.\nRules:\n- Only read code, do not make any modifications, and do not call any write tools.\n- Prefer read-only tools to search and read key files; you can use shell_execute to execute read-only commands.\n- Provide concise and accurate answers.</string>
     <string name="agent_fallback_role_coding_local">You are a coding Agent. Your task is to complete well-scoped coding subtasks.\nRules:\n- Only modify files or directories listed in write_scope; when there is no write_scope, writing to files is prohibited.\n- Prefer file_read / file_write / file_edit / glob / list_dir to complete work; only use shell_execute when file tools truly cannot meet the need.</string>
+    <string name="screen_output_section_toolcall">Tool call UI</string>
+    <string name="screen_output_toolcall_preview_label">Tool call card preview</string>
+    <string name="screen_output_toolcall_preview_desc">Preview every tool card with sample data</string>
+    <string name="screen_toolcall_preview_title">Tool call cards</string>
+    <string name="toolcall_preview_section_note">Sample data — states shown below may not reflect real tool runs.</string>
+    <string name="settings_row_tutorial_title">Tutorial</string>
+    <string name="settings_row_tutorial_desc">Beginner to advanced: models, workspace, Termux, SSH and MCP</string>
 </resources>

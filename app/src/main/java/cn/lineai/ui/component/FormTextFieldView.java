@@ -1,4 +1,5 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Typeface;
@@ -7,7 +8,6 @@ import android.view.Gravity;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class FormTextFieldView extends LinearLayout {
     private final EditText input;

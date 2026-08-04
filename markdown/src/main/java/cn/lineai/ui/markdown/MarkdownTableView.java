@@ -1,4 +1,5 @@
 package cn.lineai.ui.markdown;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Color;
@@ -10,7 +11,6 @@ import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TableLayout;
 import android.widget.TextView;
-import cn.lineai.ui.theme.LineTheme;
 import org.commonmark.ext.gfm.tables.TableBlock;
 import org.commonmark.ext.gfm.tables.TableBody;
 import org.commonmark.ext.gfm.tables.TableCell;

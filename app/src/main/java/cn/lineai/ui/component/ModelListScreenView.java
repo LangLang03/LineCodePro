@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.app.Dialog;
 import android.content.Context;
@@ -14,7 +16,6 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import cn.lineai.R;
 import cn.lineai.model.ModelConfig;
-import cn.lineai.ui.theme.LineTheme;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;

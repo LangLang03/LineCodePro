@@ -1,7 +1,7 @@
 package cn.lineai.mvp;
+import cn.lineai.model.tool.ToolCall;
 
 import cn.lineai.model.ChatMessage;
-import cn.lineai.tool.ToolCall;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;

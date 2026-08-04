@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
@@ -8,7 +10,6 @@ import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.Switch;
 import android.widget.TextView;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class SwitchRowView extends LinearLayout {
     public SwitchRowView(Context context, int iconType, String label, String desc, boolean value) {

@@ -74,12 +74,20 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             StringBuilder reasoning = new StringBuilder();
             LinkedHashMap<String, CodexOutputMerger.ToolCallBuilder> toolCallBuilders = new LinkedHashMap<>();
             HashMap<String, StringBuilder> customToolInputs = new HashMap<>();
+            final int[] usageInputTokens = new int[1];
+            final int[] usageOutputTokens = new int[1];
 
             postJsonSse(requestBuilder.responsesEndpoint(config.getBaseUrl()), body, headers, cancellationToken, (eventType, data) -> {
-                handleSseEvent(eventType, data, callback, text, reasoning, toolCallBuilders, customToolInputs);
+                handleSseEvent(eventType, data, callback, text, reasoning, toolCallBuilders, customToolInputs, usageInputTokens, usageOutputTokens);
             });
 
-            return new ModelCompletionResponse(text.toString(), reasoning.toString(), outputMerger.buildToolCalls(toolCallBuilders));
+            return new ModelCompletionResponse(
+                    text.toString(),
+                    reasoning.toString(),
+                    outputMerger.buildToolCalls(toolCallBuilders),
+                    usageInputTokens[0],
+                    usageOutputTokens[0]
+            );
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {
@@ -94,7 +102,9 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             StringBuilder text,
             StringBuilder reasoning,
             LinkedHashMap<String, CodexOutputMerger.ToolCallBuilder> toolCallBuilders,
-            HashMap<String, StringBuilder> customToolInputs
+            HashMap<String, StringBuilder> customToolInputs,
+            int[] usageInputTokens,
+            int[] usageOutputTokens
     ) throws Exception {
         if ("[DONE]".equals(data.trim())) {
             return;
@@ -151,7 +161,7 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             return;
         }
 
-        handleCompleted(type, event, callback, text, reasoning, toolCallBuilders, customToolInputs);
+        handleCompleted(type, event, callback, text, reasoning, toolCallBuilders, customToolInputs, usageInputTokens, usageOutputTokens);
     }
 
     private void handleCompleted(
@@ -161,12 +171,19 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             StringBuilder text,
             StringBuilder reasoning,
             LinkedHashMap<String, CodexOutputMerger.ToolCallBuilder> toolCallBuilders,
-            HashMap<String, StringBuilder> customToolInputs
+            HashMap<String, StringBuilder> customToolInputs,
+            int[] usageInputTokens,
+            int[] usageOutputTokens
     ) throws Exception {
         if ("response.completed".equals(type)) {
             JSONObject response = event.optJSONObject("response");
             if (response != null) {
                 outputMerger.mergeOutputArray(response.optJSONArray("output"), text, reasoning, toolCallBuilders, customToolInputs, callback);
+                JSONObject usage = response.optJSONObject("usage");
+                if (usage != null) {
+                    usageInputTokens[0] = Math.max(usageInputTokens[0], usage.optInt("input_tokens", 0));
+                    usageOutputTokens[0] = Math.max(usageOutputTokens[0], usage.optInt("output_tokens", 0));
+                }
             }
             throw new SseStreamCompleteException();
         } else if ("response.output_item.done".equals(type) && event.has("response")) {

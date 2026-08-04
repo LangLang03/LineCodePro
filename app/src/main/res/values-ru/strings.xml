@@ -1,13 +1,11 @@
 <resources>
+        <string name="common_cancel">Отмена</string>
+    <string name="common_delete">Удалить</string>
     <string name="app_name">LineCode Pro</string>
     <string name="status_title_message">%1$s\n%2$s</string>
     <string name="theme_current_editing">Редактирование: %1$s</string>
-    <string name="shell_output_line_count">%1$d строк</string>
 
-    <string name="common_cancel">Отмена</string>
     <string name="common_confirm">Подтвердить</string>
-    <string name="common_delete">Удалить</string>
-    <string name="common_edit">Редактировать</string>
     <string name="common_save">Сохранить</string>
     <string name="common_reset">Сбросить</string>
     <string name="common_refresh">Обновить</string>
@@ -319,6 +317,8 @@
     <string name="screen_llm_section_learning">Обучение и память</string>
     <string name="screen_llm_learning_label">Режим обучения</string>
     <string name="screen_llm_learning_desc">Включить авто Skills, долгосрочную память, память проекта, краткосрочную память и индексацию чатов</string>
+    <string name="screen_llm_soft_compact_label">Мягкое сжатие</string>
+    <string name="screen_llm_soft_compact_desc">При включении ранняя история инкрементально сжимается в резюме при 50%% заполнении контекста; при выключении срабатывает только жёсткое сжатие на 80%% (в стиле codex)</string>
     <string name="screen_llm_section_tone">Тон общения</string>
     <string name="screen_llm_tone_coding">Режим кодинга</string>
     <string name="screen_llm_tone_chat">Режим чата</string>
@@ -707,26 +707,9 @@
     <string name="sheet_parent_dir">На уровень выше</string>
     <string name="in_app_browser_exit">Выход</string>
 
-    <string name="tool_call_shell_executing">Выполнение…</string>
-    <string name="tool_call_shell_failed">Сбой выполнения</string>
-    <string name="tool_call_shell_completed">Выполнено</string>
     <string name="tool_call_image_generation">Генерация изображения</string>
     <string name="tool_call_image_understanding">Понимание изображения</string>
-    <string name="tool_call_status_done">Готово</string>
-    <string name="tool_call_status_running">Выполняется</string>
-    <string name="tool_call_status_failed">Сбой</string>
-    <string name="tool_call_status_pending_review">Требует подтверждения</string>
-    <string name="tool_call_delete_confirm_title">Подтвердить удаление</string>
     <string name="tool_call_delete_confirm_message">Удалить этот элемент?</string>
-    <string name="tool_call_agent_running">Выполнение задачи…</string>
-    <string name="tool_call_agent_failed">Сбой задачи</string>
-    <string name="tool_call_agent_done">Задача выполнена</string>
-    <string name="tool_call_pipeline_running">Сборка Agent pipeline…</string>
-    <string name="tool_call_todo_empty">Пока нет элементов TODO. Используйте инструмент todo_update для ведения списка.</string>
-    <string name="tool_call_input">Ввод</string>
-    <string name="tool_call_progress">Прогресс</string>
-    <string name="tool_call_output">Вывод</string>
-    <string name="tool_call_diff_truncated">… (diff усечён, всего %1$d строк)</string>
 
     <string name="screen_about_title">О приложении</string>
     <string name="screen_about_section_version">Версия</string>
@@ -1002,6 +985,8 @@
     <string name="message_list_scroll_to_bottom_desc">Прокрутить вниз</string>
     <string name="message_list_configure_title">Сначала настройте модель</string>
     <string name="message_list_configure_desc">Откройте Настройки → Управление моделями → Добавить модель, затем отправьте сообщение.</string>
+    <string name="empty_state_add_model">Добавить модель</string>
+    <string name="empty_state_open_workspace">Открыть рабочее пространство</string>
 
     <string name="thinking_label">Размышления…</string>
     <string name="thinking_done_label">Размышления завершены</string>
@@ -1078,56 +1063,20 @@
     <string name="fallback_screen_licenses_title">Лицензии с открытым исходным кодом</string>
     <string name="sheet_attachment_selected_count">Выбрано %1$d файл(ов)</string>
 
-    <string name="tool_call_shell_full">Полный</string>
-    <string name="tool_call_shell_auto_run">Автозапуск</string>
-    <string name="tool_call_shell_skip">Пропустить</string>
-    <string name="tool_call_shell_run">Выполнить</string>
-    <string name="tool_call_shell_folded">[LineCode свёрнуто %1$d символов вывода shell]</string>
 
     <string name="tool_call_action_search">Поиск</string>
     <string name="tool_call_action_fetch">Загрузить</string>
     <string name="tool_call_action_match">Совпадение</string>
     <string name="tool_call_action_list_dir">Список каталога</string>
-    <string name="tool_call_action_read">Чтение</string>
-    <string name="tool_call_action_write">Запись</string>
     <string name="tool_call_action_agent">Агент</string>
     <string name="tool_call_agent_fetch_hint">Полный вывод: agent_output(agent_id=%1$s)</string>
 
-    <string name="tool_call_write_unnamed">Безымянный файл</string>
-    <string name="tool_call_write_revert">Отменить</string>
-    <string name="tool_call_write_accept">Принять</string>
-    <string name="tool_call_view_diff">Просмотреть Diff</string>
 
-    <string name="tool_call_delete_no_reason">Причина удаления не указана</string>
-    <string name="tool_call_delete_no_path">Путь удаления не указан</string>
-    <string name="tool_call_delete_pending">Удаление подтверждено, ожидание выполнения.</string>
-    <string name="tool_call_delete_rejected">Удаление отклонено.</string>
-    <string name="tool_call_delete_status_pending">Ожидание подтверждения</string>
-    <string name="tool_call_delete_status_rejected">Отклонено</string>
-    <string name="tool_call_delete_status_executed">Выполнено</string>
-    <string name="tool_call_delete_status_accepted">Подтверждено</string>
-    <string name="tool_call_delete_reject">Отклонить</string>
-    <string name="tool_call_delete_confirm">Подтвердить удаление</string>
-    <string name="tool_call_delete_count_suffix"> · %1$d элемент(ов)</string>
 
-    <string name="tool_call_agent_tool_count">%1$d инструментов</string>
-    <string name="tool_call_agent_type_explore">Исследование</string>
-    <string name="tool_call_agent_type_coding">Кодинг</string>
-    <string name="tool_call_agent_tool_calls_label">Вызовы инструментов</string>
 
-    <string name="tool_call_pipeline_title">Agent Pipeline</string>
-    <string name="tool_call_pipeline_completed">%1$d выполнено</string>
-    <string name="tool_call_pipeline_summary_running">%1$d выполняется</string>
-    <string name="tool_call_pipeline_summary_pending_review">%1$d требует подтверждения</string>
-    <string name="tool_call_pipeline_summary_waiting">%1$d ожидает</string>
-    <string name="tool_call_pipeline_summary_failed">%1$d сбоев</string>
-    <string name="tool_call_pipeline_status_waiting">Ожидание</string>
 
-    <string name="tool_call_block_mcp">MCP вызов</string>
 
-    <string name="tool_call_generic_mcp">MCP вызов</string>
 
-    <string name="tool_call_phone_action_default">Действие с телефоном</string>
 
     <!-- MainCoordinator agent messages -->
     <string name="message_generation_interrupted">Предыдущая генерация была прервана.</string>
@@ -1249,4 +1198,11 @@
     <string name="agent_fallback_role_coding_remote">Вы — Agent программирования в удалённой среде Shell (текущая рабочая область находится на удалённом SSH или в контейнере терминального провайдера; локальные file_read / file_write / file_edit / glob / list_dir могут быть недоступны).\nПравила:\n- Большинство работы должно выполняться через shell_execute: чтение через cat/ls/grep, запись через sed/awk/python heredoc или tee, проверка через cat.\n- Изменяйте только файлы или каталоги, указанные в write_scope; при отсутствии write_scope запись в файлы запрещена.</string>
     <string name="agent_fallback_role_explore_local">Вы — Agent исследования кода. Ваша задача — быстро находить и анализировать код.\nПравила:\n- Только чтение кода, не вносите никаких изменений и не вызывайте инструменты записи.\n- Предпочитайте инструменты только для чтения для поиска и чтения ключевых файлов; вы можете использовать shell_execute для выполнения команд только для чтения.\n- Давайте краткие и точные ответы.</string>
     <string name="agent_fallback_role_coding_local">Вы — Agent программирования. Ваша задача — выполнение чётко ограниченных подзадач программирования.\nПравила:\n- Изменяйте только файлы или каталоги, указанные в write_scope; при отсутствии write_scope запись в файлы запрещена.\n- Предпочитайте file_read / file_write / file_edit / glob / list_dir для выполнения работы; используйте shell_execute только когда файловые инструменты действительно не могут справиться.</string>
+    <string name="screen_output_section_toolcall">UI вызовов инструментов</string>
+    <string name="screen_output_toolcall_preview_label">Предпросмотр карточек вызовов</string>
+    <string name="screen_output_toolcall_preview_desc">Просмотр всех карточек инструментов с тестовыми данными</string>
+    <string name="screen_toolcall_preview_title">Карточки вызовов инструментов</string>
+    <string name="toolcall_preview_section_note">Тестовые данные — состояния не отражают реальные запуски инструментов.</string>
+    <string name="settings_row_tutorial_title">Руководство</string>
+    <string name="settings_row_tutorial_desc">От новичка до профи: модели, рабочее пространство, Termux, SSH и MCP</string>
 </resources>

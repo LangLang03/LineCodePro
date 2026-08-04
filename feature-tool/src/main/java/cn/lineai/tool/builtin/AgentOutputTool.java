@@ -1,4 +1,5 @@
 package cn.lineai.tool.builtin;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.R;
@@ -7,7 +8,6 @@ import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolNames;
-import cn.lineai.tool.ToolResult;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;

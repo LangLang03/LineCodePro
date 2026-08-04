@@ -22,7 +22,7 @@ public final class ExecutionModeFileStoreRegistry {
         stores.put(mode, store);
     }
 
-    public void setDefaultMode(String mode) {
+    public void useDefaultMode(String mode) {
         if (mode != null) {
             this.defaultMode = mode;
         }

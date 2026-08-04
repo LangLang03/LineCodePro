@@ -1,9 +1,9 @@
 package cn.lineai.ui.markdown;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.view.View;
 import android.widget.LinearLayout;
-import cn.lineai.ui.theme.LineTheme;
 import org.commonmark.node.BlockQuote;
 import org.commonmark.node.BulletList;
 import org.commonmark.node.Document;

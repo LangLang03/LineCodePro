@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.app.Dialog;
 import android.content.Context;
@@ -15,7 +17,6 @@ import cn.lineai.R;
 import cn.lineai.ipc.IpcProviderConfig;
 import cn.lineai.ipc.IpcProviderType;
 import cn.lineai.ipc.ScannedProvider;
-import cn.lineai.ui.theme.LineTheme;
 import java.util.List;
 
 public final class TerminalProviderDetailScreenView extends ScreenScaffoldView {

@@ -1,4 +1,5 @@
 package cn.lineai.mvp;
+import cn.lineai.model.tool.ToolCall;
 
 import android.content.Context;
 import cn.lineai.data.repository.AiBehaviorSettingsRepository;
@@ -8,7 +9,6 @@ import cn.lineai.data.repository.LearningContextStore;
 import cn.lineai.data.repository.MessageRecord;
 import cn.lineai.model.ChatMessage;
 import cn.lineai.model.InputAttachment;
-import cn.lineai.tool.ToolCall;
 import java.util.ArrayList;
 import org.json.JSONArray;
 import org.json.JSONObject;

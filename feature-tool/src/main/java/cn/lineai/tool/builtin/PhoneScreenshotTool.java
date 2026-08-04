@@ -1,4 +1,5 @@
 package cn.lineai.tool.builtin;
+import cn.lineai.model.tool.ToolResult;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -8,7 +9,6 @@ import cn.lineai.tool.PhoneControlService;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
-import cn.lineai.tool.ToolResult;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.util.Locale;
@@ -108,5 +108,10 @@ public final class PhoneScreenshotTool extends BaseTool {
             }
             bitmap.recycle();
         }
+    }
+
+    @Override
+    public Class<? extends cn.lineai.tool.ToolCallCardView> getToolCallViewClass() {
+        return cn.lineai.tool.ui.ToolCallReadView.class;
     }
 }

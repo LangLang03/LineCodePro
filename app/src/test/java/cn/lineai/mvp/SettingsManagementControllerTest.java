@@ -126,7 +126,7 @@ public final class SettingsManagementControllerTest {
         @Override
         public AiBehaviorSettings getAiBehaviorSettings() {
             return new AiBehaviorSettings(toneMode, thinkingScrollEnabled, false,
-                    AiBehaviorSettings.REASONING_MEDIUM, false, false);
+                    AiBehaviorSettings.REASONING_MEDIUM, false, false, true);
         }
 
         @Override
@@ -153,6 +153,10 @@ public final class SettingsManagementControllerTest {
 
         @Override
         public void setLearningModeEnabled(boolean enabled) {
+        }
+
+        @Override
+        public void setSoftCompactionEnabled(boolean enabled) {
         }
 
         @Override

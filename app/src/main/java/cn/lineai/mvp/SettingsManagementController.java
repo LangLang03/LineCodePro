@@ -1,4 +1,5 @@
 package cn.lineai.mvp;
+import cn.lineai.ui.theme.LineTheme;
 
 import cn.lineai.data.repository.AiBehaviorSettingsRepository;
 import cn.lineai.data.repository.InputSettingsRepository;
@@ -16,7 +17,6 @@ import cn.lineai.model.OutputSettings;
 import cn.lineai.model.PromptTemplateItem;
 import cn.lineai.model.ThemeSettingsState;
 import cn.lineai.model.WebSearchConfig;
-import cn.lineai.ui.theme.LineTheme;
 import java.util.List;
 import java.util.Map;
 
@@ -49,6 +49,8 @@ public final class SettingsManagementController {
         void setPreserveReasoningEnabled(boolean enabled);
 
         void setLearningModeEnabled(boolean enabled);
+
+        void setSoftCompactionEnabled(boolean enabled);
 
         InputSettings getInputSettings();
 
@@ -168,6 +170,11 @@ public final class SettingsManagementController {
         @Override
         public void setLearningModeEnabled(boolean enabled) {
             aiBehaviorSettingsRepository.setLearningModeEnabled(enabled);
+        }
+
+        @Override
+        public void setSoftCompactionEnabled(boolean enabled) {
+            aiBehaviorSettingsRepository.setSoftCompactionEnabled(enabled);
         }
 
         @Override
@@ -368,6 +375,10 @@ public final class SettingsManagementController {
 
     public void setAiLearningModeEnabled(boolean enabled) {
         settingsStore.setLearningModeEnabled(enabled);
+    }
+
+    public void setAiSoftCompactionEnabled(boolean enabled) {
+        settingsStore.setSoftCompactionEnabled(enabled);
     }
 
     public InputSettings getInputSettings() {

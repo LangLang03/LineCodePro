@@ -15,7 +15,7 @@ public class ChatMessagesTest {
             new ChatMessage("2", ChatMessage.Role.ASSISTANT, "Hi there", false)
         );
         String md = ChatMessages.toMarkdown(messages);
-        assertTrue(md.contains("## 我"));
+        assertTrue(md.contains("## Me"));
         assertTrue(md.contains("Hello"));
         assertTrue(md.contains("## AI"));
         assertTrue(md.contains("Hi there"));
@@ -28,7 +28,7 @@ public class ChatMessagesTest {
             new ChatMessage("1", ChatMessage.Role.USER, "Test message", false)
         );
         String text = ChatMessages.toPlainText(messages);
-        assertTrue(text.contains("【我】"));
+        assertTrue(text.contains("【Me】"));
         assertTrue(text.contains("Test message"));
         assertTrue(text.contains(ChatMessages.FOOTER_PLAIN));
     }

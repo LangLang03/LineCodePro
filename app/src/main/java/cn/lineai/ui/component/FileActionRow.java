@@ -1,4 +1,5 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.app.Dialog;
 import android.content.Context;
@@ -9,7 +10,6 @@ import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import cn.lineai.model.SheetOption;
-import cn.lineai.ui.theme.LineTheme;
 
 /**
  * Builds the tappable row used inside the "file action" dialog shown by

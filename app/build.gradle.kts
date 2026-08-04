@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
-val releaseVersionName = "1.2.4"
+val releaseVersionName = "1.2.5"
 val releaseApkName = "LineCode Pro $releaseVersionName.APK"
 val releaseIdsigName = "$releaseApkName.idsig"
 val releaseSigningProperties = Properties()
@@ -102,8 +102,8 @@ android {
     defaultConfig {
         applicationId = "cn.lineai"
         minSdk = 26
-        targetSdk = 36
-        versionCode = 27
+        targetSdk = 37
+        versionCode = 28
         versionName = releaseVersionName
     }
 
@@ -236,6 +236,7 @@ dependencies {
     implementation(project(":feature-model"))
     implementation(project(":ui-theme"))
     implementation(project(":markdown"))
+    implementation(project(":tool-ui"))
     testImplementation(libs.junit)
     testImplementation(libs.json)
 }

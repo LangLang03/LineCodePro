@@ -1,4 +1,5 @@
 package cn.lineai.tool;
+import cn.lineai.model.tool.ToolResult;
 
 import org.junit.Assert;
 import org.junit.Test;

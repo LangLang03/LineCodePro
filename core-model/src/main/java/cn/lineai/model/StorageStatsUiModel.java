@@ -2,20 +2,82 @@ package cn.lineai.model;
 
 /**
  * UI layer representation of storage statistics, decoupled from StorageStatsRepository.
+ * Immutable snapshot: all fields final, no setters.
  */
 public final class StorageStatsUiModel {
-    public long totalSize = 0;
-    public int totalCount = 0;
-    public long diffCacheSize = 0;
-    public int diffCacheCount = 0;
-    public long chatSize = 0;
-    public int chatCount = 0;
-    public long configSize = 0;
-    public int configCount = 0;
-    public long homeSize = 0;
-    public int homeCount = 0;
+    private final long totalSize;
+    private final int totalCount;
+    private final long diffCacheSize;
+    private final int diffCacheCount;
+    private final long chatSize;
+    private final int chatCount;
+    private final long configSize;
+    private final int configCount;
+    private final long homeSize;
+    private final int homeCount;
 
-    public StorageStatsUiModel() {
+    public StorageStatsUiModel(
+            long totalSize,
+            int totalCount,
+            long diffCacheSize,
+            int diffCacheCount,
+            long chatSize,
+            int chatCount,
+            long configSize,
+            int configCount,
+            long homeSize,
+            int homeCount
+    ) {
+        this.totalSize = totalSize;
+        this.totalCount = totalCount;
+        this.diffCacheSize = diffCacheSize;
+        this.diffCacheCount = diffCacheCount;
+        this.chatSize = chatSize;
+        this.chatCount = chatCount;
+        this.configSize = configSize;
+        this.configCount = configCount;
+        this.homeSize = homeSize;
+        this.homeCount = homeCount;
+    }
+
+    public long getTotalSize() {
+        return totalSize;
+    }
+
+    public int getTotalCount() {
+        return totalCount;
+    }
+
+    public long getDiffCacheSize() {
+        return diffCacheSize;
+    }
+
+    public int getDiffCacheCount() {
+        return diffCacheCount;
+    }
+
+    public long getChatSize() {
+        return chatSize;
+    }
+
+    public int getChatCount() {
+        return chatCount;
+    }
+
+    public long getConfigSize() {
+        return configSize;
+    }
+
+    public int getConfigCount() {
+        return configCount;
+    }
+
+    public long getHomeSize() {
+        return homeSize;
+    }
+
+    public int getHomeCount() {
+        return homeCount;
     }
 
     public String formatSize(long bytes) {

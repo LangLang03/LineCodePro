@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -15,7 +17,6 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import cn.lineai.R;
 import cn.lineai.security.UrlPolicy;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class InAppBrowserScreenView extends LinearLayout {
     public interface Listener {

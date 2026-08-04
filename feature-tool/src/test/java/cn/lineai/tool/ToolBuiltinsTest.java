@@ -1,4 +1,5 @@
 package cn.lineai.tool;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.data.repository.WebSearchConfigRepository;
 import cn.lineai.model.WebSearchConfig;
@@ -11,6 +12,8 @@ import cn.lineai.tool.builtin.AgentTool;
 import cn.lineai.tool.builtin.AgentPipelineTool;
 import cn.lineai.tool.builtin.WebSearchTool;
 import cn.lineai.tool.builtin.WebFetchTool;
+import cn.lineai.tool.builtin.TodoUpdateTool;
+import cn.lineai.tool.builtin.ListDirectoryTool;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -324,5 +327,20 @@ public final class ToolBuiltinsTest {
             .homePath(folder.getRoot().getAbsolutePath())
             .stringResolver(new FakeResourceContext())
             .build();
+    }
+
+    @Test
+    public void builtinToolsDeclareViewClasses() {
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallReadView.class, new FileReadTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallWriteView.class, new FileWriteTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallWriteView.class, new FileEditTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallDeleteView.class, new FileDeleteTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallReadView.class, new GlobTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallReadView.class, new ListDirectoryTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallAgentView.class, new AgentTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallAgentPipelineView.class, new AgentPipelineTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallTodoView.class, new TodoUpdateTool().getToolCallViewClass());
+        Assert.assertNull(new WebFetchTool().getToolCallViewClass());
+        Assert.assertNull(new WebSearchTool(new cn.lineai.data.repository.WebSearchConfigRepository(null)).getToolCallViewClass());
     }
 }

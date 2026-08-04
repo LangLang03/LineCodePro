@@ -1,4 +1,5 @@
 package cn.lineai.ui.markdown;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -13,7 +14,6 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import cn.lineai.ui.markdown.R;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class MarkdownCodeBlockView extends LinearLayout {
     public MarkdownCodeBlockView(Context context, String code, String language) {

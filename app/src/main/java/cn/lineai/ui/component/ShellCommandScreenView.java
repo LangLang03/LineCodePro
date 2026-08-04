@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Canvas;
@@ -9,7 +11,6 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import cn.lineai.R;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class ShellCommandScreenView extends LinearLayout {
     public interface Listener {

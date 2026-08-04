@@ -1,11 +1,11 @@
 package cn.lineai.tool.builtin;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
-import cn.lineai.tool.ToolResult;
 import java.util.ArrayList;
 import java.util.HashSet;
 import org.json.JSONArray;
@@ -202,5 +202,10 @@ public final class AgentPipelineTool extends BaseTool {
             this.scope = scope == null ? "" : scope;
             this.originalScope = originalScope == null ? "" : originalScope;
         }
+    }
+
+    @Override
+    public Class<? extends cn.lineai.tool.ToolCallCardView> getToolCallViewClass() {
+        return cn.lineai.tool.ui.ToolCallAgentPipelineView.class;
     }
 }

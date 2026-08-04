@@ -1,4 +1,5 @@
 package cn.lineai.data.repository;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.ai.prompt.ToolPromptRenderer;
 import cn.lineai.model.McpToolConfig;
@@ -10,7 +11,6 @@ import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolDisplayResolver;
 import cn.lineai.tool.ToolInfo;
 import cn.lineai.tool.ToolRegistry;
-import cn.lineai.tool.ToolResult;
 import java.lang.reflect.Field;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;

@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Typeface;
@@ -8,7 +10,6 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import cn.lineai.R;
 import cn.lineai.model.ChatMessage;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class ContextCompactBlockView extends LinearLayout {
     private final IconButtonView icon;

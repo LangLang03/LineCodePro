@@ -1,4 +1,5 @@
 package cn.lineai.tool;
+import cn.lineai.model.tool.ToolResult;
 
 import android.content.Context;
 import org.json.JSONObject;
@@ -51,6 +52,17 @@ public abstract class BaseTool implements ToolInfo {
 
     public int getActionIcon() {
         return 0;
+    }
+
+    /**
+     * 声明本工具使用的 ToolCall 卡片视图实现类（:tool-ui 模块）。
+     * <p>子类覆写返回对应的视图类；返回 null 时按 {@link #getDisplayCategory()}
+     * 回退到默认分类视图。需要依赖注入（如 DiffLoader）的视图由
+     * ToolCallViewFactoryRegistry 中注册的处理器创建。</p>
+     */
+    @Override
+    public Class<? extends cn.lineai.tool.ToolCallCardView> getToolCallViewClass() {
+        return null;
     }
 
     public boolean isConcurrencySafe() {

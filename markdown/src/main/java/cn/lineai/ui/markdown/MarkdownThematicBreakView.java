@@ -1,8 +1,8 @@
 package cn.lineai.ui.markdown;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.view.View;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class MarkdownThematicBreakView extends View {
     public MarkdownThematicBreakView(Context context) {

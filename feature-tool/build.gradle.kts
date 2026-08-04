@@ -13,5 +13,6 @@ dependencies {
     implementation(project(":data"))
     implementation(project(":ipc"))
     implementation(project(":feature-ssh"))
+    implementation(project(":tool-ui"))
     api(libs.json)
 }

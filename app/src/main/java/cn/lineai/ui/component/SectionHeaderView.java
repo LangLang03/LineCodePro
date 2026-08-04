@@ -1,8 +1,8 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.widget.TextView;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class SectionHeaderView extends TextView {
     public SectionHeaderView(Context context, String title) {

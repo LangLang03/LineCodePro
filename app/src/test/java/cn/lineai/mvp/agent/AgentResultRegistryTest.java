@@ -102,11 +102,11 @@ public final class AgentResultRegistryTest {
     }
 
     @Test
-    public void setFullOutputMarksDoneAndStoresBody() {
+    public void updateFullOutputMarksDoneAndStoresBody() {
         AgentResultRegistry registry = new AgentResultRegistry();
         String id = registry.allocateId();
         registry.put(AgentResultRecord.running(id, "tc", "agent", "explore", "job", false, 1));
-        registry.setFullOutput(id, "full agent answer body", "think", "{\"progress\":true}", 4);
+        registry.updateFullOutput(id, "full agent answer body", "think", "{\"progress\":true}", 4);
 
         AgentResultRecord loaded = registry.getRecord(id);
         assertNotNull(loaded);

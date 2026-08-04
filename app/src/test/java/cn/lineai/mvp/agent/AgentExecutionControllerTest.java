@@ -1,4 +1,6 @@
 package cn.lineai.mvp.agent;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -13,10 +15,8 @@ import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolInfo;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
-import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolExecutor;
 import cn.lineai.tool.ToolRegistry;
-import cn.lineai.tool.ToolResult;
 import cn.lineai.tool.builtin.AgentTool;
 import java.util.Collection;
 import java.util.Collections;
@@ -321,19 +321,19 @@ public final class AgentExecutionControllerTest {
     @Test
     public void snapshotResultPropagatesStatusToOuterReviewState() {
         AgentProgressSession progress = new AgentProgressSession(1, "agent_call", "agent", AgentTool.TYPE_SUB_CODING, "run shell");
-        progress.setStatus("pending", false);
+        progress.markStatus("pending", false);
         ToolResult pending = progress.snapshotResult();
         assertEquals("pending", pending.getReviewState());
 
-        progress.setStatus("running", false);
+        progress.markStatus("running", false);
         ToolResult running = progress.snapshotResult();
         assertEquals("running", running.getReviewState());
 
-        progress.setFinished("done", false, "");
+        progress.markFinished("done", false, "");
         ToolResult done = progress.snapshotResult();
         assertEquals("done", done.getReviewState());
 
-        progress.setFinished("error", true, "");
+        progress.markFinished("error", true, "");
         ToolResult error = progress.snapshotResult();
         assertEquals("error", error.getReviewState());
     }

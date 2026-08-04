@@ -1,7 +1,7 @@
 package cn.lineai.mvp.agent;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
-import cn.lineai.tool.ToolCall;
-import cn.lineai.tool.ToolResult;
 import java.util.ArrayList;
 
 public final class ToolExecutionBatch {

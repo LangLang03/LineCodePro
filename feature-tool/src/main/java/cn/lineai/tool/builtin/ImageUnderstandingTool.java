@@ -1,4 +1,5 @@
 package cn.lineai.tool.builtin;
+import cn.lineai.model.tool.ToolResult;
 
 import android.content.Context;
 import cn.lineai.data.repository.PromptTemplateRepository;
@@ -16,7 +17,6 @@ import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
-import cn.lineai.tool.ToolResult;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -306,5 +306,10 @@ public final class ImageUnderstandingTool extends BaseTool {
             return value;
         }
         return "image/png";
+    }
+
+    @Override
+    public Class<? extends cn.lineai.tool.ToolCallCardView> getToolCallViewClass() {
+        return cn.lineai.tool.ui.ToolCallReadView.class;
     }
 }

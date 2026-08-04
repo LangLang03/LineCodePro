@@ -1,6 +1,6 @@
 package cn.lineai.ai.protocol;
+import cn.lineai.model.tool.ToolCall;
 
-import cn.lineai.tool.ToolCall;
 
 public abstract class AbstractToolCallBuilder {
     protected String id = "";

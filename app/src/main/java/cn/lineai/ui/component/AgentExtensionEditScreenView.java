@@ -1,4 +1,6 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.app.Dialog;
 import android.content.Context;
@@ -20,7 +22,6 @@ import cn.lineai.model.ExtensionMcpConfig;
 import cn.lineai.model.McpToolConfig;
 import cn.lineai.model.McpToolSummary;
 import cn.lineai.tool.BaseTool;
-import cn.lineai.ui.theme.LineTheme;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;

@@ -1,11 +1,11 @@
 package cn.lineai.mvp;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.model.ChatMessage;
 import cn.lineai.model.MessageContentSanitizer;
 import cn.lineai.tool.BaseTool;
-import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolRegistry;
-import cn.lineai.tool.ToolResult;
 import java.util.ArrayList;
 import java.util.List;
 import org.json.JSONArray;

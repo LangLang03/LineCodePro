@@ -1,4 +1,5 @@
 package cn.lineai.ui;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.app.Dialog;
 import android.content.Context;
@@ -72,7 +73,6 @@ import cn.lineai.ui.component.TextSelectionDialog;
 import cn.lineai.ui.component.ThemeSettingsScreenView;
 import cn.lineai.ui.component.ToolSettingsScreenView;
 import cn.lineai.ui.component.TutorialScreenView;
-import cn.lineai.ui.theme.LineTheme;
 import cn.lineai.ui.util.KeyboardController;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -188,7 +188,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         ));
 
         messageListView = new ChatMessageListView(context);
-        messageListView.setToolReviewListener(new cn.lineai.ui.component.toolcall.ToolReviewListener() {
+        messageListView.setToolReviewListener(new cn.lineai.tool.ToolReviewListener() {
             @Override
             public void onToolReview(String toolCallId, String state, String diffId) {
                 MainChatView.this.presenter.onToolReview(toolCallId, state, diffId);
@@ -248,6 +248,17 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             @Override
             public void onMultiSelectExit() {
                 messageListView.exitMultiSelectMode();
+            }
+        });
+        messageListView.setEmptyStateListener(new ChatMessageListView.EmptyStateListener() {
+            @Override
+            public void onAddModel() {
+                MainChatView.this.presenter.showModelManagement();
+            }
+
+            @Override
+            public void onOpenWorkspace() {
+                MainChatView.this.presenter.onProjectClick();
             }
         });
 
@@ -428,6 +439,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         screenRegistry.register(new ScreenFactories.ToolSettingsScreenFactory());
         screenRegistry.register(new ScreenFactories.McpSettingsScreenFactory());
         screenRegistry.register(new ScreenFactories.OutputSettingsScreenFactory());
+        screenRegistry.register(new ScreenFactories.ToolCallPreviewScreenFactory());
         screenRegistry.register(new ScreenFactories.SecuritySettingsScreenFactory());
         screenRegistry.register(new ScreenFactories.ThemeSettingsScreenFactory());
         screenRegistry.register(new ScreenFactories.DataSettingsScreenFactory());
@@ -442,6 +454,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         screenRegistry.register(new ScreenFactories.AboutScreenFactory());
         screenRegistry.register(new ScreenFactories.LicensesScreenFactory());
         screenRegistry.register(new ScreenFactories.TutorialScreenFactory());
+        screenRegistry.register(new ScreenFactories.TutorialFromSettingsScreenFactory());
         screenRegistry.register(new ScreenFactories.ModelListScreenFactory());
         screenRegistry.register(new ScreenFactories.ImageUnderstandingModelScreenFactory());
         screenRegistry.register(new ScreenFactories.ImageGenerationModelScreenFactory());

@@ -1,4 +1,5 @@
 package cn.lineai.mvp;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -9,6 +10,7 @@ import cn.lineai.ai.protocol.OpenAiResponsesCompactionProtocol;
 import cn.lineai.context.ContextCompactionService;
 import cn.lineai.context.ContextManager;
 import cn.lineai.context.MemoryExtractionService;
+import cn.lineai.context.TokenUsageTracker;
 import cn.lineai.data.db.LineCodeDatabase;
 import cn.lineai.data.importer.LineCodeArchiveService;
 import cn.lineai.data.repository.AiBehaviorSettingsRepository;
@@ -46,7 +48,6 @@ import cn.lineai.data.repository.ThemeSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsRepository;
 import cn.lineai.resource.ResourceProvider;
 import cn.lineai.resource.SystemConfigProvider;
-import cn.lineai.ui.theme.LineTheme;
 import cn.lineai.data.repository.ToolSettingsStore;
 import cn.lineai.log.ErrorLogRepository;
 import cn.lineai.ipc.IpcProviderManager;
@@ -62,17 +63,17 @@ import cn.lineai.tool.ToolExecutor;
 import cn.lineai.tool.ToolInfo;
 import cn.lineai.tool.ToolPromptRenderer;
 import cn.lineai.tool.ToolRegistry;
-import cn.lineai.ui.component.toolcall.AgentPipelineToolCallViewFactory;
-import cn.lineai.ui.component.toolcall.AgentToolCallViewFactory;
-import cn.lineai.ui.component.toolcall.DeleteToolCallViewFactory;
-import cn.lineai.ui.component.toolcall.GenericToolCallViewFactory;
-import cn.lineai.ui.component.toolcall.ImageGenerationToolCallViewFactory;
-import cn.lineai.ui.component.toolcall.PhoneControlToolCallViewFactory;
-import cn.lineai.ui.component.toolcall.ReadToolCallViewFactory;
-import cn.lineai.ui.component.toolcall.ShellToolCallViewFactory;
-import cn.lineai.ui.component.toolcall.TodoToolCallViewFactory;
-import cn.lineai.ui.component.toolcall.ToolCallViewFactoryRegistry;
-import cn.lineai.ui.component.toolcall.WriteToolCallViewFactory;
+import cn.lineai.tool.ui.AgentPipelineToolCallViewFactory;
+import cn.lineai.tool.ui.AgentToolCallViewFactory;
+import cn.lineai.tool.ui.DeleteToolCallViewFactory;
+import cn.lineai.tool.ui.GenericToolCallViewFactory;
+import cn.lineai.tool.ui.ImageGenerationToolCallViewFactory;
+import cn.lineai.tool.ui.PhoneControlToolCallViewFactory;
+import cn.lineai.tool.ui.ReadToolCallViewFactory;
+import cn.lineai.tool.ui.ShellToolCallViewFactory;
+import cn.lineai.tool.ui.TodoToolCallViewFactory;
+import cn.lineai.tool.ui.ToolCallViewFactoryRegistry;
+import cn.lineai.tool.ui.WriteToolCallViewFactory;
 import cn.lineai.workspace.SafPathResolver;
 import cn.lineai.workspace.WorkspacePaths;
 import cn.lineai.workspace.StoragePermissionManager;
@@ -105,6 +106,7 @@ public final class MainDependencies {
     final ContextManager contextManager;
     final ContextCompactionService contextCompactionService;
     final ModelClient modelClient;
+    final TokenUsageTracker tokenUsageTracker;
     final ToolRegistry toolRegistry;
     final ToolExecutor toolExecutor;
     final ToolExecutionCoordinator toolExecutionCoordinator;
@@ -160,7 +162,7 @@ public final class MainDependencies {
                 LineCodeAccessibilityService.getReadyInstance(context),
                 ctx -> LineCodeAccessibilityService.isServiceEnabled(ctx));
         ToolCategoryResolver categoryResolver =
-                toolName -> cn.lineai.ui.component.toolcall.ToolCallUtils.getDisplayCategory(toolName);
+                toolName -> cn.lineai.tool.ui.ToolCallUtils.getDisplayCategory(toolName);
         WebSearchConfigRepository webSearchConfigRepository = new WebSearchConfigRepository(settingsRepository);
         ToolSettingsRepository toolSettingsRepo = new ToolSettingsRepository(resourceProvider, settingsRepository, webSearchConfigRepository, phoneControlRepository, categoryResolver);
         toolSettingsRepository = toolSettingsRepo;
@@ -188,11 +190,13 @@ public final class MainDependencies {
         ipcFileTreeRepository = new IpcFileTreeRepository(ipcProviderManager);
         contextManager = new ContextManager();
         modelClient = new ModelClient();
+        tokenUsageTracker = new TokenUsageTracker();
         contextCompactionService = new ContextCompactionService(
                 modelClient,
                 new OpenAiResponsesCompactionProtocol(),
                 new CodexResponsesProtocol(),
-                promptTemplateRepository);
+                promptTemplateRepository,
+                tokenUsageTracker);
         toolRegistry = new ToolRegistry(context, ipcProviderManager);
         toolRegistry.setExtensionStore((ExtensionStore) extensionRepository);
         toolSettingsRepo.setToolRegistry(toolRegistry);
@@ -214,8 +218,9 @@ public final class MainDependencies {
         cn.lineai.ai.prompt.ToolPromptService toolPromptService = new cn.lineai.ai.prompt.ToolPromptService(toolSettingsRepository, toolRegistry, promptRenderer);
         toolSettingsRepo.setToolPromptService(toolPromptService);
         cn.lineai.tool.ToolDisplayResolver.setDefault(new cn.lineai.tool.ToolDisplayResolver(toolRegistry));
+        cn.lineai.tool.ui.ToolInfoResolverProvider.setDefault(cn.lineai.tool.ToolDisplayResolver.getDefault());
         toolCallViewFactoryRegistry = createToolCallViewFactoryRegistry();
-        cn.lineai.ui.component.toolcall.ToolCallViewFactoryRegistry.setDefault(toolCallViewFactoryRegistry);
+        cn.lineai.tool.ui.ToolCallViewFactoryRegistry.setDefault(toolCallViewFactoryRegistry);
         toolExecutor = new ToolExecutor(toolRegistry, toolSettingsRepository, new cn.lineai.tool.DiffRecorder(diffRepository),
                 (ModelStore) modelRepository, sshFileTreeRepository, new cn.lineai.ai.DefaultModelServiceProvider(),
                 promptTemplateRepository, learningContextRepository);
@@ -240,7 +245,7 @@ public final class MainDependencies {
     }
 
     private ToolCallViewFactoryRegistry createToolCallViewFactoryRegistry() {
-        cn.lineai.ui.component.toolcall.DiffLoader diffLoader =
+        cn.lineai.tool.ui.DiffLoader diffLoader =
                 diffId -> {
                     cn.lineai.data.repository.DiffRecord r = diffRepository.getDiff(diffId);
                     if (r == null) return null;
@@ -257,6 +262,15 @@ public final class MainDependencies {
         registry.register(new WriteToolCallViewFactory(diffLoader));
         registry.register(new DeleteToolCallViewFactory());
         registry.register(new GenericToolCallViewFactory());
+        // 按工具声明的视图类绑定（BaseTool.getToolCallViewClass()）；未声明视图类的工具走分类回退。
+        registry.register(cn.lineai.tool.ui.ToolCallReadView.class, new ReadToolCallViewFactory());
+        registry.register(cn.lineai.tool.ui.ToolCallWriteView.class, new WriteToolCallViewFactory(diffLoader));
+        registry.register(cn.lineai.tool.ui.ToolCallShellView.class, new ShellToolCallViewFactory());
+        registry.register(cn.lineai.tool.ui.ToolCallDeleteView.class, new DeleteToolCallViewFactory());
+        registry.register(cn.lineai.tool.ui.ToolCallTodoView.class, new TodoToolCallViewFactory());
+        registry.register(cn.lineai.tool.ui.ToolCallAgentView.class, new AgentToolCallViewFactory());
+        registry.register(cn.lineai.tool.ui.ToolCallAgentPipelineView.class, new AgentPipelineToolCallViewFactory());
+        registry.register(cn.lineai.tool.ui.ToolCallGenericView.class, new GenericToolCallViewFactory());
         return registry;
     }
 

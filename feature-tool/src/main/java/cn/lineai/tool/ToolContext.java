@@ -1,4 +1,5 @@
 package cn.lineai.tool;
+import cn.lineai.model.tool.ToolResult;
 
 import android.content.Context;
 import cn.lineai.data.repository.LearningContextStore;

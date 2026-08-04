@@ -1,9 +1,9 @@
 package cn.lineai.ui.markdown;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Typeface;
 import android.widget.TextView;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class MarkdownTextBlockView extends TextView {
     public MarkdownTextBlockView(Context context, CharSequence text, int sizeSp, boolean heading) {

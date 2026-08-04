@@ -1,4 +1,5 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
@@ -11,7 +12,6 @@ import android.widget.LinearLayout;
 import android.widget.Switch;
 import android.widget.TextView;
 import cn.lineai.R;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class ModelFormHelper {
 

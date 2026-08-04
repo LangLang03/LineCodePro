@@ -1,9 +1,9 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.view.View;
 import android.widget.LinearLayout;
-import cn.lineai.ui.theme.LineTheme;
 
 public final class SettingsSectionView extends LinearLayout {
     private final SectionHeaderView header;

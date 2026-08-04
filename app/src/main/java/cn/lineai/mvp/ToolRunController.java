@@ -1,12 +1,12 @@
 package cn.lineai.mvp;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.data.repository.ToolSettingsStore;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.PermissionResult;
-import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolExecutionCoordinator;
 import cn.lineai.tool.ToolRegistry;
-import cn.lineai.tool.ToolResult;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;

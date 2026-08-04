@@ -16,10 +16,10 @@ import cn.lineai.log.ErrorLog;
 import cn.lineai.mvp.MainCoordinator;
 import cn.lineai.mvp.MainDependencies;
 import cn.lineai.ui.MainChatView;
+import cn.lineai.ui.theme.LineTheme;
 import cn.lineai.ui.component.PermissionUiHelper;
 import cn.lineai.ui.component.SafPickerDelegate;
 import cn.lineai.ui.component.UserAgreementDialog;
-import cn.lineai.ui.theme.LineTheme;
 import cn.lineai.tool.builtin.PhoneScreenshotCache;
 
 @SuppressWarnings("deprecation")

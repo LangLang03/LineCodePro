@@ -1,4 +1,6 @@
 package cn.lineai.mvp;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.ai.ModelCancellationToken;
 import cn.lineai.ai.ModelClient;
@@ -8,6 +10,7 @@ import cn.lineai.ai.ModelRequestOptions;
 import cn.lineai.ai.ModelStreamCallback;
 import cn.lineai.ai.ToolCallTextParser;
 import cn.lineai.ai.message.ModelMessage;
+import cn.lineai.context.TokenUsageTracker;
 import cn.lineai.data.repository.AiBehaviorSettingsRepository;
 import cn.lineai.data.repository.ExtensionStore;
 
@@ -20,12 +23,10 @@ import cn.lineai.mvp.agent.AgentProgressSession;
 import cn.lineai.mvp.agent.PendingToolExecution;
 import cn.lineai.mvp.agent.ToolExecutionBatch;
 import cn.lineai.state.TodoStateStore;
-import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolExecutor;
 import cn.lineai.tool.ToolExecutionCoordinator;
 import cn.lineai.tool.ToolRegistry;
-import cn.lineai.tool.ToolResult;
 import cn.lineai.util.StringUtils;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -86,6 +87,8 @@ final class GenerationFlowController {
     private final ToolConfirmationController toolConfirmationController;
     private final ToolExecutionScheduler toolExecutionScheduler;
     private final StreamingRenderController streamingRenderController;
+    private final ContextCompactionController contextCompactionController;
+    private final TokenUsageTracker tokenUsageTracker;
     private java.util.function.BooleanSupplier bypassPathProtectionSupplier = () -> false;
     private final AgentExecutionController.Host agentHost = new AgentExecutionController.Host() {
         @Override
@@ -239,6 +242,8 @@ final class GenerationFlowController {
             TodoStateStore todoStateStore,
             MainThreadDispatcher mainThread,
             BackgroundTaskRunner backgroundTasks,
+            ContextCompactionController contextCompactionController,
+            TokenUsageTracker tokenUsageTracker,
             Host host
     ) {
         this(
@@ -257,6 +262,8 @@ final class GenerationFlowController {
                 todoStateStore,
                 mainThread,
                 backgroundTasks,
+                contextCompactionController,
+                tokenUsageTracker,
                 host
         );
     }
@@ -277,6 +284,8 @@ final class GenerationFlowController {
             TodoStateStore todoStateStore,
             MainThreadDispatcher mainThread,
             BackgroundTaskRunner backgroundTasks,
+            ContextCompactionController contextCompactionController,
+            TokenUsageTracker tokenUsageTracker,
             Host host
     ) {
         this.messages = messages;
@@ -292,6 +301,8 @@ final class GenerationFlowController {
         this.todoStateStore = todoStateStore;
         this.mainThread = mainThread;
         this.backgroundTasks = backgroundTasks;
+        this.contextCompactionController = contextCompactionController;
+        this.tokenUsageTracker = tokenUsageTracker;
         this.host = host;
         this.schedulerHost = () -> host.syncModePermission();
         this.toolConfirmationController = new ToolConfirmationController(reviewCallback);
@@ -381,6 +392,10 @@ final class GenerationFlowController {
                         streamingRenderController.appendDelta(generationId, assistantId, "", delta);
                     }
                 }, cancellationToken, requestOptions);
+                // codex 式 token 统计：记录服务器观测到的 usage，供压缩触发判断使用。
+                if (tokenUsageTracker != null) {
+                    tokenUsageTracker.record(response);
+                }
                 finishGeneration(generationId, assistantId, selectedModel, response, cancellationToken, usedToolCallCount);
             } catch (ModelCompletionException e) {
                 handleModelError(generationId, assistantId, selectedModel, cancellationToken,
@@ -715,8 +730,33 @@ final class GenerationFlowController {
             int usedToolCallCount,
             ModelCancellationToken cancellationToken
     ) {
+        // 工具循环中的硬触发压缩检查（80%）：模型结束并调用工具后、继续下一次模型请求前，
+        // 若上下文占用已到 80%（81-99%），先压缩历史再继续，避免长工具循环中上下文
+        // 持续增长超出窗口。压缩会保留当前 assistant+tool 在途分组。
+        if (contextCompactionController != null && contextCompactionController.shouldAutoCompactMidLoop(selectedModel)) {
+            contextCompactionController.startToolLoopContextCompaction(
+                    generationId,
+                    selectedModel,
+                    cancellationToken,
+                    usedToolCallCount
+            );
+            return;
+        }
         ArrayList<ModelMessage> nextRequestMessages = modelPromptController.buildModelMessages("", usedToolCallCount);
         retryableModelStream(generationId, selectedModel, cancellationToken, nextRequestMessages, usedToolCallCount, 0, "");
+    }
+
+    /**
+     * 工具循环内压缩完成后的续接入口：与 {@link #startInitialModelRequest} 不同，
+     * 这里不重置 usedToolCallCount，直接回到工具执行后的模型续跑路径。
+     */
+    void continueToolLoop(
+            int generationId,
+            ModelConfig selectedModel,
+            ModelCancellationToken cancellationToken,
+            int usedToolCallCount
+    ) {
+        continueModelAfterTools(generationId, selectedModel, usedToolCallCount, cancellationToken);
     }
 
     private ToolContext toolContext(

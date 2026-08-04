@@ -1,4 +1,5 @@
 package cn.lineai.ui.markdown;
+import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -9,7 +10,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import cn.lineai.ui.markdown.R;
-import cn.lineai.ui.theme.LineTheme;
 import java.io.File;
 import java.util.Locale;
 

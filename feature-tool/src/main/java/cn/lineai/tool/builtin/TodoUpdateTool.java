@@ -1,4 +1,5 @@
 package cn.lineai.tool.builtin;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.model.TodoItem;
 import cn.lineai.state.TodoStateStore;
@@ -7,7 +8,6 @@ import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
-import cn.lineai.tool.ToolResult;
 import java.util.ArrayList;
 import java.util.List;
 import org.json.JSONArray;
@@ -100,5 +100,10 @@ public final class TodoUpdateTool extends BaseTool {
             summary = context.getString(R.string.tool_todo_updated, total, done);
         }
         return ok(summary);
+    }
+
+    @Override
+    public Class<? extends cn.lineai.tool.ToolCallCardView> getToolCallViewClass() {
+        return cn.lineai.tool.ui.ToolCallTodoView.class;
     }
 }

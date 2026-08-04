@@ -29,7 +29,7 @@ public final class ChatUiState {
     ) {
         this(projectLabel, projectPath, modelLabel, contextLabel, contextPercent, streaming,
                 hasConfiguredModel, true, false, false, OutputSettings.BROWSER_BUILTIN,
-                InputSettings.ENTER_SEND, ChatMode.DEFAULT, messages);
+                InputSettings.ENTER_SEND, ChatMode.DEFAULT, "", messages);
     }
 
     public ChatUiState(
@@ -39,7 +39,7 @@ public final class ChatUiState {
     ) {
         this(projectLabel, projectPath, modelLabel, contextLabel, contextPercent, streaming,
                 hasConfiguredModel, thinkingScrollEnabled, thinkingAutoExpandEnabled, false,
-                OutputSettings.BROWSER_BUILTIN, InputSettings.ENTER_SEND, ChatMode.DEFAULT, messages);
+                OutputSettings.BROWSER_BUILTIN, InputSettings.ENTER_SEND, ChatMode.DEFAULT, "", messages);
     }
 
     public ChatUiState(
@@ -50,7 +50,7 @@ public final class ChatUiState {
     ) {
         this(projectLabel, projectPath, modelLabel, contextLabel, contextPercent, streaming,
                 hasConfiguredModel, thinkingScrollEnabled, thinkingAutoExpandEnabled, codeWrapEnabled,
-                browserMode, InputSettings.ENTER_SEND, ChatMode.DEFAULT, messages);
+                browserMode, InputSettings.ENTER_SEND, ChatMode.DEFAULT, "", messages);
     }
 
     public ChatUiState(
@@ -111,7 +111,9 @@ public final class ChatUiState {
         this.enterKeyBehavior = InputSettings.normalizeEnterKeyBehavior(enterKeyBehavior);
         this.chatMode = ChatMode.normalize(chatMode);
         this.conversationId = conversationId == null ? "" : conversationId;
-        this.messages = messages == null ? Collections.emptyList() : Collections.unmodifiableList(messages);
+        this.messages = messages == null
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(messages));
         this.availableModels = availableModels == null
                 ? Collections.emptyList()
                 : Collections.unmodifiableList(new ArrayList<>(availableModels));

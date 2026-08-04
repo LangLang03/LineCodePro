@@ -1,4 +1,5 @@
 package cn.lineai.tool.builtin;
+import cn.lineai.model.tool.ToolResult;
 
 import android.content.Context;
 import cn.lineai.data.repository.WebSearchConfigRepository;
@@ -8,7 +9,6 @@ import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
-import cn.lineai.tool.ToolResult;
 import java.util.List;
 import org.json.JSONObject;
 

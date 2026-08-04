@@ -1,6 +1,6 @@
 package cn.lineai.ai;
+import cn.lineai.model.tool.ToolCall;
 
-import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolNames;
 import java.util.ArrayList;
 import java.util.List;

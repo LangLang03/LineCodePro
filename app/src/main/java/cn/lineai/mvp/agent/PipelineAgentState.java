@@ -35,7 +35,7 @@ public final class PipelineAgentState {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void markStatus(String status) {
         this.status = status;
     }
 
@@ -43,7 +43,7 @@ public final class PipelineAgentState {
         return output;
     }
 
-    public void setOutput(String output) {
+    public void updateOutput(String output) {
         this.output = output;
     }
 
@@ -51,7 +51,7 @@ public final class PipelineAgentState {
         return thinking;
     }
 
-    public void setThinking(String thinking) {
+    public void updateThinking(String thinking) {
         this.thinking = thinking;
     }
 
@@ -59,7 +59,7 @@ public final class PipelineAgentState {
         return toolCallCount;
     }
 
-    public void setToolCallCount(int toolCallCount) {
+    public void updateToolCallCount(int toolCallCount) {
         this.toolCallCount = toolCallCount;
     }
 
@@ -75,7 +75,7 @@ public final class PipelineAgentState {
         return toolCalls;
     }
 
-    public void setToolCalls(JSONArray toolCalls) {
+    public void replaceToolCalls(JSONArray toolCalls) {
         this.toolCalls = toolCalls;
     }
 

@@ -1,5 +1,7 @@
 package cn.lineai.model;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -44,7 +46,9 @@ public final class ExtensionKindUiModel {
         this.addActionType = addActionType;
         this.hasModifyAction = hasModifyAction;
         this.emptyMessage = emptyMessage;
-        this.installedItems = installedItems;
+        this.installedItems = installedItems == null
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(installedItems));
     }
 
     public String getKind() {
