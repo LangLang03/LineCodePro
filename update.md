@@ -1,5 +1,49 @@
 # 更新日志
 
+## v1.2.5
+
+### 工具调用 UI 模块化重构
+
+- **新增 `:tool-ui` 模块** - 从 `:app` 拆分出独立模块承载全部 ToolCall 卡片视图（`ToolCallBlockView`、`BaseToolCallView`）、工厂注册表（`ToolCallViewFactoryRegistry`）、`ToolInfoResolver` 契约接口；`:app` 改为依赖 `:tool-ui`，解决 app 模块与工具视图的紧耦合
+- **`BaseTool.getToolCallViewClass()`** - 19 个内置工具声明对应视图类（如 `FileReadTool` → `ToolCallReadView`），移除 `MainDependencies` 按分类集中注册 UI 的旧方式；未声明的工具走 `ToolDisplayCategory` 分类回退
+- **`ToolCallViewFactoryRegistry` 两级解析** - 精确匹配工具声明的视图类 → 分类兜底 → `GENERIC` 兜底；支持按 `Class` 和 `ToolDisplayCategory` 双维度注册
+- **工具调用 UI 预览页** - 输出设置新增「工具调用 UI」入口（`ToolCallPreviewScreenView`），遍历注册表全部 `ToolCallViewFactory`，用 `ToolCallPreviewSamples` 模拟数据渲染每种卡片，便于不跑真实工具时检查 UI
+- **包结构迁移** - `ToolCall` / `ToolResult` 迁至 `cn.lineai.model.tool`；`IconButtonView` 等共享组件与 84 个 drawable 迁至 `:ui-theme`；`cn.lineai.tool` 包整体迁至 `:feature-tool`；`ExtensionStore` / `ExtensionOverviewState` 迁至 `:data`
+
+### 上下文压缩增强
+
+- **Token 用量追踪** - 新增 `TokenUsageTracker`（`:feature-model`），记录最近一次模型响应中服务器观测到的 `input_tokens` / `output_tokens`；触发检查优先使用观测值（含系统提示 + 工具定义），协议未返回 usage 时回退到 `ContextManager` 本地估算
+- **软压缩开关** - `AiBehaviorSettings` 新增 `softCompactionEnabled` 字段（默认开启）；关闭后只保留 80% 硬触发，压缩行为对齐 codex：仅在上下文占用达到硬阈值时全量压缩并保留最近用户消息
+- **硬压缩 codex 对齐** - 硬触发（80%）在模型完成回合 + 工具执行完毕后、继续模型循环前执行（`GenerationFlowController.continueModelAfterTools` → `shouldAutoCompactMidLoop` → `startToolLoopContextCompaction`）；压缩后保留最近用户消息原文（`COMPACT_USER_MESSAGE_MAX_TOKENS = 20000`），摘要作为用户消息追加，布局：`[base] + [retainedRecentUserMessages] + [summary] + [preservedTail]`
+- **压缩重试** - `ContextCompactionService` 新增 `MAX_COMPACT_RETRIES` 重试 + 退避机制；压缩调用使用 codex 风格 handoff-summary 模板（`context-compaction-template.txt` + `context-compaction-summary-prefix.txt`），压缩后的 usage 记入 `TokenUsageTracker` 作为后续基线
+- **会话切换重置** - `TokenUsageTracker` 在对话切换时由 `ContextCompactionController.onConversationChanged` 重置
+
+### 教程重写
+
+- **章节化详细指南** - `simple.md`（29 章）与 `pro.md` 全面重写：覆盖主页/侧边栏导览、权限确认卡语义（同意=已写入生效、拒绝=撤销还原）、模型管理/工具与执行/扩展/主题/安全/数据等每个子设置页的字段级说明；移除本地 GGUF 与实验性键盘避让等未接入功能
+- **教程页章节目录** - 新增横向 chips 导航，解析 `##` 章节生成按钮，点击平滑跳转
+- **设置页入口** - 设置页顶部新增「查看教程」入口，返回回到设置页
+
+### 代码质量优化
+
+- **命名规范统一** - 多个 setter 重命名为更语义化的前缀：`setPathFromRemoteRoot` → `applyPathFromRemoteRoot`；`AgentProgressSession` 使用 `mark` / `update` 前缀替代 `set`
+- **不可变对象** - `StorageStatsUiModel` 改为不可变类，构造函数初始化 + getter；`ChatUiState` 新增防御性拷贝与不可变列表包装
+- **`ToolCallUtils` 移至 `:tool-ui`** - 工具调用工具类从 `:app` 迁入 `:tool-ui`，消除 app 层对工具视图细节的直接依赖
+
+### 测试
+
+- 新增 `ChatUiStateTest`（111 行）覆盖防御性拷贝与不可变列表
+- 新增 `ToolCallViewFactoryRegistryTest`（50 行）覆盖视图类精确匹配与分类回退
+- 新增 `ToolCallPreviewSamplesTest`（37 行）覆盖每种分类的模拟数据生成
+- 新增 `ContextCompactionServiceTest`（91 行）覆盖 token 用量追踪、硬压缩保留最近用户消息、重试机制
+- 扩展 `ToolBuiltinsTest`（18 行）验证所有内置工具声明 `getToolCallViewClass()`
+
+### 版本
+
+- 版本号升级到 `1.2.5-rc.2`
+
+---
+
 ## v1.2.4
 
 ### 历史对话丢失修复
