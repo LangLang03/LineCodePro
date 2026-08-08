@@ -32,6 +32,8 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
     private String projectPath = "";
     private ToolReviewListener toolReviewListener;
     private final java.util.HashMap<String, Boolean> rowExpandedMap = new java.util.HashMap<>();
+    private MarkdownView summaryMarkdownView;
+    private String lastSummarySignature = "";
 
     public ToolCallAgentPipelineView(Context context) {
         super(context);
@@ -42,6 +44,7 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
         lastToolCall = toolCall;
         lastResult = result;
         removeAllViews();
+        summaryMarkdownView = null;
 
         JSONObject input = ToolCallUtils.parseInput(toolCall);
         JSONArray agents = input.optJSONArray("agents");
@@ -60,6 +63,8 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
         int failed = ps.failed;
         boolean complete = ps.complete;
         boolean error = ps.error;
+        lastSummarySignature = summarySignature(completed, running, pendingReview, failed, complete, error,
+                progress == null ? "" : progress.optString("summary"));
 
         LinearLayout header = new LinearLayout(getContext());
         header.setOrientation(HORIZONTAL);
@@ -150,6 +155,7 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
             }
         } else if (result != null && result.getContent().length() > 0) {
             MarkdownView markdownView = new MarkdownView(getContext());
+            summaryMarkdownView = markdownView;
             markdownView.setMarkdown(result.getContent());
             list.addView(markdownView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         } else {
@@ -165,6 +171,7 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
             dividerParams.bottomMargin = LineTheme.dp(getContext(), LineTheme.SM);
             list.addView(summaryDivider, dividerParams);
             MarkdownView summaryMarkdown = new MarkdownView(getContext());
+            summaryMarkdownView = summaryMarkdown;
             summaryMarkdown.setMarkdown(finalSummary);
             list.addView(summaryMarkdown, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         }
@@ -173,6 +180,38 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
 
     public void setProjectPath(String projectPath) {
         this.projectPath = projectPath == null ? "" : projectPath;
+    }
+
+    private static int totalFor(ToolCall toolCall) {
+        if (toolCall == null) {
+            return 0;
+        }
+        JSONObject input = ToolCallUtils.parseInput(toolCall);
+        if (input == null) {
+            return 0;
+        }
+        JSONArray agents = input.optJSONArray("agents");
+        return agents == null ? 0 : agents.length();
+    }
+
+    public static String summarySignature(int completed, int running, int pendingReview, int failed, boolean complete, boolean error, String summary) {
+        return completed + "|" + running + "|" + pendingReview + "|" + failed + "|" + complete + "|" + error + "|" + (summary == null ? "" : summary);
+    }
+
+    @Override
+    public void updateContent(ToolCall toolCall, ToolResult result) {
+        JSONObject progress = AgentPipelineSummaryParser.progressPayload(result);
+        String summaryText = progress == null ? "" : progress.optString("summary");
+        AgentPipelineSummaryParser.PipelineSummary ps = AgentPipelineSummaryParser.computeSummary(
+                progress, result, totalFor(toolCall));
+        String sig = summarySignature(ps.completed, ps.running, ps.pendingReview, ps.failed, ps.complete, ps.error, summaryText);
+        if (summaryMarkdownView == null || !sig.equals(lastSummarySignature)) {
+            bind(toolCall, result);
+            return;
+        }
+        if (summaryText.length() > 0) {
+            summaryMarkdownView.setMarkdown(summaryText);
+        }
     }
 
     public void setToolReviewListener(ToolReviewListener listener) {
