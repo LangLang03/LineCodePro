@@ -3,6 +3,7 @@ import cn.lineai.tool.ToolCallCardView;
 import cn.lineai.tool.ToolReviewListener;
 import cn.lineai.model.tool.ToolCall;
 import cn.lineai.model.tool.ToolResult;
+import cn.lineai.ui.theme.BoundedScrollView;
 import cn.lineai.ui.theme.IconButtonView;
 import cn.lineai.ui.theme.LineTheme;
 
@@ -10,7 +11,6 @@ import android.content.Context;
 import android.graphics.Typeface;
 import android.text.TextUtils;
 import android.view.Gravity;
-import android.view.MotionEvent;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -146,15 +146,6 @@ public final class ToolCallShellView extends BaseToolCallView implements ToolCal
         expandedScrollView = new BoundedScrollView(context, 280);
         expandedScrollView.setFillViewport(false);
         expandedScrollView.setBackground(LineTheme.roundedStroke(context, LineTheme.SURFACE, 8, LineTheme.CODE_BORDER));
-        expandedScrollView.setOnTouchListener((view, event) -> {
-            int action = event.getActionMasked();
-            boolean active = action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE;
-            view.getParent().requestDisallowInterceptTouchEvent(active);
-            if (action == MotionEvent.ACTION_UP) {
-                view.performClick();
-            }
-            return false;
-        });
         LineTheme.padding(expandedScrollView, LineTheme.SM, LineTheme.SM, LineTheme.SM, LineTheme.SM);
         expandedOutputView = outputText(context);
         expandedScrollView.addView(expandedOutputView, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
@@ -357,26 +348,5 @@ public final class ToolCallShellView extends BaseToolCallView implements ToolCal
         String tail = value.substring(value.length() - EXPANDED_TAIL_LIMIT);
         int folded = value.length() - head.length() - tail.length();
         return head + "\n\n" + getContext().getString(R.string.tool_call_shell_folded, folded) + "\n\n" + tail;
-    }
-
-    private static final class BoundedScrollView extends ScrollView {
-        private final int maxHeightDp;
-
-        BoundedScrollView(Context context, int maxHeightDp) {
-            super(context);
-            this.maxHeightDp = maxHeightDp;
-        }
-
-        @Override
-        public boolean performClick() {
-            return super.performClick();
-        }
-
-        @Override
-        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            int maxHeight = LineTheme.dp(getContext(), maxHeightDp);
-            int cappedHeightSpec = MeasureSpec.makeMeasureSpec(maxHeight, MeasureSpec.AT_MOST);
-            super.onMeasure(widthMeasureSpec, cappedHeightSpec);
-        }
     }
 }
