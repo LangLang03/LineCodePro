@@ -107,10 +107,34 @@ public final class ToolCallReadView extends BaseToolCallView implements ToolCall
         addView(header, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         if (running && result != null && result.getContent().length() > 0) {
-            addMessageRow(this, IconButtonView.LOADER, result.getContent(), LineTheme.TEXT_SECONDARY);
+            addMessageRow(this, IconButtonView.LOADER, result.getContent(), LineTheme.TEXT_SECONDARY,
+                    contentMaxHeightDp(result.getContent()));
         } else if (error && result.getContent().length() > 0) {
-            addMessageRow(this, IconButtonView.CLOSE, result.getContent(), LineTheme.DANGER);
+            addMessageRow(this, IconButtonView.CLOSE, result.getContent(), LineTheme.DANGER,
+                    contentMaxHeightDp(result.getContent()));
         }
+    }
+
+    private int contentMaxHeightDp(String content) {
+        if (content == null || content.trim().length() == 0) {
+            return 0;
+        }
+        int lines = 0;
+        int max = 0;
+        int n = content.length();
+        for (int i = 0; i < n && lines <= 8; i++) {
+            if (content.charAt(i) == '\n') {
+                lines++;
+                max = 0;
+            } else {
+                max++;
+                if (max > 90) {
+                    lines++;
+                    max = 0;
+                }
+            }
+        }
+        return (content.length() > 300 || lines > 8) ? 220 : 0;
     }
 
     private String actionLabel(String name) {
