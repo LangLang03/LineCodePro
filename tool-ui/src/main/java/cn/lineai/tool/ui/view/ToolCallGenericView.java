@@ -3,6 +3,7 @@ import cn.lineai.tool.ToolCallCardView;
 import cn.lineai.tool.ToolReviewListener;
 import cn.lineai.model.tool.ToolCall;
 import cn.lineai.model.tool.ToolResult;
+import cn.lineai.ui.theme.BoundedScrollView;
 import cn.lineai.ui.theme.IconButtonView;
 import cn.lineai.ui.theme.LineTheme;
 
@@ -142,7 +143,7 @@ public final class ToolCallGenericView extends BaseToolCallView implements ToolC
         LayoutParams textParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         textParams.topMargin = LineTheme.dp(getContext(), 4);
         if (maxHeightRows > 4) {
-            ScrollView scroll = new ScrollView(getContext());
+            BoundedScrollView scroll = new BoundedScrollView(getContext(), 220);
             scroll.setFillViewport(false);
             scroll.setBackground(LineTheme.roundedStroke(getContext(), LineTheme.SURFACE, 8, LineTheme.CODE_BORDER));
             LineTheme.padding(scroll, LineTheme.SM, LineTheme.SM, LineTheme.SM, LineTheme.SM);
