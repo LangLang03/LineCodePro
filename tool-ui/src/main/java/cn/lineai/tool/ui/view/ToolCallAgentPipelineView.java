@@ -3,6 +3,7 @@ import cn.lineai.tool.ToolCallCardView;
 import cn.lineai.tool.ToolReviewListener;
 import cn.lineai.model.tool.ToolCall;
 import cn.lineai.model.tool.ToolResult;
+import cn.lineai.ui.theme.BoundedScrollView;
 import cn.lineai.ui.theme.FlowLayoutView;
 import cn.lineai.ui.theme.IconButtonView;
 import cn.lineai.ui.theme.ThinkingBlockView;
@@ -410,38 +411,5 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
 
     private String typeLabel(String type) {
         return "explore".equals(type) ? getContext().getString(R.string.tool_call_agent_type_explore) : getContext().getString(R.string.tool_call_agent_type_coding);
-    }
-
-    private static final class BoundedScrollView extends android.widget.ScrollView {
-        private final int maxHeightDp;
-
-        BoundedScrollView(Context context, int maxHeightDp) {
-            super(context);
-            this.maxHeightDp = maxHeightDp;
-        }
-
-        @Override
-        public boolean performClick() {
-            return super.performClick();
-        }
-
-        @Override
-        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            int maxHeight = LineTheme.dp(getContext(), maxHeightDp);
-            int cappedHeightSpec = android.view.View.MeasureSpec.makeMeasureSpec(maxHeight, android.view.View.MeasureSpec.AT_MOST);
-            super.onMeasure(widthMeasureSpec, cappedHeightSpec);
-        }
-
-        @Override
-        public boolean onTouchEvent(android.view.MotionEvent ev) {
-            getParent().requestDisallowInterceptTouchEvent(true);
-            return super.onTouchEvent(ev);
-        }
-
-        @Override
-        public boolean onInterceptTouchEvent(android.view.MotionEvent ev) {
-            getParent().requestDisallowInterceptTouchEvent(true);
-            return super.onInterceptTouchEvent(ev);
-        }
     }
 }
