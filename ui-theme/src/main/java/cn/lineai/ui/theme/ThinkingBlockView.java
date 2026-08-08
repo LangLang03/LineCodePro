@@ -8,9 +8,7 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Typeface;
 import android.view.Gravity;
-import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewParent;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -25,7 +23,7 @@ public final class ThinkingBlockView extends LinearLayout {
     private final LinearLayout header;
     private final TextView labelView;
     private final IconButtonView chevronView;
-    private final MaxHeightScrollView contentScrollView;
+    private final BoundedScrollView contentScrollView;
     private final TextView contentView;
     private String messageId = "";
     private boolean expanded;
@@ -65,7 +63,7 @@ public final class ThinkingBlockView extends LinearLayout {
         });
         addView(header, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
-        contentScrollView = new MaxHeightScrollView(context);
+        contentScrollView = new BoundedScrollView(context);
         contentScrollView.setFillViewport(false);
         contentScrollView.setOverScrollMode(OVER_SCROLL_IF_CONTENT_SCROLLS);
         contentScrollView.setVerticalScrollBarEnabled(true);
@@ -128,79 +126,5 @@ public final class ThinkingBlockView extends LinearLayout {
     private void updateExpanded() {
         chevronView.setIconType(expanded ? IconButtonView.CHEVRON_DOWN : IconButtonView.CHEVRON_RIGHT);
         contentScrollView.setVisibility(expanded ? View.VISIBLE : View.GONE);
-    }
-
-    private static final class MaxHeightScrollView extends ScrollView {
-        private int maxHeightPx;
-        private float lastTouchY;
-
-        MaxHeightScrollView(Context context) {
-            super(context);
-        }
-
-        @Override
-        public boolean dispatchTouchEvent(MotionEvent event) {
-            int action = event.getActionMasked();
-            if (action == MotionEvent.ACTION_DOWN) {
-                lastTouchY = event.getY();
-                requestParentDisallowIntercept(canScrollContent());
-            } else if (action == MotionEvent.ACTION_MOVE) {
-                float nextY = event.getY();
-                requestParentDisallowIntercept(shouldHandleDrag(nextY - lastTouchY));
-                lastTouchY = nextY;
-            } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-                requestParentDisallowIntercept(false);
-            }
-            return super.dispatchTouchEvent(event);
-        }
-
-        @Override
-        public boolean performClick() {
-            return super.performClick();
-        }
-
-        void setMaxHeightDp(int maxHeightDp) {
-            maxHeightPx = maxHeightDp <= 0 ? 0 : LineTheme.dp(getContext(), maxHeightDp);
-            requestLayout();
-        }
-
-        @Override
-        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            if (maxHeightPx > 0) {
-                int mode = MeasureSpec.getMode(heightMeasureSpec);
-                int size = MeasureSpec.getSize(heightMeasureSpec);
-                int limitedSize = mode == MeasureSpec.UNSPECIFIED ? maxHeightPx : Math.min(size, maxHeightPx);
-                heightMeasureSpec = MeasureSpec.makeMeasureSpec(limitedSize, MeasureSpec.AT_MOST);
-            }
-            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-        }
-
-        private boolean shouldHandleDrag(float deltaY) {
-            if (!canScrollContent()) {
-                return false;
-            }
-            if (deltaY > 0f) {
-                return canScrollVertically(-1);
-            }
-            if (deltaY < 0f) {
-                return canScrollVertically(1);
-            }
-            return true;
-        }
-
-        private boolean canScrollContent() {
-            if (getChildCount() == 0) {
-                return false;
-            }
-            int viewportHeight = getHeight() - getPaddingTop() - getPaddingBottom();
-            return viewportHeight > 0 && getChildAt(0).getHeight() > viewportHeight;
-        }
-
-        private void requestParentDisallowIntercept(boolean disallowIntercept) {
-            ViewParent parent = getParent();
-            if (parent != null) {
-                parent.requestDisallowInterceptTouchEvent(disallowIntercept);
-            }
-        }
     }
 }
