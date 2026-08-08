@@ -11,7 +11,9 @@ import cn.lineai.tool.ToolDisplayCategory;
 
 public final class ToolCallBlockView extends LinearLayout {
     private final ToolCallViewFactoryRegistry registry;
-    private String lastSignature = "";
+    private String lastStructureSignature = "";
+    private String lastContentSignature = "";
+    private ToolCallCardView childView;
     private String projectPath = "";
     private ToolReviewListener toolReviewListener;
 
@@ -26,14 +28,23 @@ public final class ToolCallBlockView extends LinearLayout {
     }
 
     public void bind(ToolCall toolCall, ToolResult result) {
-        String signature = signature(toolCall, result);
-        if (signature.equals(lastSignature)) {
+        String structure = structureSignature(projectPath, toolCall, result);
+        String content = contentSignature(result);
+        if (structure.equals(lastStructureSignature) && content.equals(lastContentSignature)) {
             return;
         }
-        lastSignature = signature;
+        boolean structureChanged = !structure.equals(lastStructureSignature);
+        lastStructureSignature = structure;
+        lastContentSignature = content;
+        if (!structureChanged) {
+            if (childView != null) {
+                childView.updateContent(toolCall, result);
+            }
+            return;
+        }
         String name = toolCall == null ? "" : toolCall.getName();
         ToolDisplayCategory category = resolveDisplayCategory(name);
-        ToolCallCardView childView = registry.createView(getContext(), resolveViewClass(name), category);
+        childView = registry.createView(getContext(), resolveViewClass(name), category);
         if (childView != null) {
             removeAllViews();
             childView.setToolReviewListener(toolReviewListener);
@@ -72,9 +83,9 @@ public final class ToolCallBlockView extends LinearLayout {
         return ToolCallUtils.getDisplayCategory(name);
     }
 
-    private String signature(ToolCall toolCall, ToolResult result) {
+    public static String structureSignature(String projectPath, ToolCall toolCall, ToolResult result) {
         StringBuilder builder = new StringBuilder();
-        builder.append(projectPath).append('|');
+        builder.append(projectPath == null ? "" : projectPath).append('|');
         if (toolCall != null) {
             builder.append(toolCall.getId()).append('|')
                     .append(toolCall.getName()).append('|')
@@ -84,12 +95,15 @@ public final class ToolCallBlockView extends LinearLayout {
         if (result != null) {
             builder.append(result.getToolCallId()).append('|')
                     .append(result.getToolName()).append('|')
-                    .append(result.getContent()).append('|')
                     .append(result.isError()).append('|')
                     .append(result.getDiffId()).append('|')
                     .append(result.getReviewState()).append('|')
                     .append(result.getReviewMessage());
         }
         return builder.toString();
+    }
+
+    public static String contentSignature(ToolResult result) {
+        return result == null ? "" : result.getContent();
     }
 }
