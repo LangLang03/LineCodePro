@@ -107,13 +107,13 @@ public abstract class BaseToolCallView extends LinearLayout {
 
     /**
      * 向 parent 追加一条消息行：顶部 1px 分割线 + 横向布局（图标 + 文本）。
-     * 用于在卡片底部展示错误信息或运行中输出。
+     * 用于在卡片底部展示错误信息或运行中输出。返回创建的 message TextView。
      */
-    protected void addMessageRow(LinearLayout parent, int iconType, String text, int color) {
-        addMessageRow(parent, iconType, text, color, 0);
+    protected TextView addMessageRow(LinearLayout parent, int iconType, String text, int color) {
+        return addMessageRow(parent, iconType, text, color, 0);
     }
 
-    protected void addMessageRow(LinearLayout parent, int iconType, String text, int color, int maxHeightDp) {
+    protected TextView addMessageRow(LinearLayout parent, int iconType, String text, int color, int maxHeightDp) {
         View divider = new View(getContext());
         divider.setBackgroundColor(LineTheme.CODE_BORDER);
         parent.addView(divider, new LayoutParams(LayoutParams.MATCH_PARENT, 1));
@@ -144,5 +144,6 @@ public abstract class BaseToolCallView extends LinearLayout {
             row.addView(message, params);
         }
         parent.addView(row, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        return message;
     }
 }
