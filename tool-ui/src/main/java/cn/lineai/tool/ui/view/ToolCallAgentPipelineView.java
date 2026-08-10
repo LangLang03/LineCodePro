@@ -3,6 +3,7 @@ import cn.lineai.tool.ToolCallCardView;
 import cn.lineai.tool.ToolReviewListener;
 import cn.lineai.model.tool.ToolCall;
 import cn.lineai.model.tool.ToolResult;
+import cn.lineai.ui.theme.BoundedScrollView;
 import cn.lineai.ui.theme.FlowLayoutView;
 import cn.lineai.ui.theme.IconButtonView;
 import cn.lineai.ui.theme.ThinkingBlockView;
@@ -31,6 +32,8 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
     private String projectPath = "";
     private ToolReviewListener toolReviewListener;
     private final java.util.HashMap<String, Boolean> rowExpandedMap = new java.util.HashMap<>();
+    private MarkdownView summaryMarkdownView;
+    private String lastSummarySignature = "";
 
     public ToolCallAgentPipelineView(Context context) {
         super(context);
@@ -41,6 +44,7 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
         lastToolCall = toolCall;
         lastResult = result;
         removeAllViews();
+        summaryMarkdownView = null;
 
         JSONObject input = ToolCallUtils.parseInput(toolCall);
         JSONArray agents = input.optJSONArray("agents");
@@ -59,6 +63,8 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
         int failed = ps.failed;
         boolean complete = ps.complete;
         boolean error = ps.error;
+        lastSummarySignature = summarySignature(completed, running, pendingReview, failed, complete, error,
+                progress == null ? "" : progress.optString("summary"));
 
         LinearLayout header = new LinearLayout(getContext());
         header.setOrientation(HORIZONTAL);
@@ -149,6 +155,7 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
             }
         } else if (result != null && result.getContent().length() > 0) {
             MarkdownView markdownView = new MarkdownView(getContext());
+            summaryMarkdownView = markdownView;
             markdownView.setMarkdown(result.getContent());
             list.addView(markdownView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         } else {
@@ -164,6 +171,7 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
             dividerParams.bottomMargin = LineTheme.dp(getContext(), LineTheme.SM);
             list.addView(summaryDivider, dividerParams);
             MarkdownView summaryMarkdown = new MarkdownView(getContext());
+            summaryMarkdownView = summaryMarkdown;
             summaryMarkdown.setMarkdown(finalSummary);
             list.addView(summaryMarkdown, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         }
@@ -172,6 +180,38 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
 
     public void setProjectPath(String projectPath) {
         this.projectPath = projectPath == null ? "" : projectPath;
+    }
+
+    private static int totalFor(ToolCall toolCall) {
+        if (toolCall == null) {
+            return 0;
+        }
+        JSONObject input = ToolCallUtils.parseInput(toolCall);
+        if (input == null) {
+            return 0;
+        }
+        JSONArray agents = input.optJSONArray("agents");
+        return agents == null ? 0 : agents.length();
+    }
+
+    public static String summarySignature(int completed, int running, int pendingReview, int failed, boolean complete, boolean error, String summary) {
+        return completed + "|" + running + "|" + pendingReview + "|" + failed + "|" + complete + "|" + error + "|" + (summary == null ? "" : summary);
+    }
+
+    @Override
+    public void updateContent(ToolCall toolCall, ToolResult result) {
+        JSONObject progress = AgentPipelineSummaryParser.progressPayload(result);
+        String summaryText = progress == null ? "" : progress.optString("summary");
+        AgentPipelineSummaryParser.PipelineSummary ps = AgentPipelineSummaryParser.computeSummary(
+                progress, result, totalFor(toolCall));
+        String sig = summarySignature(ps.completed, ps.running, ps.pendingReview, ps.failed, ps.complete, ps.error, summaryText);
+        if (summaryMarkdownView == null || !sig.equals(lastSummarySignature)) {
+            bind(toolCall, result);
+            return;
+        }
+        if (summaryText.length() > 0) {
+            summaryMarkdownView.setMarkdown(summaryText);
+        }
     }
 
     public void setToolReviewListener(ToolReviewListener listener) {
@@ -410,38 +450,5 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
 
     private String typeLabel(String type) {
         return "explore".equals(type) ? getContext().getString(R.string.tool_call_agent_type_explore) : getContext().getString(R.string.tool_call_agent_type_coding);
-    }
-
-    private static final class BoundedScrollView extends android.widget.ScrollView {
-        private final int maxHeightDp;
-
-        BoundedScrollView(Context context, int maxHeightDp) {
-            super(context);
-            this.maxHeightDp = maxHeightDp;
-        }
-
-        @Override
-        public boolean performClick() {
-            return super.performClick();
-        }
-
-        @Override
-        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            int maxHeight = LineTheme.dp(getContext(), maxHeightDp);
-            int cappedHeightSpec = android.view.View.MeasureSpec.makeMeasureSpec(maxHeight, android.view.View.MeasureSpec.AT_MOST);
-            super.onMeasure(widthMeasureSpec, cappedHeightSpec);
-        }
-
-        @Override
-        public boolean onTouchEvent(android.view.MotionEvent ev) {
-            getParent().requestDisallowInterceptTouchEvent(true);
-            return super.onTouchEvent(ev);
-        }
-
-        @Override
-        public boolean onInterceptTouchEvent(android.view.MotionEvent ev) {
-            getParent().requestDisallowInterceptTouchEvent(true);
-            return super.onInterceptTouchEvent(ev);
-        }
     }
 }

@@ -14,4 +14,13 @@ public interface ToolCallCardView {
     void setToolReviewListener(ToolReviewListener listener);
 
     void setProjectPath(String projectPath);
+
+    /**
+     * 内容增量更新钩子：仅当工具结果内容变化而结构（卡片类型/状态/参数）未变时被调用，
+     * 由各实现类覆写以只更新内容文本，避免流式输出时整棵视图树重建。
+     * 默认回退到完整绑定，保持既有行为。
+     */
+    default void updateContent(ToolCall call, ToolResult result) {
+        bind(call, result);
+    }
 }

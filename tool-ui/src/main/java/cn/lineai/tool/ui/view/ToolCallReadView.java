@@ -22,6 +22,9 @@ import org.json.JSONObject;
 
 public final class ToolCallReadView extends BaseToolCallView implements ToolCallCardView {
     private String projectPath = "";
+    private TextView messageTextView;
+    private TerminalStatus lastTerminalStatus;
+    private int lastContentMaxHeightDp;
 
     public ToolCallReadView(Context context) {
         super(context);
@@ -40,11 +43,13 @@ public final class ToolCallReadView extends BaseToolCallView implements ToolCall
     @Override
     public void bind(ToolCall toolCall, ToolResult result) {
         removeAllViews();
+        messageTextView = null;
         String name = toolCall == null ? "" : toolCall.getName();
         JSONObject input = ToolCallUtils.parseInput(toolCall);
         String label = ToolCallUtils.displayInputLabel(getContext(), name, input, projectPath);
         // 简化进度圈逻辑：直接根据结果决定最终状态
         TerminalStatus status = computeTerminalStatus(result);
+        lastTerminalStatus = status;
         boolean running = status == TerminalStatus.RUNNING;
         boolean error = status == TerminalStatus.FAILED;
         boolean unknown = status == TerminalStatus.UNKNOWN;
@@ -107,10 +112,47 @@ public final class ToolCallReadView extends BaseToolCallView implements ToolCall
         addView(header, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         if (running && result != null && result.getContent().length() > 0) {
-            addMessageRow(this, IconButtonView.LOADER, result.getContent(), LineTheme.TEXT_SECONDARY);
+            messageTextView = addMessageRow(this, IconButtonView.LOADER, result.getContent(), LineTheme.TEXT_SECONDARY,
+                    contentMaxHeightDp(result.getContent()));
+            lastContentMaxHeightDp = contentMaxHeightDp(result.getContent());
         } else if (error && result.getContent().length() > 0) {
-            addMessageRow(this, IconButtonView.CLOSE, result.getContent(), LineTheme.DANGER);
+            messageTextView = addMessageRow(this, IconButtonView.CLOSE, result.getContent(), LineTheme.DANGER,
+                    contentMaxHeightDp(result.getContent()));
+            lastContentMaxHeightDp = contentMaxHeightDp(result.getContent());
         }
+    }
+
+    @Override
+    public void updateContent(ToolCall toolCall, ToolResult result) {
+        TerminalStatus status = computeTerminalStatus(result);
+        int maxHeightDp = contentMaxHeightDp(result == null ? "" : result.getContent());
+        if (messageTextView == null || status != lastTerminalStatus || maxHeightDp != lastContentMaxHeightDp) {
+            bind(toolCall, result);
+            return;
+        }
+        messageTextView.setText(result == null ? "" : result.getContent());
+    }
+
+    private int contentMaxHeightDp(String content) {
+        if (content == null || content.trim().length() == 0) {
+            return 0;
+        }
+        int lines = 0;
+        int max = 0;
+        int n = content.length();
+        for (int i = 0; i < n && lines <= 8; i++) {
+            if (content.charAt(i) == '\n') {
+                lines++;
+                max = 0;
+            } else {
+                max++;
+                if (max > 90) {
+                    lines++;
+                    max = 0;
+                }
+            }
+        }
+        return (content.length() > 300 || lines > 8) ? 220 : 0;
     }
 
     private String actionLabel(String name) {

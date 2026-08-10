@@ -1,5 +1,6 @@
 package cn.lineai.tool.ui;
 import cn.lineai.model.tool.ToolResult;
+import cn.lineai.ui.theme.BoundedScrollView;
 import cn.lineai.ui.theme.IconButtonView;
 import cn.lineai.ui.theme.LineTheme;
 
@@ -106,9 +107,13 @@ public abstract class BaseToolCallView extends LinearLayout {
 
     /**
      * 向 parent 追加一条消息行：顶部 1px 分割线 + 横向布局（图标 + 文本）。
-     * 用于在卡片底部展示错误信息或运行中输出。
+     * 用于在卡片底部展示错误信息或运行中输出。返回创建的 message TextView。
      */
-    protected void addMessageRow(LinearLayout parent, int iconType, String text, int color) {
+    protected TextView addMessageRow(LinearLayout parent, int iconType, String text, int color) {
+        return addMessageRow(parent, iconType, text, color, 0);
+    }
+
+    protected TextView addMessageRow(LinearLayout parent, int iconType, String text, int color, int maxHeightDp) {
         View divider = new View(getContext());
         divider.setBackgroundColor(LineTheme.CODE_BORDER);
         parent.addView(divider, new LayoutParams(LayoutParams.MATCH_PARENT, 1));
@@ -125,10 +130,20 @@ public abstract class BaseToolCallView extends LinearLayout {
         row.addView(icon, new LayoutParams(LineTheme.dp(getContext(), 14), LineTheme.dp(getContext(), 14)));
 
         TextView message = LineTheme.text(getContext(), text, LineTheme.FONT_XS, color, Typeface.NORMAL);
-        LayoutParams params = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
-        params.leftMargin = LineTheme.dp(getContext(), LineTheme.XS);
-        row.addView(message, params);
-
+        if (maxHeightDp > 0) {
+            BoundedScrollView scroll = new BoundedScrollView(getContext(), maxHeightDp);
+            scroll.setFillViewport(false);
+            scroll.addView(message, new android.widget.ScrollView.LayoutParams(
+                    LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+            LayoutParams scrollParams = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
+            scrollParams.leftMargin = LineTheme.dp(getContext(), LineTheme.XS);
+            row.addView(scroll, scrollParams);
+        } else {
+            LayoutParams params = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
+            params.leftMargin = LineTheme.dp(getContext(), LineTheme.XS);
+            row.addView(message, params);
+        }
         parent.addView(row, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        return message;
     }
 }

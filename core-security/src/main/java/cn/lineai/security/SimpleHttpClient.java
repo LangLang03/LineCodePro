@@ -122,7 +122,17 @@ public final class SimpleHttpClient {
             String contentType = connection.getContentType();
             String message = connection.getResponseMessage();
             String body = readStream(stream);
-            return new Response(code, message, contentType, body);
+            LinkedHashMap<String, String> responseHeaders = new LinkedHashMap<>();
+            Map<String, java.util.List<String>> headerFields = connection.getHeaderFields();
+            if (headerFields != null) {
+                for (Map.Entry<String, java.util.List<String>> entry : headerFields.entrySet()) {
+                    if (entry.getKey() == null || entry.getValue() == null || entry.getValue().isEmpty()) {
+                        continue;
+                    }
+                    responseHeaders.put(entry.getKey(), entry.getValue().get(0));
+                }
+            }
+            return new Response(code, message, contentType, body, responseHeaders);
         } finally {
             if (connection != null) {
                 connection.disconnect();
@@ -189,12 +199,18 @@ public final class SimpleHttpClient {
         public final String message;
         public final String contentType;
         public final String body;
+        public final Map<String, String> headers;
 
         public Response(int code, String message, String contentType, String body) {
+            this(code, message, contentType, body, Collections.<String, String>emptyMap());
+        }
+
+        public Response(int code, String message, String contentType, String body, Map<String, String> headers) {
             this.code = code;
             this.message = message == null ? "" : message;
             this.contentType = contentType == null ? "" : contentType;
             this.body = body == null ? "" : body;
+            this.headers = headers == null ? Collections.<String, String>emptyMap() : headers;
         }
     }
 

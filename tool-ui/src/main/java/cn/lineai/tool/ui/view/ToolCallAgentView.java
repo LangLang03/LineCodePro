@@ -3,6 +3,7 @@ import cn.lineai.tool.ToolCallCardView;
 import cn.lineai.tool.ToolReviewListener;
 import cn.lineai.model.tool.ToolCall;
 import cn.lineai.model.tool.ToolResult;
+import cn.lineai.ui.theme.BoundedScrollView;
 import cn.lineai.ui.theme.FlowLayoutView;
 import cn.lineai.ui.theme.IconButtonView;
 import cn.lineai.ui.theme.ThinkingBlockView;
@@ -30,6 +31,9 @@ public final class ToolCallAgentView extends BaseToolCallView implements ToolCal
     private ToolResult lastResult;
     private String projectPath = "";
     private ToolReviewListener toolReviewListener;
+    private MarkdownView outputMarkdownView;
+    private ThinkingBlockView thinkingView;
+    private String lastLayoutSignature = "";
 
     public ToolCallAgentView(Context context) {
         super(context);
@@ -40,6 +44,8 @@ public final class ToolCallAgentView extends BaseToolCallView implements ToolCal
         lastToolCall = toolCall;
         lastResult = result;
         removeAllViews();
+        outputMarkdownView = null;
+        thinkingView = null;
 
         String toolName = toolCall == null ? "" : toolCall.getName();
         boolean isCustomAgent = ToolCallUtils.isCustomAgentTool(toolName);
@@ -77,6 +83,7 @@ public final class ToolCallAgentView extends BaseToolCallView implements ToolCal
         String status = error ? getContext().getString(R.string.tool_call_status_failed) : pendingReview ? getContext().getString(R.string.tool_call_status_pending_review) : complete ? getContext().getString(R.string.tool_call_status_done) : getContext().getString(R.string.tool_call_status_running);
         int typeColor = "explore".equals(type) ? LineTheme.ACCENT : LineTheme.DANGER;
         int statusColor = error ? LineTheme.DANGER : pendingReview ? LineTheme.WARNING : complete ? LineTheme.SUCCESS : LineTheme.ACCENT;
+        lastLayoutSignature = layoutSignature(toolCall, result);
 
         LinearLayout header = new LinearLayout(getContext());
         header.setOrientation(HORIZONTAL);
@@ -156,7 +163,7 @@ public final class ToolCallAgentView extends BaseToolCallView implements ToolCal
         content.setOrientation(VERTICAL);
         LineTheme.padding(content, LineTheme.MD, LineTheme.SM, LineTheme.MD, LineTheme.MD);
         if (thinking.trim().length() > 0) {
-            ThinkingBlockView thinkingView = new ThinkingBlockView(getContext());
+            thinkingView = new ThinkingBlockView(getContext());
             thinkingView.bind(toolCall == null ? "" : toolCall.getId(), thinking, !complete, false, true);
             LayoutParams thinkingParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
             thinkingParams.bottomMargin = LineTheme.dp(getContext(), LineTheme.SM);
@@ -167,6 +174,7 @@ public final class ToolCallAgentView extends BaseToolCallView implements ToolCal
             content.addView(runningText, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         } else if (output.length() > 0) {
             MarkdownView markdownView = new MarkdownView(getContext());
+            outputMarkdownView = markdownView;
             markdownView.setMarkdown(output);
             content.addView(markdownView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         } else {
@@ -179,6 +187,50 @@ public final class ToolCallAgentView extends BaseToolCallView implements ToolCal
         BoundedScrollView scrollView = new BoundedScrollView(getContext(), 400);
         scrollView.addView(content, new android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT));
         addView(scrollView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+    }
+
+    public static String layoutSignature(ToolCall toolCall, ToolResult result) {
+        String content = result == null ? "" : result.getContent();
+        StringBuilder b = new StringBuilder();
+        b.append(AgentToolResultDisplay.progressStatus(content)).append('|');
+        b.append(result == null ? "" : result.getReviewState()).append('|');
+        b.append(result != null && result.isError()).append('|');
+        b.append(AgentToolResultDisplay.agentId(content)).append('|');
+        b.append(AgentToolResultDisplay.thinking(content).trim().length() > 0).append('|');
+        b.append(AgentToolResultDisplay.displayOutput(content).trim().length() > 0).append('|');
+        b.append(AgentToolResultDisplay.toolCallCount(content)).append('|');
+        b.append(AgentToolResultDisplay.description(content, "")).append('|');
+        b.append(AgentToolResultDisplay.type(content, "")).append('|');
+        JSONArray nested = AgentToolResultDisplay.nestedToolCalls(content);
+        b.append(nested == null ? 0 : nested.length());
+        return b.toString();
+    }
+
+    @Override
+    public void updateContent(ToolCall toolCall, ToolResult result) {
+        String sig = layoutSignature(toolCall, result);
+        if (!sig.equals(lastLayoutSignature)) {
+            bind(toolCall, result);
+            return;
+        }
+        lastLayoutSignature = sig;
+        lastToolCall = toolCall;
+        lastResult = result;
+        String content = result == null ? "" : result.getContent();
+        if (thinkingView != null) {
+            String progressStatus = AgentToolResultDisplay.progressStatus(content);
+            String reviewState = result == null ? "" : result.getReviewState();
+            boolean running = "running".equals(progressStatus)
+                    || "waiting_unlock".equals(progressStatus)
+                    || "running".equals(reviewState);
+            boolean pendingReview = "pending".equals(progressStatus) || "pending".equals(reviewState);
+            boolean complete = result != null && !running && !pendingReview;
+            thinkingView.bind(toolCall == null ? "" : toolCall.getId(),
+                    AgentToolResultDisplay.thinking(content), !complete, false, true);
+        }
+        if (outputMarkdownView != null) {
+            outputMarkdownView.setMarkdown(AgentToolResultDisplay.displayOutput(content));
+        }
     }
 
     public void setProjectPath(String projectPath) {
@@ -275,36 +327,4 @@ public final class ToolCallAgentView extends BaseToolCallView implements ToolCal
         }
     }
 
-    private static final class BoundedScrollView extends android.widget.ScrollView {
-        private final int maxHeightDp;
-
-        BoundedScrollView(Context context, int maxHeightDp) {
-            super(context);
-            this.maxHeightDp = maxHeightDp;
-        }
-
-        @Override
-        public boolean performClick() {
-            return super.performClick();
-        }
-
-        @Override
-        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            int maxHeight = LineTheme.dp(getContext(), maxHeightDp);
-            int cappedHeightSpec = android.view.View.MeasureSpec.makeMeasureSpec(maxHeight, android.view.View.MeasureSpec.AT_MOST);
-            super.onMeasure(widthMeasureSpec, cappedHeightSpec);
-        }
-
-        @Override
-        public boolean onTouchEvent(android.view.MotionEvent ev) {
-            getParent().requestDisallowInterceptTouchEvent(true);
-            return super.onTouchEvent(ev);
-        }
-
-        @Override
-        public boolean onInterceptTouchEvent(android.view.MotionEvent ev) {
-            getParent().requestDisallowInterceptTouchEvent(true);
-            return super.onInterceptTouchEvent(ev);
-        }
-    }
 }

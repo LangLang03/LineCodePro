@@ -129,7 +129,7 @@ final class ModelPromptController {
         String projectPath = host.projectPath();
         String learningContext = aiSettings.isLearningModeEnabled()
                 ? learningContextService.buildLearningContext(projectPath, userInput, chatSessionStore.getCurrentConversationId())
-                : "";
+                : learningContextService.buildManualMemoriesContext(projectPath);
         ModelConfig selectedModel = modelRepository.getSelectedModel();
         String promptHomePath = promptHomePath();
         String extensionContext = extensionRepository.buildExtensionPrompt(projectPath);

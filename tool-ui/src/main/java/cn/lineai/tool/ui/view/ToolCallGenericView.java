@@ -3,6 +3,7 @@ import cn.lineai.tool.ToolCallCardView;
 import cn.lineai.tool.ToolReviewListener;
 import cn.lineai.model.tool.ToolCall;
 import cn.lineai.model.tool.ToolResult;
+import cn.lineai.ui.theme.BoundedScrollView;
 import cn.lineai.ui.theme.IconButtonView;
 import cn.lineai.ui.theme.LineTheme;
 
@@ -20,6 +21,8 @@ import org.json.JSONObject;
 
 public final class ToolCallGenericView extends BaseToolCallView implements ToolCallCardView {
     private final String label;
+    private TextView outputTextView;
+    private TerminalStatus lastTerminalStatus;
 
     public ToolCallGenericView(Context context, String label) {
         super(context);
@@ -28,10 +31,12 @@ public final class ToolCallGenericView extends BaseToolCallView implements ToolC
 
     public void bind(ToolCall toolCall, ToolResult result) {
         removeAllViews();
+        outputTextView = null;
         String name = toolCall == null ? "" : toolCall.getName();
         JSONObject input = ToolCallUtils.parseInput(toolCall);
         // 简化进度圈逻辑：直接根据结果决定最终状态
         TerminalStatus status = computeTerminalStatus(result);
+        lastTerminalStatus = status;
         boolean running = status == TerminalStatus.RUNNING;
         boolean error = status == TerminalStatus.FAILED;
         boolean unknown = status == TerminalStatus.UNKNOWN;
@@ -89,22 +94,38 @@ public final class ToolCallGenericView extends BaseToolCallView implements ToolC
         if (hasResult) {
             // If content is structured agent progress but we fell through to generic
             // (missing registry), prefer human output over raw JSON dump.
-            String rawContent = result.getContent();
-            String displayContent = AgentToolResultDisplay.progressPayload(rawContent) != null
-                    ? AgentToolResultDisplay.displayOutput(rawContent)
-                    : rawContent;
-            if (displayContent == null || displayContent.trim().length() == 0) {
-                displayContent = error
-                        ? getContext().getString(R.string.tool_call_agent_failed)
-                        : getContext().getString(R.string.tool_call_agent_done);
-            }
-            addSection(
+            outputTextView = addSection(
                     running ? getContext().getString(R.string.tool_call_progress)
                             : getContext().getString(R.string.tool_call_output),
-                    displayContent,
+                    outputDisplayText(result, running, error),
                     error ? LineTheme.DANGER : LineTheme.TEXT_SECONDARY,
                     running ? 3 : 8);
         }
+    }
+
+    private String outputDisplayText(ToolResult result, boolean running, boolean error) {
+        String rawContent = result == null ? "" : result.getContent();
+        String displayContent = AgentToolResultDisplay.progressPayload(rawContent) != null
+                ? AgentToolResultDisplay.displayOutput(rawContent)
+                : rawContent;
+        if (displayContent == null || displayContent.trim().length() == 0) {
+            displayContent = error
+                    ? getContext().getString(R.string.tool_call_agent_failed)
+                    : getContext().getString(R.string.tool_call_agent_done);
+        }
+        return displayContent;
+    }
+
+    @Override
+    public void updateContent(ToolCall toolCall, ToolResult result) {
+        TerminalStatus status = computeTerminalStatus(result);
+        if (outputTextView == null || status != lastTerminalStatus) {
+            bind(toolCall, result);
+            return;
+        }
+        boolean running = status == TerminalStatus.RUNNING;
+        boolean error = result != null && result.isError();
+        outputTextView.setText(outputDisplayText(result, running, error));
     }
 
     @Override
@@ -125,7 +146,7 @@ public final class ToolCallGenericView extends BaseToolCallView implements ToolC
         return IconButtonView.MCP;
     }
 
-    private void addSection(String title, String content, int color, int maxHeightRows) {
+    private TextView addSection(String title, String content, int color, int maxHeightRows) {
         View divider = new View(getContext());
         divider.setBackgroundColor(LineTheme.CODE_BORDER);
         addView(divider, new LayoutParams(LayoutParams.MATCH_PARENT, 1));
@@ -142,7 +163,7 @@ public final class ToolCallGenericView extends BaseToolCallView implements ToolC
         LayoutParams textParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         textParams.topMargin = LineTheme.dp(getContext(), 4);
         if (maxHeightRows > 4) {
-            ScrollView scroll = new ScrollView(getContext());
+            BoundedScrollView scroll = new BoundedScrollView(getContext(), 220);
             scroll.setFillViewport(false);
             scroll.setBackground(LineTheme.roundedStroke(getContext(), LineTheme.SURFACE, 8, LineTheme.CODE_BORDER));
             LineTheme.padding(scroll, LineTheme.SM, LineTheme.SM, LineTheme.SM, LineTheme.SM);
@@ -155,5 +176,6 @@ public final class ToolCallGenericView extends BaseToolCallView implements ToolC
             section.addView(text, textParams);
         }
         addView(section, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        return text;
     }
 }

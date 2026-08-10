@@ -83,4 +83,9 @@ class GenerationFlowHost implements GenerationFlowController.Host {
                 StringUtils.decodeUnicodeEscapes(error)
         );
     }
+
+    @Override
+    public String toolLimitNotExecutedMessage() {
+        return coordinator.context().getString(R.string.tool_call_limit_not_executed);
+    }
 }

@@ -178,6 +178,31 @@ public final class LearningContextRepository extends BaseRepository implements L
         return items;
     }
 
+    public List<MemoryRanker.Candidate> readManualMemories(String projectId) {
+        ArrayList<MemoryRanker.Candidate> items = new ArrayList<>();
+        Cursor cursor = database.getReadableDatabase().rawQuery(
+                "SELECT id, scope, project_id, source, confidence, content, updated_at FROM memories "
+                        + "WHERE source = 'manual' AND (? = '' OR project_id = ? OR project_id IS NULL OR project_id = '' OR scope = 'user') "
+                        + "ORDER BY updated_at DESC LIMIT ?",
+                new String[] {safe(projectId), safe(projectId), String.valueOf(SCAN_LIMIT)});
+        try {
+            while (cursor.moveToNext()) {
+                String scope = value(cursor, "scope");
+                String memoryProject = value(cursor, "project_id");
+                String source = value(cursor, "source");
+                String content = compact(value(cursor, "content"), 520);
+                String scopeLabel = memoryProject.length() == 0 ? scope : scope + ":" + memoryProject;
+                String confidence = String.format(Locale.ROOT, "%.2f", cursor.getDouble(cursor.getColumnIndexOrThrow("confidence")));
+                items.add(new MemoryRanker.Candidate(value(cursor, "id"), content + " " + source + " " + scopeLabel,
+                        cursor.getLong(cursor.getColumnIndexOrThrow("updated_at")),
+                        "- [" + scopeLabel + "/" + source + ", confidence " + confidence + "] " + content));
+            }
+        } finally {
+            cursor.close();
+        }
+        return items;
+    }
+
     public List<MemoryRanker.Candidate> readConversationIndex(String projectId, String excludeConversationId) {
         ArrayList<MemoryRanker.Candidate> items = new ArrayList<>();
         Cursor cursor = database.getReadableDatabase().rawQuery(
