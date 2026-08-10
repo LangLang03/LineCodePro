@@ -1091,6 +1091,7 @@
     <string name="message_agent_pipeline_completed">Agent 流水线完成: %1$d 个任务</string>
     <string name="message_agent_pipeline_terminated">Agent 流水线已终止。</string>
     <string name="message_agent_pipeline_self_dependency">Agent 不能依赖自身: %1$s</string>
+    <string name="tool_call_limit_not_executed">工具调用次数已达到上限，本轮调用未执行。</string>
 
     <string name="settings_row_error_logs_title">错误日志</string>
     <string name="settings_row_error_logs_desc">查看完整错误堆栈、HTTP 请求和响应</string>

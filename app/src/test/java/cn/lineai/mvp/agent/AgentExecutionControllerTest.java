@@ -606,4 +606,54 @@ public final class AgentExecutionControllerTest {
             return "";
         }
     }
+
+    @Test
+    public void mergeToolCallsDeduplicatesSameCallAcrossNativeAndTextChannels() {
+        AgentExecutionController controller = new AgentExecutionController(
+                null, null, null, null, null, null, null);
+        ToolCall nativeCall = new ToolCall("call_0_123", "file_edit",
+                "{\"file_path\":\"a.txt\",\"old_string\":\"x\",\"new_string\":\"y\"}");
+        ToolCall textCall = new ToolCall("text_tool_xml_0", "file_edit",
+                "{\"new_string\":\"y\",\"old_string\":\"x\",\"file_path\":\"a.txt\"}");
+
+        List<ToolCall> merged = controller.mergeToolCalls(
+                Collections.singletonList(nativeCall),
+                Collections.singletonList(textCall));
+
+        assertEquals(1, merged.size());
+        assertEquals("call_0_123", merged.get(0).getId());
+    }
+
+    @Test
+    public void mergeToolCallsKeepsDistinctCallsWithDifferentArguments() {
+        AgentExecutionController controller = new AgentExecutionController(
+                null, null, null, null, null, null, null);
+        ToolCall nativeCall = new ToolCall("call_0_123", "file_edit",
+                "{\"file_path\":\"a.txt\",\"old_string\":\"x\",\"new_string\":\"y\"}");
+        ToolCall textCall = new ToolCall("text_tool_xml_0", "file_edit",
+                "{\"file_path\":\"a.txt\",\"old_string\":\"z\",\"new_string\":\"w\"}");
+
+        List<ToolCall> merged = controller.mergeToolCalls(
+                Collections.singletonList(nativeCall),
+                Collections.singletonList(textCall));
+
+        assertEquals(2, merged.size());
+    }
+
+    @Test
+    public void mergeToolCallsDeduplicatesByIdAcrossChannels() {
+        AgentExecutionController controller = new AgentExecutionController(
+                null, null, null, null, null, null, null);
+        ToolCall nativeCall = new ToolCall("call_0_123", "file_edit",
+                "{\"file_path\":\"a.txt\",\"old_string\":\"x\",\"new_string\":\"y\"}");
+        ToolCall textCall = new ToolCall("call_0_123", "file_edit",
+                "{\"file_path\":\"a.txt\",\"old_string\":\"x\",\"new_string\":\"y\"}");
+
+        List<ToolCall> merged = controller.mergeToolCalls(
+                Collections.singletonList(nativeCall),
+                Collections.singletonList(textCall));
+
+        assertEquals(1, merged.size());
+        assertEquals("call_0_123", merged.get(0).getId());
+    }
 }

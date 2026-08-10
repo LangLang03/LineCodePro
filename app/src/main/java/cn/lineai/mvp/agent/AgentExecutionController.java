@@ -1068,25 +1068,61 @@ public final class AgentExecutionController {
 
     public List<ToolCall> mergeToolCalls(List<ToolCall> nativeCalls, List<ToolCall> textCalls) {
         ArrayList<ToolCall> merged = new ArrayList<>();
-        HashSet<String> seen = new HashSet<>();
+        HashSet<String> seenIds = new HashSet<>();
+        HashSet<String> seenSignatures = new HashSet<>();
         if (nativeCalls != null) {
             for (ToolCall call : nativeCalls) {
-                if (call == null || call.getName().length() == 0 || seen.contains(call.getId())) {
+                if (call == null || call.getName().length() == 0 || seenIds.contains(call.getId())) {
                     continue;
                 }
                 merged.add(call);
-                seen.add(call.getId());
+                seenIds.add(call.getId());
+                seenSignatures.add(toolCallSignature(call));
             }
         }
         if (textCalls != null) {
             for (ToolCall call : textCalls) {
-                if (call == null || call.getName().length() == 0 || seen.contains(call.getId())) {
+                if (call == null || call.getName().length() == 0 || seenIds.contains(call.getId())) {
+                    continue;
+                }
+                String signature = toolCallSignature(call);
+                if (seenSignatures.contains(signature)) {
                     continue;
                 }
                 merged.add(call);
-                seen.add(call.getId());
+                seenIds.add(call.getId());
+                seenSignatures.add(signature);
             }
         }
         return merged;
+    }
+
+    private static String toolCallSignature(ToolCall call) {
+        return call.getName() + '\u0000' + normalizedArguments(call.getArguments());
+    }
+
+    private static String normalizedArguments(String raw) {
+        if (raw == null || raw.trim().length() == 0) {
+            return "";
+        }
+        try {
+            org.json.JSONObject object = new org.json.JSONObject(raw);
+            org.json.JSONArray names = object.names();
+            if (names == null) {
+                return raw;
+            }
+            ArrayList<String> keys = new ArrayList<>();
+            for (int i = 0; i < names.length(); i++) {
+                keys.add(names.optString(i));
+            }
+            java.util.Collections.sort(keys);
+            StringBuilder builder = new StringBuilder();
+            for (String key : keys) {
+                builder.append(key).append('=').append(String.valueOf(object.opt(key))).append(';');
+            }
+            return builder.toString();
+        } catch (Exception ignored) {
+            return raw;
+        }
     }
 }

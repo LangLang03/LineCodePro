@@ -15,6 +15,10 @@ import java.util.Map;
 import org.json.JSONObject;
 
 public final class CustomMcpHttpTool extends BaseTool {
+    private static final String MCP_PROTOCOL_VERSION = "2025-03-26";
+    private static final String HEADER_SESSION_ID = "Mcp-Session-Id";
+    private static final String HEADER_PROTOCOL_VERSION = "Mcp-Protocol-Version";
+
     private final String name;
     private final ExtensionMcpConfig mcp;
     private final McpToolSummary tool;
@@ -68,6 +72,7 @@ public final class CustomMcpHttpTool extends BaseTool {
     @Override
     public ToolResult execute(JSONObject input, ToolContext context) {
         try {
+            String sessionId = initializeSession();
             JSONObject body = new JSONObject()
                     .put("jsonrpc", "2.0")
                     .put("id", "linecode_" + System.currentTimeMillis())
@@ -75,18 +80,10 @@ public final class CustomMcpHttpTool extends BaseTool {
                     .put("params", new JSONObject()
                             .put("name", tool.getName())
                             .put("arguments", input == null ? new JSONObject() : input));
-            Map<String, String> headers = new LinkedHashMap<>();
-            headers.put("Accept", "application/json, text/event-stream");
-            headers.put("Content-Type", "application/json");
-            for (McpRequestHeader header : mcp.getRequestHeaders()) {
-                if (header.getName().length() > 0) {
-                    headers.put(header.getName(), header.getValue());
-                }
-            }
             SimpleHttpClient.Request request = new SimpleHttpClient.Request(mcp.getUrl(), "POST", body.toString());
             request.connectTimeoutMs = 15000;
             request.readTimeoutMs = 60000;
-            request.headers.putAll(headers);
+            request.headers.putAll(baseHeaders(sessionId));
             SimpleHttpClient.Response response = SimpleHttpClient.execute(request);
             if (response.code < 200 || response.code >= 300) {
                 return error(response.code + ": " + response.body);
@@ -95,6 +92,46 @@ public final class CustomMcpHttpTool extends BaseTool {
         } catch (Exception e) {
             return error(context.getString(R.string.tool_mcp_call_failed, e.getMessage()));
         }
+    }
+
+    private String initializeSession() throws Exception {
+        JSONObject init = new JSONObject()
+                .put("jsonrpc", "2.0")
+                .put("id", "linecode_init_" + System.currentTimeMillis())
+                .put("method", "initialize")
+                .put("params", new JSONObject()
+                        .put("protocolVersion", MCP_PROTOCOL_VERSION)
+                        .put("capabilities", new JSONObject())
+                        .put("clientInfo", new JSONObject()
+                                .put("name", "linecode")
+                                .put("version", "1.0")));
+        SimpleHttpClient.Request request = new SimpleHttpClient.Request(mcp.getUrl(), "POST", init.toString());
+        request.connectTimeoutMs = 15000;
+        request.readTimeoutMs = 30000;
+        request.headers.putAll(baseHeaders(""));
+        SimpleHttpClient.Response response = SimpleHttpClient.execute(request);
+        if (response.code < 200 || response.code >= 300) {
+            // 服务端不支持 initialize（stateless 模式）时降级为无会话调用。
+            return "";
+        }
+        String sessionId = response.headers.get(HEADER_SESSION_ID);
+        return sessionId == null ? "" : sessionId;
+    }
+
+    private Map<String, String> baseHeaders(String sessionId) {
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Accept", "application/json, text/event-stream");
+        headers.put("Content-Type", "application/json");
+        headers.put(HEADER_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION);
+        if (sessionId != null && sessionId.length() > 0) {
+            headers.put(HEADER_SESSION_ID, sessionId);
+        }
+        for (McpRequestHeader header : mcp.getRequestHeaders()) {
+            if (header.getName().length() > 0) {
+                headers.put(header.getName(), header.getValue());
+            }
+        }
+        return headers;
     }
 
     private ToolResult parseResult(String text, ToolContext context) {

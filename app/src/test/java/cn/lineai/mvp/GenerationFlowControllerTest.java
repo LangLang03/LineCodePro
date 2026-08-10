@@ -114,5 +114,10 @@ public final class GenerationFlowControllerTest {
         public String formatModelFailed(String error) {
             return error == null ? "" : error;
         }
+
+        @Override
+        public String toolLimitNotExecutedMessage() {
+            return "tool limit reached";
+        }
     }
 }

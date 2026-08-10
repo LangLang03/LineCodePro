@@ -120,6 +120,8 @@ public final class ToolExecutor {
                 .modelServiceProvider(context.getModelServiceProvider() != null ? context.getModelServiceProvider() : modelServiceProvider)
                 .promptTemplateRepository(context.getPromptTemplateRepository() != null ? context.getPromptTemplateRepository() : promptTemplateRepository)
                 .bypassPathProtection(context.isBypassPathProtection())
+                .agentResultStore(context.getAgentResultStore())
+                .progressListener(context.getProgressListener())
                 .build();
     }
 

@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
-val releaseVersionName = "1.2.6-rc.1"
+val releaseVersionName = "1.2.6-rc.2"
 val releaseApkName = "LineCode Pro $releaseVersionName.APK"
 val releaseIdsigName = "$releaseApkName.idsig"
 val releaseSigningProperties = Properties()
