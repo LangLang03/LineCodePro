@@ -103,7 +103,7 @@ android {
         applicationId = "cn.lineai"
         minSdk = 26
         targetSdk = 37
-        versionCode = 29
+        versionCode = 30
         versionName = releaseVersionName
     }
 
