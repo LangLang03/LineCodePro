@@ -8,12 +8,14 @@ import cn.lineai.ai.SkillPromptProvider;
 import cn.lineai.data.db.LineCodeDatabase;
 import cn.lineai.data.service.GitHubSkillInstaller;
 import cn.lineai.data.service.SkillFileManager;
+import cn.lineai.data.service.SkillHubClient;
 import cn.lineai.model.ExtensionAgentConfig;
 import cn.lineai.model.ExtensionMcpConfig;
 import cn.lineai.model.McpToolSummary;
 import cn.lineai.model.SkillRecord;
 import cn.lineai.resource.ResourceProvider;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -125,6 +127,31 @@ public final class SkillRepository extends BaseRepository {
             return installSkill(homePath, location, downloaded.getAbsolutePath(), downloaded.getName());
         } finally {
             fileManager.deleteRecursive(downloaded);
+        }
+    }
+
+    public synchronized SkillRecord installSkillFromSkillHub(
+            String homePath,
+            String location,
+            String slug,
+            String version
+    ) throws Exception {
+        fileManager.ensureSkillRoots(homePath);
+        File tempRoot = new File(fileManager.getWorkspacePaths().getLinecodeRoot(), "tmp/skills-skillhub");
+        File tempDir = fileManager.uniqueChild(tempRoot, fileManager.sanitizeFileName(slug));
+        File archive = new File(tempDir, "skill.zip");
+        tempDir.mkdirs();
+        try {
+            byte[] bytes = new SkillHubClient().download(slug, version);
+            FileOutputStream output = new FileOutputStream(archive, false);
+            try {
+                output.write(bytes);
+            } finally {
+                output.close();
+            }
+            return installSkill(homePath, location, archive.getAbsolutePath(), slug);
+        } finally {
+            fileManager.deleteRecursive(tempDir);
         }
     }
 
