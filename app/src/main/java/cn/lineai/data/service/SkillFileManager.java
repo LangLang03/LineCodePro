@@ -374,6 +374,10 @@ public final class SkillFileManager {
     }
 
     public void writeUtf8(File file, String content) {
+        writeBytes(file, safe(content).getBytes(StandardCharsets.UTF_8));
+    }
+
+    public void writeBytes(File file, byte[] content) {
         try {
             File parent = file.getParentFile();
             if (parent != null && !parent.exists()) {
@@ -381,7 +385,7 @@ public final class SkillFileManager {
             }
             FileOutputStream output = new FileOutputStream(file, false);
             try {
-                output.write(safe(content).getBytes(StandardCharsets.UTF_8));
+                output.write(content);
             } finally {
                 output.close();
             }

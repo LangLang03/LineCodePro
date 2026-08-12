@@ -15,7 +15,6 @@ import cn.lineai.model.McpToolSummary;
 import cn.lineai.model.SkillRecord;
 import cn.lineai.resource.ResourceProvider;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -108,11 +107,12 @@ public final class SkillRepository extends BaseRepository {
         File tempDir = fileManager.uniqueChild(tempRoot, fileManager.stripExtension(fileName));
         File tempFile = new File(tempDir, fileName.toLowerCase(Locale.ROOT).endsWith(".zip") ? fileName : "SKILL.md");
         fileManager.copyUriToFile(uri, tempFile);
-        try {
-            return installSkill(homePath, location, tempFile.getAbsolutePath(), fileManager.stripExtension(fileName));
-        } finally {
-            fileManager.deleteRecursive(tempDir);
-        }
+        return installTemporarySkill(
+                homePath,
+                location,
+                tempFile,
+                fileManager.stripExtension(fileName),
+                tempDir);
     }
 
     public synchronized SkillRecord installSkillFromGitHub(String homePath, String location, String githubUrl) throws Exception {
@@ -123,11 +123,12 @@ public final class SkillRepository extends BaseRepository {
                 fileManager
         );
         File downloaded = installer.downloadToTemp(githubUrl);
-        try {
-            return installSkill(homePath, location, downloaded.getAbsolutePath(), downloaded.getName());
-        } finally {
-            fileManager.deleteRecursive(downloaded);
-        }
+        return installTemporarySkill(
+                homePath,
+                location,
+                downloaded,
+                downloaded.getName(),
+                downloaded);
     }
 
     public synchronized SkillRecord installSkillFromSkillHub(
@@ -140,18 +141,27 @@ public final class SkillRepository extends BaseRepository {
         File tempRoot = new File(fileManager.getWorkspacePaths().getLinecodeRoot(), "tmp/skills-skillhub");
         File tempDir = fileManager.uniqueChild(tempRoot, fileManager.sanitizeFileName(slug));
         File archive = new File(tempDir, "skill.zip");
-        tempDir.mkdirs();
+        byte[] bytes = new SkillHubClient().download(slug, version);
         try {
-            byte[] bytes = new SkillHubClient().download(slug, version);
-            FileOutputStream output = new FileOutputStream(archive, false);
-            try {
-                output.write(bytes);
-            } finally {
-                output.close();
-            }
-            return installSkill(homePath, location, archive.getAbsolutePath(), slug);
-        } finally {
+            fileManager.writeBytes(archive, bytes);
+        } catch (RuntimeException error) {
             fileManager.deleteRecursive(tempDir);
+            throw error;
+        }
+        return installTemporarySkill(homePath, location, archive, slug, tempDir);
+    }
+
+    private SkillRecord installTemporarySkill(
+            String homePath,
+            String location,
+            File source,
+            String name,
+            File cleanupTarget
+    ) throws Exception {
+        try {
+            return installSkill(homePath, location, source.getAbsolutePath(), name);
+        } finally {
+            fileManager.deleteRecursive(cleanupTarget);
         }
     }
 
