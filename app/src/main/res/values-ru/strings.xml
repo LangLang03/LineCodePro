@@ -1168,9 +1168,6 @@
     <string name="attachment_picker_loading_ssh">Чтение SSH файлов через SFTP…</string>
     <string name="attachment_picker_loading_terminal_provider">Чтение каталога терминального провайдера через IPC…</string>
 
-    <!-- MemoryExtractionService -->
-    <string name="memory_extraction_json_only">Верните только JSON.</string>
-
     <!-- AgentExecutionController -->
     <string name="agent_execution_completed">Agent завершён: </string>
     <string name="agent_pipeline_completed">Agent pipeline завершён: </string>

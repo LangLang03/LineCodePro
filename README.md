@@ -50,8 +50,8 @@ The application id is `cn.lineai` and the project is a multi-module Gradle proje
 - Streaming chat with **multiple model protocols** in the same UI: OpenAI-compatible HTTP APIs, Anthropic Messages, OpenAI Codex Responses, and a local GGUF runtime.
 - Reasoning blocks (`<think>…</think>`) are extracted and rendered separately from the final answer.
 - Tool-call text inside a stream is parsed and dispatched by `ToolCallTextParser`; everything the model asks to do is shown to you before it runs.
-- System prompts are assembled from `feature-model/src/main/assets/prompts/*.txt` — tone variants (chat / coding), context-compaction, memory-extraction, skill-extraction, work-directory, learning-context, and model-identity templates. You can override the tone, the work directory, the identity block, and the prompt template from settings.
-- Long conversations are summarised in the background by `ContextCompactionService` with **dynamic compaction** (50% soft trigger + 80% hard trigger) using the active model itself; durable knowledge is extracted by `MemoryExtractionService` and reinjected next session by `LearningContextRepository`.
+- System prompts are assembled from `feature-model/src/main/assets/prompts/*.txt` — tone variants (chat / coding), context-compaction, work-directory, learning-context, and model-identity templates. You can override the tone, the work directory, the identity block, and the prompt template from settings.
+- Long conversations are summarised in the background by `ContextCompactionService` with **dynamic compaction** (50% soft trigger + 80% hard trigger) using the active model itself; durable knowledge saved via the `memory_update` tool or the memory screen is reinjected next session by `LearningContextRepository`.
 - **Image attachments** — pick an image from the system picker; it is compressed, base64-encoded, and sent in the protocol-specific format (OpenAI `image_url`, Anthropic `image.source.base64`, Codex `input_image`).
 
 ### Tool execution

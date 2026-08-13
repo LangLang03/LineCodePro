@@ -10,8 +10,6 @@
     <string name="prompt_template_chat_mode_agent_title">Session Agent mode prompt</string>
     <string name="prompt_template_chat_mode_control_title">Session Control mode prompt</string>
     <string name="prompt_template_learning_context_title">Learning mode context template</string>
-    <string name="prompt_template_memory_extraction_title">Long-term memory extraction template</string>
-    <string name="prompt_template_skill_extraction_title">Skills extraction template</string>
     <string name="prompt_template_context_compaction_title">Context compaction template</string>
     <string name="prompt_template_model_identity_title">Model identity prompt</string>
     <string name="prompt_template_todo_state_title">TODO state template</string>
@@ -35,8 +33,6 @@
     <string name="prompt_template_chat_mode_agent_description">Injected when the top session mode is set to Agent; allows reading, modifying, executing and verifying tasks per permissions.</string>
     <string name="prompt_template_chat_mode_control_description">Injected when the top session mode is set to Control; only phone control tools allowed, file operations, Shell and Agent forbidden.</string>
     <string name="prompt_template_learning_context_description">When learning mode is on, renders short-term memory, long-term memory, chat retrieval and Skills retrieval results into the system prompt.</string>
-    <string name="prompt_template_memory_extraction_description">Used when learning mode saves memories; instructs the model to extract user/project/environment memories from the current conversation.</string>
-    <string name="prompt_template_skill_extraction_description">Used when learning mode decides whether to generate a reusable Skill; constrains JSON output and Skill content format.</string>
     <string name="prompt_template_context_compaction_description">Used to summarize old conversation when context gets too long; requires the model to output a compaction summary that can recover task state.</string>
     <string name="prompt_template_model_identity_description">Injects the current model\'s modelId, name, provider and protocol into the system prompt so the model answers capability questions based on the model identifier.</string>
     <string name="prompt_template_todo_state_description">Injects the current TODO list into the system prompt, guiding the model to advance in order and update state in time.</string>

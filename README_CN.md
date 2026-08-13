@@ -50,8 +50,8 @@ LineCode 不是一个轻量聊天客户端，它是一个**完整的编程工作
 - 同一个聊天界面下支持**多种模型协议**：OpenAI 兼容 HTTP API、Anthropic Messages、OpenAI Codex Responses、本地 GGUF 推理。
 - 推理块（`<think>…</think>`）会被 `ThinkTagParser` 单独抽出来，和最终回答分块渲染。
 - 流中的工具调用文本由 `ToolCallTextParser` 解析并派发；模型请求做的每件事，在真正执行前都会先展示给你看。
-- 系统提示由 `feature-model/src/main/assets/prompts/*.txt` 中的模板拼装：语气（聊天 / 编程）变体、上下文压缩、记忆抽取、技能抽取、工作目录、学习上下文、模型身份。你可以在设置里覆盖语气、工作目录、身份块、提示模板。
-- 长对话由 `ContextCompactionService` 后台用**当前模型本身**做**动态压缩**（50% 软触发 + 80% 硬触发）；`MemoryExtractionService` 抽取长期知识，`LearningContextRepository` 在下一次会话中喂回上下文。
+- 系统提示由 `feature-model/src/main/assets/prompts/*.txt` 中的模板拼装：语气（聊天 / 编程）变体、上下文压缩、工作目录、学习上下文、模型身份。你可以在设置里覆盖语气、工作目录、身份块、提示模板。
+- 长对话由 `ContextCompactionService` 后台用**当前模型本身**做**动态压缩**（50% 软触发 + 80% 硬触发）；通过 `memory_update` 工具或记忆管理界面保存的长期知识，由 `LearningContextRepository` 在下一次会话中喂回上下文。
 - **图片附件** - 在输入框右侧点图片按钮打开系统选择器；选中的图片经压缩后 base64 编码，按协议格式输出（OpenAI `image_url`、Anthropic `image.source.base64`、Codex `input_image`）。
 
 ### 工具执行

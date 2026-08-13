@@ -1171,9 +1171,6 @@
     <string name="attachment_picker_loading_ssh">正在通过 SFTP 读取 SSH 文件...</string>
     <string name="attachment_picker_loading_terminal_provider">正在通过 IPC 读取终端提供者目录...</string>
 
-    <!-- MemoryExtractionService -->
-    <string name="memory_extraction_json_only">请仅返回 JSON。</string>
-
     <!-- AgentExecutionController -->
     <string name="agent_execution_completed">Agent 完成: </string>
     <string name="agent_pipeline_completed">Agent 流水线完成: </string>

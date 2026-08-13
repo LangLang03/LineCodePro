@@ -1170,9 +1170,6 @@
     <string name="attachment_picker_loading_ssh">Reading SSH files via SFTP…</string>
     <string name="attachment_picker_loading_terminal_provider">Reading terminal provider directory via IPC…</string>
 
-    <!-- MemoryExtractionService -->
-    <string name="memory_extraction_json_only">Return JSON only.</string>
-
     <!-- AgentExecutionController -->
     <string name="agent_execution_completed">Agent completed: </string>
     <string name="agent_pipeline_completed">Agent pipeline completed: </string>

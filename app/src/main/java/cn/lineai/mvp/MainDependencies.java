@@ -9,7 +9,6 @@ import cn.lineai.ai.protocol.CodexResponsesProtocol;
 import cn.lineai.ai.protocol.OpenAiResponsesCompactionProtocol;
 import cn.lineai.context.ContextCompactionService;
 import cn.lineai.context.ContextManager;
-import cn.lineai.context.MemoryExtractionService;
 import cn.lineai.context.TokenUsageTracker;
 import cn.lineai.data.db.LineCodeDatabase;
 import cn.lineai.data.importer.LineCodeArchiveService;
@@ -92,7 +91,6 @@ public final class MainDependencies {
     final ProjectStore projectRepository;
     final LearningContextStore learningContextRepository;
     final LearningContextService learningContextService;
-    final MemoryExtractionService memoryExtractionService;
     final ToolSettingsStore toolSettingsRepository;
     final ExtensionStore extensionRepository;
     final IpcProviderStore ipcProviderRepository;
@@ -179,7 +177,6 @@ public final class MainDependencies {
                 return sb.toString();
             }
         });
-        memoryExtractionService = new MemoryExtractionService(resourceProvider, learningContextRepository, extensionRepository, promptTemplateRepository);
         ipcProviderRepository = new IpcProviderRepository(database);
         ipcProviderScanner = new IpcProviderScanner();
         ipcProviderManager = new IpcProviderManager(context);

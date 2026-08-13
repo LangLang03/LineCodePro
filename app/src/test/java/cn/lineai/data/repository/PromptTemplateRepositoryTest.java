@@ -13,8 +13,6 @@ public final class PromptTemplateRepositoryTest {
         Assert.assertTrue(ids.contains(PromptTemplateRepository.ID_TONE_CODING));
         Assert.assertTrue(ids.contains(PromptTemplateRepository.ID_TONE_CHAT));
         Assert.assertTrue(ids.contains(PromptTemplateRepository.ID_LEARNING_CONTEXT));
-        Assert.assertTrue(ids.contains(PromptTemplateRepository.ID_MEMORY_EXTRACTION));
-        Assert.assertTrue(ids.contains(PromptTemplateRepository.ID_SKILL_EXTRACTION));
         Assert.assertTrue(ids.contains(PromptTemplateRepository.ID_CONTEXT_COMPACTION));
         Assert.assertTrue(ids.contains(PromptTemplateRepository.ID_CHAT_MODE_CHAT));
         Assert.assertTrue(ids.contains(PromptTemplateRepository.ID_CHAT_MODE_PLAN));
