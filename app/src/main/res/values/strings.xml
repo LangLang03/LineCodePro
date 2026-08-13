@@ -1129,6 +1129,8 @@
     <string name="tool_group_shell_desc">Run shell commands via SSH</string>
     <string name="tool_group_web_search_name">Web search</string>
     <string name="tool_group_web_search_desc">Search the internet and view web pages</string>
+    <string name="tool_group_memory_name">Memory</string>
+    <string name="tool_group_memory_desc">Save and manage long-term memories; requires Learning Mode to be enabled</string>
     <string name="tool_group_ipc_shell_desc">Run shell commands via the terminal provider IPC</string>
 
     <!-- Overlay action sheet (more actions menu) -->

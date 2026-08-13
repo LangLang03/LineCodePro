@@ -1130,6 +1130,8 @@
     <string name="tool_group_shell_desc">通过 SSH 执行 shell 命令</string>
     <string name="tool_group_web_search_name">网页搜索</string>
     <string name="tool_group_web_search_desc">搜索互联网并查看网页内容</string>
+    <string name="tool_group_memory_name">记忆</string>
+    <string name="tool_group_memory_desc">保存和管理长期记忆；需要开启学习模式</string>
     <string name="tool_group_ipc_shell_desc">通过终端提供者 IPC 执行 shell 命令</string>
 
     <!-- Overlay action sheet (more actions menu) -->

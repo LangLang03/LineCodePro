@@ -1127,6 +1127,8 @@
     <string name="tool_group_shell_desc">Выполнение shell-команд через SSH</string>
     <string name="tool_group_web_search_name">Веб-поиск</string>
     <string name="tool_group_web_search_desc">Поиск в интернете и просмотр веб-страниц</string>
+    <string name="tool_group_memory_name">Память</string>
+    <string name="tool_group_memory_desc">Сохранение и управление долгосрочными воспоминаниями; требуется включённый режим обучения</string>
     <string name="tool_group_ipc_shell_desc">Выполнение shell-команд через терминальный провайдер IPC</string>
 
     <!-- Overlay action sheet (more actions menu) -->

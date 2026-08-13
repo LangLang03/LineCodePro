@@ -110,6 +110,12 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
                 true,
                 new String[] {ToolNames.WEB_SEARCH, ToolNames.WEB_FETCH},
                 MODE_ALL, "web_search"));
+        configs.add(new McpToolConfig("memory",
+                resourceProvider.getString(R.string.tool_group_memory_name),
+                resourceProvider.getString(R.string.tool_group_memory_desc),
+                true,
+                new String[] {ToolNames.MEMORY_UPDATE},
+                MODE_ALL, "memory"));
         return configs;
     }
 
@@ -281,7 +287,15 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
                 }
             }
         }
+        boolean learningMode = settingsRepository.getBoolean(AiBehaviorSettingsRepository.KEY_LEARNING_MODE, false);
+        applyLearningModeGate(enabled, learningMode);
         return enabled;
+    }
+
+    static void applyLearningModeGate(Set<String> enabled, boolean learningModeEnabled) {
+        if (!learningModeEnabled && enabled != null) {
+            enabled.remove(ToolNames.MEMORY_UPDATE);
+        }
     }
 
     @Override
