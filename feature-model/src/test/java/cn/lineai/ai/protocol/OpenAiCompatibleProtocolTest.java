@@ -4,6 +4,7 @@ import cn.lineai.model.tool.ToolResult;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import cn.lineai.ai.ModelCompletionResponse;
 import cn.lineai.ai.ImageInputPayload;
@@ -12,6 +13,8 @@ import cn.lineai.ai.ModelStreamCallback;
 import cn.lineai.ai.message.ModelMessage;
 import cn.lineai.ai.message.ToolModelMessage;
 import cn.lineai.ai.message.UserModelMessage;
+import cn.lineai.ai.protocol.reasoning.KimiReasoningStrategy;
+import cn.lineai.ai.protocol.reasoning.MoonshotReasoningStrategy;
 import cn.lineai.model.AiBehaviorSettings;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelProtocolType;
@@ -149,6 +152,101 @@ public final class OpenAiCompatibleProtocolTest {
         assertFalse(body.has("preserve_thinking"));
         assertFalse(body.has("thinking"));
         assertFalse(body.has("reasoning"));
+    }
+
+    @Test
+    public void kimiGatewayClampsTemperatureAndEnablesThinking() throws Exception {
+        ModelConfig config = ModelConfig.builder(
+                "kimi-k2",
+                "Kimi K2",
+                ModelProtocolType.OPENAI_COMPATIBLE,
+                "Moonshot",
+                "https://api.moonshot.cn/v1",
+                "sk-test",
+                "kimi-k2-0711-preview").build();
+
+        JSONObject body = new OpenAiCompatibleProtocol().reasoningRequestBodyForTest(
+                config,
+                new ModelRequestOptions(AiBehaviorSettings.REASONING_HIGH, false)
+        );
+
+        assertEquals(1.0, body.optDouble("temperature", 0.2), 0.0001);
+        assertTrue("enabled".equals(body.getJSONObject("thinking").getString("type")));
+    }
+
+    @Test
+    public void kimiPreserveReasoningKeepsThinking() throws Exception {
+        ModelConfig config = ModelConfig.builder(
+                "kimi-k2",
+                "Kimi K2",
+                ModelProtocolType.OPENAI_COMPATIBLE,
+                "Moonshot",
+                "https://api.moonshot.cn/v1",
+                "sk-test",
+                "kimi-k2-0711-preview").build();
+
+        JSONObject body = new OpenAiCompatibleProtocol().reasoningRequestBodyForTest(
+                config,
+                new ModelRequestOptions(AiBehaviorSettings.REASONING_HIGH, true)
+        );
+
+        assertTrue("all".equals(body.getJSONObject("thinking").getString("keep")));
+    }
+
+    @Test
+    public void kimiStrategyClampsPreExistingTemperature() throws Exception {
+        JSONObject body = new JSONObject().put("temperature", 0.2);
+        new KimiReasoningStrategy().apply(
+                body,
+                new ReasoningRequestContext(true, "high", true, "api.moonshot.cn", "kimi-k2", 0)
+        );
+
+        assertEquals(1.0, body.getDouble("temperature"), 0.0001);
+        assertTrue("all".equals(body.getJSONObject("thinking").getString("keep")));
+    }
+
+    @Test
+    public void glmConfigStillHandledByMoonshotStrategy() throws Exception {
+        String baseUrl = "https://open.bigmodel.cn/api/paas/v4";
+        String modelId = "glm-4-plus";
+        ModelConfig config = ModelConfig.builder(
+                "glm-4",
+                "GLM-4 Plus",
+                ModelProtocolType.OPENAI_COMPATIBLE,
+                "Zhipu",
+                baseUrl,
+                "sk-test",
+                modelId).build();
+
+        JSONObject body = new OpenAiCompatibleProtocol().reasoningRequestBodyForTest(
+                config,
+                new ModelRequestOptions(AiBehaviorSettings.REASONING_HIGH, true)
+        );
+
+        assertTrue("enabled".equals(body.getJSONObject("thinking").getString("type")));
+        assertTrue(body.has("clear_thinking"));
+        assertFalse(body.getBoolean("clear_thinking"));
+        assertFalse(new KimiReasoningStrategy().matches(baseUrl, modelId));
+        assertTrue(new MoonshotReasoningStrategy().matches(baseUrl, modelId));
+    }
+
+    @Test
+    public void deepseekTemperatureRemainsUnclamped() throws Exception {
+        ModelConfig config = ModelConfig.builder(
+                "deepseek",
+                "DeepSeek Chat",
+                ModelProtocolType.OPENAI_COMPATIBLE,
+                "DeepSeek",
+                "https://api.deepseek.com",
+                "sk-test",
+                "deepseek-chat").build();
+
+        JSONObject body = new OpenAiCompatibleProtocol().reasoningRequestBodyForTest(
+                config,
+                new ModelRequestOptions(AiBehaviorSettings.REASONING_OFF, false)
+        );
+
+        assertEquals(0.2, body.optDouble("temperature", 0.2), 0.0001);
     }
 
     private static JSONObject chunk(JSONObject delta, String finishReason) throws Exception {
