@@ -10,8 +10,6 @@
     <string name="prompt_template_chat_mode_agent_title">会话 Agent 模式提示词</string>
     <string name="prompt_template_chat_mode_control_title">会话 Control 模式提示词</string>
     <string name="prompt_template_learning_context_title">学习模式上下文模板</string>
-    <string name="prompt_template_memory_extraction_title">长期记忆提取模板</string>
-    <string name="prompt_template_skill_extraction_title">Skills 沉淀模板</string>
     <string name="prompt_template_context_compaction_title">上下文压缩模板</string>
     <string name="prompt_template_model_identity_title">模型身份提示词</string>
     <string name="prompt_template_todo_state_title">TODO 状态模板</string>
@@ -35,8 +33,6 @@
     <string name="prompt_template_chat_mode_agent_description">顶部会话模式选择 Agent 时注入，允许按权限读取、修改、执行和验证任务。</string>
     <string name="prompt_template_chat_mode_control_description">顶部会话模式选择 Control 时注入，仅允许手机控制工具，禁止文件操作、Shell 和 Agent。</string>
     <string name="prompt_template_learning_context_description">学习模式开启时，把短期记忆、长期记忆、聊天检索和 Skills 检索结果渲染进 system prompt。</string>
-    <string name="prompt_template_memory_extraction_description">学习模式保存记忆时使用，指导模型从本轮对话中提取 user/project/environment 记忆。</string>
-    <string name="prompt_template_skill_extraction_description">学习模式判断是否生成可复用 Skill 时使用，约束返回 JSON 和 Skill 内容格式。</string>
     <string name="prompt_template_context_compaction_description">上下文过长时用于总结旧对话，要求模型输出可恢复任务状态的压缩摘要。</string>
     <string name="prompt_template_model_identity_description">把当前模型的 modelId、名称、提供方和协议注入到 system prompt，让模型在回答自身能力相关问题时以模型标识为依据。</string>
     <string name="prompt_template_todo_state_description">把当前 TODO 列表注入到 system prompt，引导模型按顺序推进并及时更新状态。</string>

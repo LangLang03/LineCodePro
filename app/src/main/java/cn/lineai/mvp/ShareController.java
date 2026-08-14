@@ -2,6 +2,8 @@ package cn.lineai.mvp;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.widget.Toast;
 import cn.lineai.R;
 import cn.lineai.model.ChatMessage;
@@ -37,10 +39,14 @@ public final class ShareController {
                 .setTitle(R.string.dialog_export_format_title)
                 .setItems(names, (dialog, which) -> {
                     ExportFormat format = resolver.get(which);
-                    ExportResult result = format.execute(context, selected);
-                    if (result != null) {
-                        handleResult(context, result, format);
-                    }
+                    new Thread(() -> {
+                        ExportResult result = format.execute(context, selected);
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            if (result != null) {
+                                handleResult(context, result, format);
+                            }
+                        });
+                    }, "linecode-share-export").start();
                 })
                 .show();
     }

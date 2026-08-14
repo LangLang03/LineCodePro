@@ -205,7 +205,8 @@ public final class LineCodeAccessibilityService extends AccessibilityService
         }
         boolean clicked = false;
         for (AccessibilityNodeInfo node : nodes) {
-            if (node.isClickable() && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            if (!clicked && node.isClickable()
+                    && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                 clicked = true;
             }
             node.recycle();

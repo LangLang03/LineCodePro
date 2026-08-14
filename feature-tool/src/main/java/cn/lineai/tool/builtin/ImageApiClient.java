@@ -22,7 +22,7 @@ final class ImageApiClient {
     }
 
     DownloadedImage downloadImage(String url) throws Exception {
-        SimpleHttpClient.DownloadResult result = SimpleHttpClient.download(url, 20000, 120000);
+        SimpleHttpClient.DownloadResult result = SimpleHttpClient.download(url, 20000, 120000, MAX_DOWNLOAD_BYTES);
         return new DownloadedImage(result.mimeType, result.bytes);
     }
 

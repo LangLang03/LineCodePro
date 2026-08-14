@@ -15,6 +15,8 @@ import java.util.Map;
  */
 public final class SimpleHttpClient {
 
+    public static final long MAX_RESPONSE_BODY_BYTES = 32L * 1024 * 1024;
+
     private SimpleHttpClient() {
     }
 
@@ -60,7 +62,7 @@ public final class SimpleHttpClient {
     }
 
     public static DownloadResult download(String url, int connectTimeoutMs, int readTimeoutMs) throws Exception {
-        return download(url, connectTimeoutMs, readTimeoutMs, Integer.MAX_VALUE);
+        return download(url, connectTimeoutMs, readTimeoutMs, (int) MAX_RESPONSE_BODY_BYTES);
     }
 
     public static DownloadResult download(String url, int connectTimeoutMs, int readTimeoutMs, int maxBytes) throws Exception {
@@ -147,8 +149,13 @@ public final class SimpleHttpClient {
         try {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             byte[] buffer = new byte[8192];
+            long total = 0;
             int read;
             while ((read = input.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_RESPONSE_BODY_BYTES) {
+                    throw new Exception("Response body too large, current limit is " + (MAX_RESPONSE_BODY_BYTES / 1024 / 1024) + " MB.");
+                }
                 output.write(buffer, 0, read);
             }
             return output.toString(StandardCharsets.UTF_8.name());
@@ -164,7 +171,7 @@ public final class SimpleHttpClient {
         try {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             byte[] buffer = new byte[8192];
-            int total = 0;
+            long total = 0;
             int read;
             while ((read = input.read(buffer)) >= 0) {
                 total += read;

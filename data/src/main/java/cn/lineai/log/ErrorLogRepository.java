@@ -38,7 +38,7 @@ public final class ErrorLogRepository {
         builder.append("LineCode Error Log\n");
         builder.append("Time: ").append(DISPLAY_TIME_FORMAT.format(new Date(now))).append('\n');
         builder.append("Type: ").append(type == null ? "error" : type).append('\n');
-        builder.append("Summary: ").append(summary == null ? "" : summary).append("\n\n");
+        builder.append("Summary: ").append(summary == null ? "" : ErrorLogRedactor.redact(summary)).append("\n\n");
         if (details != null && details.length() > 0) {
             builder.append("Details:\n").append(ErrorLogRedactor.redact(details)).append("\n\n");
         }

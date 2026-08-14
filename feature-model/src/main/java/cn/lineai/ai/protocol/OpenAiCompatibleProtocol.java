@@ -14,6 +14,7 @@ import cn.lineai.model.ModelContextParser;
 import cn.lineai.ai.protocol.reasoning.DashscopeReasoningStrategy;
 import cn.lineai.ai.protocol.reasoning.DeepseekReasoningStrategy;
 import cn.lineai.ai.protocol.reasoning.DefaultReasoningStrategy;
+import cn.lineai.ai.protocol.reasoning.KimiReasoningStrategy;
 import cn.lineai.ai.protocol.reasoning.MinimaxReasoningStrategy;
 import cn.lineai.ai.protocol.reasoning.MoonshotReasoningStrategy;
 import cn.lineai.ai.protocol.reasoning.ReasoningDeltaExtractor;
@@ -37,6 +38,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         registry.register(new DashscopeReasoningStrategy());
         registry.register(new MinimaxReasoningStrategy());
         registry.register(new DeepseekReasoningStrategy());
+        registry.register(new KimiReasoningStrategy());
         registry.register(new MoonshotReasoningStrategy());
         registry.register(new DefaultReasoningStrategy());
         return registry;
@@ -65,6 +67,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             body.put("model", ModelContextParser.apiModelId(config));
             body.put("messages", messageSerializer.messagesJson(messages));
             body.put("temperature", 0.2);
+            applyReasoningRequest(config, body, ModelRequestOptions.defaults());
 
             HashMap<String, String> headers = new HashMap<>();
             headers.put("Authorization", "Bearer " + config.getApiKey());

@@ -357,6 +357,11 @@ final class GenerationFlowController {
             ModelCancellationToken cancellationToken,
             String userInput
     ) {
+        // 每次用户发起的新一轮生成开始时，清零 Agent 内部工具调用累计计数，
+        // 使全局工具上限只统计本轮实际执行的工具调用。
+        if (agentExecutionController != null) {
+            agentExecutionController.resetExecutedAgentToolCalls();
+        }
         if (cancellationToken != null && cancellationToken.isCancelled()) {
             return;
         }
@@ -622,9 +627,9 @@ final class GenerationFlowController {
             messages.set(index, message.withContent(finalText, finalReasoning, false)
                     .withToolCalls(toolCalls, false));
             if (hasToolCalls) {
-                if (!generationController.canExecuteToolCalls(selectedModel, usedToolCallCount, toolCalls.size())) {
+                if (!generationController.canExecuteToolCalls(selectedModel, effectiveUsedToolCalls(usedToolCallCount), toolCalls.size())) {
                     messages.add(new ChatMessage(host.nextId(), ChatMessage.Role.ASSISTANT,
-                            generationController.toolLimitMessage(selectedModel, usedToolCallCount, toolCalls.size()), false));
+                            generationController.toolLimitMessage(selectedModel, effectiveUsedToolCalls(usedToolCallCount), toolCalls.size()), false));
                     for (ToolCall call : toolCalls) {
                         addOrReplaceToolResult(ToolResult.of(
                                 call.getId(),
@@ -644,7 +649,7 @@ final class GenerationFlowController {
                         generationId,
                         selectedModel,
                         toolCalls,
-                        usedToolCallCount + toolCalls.size(),
+                        usedToolCallCount,
                         cancellationToken
                 );
                 return;
@@ -706,6 +711,7 @@ final class GenerationFlowController {
             ToolExecutionBatch batch
     ) {
         toolMessageController.addOrReplaceToolResults(batch.getCompletedResults());
+        int executedCount = usedToolCallCount + batch.getCompletedResults().size();
         if (batch.getPendingCall() != null) {
             ToolResult pendingResult = ToolResult.withReview(
                     batch.getPendingCall().getId(),
@@ -722,7 +728,7 @@ final class GenerationFlowController {
                     selectedModel,
                     batch.getPendingCall(),
                     batch.getRemainingCalls(),
-                    usedToolCallCount,
+                    executedCount,
                     homePath,
                     cancellationToken
             ));
@@ -731,7 +737,7 @@ final class GenerationFlowController {
             return;
         }
         host.persistCurrentConversation();
-        continueModelAfterTools(generationId, selectedModel, usedToolCallCount, cancellationToken);
+        continueModelAfterTools(generationId, selectedModel, executedCount, cancellationToken);
     }
 
     private void continueModelAfterTools(
@@ -769,6 +775,16 @@ final class GenerationFlowController {
         continueModelAfterTools(generationId, selectedModel, usedToolCallCount, cancellationToken);
     }
 
+    /**
+     * 全局工具预算的有效已用次数 = 主流程已执行的工具调用数 + Agent 内部已执行的工具调用数。
+     * Agent 内部的工具调用通过 {@link AgentExecutionController#executedAgentToolCalls()} 累计，
+     * 主流程在上限判断处都应计入，否则重复发起 Agent 会重复占用相同份额导致全局上限被绕过。
+     */
+    private int effectiveUsedToolCalls(int mainFlowUsedToolCallCount) {
+        int agentCalls = agentExecutionController == null ? 0 : agentExecutionController.executedAgentToolCalls();
+        return mainFlowUsedToolCallCount + agentCalls;
+    }
+
     private ToolContext toolContext(
             String homePath,
             ModelConfig selectedModel,
@@ -776,7 +792,7 @@ final class GenerationFlowController {
             int generationId,
             int usedToolCallCount
     ) {
-        final int[] counter = new int[]{Math.max(0, usedToolCallCount)};
+        final int[] counter = new int[]{Math.max(0, effectiveUsedToolCalls(usedToolCallCount))};
         return ToolContext.builder()
                 .homePath(homePath)
                 .extraWriteRoots(extensionRepository.skillWriteRoots(homePath))
@@ -850,11 +866,12 @@ final class GenerationFlowController {
                 addOrReplaceToolResult(finalResult);
                 host.persistCurrentConversation();
                 host.render();
+                // 被确认的暂停工具刚刚实际执行过，续跑时计数 +1，使其占用对应的主流程工具预算。
                 continueToolExecution(
                         pending.getGenerationId(),
                         pending.getSelectedModel(),
                         pending.getRemainingCalls(),
-                        pending.getUsedToolCallCount(),
+                        pending.getUsedToolCallCount() + 1,
                         pending.getHomePath(),
                         pending.getCancellationToken()
                 );

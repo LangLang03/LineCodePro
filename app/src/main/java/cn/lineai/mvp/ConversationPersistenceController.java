@@ -10,6 +10,10 @@ import cn.lineai.data.repository.MessageRecord;
 import cn.lineai.model.ChatMessage;
 import cn.lineai.model.InputAttachment;
 import java.util.ArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -29,6 +33,21 @@ final class ConversationPersistenceController {
     private final AiBehaviorSettingsRepository aiBehaviorSettingsRepository;
     private final LearningContextStore learningContextStore;
     private final Host host;
+    /**
+     * 会话持久化走进程级共享的单线程后台执行器，避免在主线程热路径（每次收发/流式步骤/工具批次后）同步写库造成 ANR。
+     * 采用 latest-wins 合并：若已有一次在途写入，则仅更新待写快照，始终持久化最新状态，避免任务堆积。
+     *
+     * <p>静态共享而非实例字段：控制器若因 Activity 重建被重新创建，不会重复创建线程导致泄漏；
+     * daemon 线程不阻塞进程退出，无需显式 shutdown。
+     */
+    private static final ExecutorService PERSIST_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "linecode-conversation-persist");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private final Object persistLock = new Object();
+    private boolean persistScheduled;
+    private ConversationRecord persistSnapshot;
 
     ConversationPersistenceController(
             Context context,
@@ -65,6 +84,8 @@ final class ConversationPersistenceController {
     }
 
     void applyConversation(ConversationRecord conversation) {
+        // 加载/切换会话前先落库所有已排队的异步持久化，确保后续同步写入不会被过期异步写覆盖。
+        awaitPendingPersist();
         ConversationResumeSanitizer.Result result = ConversationResumeSanitizer.sanitize(
                 conversation,
                 host.interruptedGenerationMessage(context)
@@ -120,9 +141,51 @@ final class ConversationPersistenceController {
                 "",
                 records
         );
-        conversationStore.saveConversation(conversation);
-        if (aiBehaviorSettingsRepository.get().isLearningModeEnabled()) {
-            learningContextStore.indexConversation(projectPath, conversation);
+        // 消息列表在这里已快照为不可变的 ConversationRecord，DB 写入在线程上异步执行，
+        // 不阻塞主线程热路径，也避免后续对 messages 的并发修改造成数据竞争。
+        boolean learningEnabled = aiBehaviorSettingsRepository.get().isLearningModeEnabled();
+        synchronized (persistLock) {
+            persistSnapshot = conversation;
+            if (persistScheduled) {
+                return; // 已有写入在途，latest-wins：保留最新快照即可
+            }
+            persistScheduled = true;
+        }
+        PERSIST_EXECUTOR.execute(() -> runPersist(learningEnabled));
+    }
+
+    private void runPersist(boolean learningEnabled) {
+        ConversationRecord snapshot;
+        synchronized (persistLock) {
+            snapshot = persistSnapshot;
+            persistScheduled = false;
+            persistSnapshot = null;
+        }
+        if (snapshot == null) {
+            return;
+        }
+        conversationStore.saveConversation(snapshot);
+        if (learningEnabled) {
+            try {
+                learningContextStore.indexConversation(snapshot.getProjectId(), snapshot);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    /** 阻塞等待所有已排队的持久化任务落库，用于加载/切换会话前避免过期异步写入覆盖新状态。 */
+    private void awaitPendingPersist() {
+        final CountDownLatch latch = new CountDownLatch(1);
+        synchronized (persistLock) {
+            if (!persistScheduled) {
+                return;
+            }
+            PERSIST_EXECUTOR.execute(latch::countDown);
+        }
+        try {
+            latch.await(10L, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

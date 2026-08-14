@@ -366,7 +366,7 @@ public final class SkillFileManager {
 
     public String readUtf8(File file, int maxChars) {
         try {
-            String text = readStream(new FileInputStream(file));
+            String text = readStream(new FileInputStream(file), (long) maxChars + 4);
             return text.length() <= maxChars ? text : text.substring(0, maxChars);
         } catch (Exception ignored) {
             return "";
@@ -390,16 +390,19 @@ public final class SkillFileManager {
         }
     }
 
-    private String readStream(InputStream input) throws Exception {
+    private String readStream(InputStream input, long maxBytes) throws Exception {
         if (input == null) {
             return "";
         }
         try {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             byte[] buffer = new byte[8192];
+            long total = 0;
             int read;
-            while ((read = input.read(buffer)) != -1) {
-                output.write(buffer, 0, read);
+            while (total < maxBytes && (read = input.read(buffer)) != -1) {
+                int toWrite = (int) Math.min(read, maxBytes - total);
+                output.write(buffer, 0, toWrite);
+                total += toWrite;
             }
             return output.toString(StandardCharsets.UTF_8.name());
         } finally {

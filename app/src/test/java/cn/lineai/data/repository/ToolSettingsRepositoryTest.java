@@ -10,6 +10,7 @@ import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolDisplayResolver;
 import cn.lineai.tool.ToolInfo;
+import cn.lineai.tool.ToolNames;
 import cn.lineai.tool.ToolRegistry;
 import java.lang.reflect.Field;
 import java.util.LinkedHashMap;
@@ -405,6 +406,24 @@ public final class ToolSettingsRepositoryTest {
         );
 
         Assert.assertTrue(prompt.contains("No tools are available"));
+    }
+
+    @Test
+    public void learningModeGateRemovesMemoryUpdateWhenDisabled() {
+        Set<String> enabled = new LinkedHashSet<>();
+        enabled.add("file_read");
+        enabled.add(ToolNames.MEMORY_UPDATE);
+        ToolSettingsRepository.applyLearningModeGate(enabled, false);
+        Assert.assertFalse(enabled.contains(ToolNames.MEMORY_UPDATE));
+    }
+
+    @Test
+    public void learningModeGateKeepsMemoryUpdateWhenEnabled() {
+        Set<String> enabled = new LinkedHashSet<>();
+        enabled.add("file_read");
+        enabled.add(ToolNames.MEMORY_UPDATE);
+        ToolSettingsRepository.applyLearningModeGate(enabled, true);
+        Assert.assertTrue(enabled.contains(ToolNames.MEMORY_UPDATE));
     }
 
     private static final class DummyCustomMcpTool extends BaseTool {

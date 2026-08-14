@@ -22,6 +22,10 @@ public final class ModelCompressionSectionView extends LinearLayout {
         void onStateChanged();
     }
 
+    public interface ValueSource {
+        String value();
+    }
+
     private Switch compressionEnabledSwitch;
     private Switch compressionAutoSwitch;
     private Switch compressionCustomIdSwitch;
@@ -37,18 +41,18 @@ public final class ModelCompressionSectionView extends LinearLayout {
     private boolean fetchingCompressionModels;
     private final ModelProtocolType[] protocolType;
     private final CompressionListener listener;
-    private final String effectiveBaseUrl;
-    private final String effectiveApiKey;
+    private final ValueSource baseUrlSource;
+    private final ValueSource apiKeySource;
 
     public ModelCompressionSectionView(Context context, ModelProtocolType[] protocolType,
                                         boolean enabled, boolean auto, String modelId,
                                         CompressionListener listener,
-                                        String effectiveBaseUrl, String effectiveApiKey) {
+                                        ValueSource baseUrlSource, ValueSource apiKeySource) {
         super(context);
         this.protocolType = protocolType;
         this.listener = listener;
-        this.effectiveBaseUrl = effectiveBaseUrl;
-        this.effectiveApiKey = effectiveApiKey;
+        this.baseUrlSource = baseUrlSource;
+        this.apiKeySource = apiKeySource;
         setOrientation(VERTICAL);
 
         LinearLayout enabledHeader = new LinearLayout(context);
@@ -204,7 +208,7 @@ public final class ModelCompressionSectionView extends LinearLayout {
     }
 
     private boolean canQuery() {
-        return isEnabled() && !isAuto() && effectiveBaseUrl.length() > 0 && effectiveApiKey.length() > 0;
+        return isEnabled() && !isAuto() && baseUrlSource.value().length() > 0 && apiKeySource.value().length() > 0;
     }
 
     private void renderModelIdInput(boolean custom) {
@@ -292,7 +296,7 @@ public final class ModelCompressionSectionView extends LinearLayout {
         updateQueryState();
         new Thread(() -> {
             try {
-                List<String> rawIds = listener.onFetchCompressionCatalog(protocolType[0], effectiveBaseUrl, effectiveApiKey);
+                List<String> rawIds = listener.onFetchCompressionCatalog(protocolType[0], baseUrlSource.value(), apiKeySource.value());
                 final List<String> ids = rawIds != null ? rawIds : java.util.Collections.<String>emptyList();
                 post(() -> {
                     fetchingCompressionModels = false;

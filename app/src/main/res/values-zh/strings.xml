@@ -242,6 +242,7 @@
     <string name="skill_github_invalid_url">GitHub 地址无效</string>
     <string name="skill_github_fetch_failed">从 GitHub 下载 Skill 失败: %1$s</string>
     <string name="skill_github_no_skill_md">仓库中未找到 SKILL.md</string>
+    <string name="skill_install_failed">SKILL 安装失败</string>
     <string name="workspace_provider_open_title">LineCode 工作区</string>
     <string name="workspace_provider_open_failed">无法打开工作区目录</string>
 
@@ -596,6 +597,7 @@
     <string name="screen_agent_field_trigger">触发条件</string>
     <string name="screen_agent_section_tools">可使用的工具</string>
     <string name="screen_agent_section_mcps">可使用的 MCP</string>
+    <string name="screen_agent_tools_selected">已选</string>
     <string name="screen_agent_let_ai_dialog_title">让 AI 写 Agent</string>
     <string name="screen_agent_let_ai_dialog_desc">描述这个 Agent 应该做什么</string>
     <string name="screen_agent_let_ai_hint">描述 Agent 的角色与行为</string>
@@ -1130,6 +1132,8 @@
     <string name="tool_group_shell_desc">通过 SSH 执行 shell 命令</string>
     <string name="tool_group_web_search_name">网页搜索</string>
     <string name="tool_group_web_search_desc">搜索互联网并查看网页内容</string>
+    <string name="tool_group_memory_name">记忆</string>
+    <string name="tool_group_memory_desc">保存和管理长期记忆；需要开启学习模式</string>
     <string name="tool_group_ipc_shell_desc">通过终端提供者 IPC 执行 shell 命令</string>
 
     <!-- Overlay action sheet (more actions menu) -->
@@ -1168,9 +1172,6 @@
     <string name="attachment_picker_title_local">选择本地文件</string>
     <string name="attachment_picker_loading_ssh">正在通过 SFTP 读取 SSH 文件...</string>
     <string name="attachment_picker_loading_terminal_provider">正在通过 IPC 读取终端提供者目录...</string>
-
-    <!-- MemoryExtractionService -->
-    <string name="memory_extraction_json_only">请仅返回 JSON。</string>
 
     <!-- AgentExecutionController -->
     <string name="agent_execution_completed">Agent 完成: </string>

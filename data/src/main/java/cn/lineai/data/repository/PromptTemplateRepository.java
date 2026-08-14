@@ -17,8 +17,6 @@ public final class PromptTemplateRepository {
     public static final String ID_TONE_CODING = "toneCoding";
     public static final String ID_TONE_CHAT = "toneChat";
     public static final String ID_LEARNING_CONTEXT = "learningContext";
-    public static final String ID_MEMORY_EXTRACTION = "memoryExtraction";
-    public static final String ID_SKILL_EXTRACTION = "skillExtraction";
     public static final String ID_CONTEXT_COMPACTION = "contextCompaction";
     public static final String ID_CHAT_MODE_CHAT = "chatModeChat";
     public static final String ID_CHAT_MODE_PLAN = "chatModePlan";
@@ -201,20 +199,6 @@ public final class PromptTemplateRepository {
                 "prompts/learning-context-template.txt",
                 "WORKING_MEMORY_SECTION", "MEMORY_SECTION", "HISTORY_SECTION", "SKILL_PATHS_SECTION",
                 "SKILLS_SECTION", "PRIVATE_BOUNDARY_SECTION"
-        ));
-        definitions.add(new Definition(
-                ID_MEMORY_EXTRACTION,
-                R.string.prompt_template_memory_extraction_title,
-                R.string.prompt_template_memory_extraction_description,
-                "prompts/memory-extraction-template.txt",
-                "PROJECT_ID", "USER_INPUT", "TRANSCRIPT"
-        ));
-        definitions.add(new Definition(
-                ID_SKILL_EXTRACTION,
-                R.string.prompt_template_skill_extraction_title,
-                R.string.prompt_template_skill_extraction_description,
-                "prompts/skill-extraction-template.txt",
-                "PROJECT_ID", "USER_INPUT", "TRANSCRIPT"
         ));
         definitions.add(new Definition(
                 ID_CONTEXT_COMPACTION,

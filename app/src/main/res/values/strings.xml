@@ -242,6 +242,7 @@
     <string name="skill_github_invalid_url">Invalid GitHub URL</string>
     <string name="skill_github_fetch_failed">Failed to download Skill from GitHub: %1$s</string>
     <string name="skill_github_no_skill_md">No SKILL.md found in the repository</string>
+    <string name="skill_install_failed">Failed to install SKILL</string>
     <string name="workspace_provider_open_title">LineCode workspace</string>
     <string name="workspace_provider_open_failed">Unable to open workspace folder</string>
 
@@ -594,6 +595,7 @@
     <string name="screen_agent_field_trigger">Trigger condition</string>
     <string name="screen_agent_section_tools">Available tools</string>
     <string name="screen_agent_section_mcps">Available MCPs</string>
+    <string name="screen_agent_tools_selected">selected</string>
     <string name="screen_agent_let_ai_dialog_title">Let AI write Agent</string>
     <string name="screen_agent_let_ai_dialog_desc">Describe what the Agent should do</string>
     <string name="screen_agent_let_ai_hint">Describe the agent\'s role and behavior</string>
@@ -1129,6 +1131,8 @@
     <string name="tool_group_shell_desc">Run shell commands via SSH</string>
     <string name="tool_group_web_search_name">Web search</string>
     <string name="tool_group_web_search_desc">Search the internet and view web pages</string>
+    <string name="tool_group_memory_name">Memory</string>
+    <string name="tool_group_memory_desc">Save and manage long-term memories; requires Learning Mode to be enabled</string>
     <string name="tool_group_ipc_shell_desc">Run shell commands via the terminal provider IPC</string>
 
     <!-- Overlay action sheet (more actions menu) -->
@@ -1167,9 +1171,6 @@
     <string name="attachment_picker_title_local">Select local file</string>
     <string name="attachment_picker_loading_ssh">Reading SSH files via SFTP…</string>
     <string name="attachment_picker_loading_terminal_provider">Reading terminal provider directory via IPC…</string>
-
-    <!-- MemoryExtractionService -->
-    <string name="memory_extraction_json_only">Return JSON only.</string>
 
     <!-- AgentExecutionController -->
     <string name="agent_execution_completed">Agent completed: </string>

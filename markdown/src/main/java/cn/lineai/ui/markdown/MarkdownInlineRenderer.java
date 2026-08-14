@@ -103,11 +103,10 @@ public final class MarkdownInlineRenderer {
             String alt = builder.subSequence(start, builder.length()).toString();
             builder.delete(start, builder.length());
             String imageLabel = context.getString(R.string.markdown_image_label);
-            builder.append(imageLabel, 0, imageLabel.length() - 1);
+            builder.append(imageLabel);
             if (alt.trim().length() > 0) {
                 builder.append(": ").append(alt.trim());
             }
-            builder.append(']');
             return;
         }
         if (node instanceof HtmlInline) {

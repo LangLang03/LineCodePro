@@ -183,10 +183,9 @@ public final class LineCodeImportMapper {
                 throw new IllegalStateException("LineCode chat file requires payloadDir: " + id);
             }
             String fileName = stored.optString("fileName", safeConversationFileName(id));
-            File target = new File(new File(payloadDir, CONVERSATION_FILES_DIR), fileName);
-            if (!target.isFile()) {
-                File backup = new File(target.getAbsolutePath() + ".bak");
-                target = backup.isFile() ? backup : target;
+            File target = resolveConversationFile(id, fileName, payloadDir);
+            if (target == null) {
+                throw new IllegalStateException("LineCode chat file escapes payload directory: " + id);
             }
             return new JSONObject(readUtf8(target));
         }
@@ -258,6 +257,68 @@ public final class LineCodeImportMapper {
     private String safeConversationFileName(String id) {
         String safeId = id.replaceAll("[^a-zA-Z0-9_-]", "_");
         return (safeId.length() == 0 ? "conversation" : safeId) + ".json";
+    }
+
+    /**
+     * Resolve the conversation file inside the payload conversations directory. The incoming
+     * {@code fileName} originates from an untrusted imported archive and may contain path
+     * separators or {@code ..} fragments; sanitize it (falling back to a safe derived name)
+     * and verify via the canonical path that the resolved target stays inside the directory.
+     *
+     * @return the resolved existing file (primary or ".bak" fallback), or {@code null} if no
+     * file can be resolved safely inside the conversations directory.
+     */
+    private File resolveConversationFile(String id, String fileName, File payloadDir) {
+        File conversationsDir = new File(payloadDir, CONVERSATION_FILES_DIR);
+        File target = buildConversationTarget(conversationsDir, safeFileName(fileName, id));
+        if (target == null) {
+            return null;
+        }
+        if (target.isFile()) {
+            return target;
+        }
+        File backup = new File(target.getPath() + ".bak");
+        if (backup.isFile()) {
+            return backup;
+        }
+        return null;
+    }
+
+    private File buildConversationTarget(File conversationsDir, String fileName) {
+        File target = new File(conversationsDir, fileName);
+        File canonicalTarget = canonical(target);
+        if (canonicalTarget == null) {
+            return null;
+        }
+        File canonicalDir = canonical(conversationsDir);
+        if (canonicalDir == null || !startsWith(canonicalTarget, canonicalDir)) {
+            return null;
+        }
+        return canonicalTarget;
+    }
+
+    private boolean startsWith(File path, File prefix) {
+        String pathName = path.getPath();
+        String prefixName = prefix.getPath();
+        if (prefixName.length() == 0) {
+            return true;
+        }
+        return pathName.startsWith(prefixName) && (pathName.length() == prefixName.length() || pathName.charAt(prefixName.length()) == File.separatorChar);
+    }
+
+    private static File canonical(File file) {
+        try {
+            return file.getCanonicalFile();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String safeFileName(String fileName, String id) {
+        if (fileName == null || fileName.length() == 0 || fileName.contains("/") || fileName.contains("\\") || fileName.contains("..")) {
+            return safeConversationFileName(id);
+        }
+        return fileName;
     }
 
     private String readUtf8(File file) throws Exception {

@@ -12,6 +12,9 @@ import android.widget.TextView;
 import cn.lineai.R;
 import cn.lineai.model.StorageStatsUiModel;
 
+import android.os.Handler;
+import android.os.Looper;
+
 public final class StorageManagementScreenView extends ScreenScaffoldView {
     public interface Listener {
         void onBack();
@@ -22,6 +25,8 @@ public final class StorageManagementScreenView extends ScreenScaffoldView {
 
     private final Context context;
     private final Listener listener;
+    private final RefreshCwButtonView refreshButton;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private TextView totalSizeView;
     private TextView diffSizeView;
     private TextView diffCountView;
@@ -33,9 +38,11 @@ public final class StorageManagementScreenView extends ScreenScaffoldView {
     private TextView homeCountView;
 
     public StorageManagementScreenView(Context context, Listener listener) {
-        super(context, context.getString(R.string.screen_storage_title), listener::onBack, refreshButton(context, listener));
+        super(context, context.getString(R.string.screen_storage_title), listener::onBack, createRefreshButton(context));
         this.context = context;
         this.listener = listener;
+        this.refreshButton = (RefreshCwButtonView) getRightAction();
+        this.refreshButton.setOnClickListener(v -> loadStats());
         LinearLayout content = getContent();
         LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
 
@@ -80,10 +87,8 @@ public final class StorageManagementScreenView extends ScreenScaffoldView {
         loadStats();
     }
 
-    private static View refreshButton(Context context, Listener listener) {
-        RefreshCwButtonView button = new RefreshCwButtonView(context, 18);
-        button.setOnClickListener(v -> listener.onBack());
-        return button;
+    private static View createRefreshButton(Context context) {
+        return new RefreshCwButtonView(context, 18);
     }
 
     private LinearLayout createStorageRow(int iconType, String title, String desc) {
@@ -135,8 +140,10 @@ public final class StorageManagementScreenView extends ScreenScaffoldView {
     }
 
     private void loadStats() {
-        StorageStatsUiModel stats = listener.onLoadStats();
-        updateViews(stats);
+        new Thread(() -> {
+            StorageStatsUiModel stats = listener.onLoadStats();
+            mainHandler.post(() -> updateViews(stats));
+        }, "linecode-storage-stats").start();
     }
 
     private void updateViews(StorageStatsUiModel stats) {

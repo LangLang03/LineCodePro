@@ -96,7 +96,38 @@ public final class SshConnectionPool {
         Entry created = new Entry(session);
         created.lock.lock();
         created.inUse = true;
-        entries.put(key, created);
+        Entry prior = entries.putIfAbsent(key, created);
+        if (prior != null) {
+            // 竞争失败：另一个线程已抢先放入同 key 的 entry，本次新建的会话被丢弃。
+            // 有限次尝试借用已有 entry；都不行则回退为用新建 entry 强制替换。
+            Entry candidate = prior;
+            for (int attempt = 0; attempt < 2 && candidate != null; attempt++) {
+                if (candidate.closed || !candidate.lock.tryLock()) {
+                    if (candidate.closed) {
+                        entries.remove(key, candidate);
+                    }
+                    // 无效或正在被占用的 entry，读取下次尝试的最新 entry。
+                    candidate = entries.get(key);
+                    continue;
+                }
+                if (!candidate.closed && candidate.session.isConnected()) {
+                    // 借用成功，丢弃本次新建的 entry。
+                    candidate.inUse = true;
+                    candidate.lastUsedAtMs = System.currentTimeMillis();
+                    created.inUse = false;
+                    created.lock.unlock();
+                    closeQuietly(created);
+                    return candidate.session;
+                }
+                // 已有 entry 失效：解锁移除，读取下次尝试的最新 entry。
+                candidate.lock.unlock();
+                entries.remove(key, candidate);
+                candidate = entries.get(key);
+            }
+            // 回退：用新建 entry 强制替换（保持原有的 put 语义）。
+            entries.put(key, created);
+            return created.session;
+        }
         return session;
     }
 
@@ -121,7 +152,9 @@ public final class SshConnectionPool {
                 entries.remove(keyOf(config), entry);
             }
         } finally {
-            entry.lock.unlock();
+            if (entry.lock.isHeldByCurrentThread()) {
+                entry.lock.unlock();
+            }
         }
     }
 

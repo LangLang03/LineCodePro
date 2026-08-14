@@ -251,6 +251,13 @@ public final class ContextCompactionService {
         if (cancellationToken != null && cancellationToken.isCancelled()) {
             return new ContextCompactionResult("", "");
         }
+        // Codex/OpenAI-Responses 压缩调用返回的是字符串压缩项，不携带 token usage，
+        // 因此不会像 streamSummaryWithRetry 那样把压缩后的 usage 记入 tracker。
+        // 这里显式重置 tracker，避免残留压缩前的旧 usage 让后续 shouldCompact/
+        // shouldSoftCompact 继续以旧的大数值触发过度压缩；重置后基线回退到本地估算。
+        if (tokenUsageTracker != null) {
+            tokenUsageTracker.reset();
+        }
         return new ContextCompactionResult(createResponsesCompactFallbackContent(), compactItem);
     }
 

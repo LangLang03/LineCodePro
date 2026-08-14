@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.json.JSONArray;
 
 public final class ToolRegistry {
@@ -23,6 +24,7 @@ public final class ToolRegistry {
 
     private final Map<String, BaseTool> tools = new LinkedHashMap<>();
     private final Map<String, ToolDisplayCategory> displayCategoryCache = new LinkedHashMap<>();
+    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
     private final Context context;
     private ExtensionStore extensionStore;
 
@@ -46,48 +48,78 @@ public final class ToolRegistry {
     }
 
     public void setExtensionStore(ExtensionStore extensionStore) {
-        this.extensionStore = extensionStore;
+        lock.writeLock().lock();
+        try {
+            this.extensionStore = extensionStore;
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     public void register(BaseTool tool) {
         if (tool != null) {
-            tools.put(tool.getName(), tool);
-            displayCategoryCache.put(tool.getName(), tool.getDisplayCategory());
+            lock.writeLock().lock();
+            try {
+                tools.put(tool.getName(), tool);
+                displayCategoryCache.put(tool.getName(), tool.getDisplayCategory());
+            } finally {
+                lock.writeLock().unlock();
+            }
         }
     }
 
     public BaseTool get(String name) {
-        return tools.get(name);
+        lock.readLock().lock();
+        try {
+            return tools.get(name);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public ToolDisplayCategory getCachedDisplayCategory(String name) {
-        ToolDisplayCategory category = displayCategoryCache.get(name);
-        return category != null ? category : ToolDisplayCategory.GENERIC;
+        lock.readLock().lock();
+        try {
+            ToolDisplayCategory category = displayCategoryCache.get(name);
+            return category != null ? category : ToolDisplayCategory.GENERIC;
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public List<BaseTool> getAll() {
-        return new ArrayList<>(tools.values());
+        lock.readLock().lock();
+        try {
+            return new ArrayList<>(tools.values());
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
     public void reloadExtensions() {
-        removeExtensionTools();
-        if (extensionStore == null) {
-            return;
-        }
-        for (ExtensionMcpConfig mcp : extensionStore.getMcpExtensions()) {
-            if (!mcp.isEnabled()) {
-                continue;
+        lock.writeLock().lock();
+        try {
+            removeExtensionTools();
+            if (extensionStore == null) {
+                return;
             }
-            for (McpToolSummary tool : mcp.getTools()) {
-                if (tool.isEnabled()) {
-                    register(new CustomMcpHttpTool(customMcpToolName(mcp, tool), mcp, tool));
+            for (ExtensionMcpConfig mcp : extensionStore.getMcpExtensions()) {
+                if (!mcp.isEnabled()) {
+                    continue;
+                }
+                for (McpToolSummary tool : mcp.getTools()) {
+                    if (tool.isEnabled()) {
+                        register(new CustomMcpHttpTool(customMcpToolName(mcp, tool), mcp, tool));
+                    }
                 }
             }
-        }
-        for (ExtensionAgentConfig agent : extensionStore.getAgentExtensions()) {
-            if (agent.isEnabled()) {
-                register(new CustomAgentExtensionTool(customAgentToolName(agent), agent));
+            for (ExtensionAgentConfig agent : extensionStore.getAgentExtensions()) {
+                if (agent.isEnabled()) {
+                    register(new CustomAgentExtensionTool(customAgentToolName(agent), agent));
+                }
             }
+        } finally {
+            lock.writeLock().unlock();
         }
     }
 
@@ -96,10 +128,15 @@ public final class ToolRegistry {
         if (names == null || names.isEmpty()) {
             return selected;
         }
-        for (BaseTool tool : tools.values()) {
-            if (names.contains(tool.getName())) {
-                selected.add(tool);
+        lock.readLock().lock();
+        try {
+            for (BaseTool tool : tools.values()) {
+                if (names.contains(tool.getName())) {
+                    selected.add(tool);
+                }
             }
+        } finally {
+            lock.readLock().unlock();
         }
         return selected;
     }
@@ -110,10 +147,15 @@ public final class ToolRegistry {
         if (names == null || names.isEmpty()) {
             return selected;
         }
-        for (BaseTool tool : tools.values()) {
-            if (names.contains(tool.getName())) {
-                selected.add(tool);
+        lock.readLock().lock();
+        try {
+            for (BaseTool tool : tools.values()) {
+                if (names.contains(tool.getName())) {
+                    selected.add(tool);
+                }
             }
+        } finally {
+            lock.readLock().unlock();
         }
         return selected;
     }
@@ -169,26 +211,36 @@ public final class ToolRegistry {
         if (mcpIds == null || mcpIds.isEmpty() || extensionStore == null) {
             return names;
         }
-        for (ExtensionMcpConfig mcp : extensionStore.getMcpExtensions()) {
-            if (!mcpIds.contains(mcp.getId())) {
-                continue;
-            }
-            for (McpToolSummary tool : mcp.getTools()) {
-                if (tool.isEnabled()) {
-                    names.add(customMcpToolName(mcp, tool));
+        lock.readLock().lock();
+        try {
+            for (ExtensionMcpConfig mcp : extensionStore.getMcpExtensions()) {
+                if (!mcpIds.contains(mcp.getId())) {
+                    continue;
+                }
+                for (McpToolSummary tool : mcp.getTools()) {
+                    if (tool.isEnabled()) {
+                        names.add(customMcpToolName(mcp, tool));
+                    }
                 }
             }
+        } finally {
+            lock.readLock().unlock();
         }
         return names;
     }
 
     private void removeExtensionTools() {
-        ArrayList<String> names = new ArrayList<>(tools.keySet());
-        for (String name : names) {
-            if (isExtensionToolName(name)) {
-                tools.remove(name);
-                displayCategoryCache.remove(name);
+        lock.writeLock().lock();
+        try {
+            ArrayList<String> names = new ArrayList<>(tools.keySet());
+            for (String name : names) {
+                if (isExtensionToolName(name)) {
+                    tools.remove(name);
+                    displayCategoryCache.remove(name);
+                }
             }
+        } finally {
+            lock.writeLock().unlock();
         }
     }
 

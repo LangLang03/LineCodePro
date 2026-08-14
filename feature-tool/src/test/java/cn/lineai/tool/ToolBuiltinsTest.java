@@ -36,9 +36,8 @@ public final class ToolBuiltinsTest {
                 .put("file_path", "demo.txt"), context());
 
         Assert.assertFalse(result.isError());
-        Assert.assertTrue(result.getContent().contains("1\tone"));
-        Assert.assertTrue(result.getContent().contains("2\ttwo"));
-        Assert.assertTrue(result.getContent().contains("3\tthree"));
+        // No phantom empty trailing line after the final newline.
+        Assert.assertEquals("1\tone\n2\ttwo\n3\tthree", result.getContent());
     }
 
     @Test
@@ -53,6 +52,8 @@ public final class ToolBuiltinsTest {
 
         Assert.assertFalse(result.isError());
         Assert.assertTrue(result.getContent().contains("1\tone"));
+        Assert.assertTrue(result.getContent().contains("2\ttwo"));
+        Assert.assertTrue(result.getContent().contains("3\tthree"));
     }
 
     @Test
@@ -74,6 +75,55 @@ public final class ToolBuiltinsTest {
 
         Assert.assertFalse(result.isError());
         Assert.assertTrue(result.getContent().contains("1\tline 0"));
+        // The whole 50KB page must be returned, not just the first line.
+        Assert.assertTrue(result.getContent().contains("2\tline 1"));
+        Assert.assertTrue(result.getContent().contains("100\tline 99"));
+    }
+
+    @Test
+    public void fileReadKbMidFileChunkReturnsCompleteLines() throws Exception {
+        File file = folder.newFile("big.txt");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 200000; i++) {
+            sb.append("line ").append(i).append("\n");
+        }
+        Files.write(file.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
+
+        ToolResult result = new FileReadTool().execute(new JSONObject()
+                .put("file_path", "big.txt")
+                .put("start_kb", 10)
+                .put("end_kb", 11), context());
+
+        Assert.assertFalse(result.isError());
+        String content = result.getContent();
+        String[] lines = content.split("\n");
+        Assert.assertTrue("expected several complete lines, got: " + content, lines.length >= 3);
+        int first = Integer.parseInt(lines[0].substring(0, lines[0].indexOf('\t')));
+        int second = Integer.parseInt(lines[1].substring(0, lines[1].indexOf('\t')));
+        Assert.assertEquals(first + 1, second);
+        Assert.assertTrue("mid-file chunk must not start at line 1", first > 1);
+    }
+
+    @Test
+    public void fileReadEndKbBeyond50ReadsPastFirst50Kb() throws Exception {
+        File file = folder.newFile("big.txt");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 200000; i++) {
+            sb.append("line ").append(i).append("\n");
+        }
+        Files.write(file.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
+        Assert.assertTrue(file.length() > 1024 * 1024);
+
+        ToolResult result = new FileReadTool().execute(new JSONObject()
+                .put("file_path", "big.txt")
+                .put("start_kb", 0)
+                .put("end_kb", 100), context());
+
+        Assert.assertFalse(result.isError());
+        Assert.assertTrue(result.getContent().contains("1\tline 0"));
+        // end_kb above 50 must be honored: the range info reports KB 0-100
+        // instead of silently clamping to 50.
+        Assert.assertTrue(result.getContent().contains("showing KB 0-100"));
     }
 
     @Test

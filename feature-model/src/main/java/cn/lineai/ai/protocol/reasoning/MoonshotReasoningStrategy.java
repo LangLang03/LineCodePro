@@ -7,8 +7,7 @@ import org.json.JSONObject;
 public final class MoonshotReasoningStrategy implements ReasoningRequestStrategy {
     @Override
     public boolean matches(String baseUrl, String modelId) {
-        return baseUrl.contains("moonshot") || baseUrl.contains("kimi") || modelId.contains("kimi")
-                || baseUrl.contains("bigmodel") || baseUrl.contains("zhipu") || modelId.contains("glm")
+        return baseUrl.contains("bigmodel") || baseUrl.contains("zhipu") || modelId.contains("glm")
                 || baseUrl.contains("mimo") || baseUrl.contains("xiaomi") || modelId.contains("mimo");
     }
 
@@ -17,9 +16,6 @@ public final class MoonshotReasoningStrategy implements ReasoningRequestStrategy
         JSONObject thinking = new JSONObject().put("type", context.isEnabled() ? "enabled" : "disabled");
         String base = context.getBaseUrl();
         String model = context.getModelId();
-        if (context.isPreserveReasoning() && (base.contains("moonshot") || base.contains("kimi") || model.contains("kimi"))) {
-            thinking.put("keep", "all");
-        }
         body.put("thinking", thinking);
         if (context.isPreserveReasoning() && (base.contains("bigmodel") || base.contains("zhipu") || model.contains("glm"))) {
             body.put("clear_thinking", false);

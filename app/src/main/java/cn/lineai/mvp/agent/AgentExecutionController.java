@@ -67,12 +67,31 @@ public final class AgentExecutionController {
     private final AgentPromptBuilder promptBuilder;
     private final PipelineDependencyResolver dependencyResolver;
     private final AgentResultRegistry agentResultRegistry = new AgentResultRegistry();
+    private final AtomicInteger executedAgentToolCalls = new AtomicInteger();
     private Context context;
     private ToolReviewAwaiter toolReviewAwaiter;
     private java.util.function.BooleanSupplier bypassPathProtectionSupplier = () -> false;
 
     public AgentResultRegistry getAgentResultRegistry() {
         return agentResultRegistry;
+    }
+
+    /**
+     * 主流程工具预算应计入 Agent 内部执行过的工具调用次数（累计），以便全局工具上限被正确约束。
+     * 该计数跨多次 Agent 调用累计，由主流程在每次生成开始时通过 {@link #resetExecutedAgentToolCalls()} 清零。
+     */
+    public int executedAgentToolCalls() {
+        return executedAgentToolCalls.get();
+    }
+
+    public void resetExecutedAgentToolCalls() {
+        executedAgentToolCalls.set(0);
+    }
+
+    private void accumulateExecutedAgentToolCalls(int count) {
+        if (count > 0) {
+            executedAgentToolCalls.addAndGet(count);
+        }
     }
 
     public interface Host {
@@ -228,6 +247,7 @@ public final class AgentExecutionController {
                         customMcpIds,
                         toolCallBudget
                 );
+                accumulateExecutedAgentToolCalls(asyncResult.getToolCallCount());
                 finishAgentWithCompact(
                         agentId, toolCallId, AgentTool.NAME, progress, asyncResult, host);
             });
@@ -248,6 +268,7 @@ public final class AgentExecutionController {
                 customMcpIds,
                 toolCallBudget
         );
+        accumulateExecutedAgentToolCalls(result.getToolCallCount());
         return finishAgentWithCompact(agentId, toolCallId, AgentTool.NAME, progress, result, host);
     }
 
@@ -372,6 +393,7 @@ public final class AgentExecutionController {
                 AgentRunResult result = outcome.result;
                 results.put(agent.getId(), result);
                 totalToolCalls += result.getToolCallCount();
+                accumulateExecutedAgentToolCalls(result.getToolCallCount());
                 hasError = hasError || result.isError();
                 summary.append("\n\n## ").append(agent.getId()).append(" · ").append(agent.getDescription())
                         .append('\n').append("类型: ").append(agent.getType())
