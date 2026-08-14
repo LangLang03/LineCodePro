@@ -58,4 +58,55 @@ public final class MemoryRankerRagInjectionTest {
 
         assertTrue(result.isEmpty());
     }
+
+    @Test
+    public void maxCountLimitsRankedCandidatesAndPreservesOrdering() {
+        long now = System.currentTimeMillis();
+        MemoryRanker.Candidate oldUnrelated = new MemoryRanker.Candidate(
+                "c1", "很久以前的无关记忆：天气预报和网页搜索配置。", now - 1000L * 60 * 60, "");
+        MemoryRanker.Candidate recentUnrelated = new MemoryRanker.Candidate(
+                "c2", "刚刚发生的无关记忆：午饭吃了什么。", now - 1000L * 60, "");
+        MemoryRanker.Candidate highRelevanceOlder = new MemoryRanker.Candidate(
+                "c3", "当前项目不能使用 AndroidX，必须保持 Java 原生 View。", now - 1000L * 30, "");
+        MemoryRanker.Candidate highRelevanceNewest = new MemoryRanker.Candidate(
+                "c4", "项目升级到 AndroidX 后，需要更新所有传统 View 的适配。", now, "");
+
+        List<MemoryRanker.Candidate> result = MemoryRanker.rank(
+                Arrays.asList(oldUnrelated, recentUnrelated, highRelevanceOlder, highRelevanceNewest),
+                "AndroidX 项目 View",
+                2,
+                true,
+                0.0);
+
+        // 截断到 maxCount=2：无关候选被过滤，只保留两个相关候选（排序由相关度/新鲜度启发式决定）。
+        assertEquals(2, result.size());
+        for (MemoryRanker.Candidate candidate : result) {
+            assertTrue("unrelated candidate must be filtered: " + candidate.id,
+                    "c3".equals(candidate.id) || "c4".equals(candidate.id));
+            assertTrue(candidate.relevanceScore > 0.0);
+        }
+    }
+
+    @Test
+    public void matchingRankFiltersOutIrrelevantCandidates() {
+        long now = System.currentTimeMillis();
+        MemoryRanker.Candidate unrelated = new MemoryRanker.Candidate(
+                "u1", "天气预报和网页搜索配置，还有一些生活琐事。", now - 1000L * 60 * 60, "");
+        MemoryRanker.Candidate recentUnrelated = new MemoryRanker.Candidate(
+                "u2", "刚刚发生的无关记忆：午饭吃了什么。", now - 1000L * 60, "");
+        MemoryRanker.Candidate strongMatch = new MemoryRanker.Candidate(
+                "s1", "当前项目已经切换到 AndroidX，需要更新所有旧的 View 实现。", now, "");
+
+        List<MemoryRanker.Candidate> result = MemoryRanker.rank(
+                Arrays.asList(unrelated, recentUnrelated, strongMatch),
+                "AndroidX 项目 View 升级",
+                10,
+                true,
+                0.0);
+
+        // 有匹配时，相关性为 0 的候选即使很新也会被过滤，只保留强匹配候选。
+        assertEquals(1, result.size());
+        assertEquals("s1", result.get(0).id);
+        assertTrue(result.get(0).relevanceScore > 0.0);
+    }
 }

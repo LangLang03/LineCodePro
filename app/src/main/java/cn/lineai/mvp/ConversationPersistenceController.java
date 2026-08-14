@@ -34,10 +34,13 @@ final class ConversationPersistenceController {
     private final LearningContextStore learningContextStore;
     private final Host host;
     /**
-     * 会话持久化走单线程后台执行器，避免在主线程热路径（每次收发/流式步骤/工具批次后）同步写库造成 ANR。
+     * 会话持久化走进程级共享的单线程后台执行器，避免在主线程热路径（每次收发/流式步骤/工具批次后）同步写库造成 ANR。
      * 采用 latest-wins 合并：若已有一次在途写入，则仅更新待写快照，始终持久化最新状态，避免任务堆积。
+     *
+     * <p>静态共享而非实例字段：控制器若因 Activity 重建被重新创建，不会重复创建线程导致泄漏；
+     * daemon 线程不阻塞进程退出，无需显式 shutdown。
      */
-    private final ExecutorService persistExecutor = Executors.newSingleThreadExecutor(runnable -> {
+    private static final ExecutorService PERSIST_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "linecode-conversation-persist");
         thread.setDaemon(true);
         return thread;
@@ -148,7 +151,7 @@ final class ConversationPersistenceController {
             }
             persistScheduled = true;
         }
-        persistExecutor.execute(() -> runPersist(learningEnabled));
+        PERSIST_EXECUTOR.execute(() -> runPersist(learningEnabled));
     }
 
     private void runPersist(boolean learningEnabled) {
@@ -177,7 +180,7 @@ final class ConversationPersistenceController {
             if (!persistScheduled) {
                 return;
             }
-            persistExecutor.execute(latch::countDown);
+            PERSIST_EXECUTOR.execute(latch::countDown);
         }
         try {
             latch.await(10L, TimeUnit.SECONDS);

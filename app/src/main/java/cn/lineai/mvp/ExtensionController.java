@@ -24,13 +24,13 @@ public interface ExtensionController {
 
     List<McpToolSummary> onMcpToolsQuery(String url, List<McpRequestHeader> headers) throws Exception;
 
-    SkillRecord onSkillCreated(String location, String name, String description, String content);
+    void onSkillCreated(String location, String name, String description, String content);
 
-    SkillRecord onSkillInstalled(String location, String sourcePath, String name) throws Exception;
+    void onSkillInstalled(String location, String sourcePath, String name) throws Exception;
 
-    SkillRecord onSkillInstalledFromUri(String location, String uri, String displayName) throws Exception;
+    void onSkillInstalledFromUri(String location, String uri, String displayName) throws Exception;
 
-    SkillRecord onSkillInstalledFromGitHub(String location, String githubUrl) throws Exception;
+    void onSkillInstalledFromGitHub(String location, String githubUrl) throws Exception;
 
     void onExtensionEnabledChanged(String kind, String id, boolean enabled);
 

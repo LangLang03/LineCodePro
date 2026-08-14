@@ -760,23 +760,23 @@ public final class MainCoordinator implements MainUiController {
     }
 
     @Override
-    public SkillRecord onSkillCreated(String location, String name, String description, String content) {
-        return extensionManagementController.createSkill(location, name, description, content);
+    public void onSkillCreated(String location, String name, String description, String content) {
+        extensionManagementController.createSkill(location, name, description, content);
     }
 
     @Override
-    public SkillRecord onSkillInstalled(String location, String sourcePath, String name) throws Exception {
-        return extensionManagementController.installSkill(location, sourcePath, name);
+    public void onSkillInstalled(String location, String sourcePath, String name) throws Exception {
+        extensionManagementController.installSkill(location, sourcePath, name);
     }
 
     @Override
-    public SkillRecord onSkillInstalledFromUri(String location, String uri, String displayName) throws Exception {
-        return extensionManagementController.installSkillFromUri(location, uri, displayName);
+    public void onSkillInstalledFromUri(String location, String uri, String displayName) throws Exception {
+        extensionManagementController.installSkillFromUri(location, uri, displayName);
     }
 
     @Override
-    public SkillRecord onSkillInstalledFromGitHub(String location, String githubUrl) throws Exception {
-        return extensionManagementController.installSkillFromGitHub(location, githubUrl);
+    public void onSkillInstalledFromGitHub(String location, String githubUrl) throws Exception {
+        extensionManagementController.installSkillFromGitHub(location, githubUrl);
     }
 
     @Override

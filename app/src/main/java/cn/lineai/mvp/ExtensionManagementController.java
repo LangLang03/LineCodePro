@@ -76,7 +76,7 @@ final class ExtensionManagementController {
         return extensionRepository.queryMcpTools(url, headers);
     }
 
-    SkillRecord createSkill(String location, String name, String description, String content) {
+    void createSkill(String location, String name, String description, String content) {
         backgroundTasks.execute("skill-create", () -> {
             try {
                 extensionRepository.createSkill(host.projectPath(), location, name, description, content);
@@ -85,10 +85,9 @@ final class ExtensionManagementController {
                 mainThread.dispatch(() -> host.showSkillError(errorMessage(e)));
             }
         });
-        return null;
     }
 
-    SkillRecord installSkill(String location, String sourcePath, String name) throws Exception {
+    void installSkill(String location, String sourcePath, String name) {
         backgroundTasks.execute("skill-install", () -> {
             try {
                 extensionRepository.installSkill(host.projectPath(), location, sourcePath, name);
@@ -97,10 +96,9 @@ final class ExtensionManagementController {
                 mainThread.dispatch(() -> host.showSkillError(errorMessage(e)));
             }
         });
-        return null;
     }
 
-    SkillRecord installSkillFromUri(String location, String uri, String displayName) throws Exception {
+    void installSkillFromUri(String location, String uri, String displayName) {
         backgroundTasks.execute("skill-install-from-uri", () -> {
             try {
                 extensionRepository.installSkillFromUri(host.projectPath(), location, uri, displayName);
@@ -109,10 +107,9 @@ final class ExtensionManagementController {
                 mainThread.dispatch(() -> host.showSkillError(errorMessage(e)));
             }
         });
-        return null;
     }
 
-    SkillRecord installSkillFromGitHub(String location, String githubUrl) throws Exception {
+    void installSkillFromGitHub(String location, String githubUrl) {
         backgroundTasks.execute("skill-install-from-github", () -> {
             try {
                 extensionRepository.installSkillFromGitHub(host.projectPath(), location, githubUrl);
@@ -121,7 +118,6 @@ final class ExtensionManagementController {
                 mainThread.dispatch(() -> host.showSkillError(errorMessage(e)));
             }
         });
-        return null;
     }
 
     private void completeSkillInstall() {
