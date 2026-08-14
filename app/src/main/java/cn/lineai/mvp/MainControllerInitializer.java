@@ -1,6 +1,7 @@
 package cn.lineai.mvp;
 
 import android.content.Context;
+import android.widget.Toast;
 import cn.lineai.R;
 import cn.lineai.ai.ModelCancellationToken;
 import cn.lineai.context.ContextCompactionService;
@@ -369,6 +370,8 @@ final class MainControllerInitializer {
                 extensionRepository,
                 ipcProviderRepository,
                 toolRegistry,
+                backgroundTasks,
+                mainThread,
                 new ExtensionManagementController.Host() {
                     @Override
                     public String projectPath() {
@@ -388,6 +391,14 @@ final class MainControllerInitializer {
                     @Override
                     public void render() {
                         coordinator.render();
+                    }
+
+                    @Override
+                    public void showSkillError(String message) {
+                        String text = message == null || message.trim().length() == 0
+                                ? context.getString(R.string.skill_install_failed)
+                                : message;
+                        Toast.makeText(context, text, Toast.LENGTH_LONG).show();
                     }
                 }
         );

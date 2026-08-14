@@ -16,6 +16,8 @@ import org.json.JSONObject;
 public final class FileReadTool extends BaseTool {
     public static final String NAME = "file_read";
     private static final long LARGE_FILE_THRESHOLD_BYTES = 50L * 1024L;
+    /** 单次 KB 读取的最大跨度（KB），防止超大的 end_kb 一次性申请过多内存。 */
+    private static final int MAX_KB_RANGE = 1024;
     private static final int MAX_DIRECTORY_ITEMS = 400;
 
     @Override
@@ -25,7 +27,7 @@ public final class FileReadTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return "Read file contents. Returns line-numbered content; for large files, read in segments via start_kb/end_kb. Returns a directory tree when reading a directory.";
+        return "Read file contents. Returns line-numbered content; for large files, read in segments via start_kb/end_kb (end_kb may exceed 50, up to the file size). Returns a directory tree when reading a directory.";
     }
 
     @Override
@@ -64,7 +66,7 @@ public final class FileReadTool extends BaseTool {
                 .put("properties", new JSONObject()
                         .put("file_path", new JSONObject().put("type", "string").put("description", "Absolute or relative file path"))
                         .put("start_kb", new JSONObject().put("type", "number").put("description", "Start position in KB, default 0"))
-                        .put("end_kb", new JSONObject().put("type", "number").put("description", "End position in KB, default 50, max 50")))
+                        .put("end_kb", new JSONObject().put("type", "number").put("description", "End position in KB, default 50; may exceed 50, clamped to the file size")))
                 .put("required", new org.json.JSONArray().put("file_path"));
     }
 
@@ -85,7 +87,11 @@ public final class FileReadTool extends BaseTool {
             }
 
             int startKb = Math.max(0, input.optInt("start_kb", 0));
-            int endKb = Math.max(startKb + 1, Math.min(50, input.optInt("end_kb", 50)));
+            int endKb = Math.max(startKb + 1, input.optInt("end_kb", 50));
+            // 限制单次读取跨度，防止超大的 end_kb 导致内存暴涨；大文件按页读取。
+            if (endKb - startKb > MAX_KB_RANGE) {
+                endKb = startKb + MAX_KB_RANGE;
+            }
             boolean hasKbRange = input.has("start_kb") || input.has("end_kb");
 
             long fileLen = file.length();
@@ -121,53 +127,78 @@ public final class FileReadTool extends BaseTool {
             int startChar = 0;
             int endChar = content.length();
             if (startByte > 0) {
-                int lineStart = content.lastIndexOf('\n', content.length() - 1);
-                if (lineStart >= 0) {
-                    startChar = lineStart + 1;
+                // 若块起点落在行中间，跳过不完整的首行：向前找到块内第一个换行。
+                boolean atLineStart;
+                try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+                    raf.seek(startByte - 1);
+                    atLineStart = raf.read() == '\n';
+                }
+                if (!atLineStart) {
+                    int lineStart = content.indexOf('\n');
+                    if (lineStart >= 0) {
+                        startChar = lineStart + 1;
+                    }
                 }
             }
             if (endByte < fileLen) {
-                int lineEnd = content.indexOf('\n', startChar);
+                // 块未到文件末尾时，结束位置对齐到块内最后一个换行，保留完整行。
+                int lineEnd = content.lastIndexOf('\n');
                 if (lineEnd >= 0) {
                     endChar = lineEnd + 1;
                 }
             }
 
             // Count the absolute line number at the (snapped) start position.
-            long startLineNumber = 1;
-            try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-                long scan = Math.max(0, startByte + startChar);
-                long pos = 0;
-                while (pos < scan) {
-                    raf.seek(pos);
-                    int b = raf.read();
-                    if (b < 0) break;
-                    if (b == '\n') startLineNumber++;
-                    pos++;
-                }
-            }
+            long scan = Math.max(0, startByte + startChar);
+            long startLineNumber = 1 + countNewlines(file, scan);
 
             String extracted = content.substring(startChar, endChar);
             StringBuilder result = new StringBuilder();
             result.append(addLineNumbers(extracted, (int) startLineNumber));
 
             // Add range info
-            long totalLines = 1;
-            try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-                long pos = 0;
-                while (true) {
-                    raf.seek(pos);
-                    int b = raf.read();
-                    if (b < 0) break;
-                    if (b == '\n') totalLines++;
-                    pos++;
-                }
-            }
+            long totalLines = 1 + countNewlines(file, fileLen);
+            if (lastByteIsNewline(file)) totalLines--;
             result.append(context.getString(R.string.tool_file_read_range_info, totalLines, startKb, endKb, fileLen / 1024));
 
             return ok(ToolResult.truncateContent(result.toString()));
         } catch (Exception e) {
             return error(context.getString(R.string.tool_file_read_failed, e.getMessage()));
+        }
+    }
+
+    /** 分块读取文件，统计字节位置 < upToByte 的 '\n' 个数，避免逐字节 seek/read 的 O(n) 系统调用。 */
+    private static long countNewlines(File file, long upToByte) throws Exception {
+        long count = 0;
+        byte[] buffer = new byte[64 * 1024];
+        long remaining = Math.max(0, upToByte);
+        try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+            while (remaining > 0) {
+                int toRead = (int) Math.min(buffer.length, remaining);
+                int read = raf.read(buffer, 0, toRead);
+                if (read < 0) {
+                    break;
+                }
+                for (int i = 0; i < read; i++) {
+                    if (buffer[i] == '\n') {
+                        count++;
+                    }
+                }
+                remaining -= read;
+            }
+        }
+        return count;
+    }
+
+    /** 判断文件最后一个字节是否为换行符（文件为空时返回 false）。 */
+    private static boolean lastByteIsNewline(File file) throws Exception {
+        long len = file.length();
+        if (len <= 0) {
+            return false;
+        }
+        try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+            raf.seek(len - 1);
+            return raf.read() == '\n';
         }
     }
 
@@ -193,11 +224,17 @@ public final class FileReadTool extends BaseTool {
     }
 
     private String addLineNumbers(String content, int startLine) {
+        if (content.length() == 0) {
+            return "";
+        }
+        // 内容以换行结尾时，split 会产生一个空的尾元素，需去掉，避免多出空行号。
+        boolean endsWithNewline = content.endsWith("\n");
         String[] lines = content.split("\n", -1);
+        int count = lines.length - (endsWithNewline ? 1 : 0);
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < lines.length; i++) {
+        for (int i = 0; i < count; i++) {
             sb.append(startLine + i).append('\t').append(lines[i]);
-            if (i + 1 < lines.length) {
+            if (i + 1 < count) {
                 sb.append('\n');
             }
         }

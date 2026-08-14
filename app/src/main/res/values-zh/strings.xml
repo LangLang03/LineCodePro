@@ -242,6 +242,7 @@
     <string name="skill_github_invalid_url">GitHub 地址无效</string>
     <string name="skill_github_fetch_failed">从 GitHub 下载 Skill 失败: %1$s</string>
     <string name="skill_github_no_skill_md">仓库中未找到 SKILL.md</string>
+    <string name="skill_install_failed">SKILL 安装失败</string>
     <string name="workspace_provider_open_title">LineCode 工作区</string>
     <string name="workspace_provider_open_failed">无法打开工作区目录</string>
 
@@ -596,6 +597,7 @@
     <string name="screen_agent_field_trigger">触发条件</string>
     <string name="screen_agent_section_tools">可使用的工具</string>
     <string name="screen_agent_section_mcps">可使用的 MCP</string>
+    <string name="screen_agent_tools_selected">已选</string>
     <string name="screen_agent_let_ai_dialog_title">让 AI 写 Agent</string>
     <string name="screen_agent_let_ai_dialog_desc">描述这个 Agent 应该做什么</string>
     <string name="screen_agent_let_ai_hint">描述 Agent 的角色与行为</string>

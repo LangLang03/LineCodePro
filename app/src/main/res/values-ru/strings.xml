@@ -242,6 +242,7 @@
     <string name="skill_github_invalid_url">Неверный URL GitHub</string>
     <string name="skill_github_fetch_failed">Не удалось скачать Skill с GitHub: %1$s</string>
     <string name="skill_github_no_skill_md">В репозитории не найден SKILL.md</string>
+    <string name="skill_install_failed">Не удалось установить SKILL</string>
     <string name="workspace_provider_open_title">Рабочая область LineCode</string>
     <string name="workspace_provider_open_failed">Не удалось открыть рабочую папку</string>
 
@@ -594,6 +595,7 @@
     <string name="screen_agent_field_trigger">Условие запуска</string>
     <string name="screen_agent_section_tools">Доступные инструменты</string>
     <string name="screen_agent_section_mcps">Доступные MCP</string>
+    <string name="screen_agent_tools_selected">выбрано</string>
     <string name="screen_agent_let_ai_dialog_title">Пусть AI напишет Agent</string>
     <string name="screen_agent_let_ai_dialog_desc">Опишите, что должен делать Agent</string>
     <string name="screen_agent_let_ai_hint">Опишите роль и поведение Agent</string>

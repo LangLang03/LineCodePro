@@ -75,9 +75,11 @@ public final class PdfRenderer {
                 }
 
                 // Handle newlines
+                boolean newlineFound = false;
                 int newlineIdx = content.indexOf('\n', start);
                 if (newlineIdx >= start && newlineIdx < end) {
                     end = newlineIdx;
+                    newlineFound = true;
                 }
 
                 String line = content.substring(start, end);
@@ -91,7 +93,9 @@ public final class PdfRenderer {
                     canvas.drawText(line, margin, y, bodyPaint);
                     y += BODY_SIZE + LINE_SPACING;
                 }
-                start = end + 1;
+                // 若本段是因为换行符中断，则跳过换行符；否则退出的 end 是首个放不下的字符，
+                // 必须作为下一行起点重新处理，避免丢字符。
+                start = newlineFound ? end + 1 : end;
             }
             y += LINE_SPACING;
         }

@@ -1,6 +1,6 @@
 # 更新日志
 
-## v1.2.6-rc.1
+## v1.2.6
 
 ### 聊天滚动体验优化（嵌套滚动冲突修复）
 
@@ -24,11 +24,65 @@
 - 新增 `BoundedScrollViewTest`（`:ui-theme`，13 断言组）覆盖 `shouldHandleDrag` 全方向/边界组合、`canScrollContent` 边界、`shouldDisallowOnDown` 八种组合、DOWN→MOVE→反向→UP 完整手势序列决策
 - 新增 `ToolCallBlockViewSignatureTest`（13 例）覆盖结构/内容签名拆分：仅内容变化签名相等、isError/reviewState/id/name/arguments/projectPath 变化签名不等
 - 新增 `ToolCallAgentViewLayoutSignatureTest`（13 例）覆盖 agent 进度 JSON 的 status / tool_call_count / agent_id / output 存在性对布局签名的影响
+- 新增 `MemoryRankerRagInjectionTest` 证明 RAG 排序会选中记忆候选（`MemoryRanker` 相关性注入）
+
+### 功能与改进
+
+- **MCP 协议升级（2025-03-26）** - 自定义 HTTP 工具（`CustomMcpHttpTool`）支持新版 MCP 协议：请求前初始化会话并携带 `Mcp-Session-Id` 会话管理、`Mcp-Protocol-Version` 协议版本头
+- **工具调用去重** - 原生与文本工具调用按签名去重，同一工具调用不会被执行两次
+- **工具调用上限提示** - 达到主流程总工具调用次数上限时给出明确的终止提示（多语言支持）
+- **进度监听器透传** - `ToolContext` 新增进度监听器 accessor 并透传给工具执行器，供工具上报流式进度
+- **学习上下文改进** - 学习模式关闭时改用手动记忆构建学习上下文（不再误用自动抽取）
+- **响应头暴露** - `SimpleHttpClient` 捕获并暴露响应头，供调用方读取（如 MCP 会话头）
+- **Kimi 模型兼容层** - 新增 Kimi/Moonshot 推理策略兼容层（温度下限 1），`OpenAiCompatibleProtocol` 按模型适配
+- **`memory_update` 可见性** - `memory_update` 工具在学习模式开启后可见（`ToolSettingsRepository` 按模式过滤）
+- **死代码清理** - 删除从未被调用的 `MemoryExtractionService`（587 行）及其专属 prompt 模板（memory/skill-extraction）与相关字符串，`CLAUDE.md`/`README` 引用同步更新
+
+### 全量代码审计修复
+
+对全项目（core / data / feature-model / feature-tool / feature-ssh / feature-share / markdown / terminal-provider / app 共 11 个范围）进行了系统性代码审计并逐项核实，修复**高危 2 项、中危 30 项**：
+
+**文件读取（`file_read`）**
+- 修复 KB 分页读取**只返回第一行**：行边界对齐的 `indexOf`/`lastIndexOf` 搜索方向写反，非末页读取被截断到第一个换行
+- `end_kb` 不再硬性限制 50KB，可按文件大小分页读取整文件（单次跨度上限 1MB 防内存暴涨），参数说明同步更新
+- 总行数 / 起始行号统计改为 64KB 分块缓冲读取，替换逐字节 `seek+read`（大文件不再卡死工具线程）
+- 消除内容末尾换行的幻影空行号、总行数多计 1 行的问题
+
+**Shell 执行（Terminal Provider）**
+- 修复执行命令输出**只返回最后一行**：输出回调逐块覆盖缓冲改为累积（SSH 路径同步修正）
+- 命令超时后击杀**整个进程树**（扫描 /proc ppid 链，含子进程），并抑制超时后的过期回调；正常完成只销毁 shell 本体，不误杀 `nohup ... &` 后台任务
+- `readFile` 单次读入内存上限 32MB（超大文件走 `readFileChunk` 分块），防 OOM
+- Terminal Provider 定位为**开放插件**：手动开启 + 工具层切换执行模式后才被使用，不设签名/包名等调用方校验，兼容 GPLv3 第三方渠道重签名分发
+
+**安全加固**
+- `UrlPolicy` 私网判定由主机名**前缀匹配**改为字面 IPv4 校验（`10.evil.com`、`192.168.attacker.example` 等公网域名不再被放行明文 HTTP；`10.0.2.2` 模拟器别名不受影响）
+- `SimpleHttpClient` 响应体增加 32MB 上限；3 参 `download` 不再传 `Integer.MAX_VALUE`；字节计数 `int` 溢出改 `long`
+- 图片生成工具下载上限（12MB）/ 响应上限（24MB）此前定义了但从未生效，现已真正执行
+- Markdown `data:image` base64 解码增加 5MB 上限 + `inSampleSize` 降采样（防恶意/超大内嵌图 OOM）
+- 错误日志 `summary` 字段补上脱敏（此前 details/堆栈已脱敏）；`.linecode` 导入的 `fileName` 消毒 + 规范路径校验（防 `../` 穿越读取任意文件）
+- 中文图片占位标签 `[图片]` 不再被截成 `[图`（内联渲染与回退文本两处）
+
+**上下文压缩**
+- 修复 Codex/Responses 压缩路径不重置 `TokenUsageTracker`，压缩后基线残留旧 usage 导致反复过度压缩
+
+**并发与稳定性**
+- `SshConnectionPool` 并发首次借用竞态：`put` 覆盖丢条目、锁永不释放、`release` 对非持有锁 `unlock` 抛 `IllegalMonitorStateException` → `putIfAbsent` + 锁守卫
+- `ToolRegistry` 增加读写锁（后台 `reloadExtensions` 与主线程读取竞争，`ConcurrentModificationException` 风险）
+- 会话持久化移出主线程热路径：单线程后台执行器 + latest-wins 合并，切换会话前等待落库（防 ANR 与过期覆盖）
+- 工具调用预算只统计**实际执行**的工具（暂停确认/拒绝/跳过不再空耗额度）；Agent 内部工具调用并入全局上限并按轮重置
+- Skill 创建/安装（含 GitHub 下载）、聊天导出（PDF/图片）移出主线程；MCP 请求头改为主线程快照（消除工作线程读 EditText 竞态）
+
+**UI 与细节**
+- `MainChatView` 屏幕缓存上限 12 条并淘汰最旧（动态 screen id 每次导航泄漏 View/Context 的内存问题）
+- 存储页刷新按钮误绑定"返回"、统计查询移出主线程；压缩模型"查询列表"按钮实时读取凭据（新增模型不再永远禁用）
+- Agent 编辑页分区标题 `%2$s` 误传按钮文案 → 新增 `screen_agent_tools_selected`（三语言）
+- PDF 导出宽度换行 off-by-one 丢字符；无障碍点击只点击第一个匹配节点；SKILL.md 读取有界化
+- 新增/加强回归测试：`ToolBuiltinsTest` 23 例（KB 分页多行、中间页连续行号、end_kb>50）
 
 ### 版本
 
-- 版本号升级到 `1.2.6-rc.1`
-- `versionCode` 升级到 `29`
+- 版本号升级到 `1.2.6`（正式版）
+- `versionCode` 升级到 `31`
 
 ---
 

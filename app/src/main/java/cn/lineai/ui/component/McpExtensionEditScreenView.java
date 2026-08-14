@@ -100,9 +100,10 @@ public final class McpExtensionEditScreenView extends ScreenScaffoldView {
         querying = true;
         renderQuery();
         renderTools();
+        List<McpRequestHeader> snapshot = headers();
         new Thread(() -> {
             try {
-                List<McpToolSummary> rawTools = listener.onQueryTools(url, headers());
+                List<McpToolSummary> rawTools = listener.onQueryTools(url, snapshot);
                 final List<McpToolSummary> tools = rawTools != null ? rawTools : java.util.Collections.<McpToolSummary>emptyList();
                 mainHandler.post(() -> {
                     querying = false;

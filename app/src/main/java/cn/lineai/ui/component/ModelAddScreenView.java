@@ -266,8 +266,8 @@ public final class ModelAddScreenView extends LinearLayout {
                             updateSaveState();
                         }
                     },
-                    effectiveBaseUrl(),
-                    ModelFormHelper.value(apiKeyInput)
+                    this::effectiveBaseUrl,
+                    () -> ModelFormHelper.value(apiKeyInput)
             );
             content.addView(compressionSection, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         }

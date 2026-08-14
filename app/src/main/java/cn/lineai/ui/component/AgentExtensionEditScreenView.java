@@ -127,7 +127,7 @@ public final class AgentExtensionEditScreenView extends ScreenScaffoldView {
         toolsSection.removeAllRows();
         toolsSection.setTitle(getContext().getString(R.string.screen_agent_tools_count,
                 getContext().getString(R.string.screen_agent_section_tools),
-                getContext().getString(R.string.screen_agent_let_ai_button),
+                getContext().getString(R.string.screen_agent_tools_selected),
                 selectedTools.size()));
         if (availableTools.isEmpty()) {
             toolsSection.addRow(empty(getContext().getString(R.string.screen_agent_tools_empty)), false);
@@ -149,7 +149,7 @@ public final class AgentExtensionEditScreenView extends ScreenScaffoldView {
         mcpSection.removeAllRows();
         mcpSection.setTitle(getContext().getString(R.string.screen_agent_tools_count,
                 getContext().getString(R.string.screen_agent_section_mcps),
-                getContext().getString(R.string.screen_agent_let_ai_button),
+                getContext().getString(R.string.screen_agent_tools_selected),
                 selectedMcps.size()));
         ArrayList<McpOption> options = mcpOptions();
         if (options.isEmpty()) {

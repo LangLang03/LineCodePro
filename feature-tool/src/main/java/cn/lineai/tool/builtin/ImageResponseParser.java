@@ -19,6 +19,7 @@ final class ImageResponseParser {
     }
 
     GeneratedImage parseImagesResponse(String raw, ToolContext context) throws Exception {
+        enforceResponseSizeLimit(raw);
         JSONObject response = new JSONObject(raw);
         JSONArray data = response.optJSONArray("data");
         if (data == null || data.length() == 0 || data.optJSONObject(0) == null) {
@@ -68,6 +69,7 @@ final class ImageResponseParser {
     }
 
     GeneratedImage parseResponsesImage(String raw, ToolContext context) throws Exception {
+        enforceResponseSizeLimit(raw);
         JSONObject response = new JSONObject(raw);
         JSONObject error = response.optJSONObject("error");
         if (error != null) {
@@ -110,6 +112,16 @@ final class ImageResponseParser {
                     : "Responses API returned invalid image data.");
         }
         throw new Exception("Responses API did not return image_generation_call.result.");
+    }
+
+    private void enforceResponseSizeLimit(String raw) throws Exception {
+        if (raw == null) {
+            return;
+        }
+        long sizeBytes = raw.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        if (sizeBytes > ImageApiClient.MAX_RESPONSE_BYTES) {
+            throw new Exception("Image API response too large, current limit is " + (ImageApiClient.MAX_RESPONSE_BYTES / 1024 / 1024) + " MB.");
+        }
     }
 
     private String mimeFromDataUrl(String dataUrl) {

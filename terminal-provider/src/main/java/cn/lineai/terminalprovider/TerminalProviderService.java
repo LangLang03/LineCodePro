@@ -2,6 +2,7 @@ package cn.lineai.terminalprovider;
 
 import android.os.IBinder;
 import android.os.RemoteException;
+import android.system.Os;
 import android.util.Log;
 import cn.lineai.ipc.service.AbstractIpcProviderService;
 import cn.lineai.ipc.service.IpcServerExecutors;
@@ -10,17 +11,25 @@ import cn.lineai.ipc.terminal.ITerminalProviderService;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.RandomAccessFile;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONObject;
 
 public final class TerminalProviderService extends AbstractIpcProviderService {
@@ -29,6 +38,8 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
     // 单次分块传输的默认上限（1MB），避免 AIDL Binder 事务超限。
     private static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
     private static final int MAX_CHUNK_SIZE = DEFAULT_CHUNK_SIZE;
+    // readFile 一次性读入内存的字节上限（32MB），避免超大文件耗尽堆内存。
+    private static final long MAX_READ_FILE_BYTES = 32L * 1024L * 1024L;
 
     // 进程级共享线程池，由 :ipc 库统一管理。
     private final ExecutorService executor = IpcServerExecutors.shared();
@@ -36,6 +47,7 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
     @Override
     protected IBinder createBinder() {
         return new ITerminalProviderService.Stub() {
+
             @Override
             public String getProviderType() {
                 return "terminal";
@@ -86,6 +98,8 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                     workingDir = getFilesDir();
                 }
                 final File finalWorkingDir = workingDir;
+                final AtomicReference<Process> processRef = new AtomicReference<>();
+                final AtomicBoolean finished = new AtomicBoolean(false);
                 Future<Integer> future = executor.submit(() -> {
                     Process process = null;
                     BufferedReader stdoutReader = null;
@@ -95,6 +109,7 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                         pb.directory(finalWorkingDir);
                         pb.redirectErrorStream(false);
                         process = pb.start();
+                        processRef.set(process);
                         stdoutReader = new BufferedReader(
                                 new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
                         stderrReader = new BufferedReader(
@@ -106,7 +121,7 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                             String line;
                             try {
                                 while ((line = finalStdout.readLine()) != null) {
-                                    if (callback != null) {
+                                    if (callback != null && !finished.get()) {
                                         callback.onOutput(line + "\n");
                                     }
                                 }
@@ -117,7 +132,7 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                             String line;
                             try {
                                 while ((line = finalStderr.readLine()) != null) {
-                                    if (callback != null) {
+                                    if (callback != null && !finished.get()) {
                                         callback.onOutput(line + "\n");
                                     }
                                 }
@@ -129,13 +144,13 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                         int exitCode = finalProcess.waitFor();
                         stdoutThread.join(1000);
                         stderrThread.join(1000);
-                        if (callback != null) {
+                        if (callback != null && !finished.get()) {
                             callback.onComplete(exitCode);
                         }
                         return exitCode;
                     } catch (Exception e) {
                         Log.e(TAG, "executeShell failed", e);
-                        if (callback != null) {
+                        if (callback != null && !finished.get()) {
                             try {
                                 callback.onError(e.getMessage() == null ? e.toString() : e.getMessage());
                             } catch (RemoteException ignored) {
@@ -150,6 +165,8 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                             try { stderrReader.close(); } catch (IOException ignored) {}
                         }
                         if (process != null) {
+                            // 正常完成/异常时只销毁 shell 本身，保留用户启动的后台子进程
+                            // （如 nohup server &）；进程树击杀仅用于超时路径。
                             process.destroy();
                         }
                     }
@@ -159,10 +176,17 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                     return future.get(effectiveTimeout, TimeUnit.MILLISECONDS);
                 } catch (TimeoutException e) {
                     future.cancel(true);
-                    if (callback != null) {
-                        try {
-                            callback.onError("命令执行超时");
-                        } catch (RemoteException ignored) {
+                    // 超时：终止整个进程树并把结果状态置为已结束，阻止后续任何回调。
+                    if (finished.compareAndSet(false, true)) {
+                        Process shell = processRef.get();
+                        if (shell != null) {
+                            killProcessTree(shell);
+                        }
+                        if (callback != null) {
+                            try {
+                                callback.onError("命令执行超时");
+                            } catch (RemoteException ignored) {
+                            }
                         }
                     }
                     return -2;
@@ -189,6 +213,11 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 }
                 long size = file.length();
                 if (size <= 0L) {
+                    return new byte[0];
+                }
+                if (size > MAX_READ_FILE_BYTES) {
+                    Log.e(TAG, "readFile: 文件超过读取上限 " + MAX_READ_FILE_BYTES + " 字节: " + path
+                            + " (size=" + size + ")，请使用 readFileChunk 分块读取");
                     return new byte[0];
                 }
                 if (size > Integer.MAX_VALUE) {
@@ -398,5 +427,128 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
         // 共享线程池由 :ipc 库统一管理生命周期，此处无需 shutdown。
         // 保留钩子供未来按需扩展。
         Log.i(TAG, "TerminalProviderService 销毁");
+    }
+
+    /**
+     * 终止指定进程及其全部后代进程（扫描 /proc 下各进程的 stat 文件建立 ppid 链）。
+     * 依赖父进程持有该进程树，先杀后代再杀 shell 自身，最后兜底 destroy()。
+     */
+    private static void killProcessTree(Process process) {
+        if (process == null) {
+            return;
+        }
+        int pid = processPid(process);
+        if (pid <= 0) {
+            process.destroy();
+            return;
+        }
+        for (int descendant : collectDescendants(pid)) {
+            safeKill(descendant);
+        }
+        safeKill(pid);
+        process.destroy();
+    }
+
+    /**
+     * 获取 Process 的 pid。Android 的 {@link java.lang.Process} 未公开 pid() 方法，
+     * 通过反射读取内部 pid 字段（ProcessImpl）。
+     */
+    private static int processPid(Process process) {
+        if (process == null) {
+            return -1;
+        }
+        try {
+            Field field = process.getClass().getDeclaredField("pid");
+            field.setAccessible(true);
+            Object value = field.get(process);
+            if (value instanceof Integer) {
+                return (Integer) value;
+            }
+        } catch (Throwable ignored) {
+        }
+        return -1;
+    }
+
+    /**
+     * 扫描 /proc 下各进程的 stat 文件，收集以 rootPid 为根的全部后代进程 pid。
+     */
+    private static Set<Integer> collectDescendants(int rootPid) {
+        Map<Integer, Integer> ppidByPid = new HashMap<>();
+        File[] dirs = new File("/proc").listFiles();
+        if (dirs != null) {
+            for (File dir : dirs) {
+                int pid;
+                try {
+                    pid = Integer.parseInt(dir.getName());
+                } catch (NumberFormatException ignored) {
+                    continue;
+                }
+                String stat = readStatLine(dir);
+                if (stat == null) {
+                    continue;
+                }
+                int ppid = parsePpid(stat);
+                if (ppid > 0 && pid != rootPid) {
+                    ppidByPid.put(pid, ppid);
+                }
+            }
+        }
+        Set<Integer> descendants = new HashSet<>();
+        boolean changed;
+        do {
+            changed = false;
+            for (Map.Entry<Integer, Integer> entry : ppidByPid.entrySet()) {
+                int child = entry.getKey();
+                int parent = entry.getValue();
+                if ((parent == rootPid || descendants.contains(parent)) && descendants.add(child)) {
+                    changed = true;
+                }
+            }
+        } while (changed);
+        return descendants;
+    }
+
+    /**
+     * 从 /proc/<pid>/stat 的单行内容解析 ppid。格式为：pid (comm) state ppid ...
+     */
+    private static int parsePpid(String stat) {
+        int close = stat.lastIndexOf(')');
+        if (close < 0) {
+            return -1;
+        }
+        String rest = stat.substring(close + 1).trim();
+        if (rest.isEmpty()) {
+            return -1;
+        }
+        String[] fields = rest.split("\\s+");
+        if (fields.length < 2) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(fields[1]);
+        } catch (NumberFormatException ignored) {
+            return -1;
+        }
+    }
+
+    private static String readStatLine(File procDir) {
+        File stat = new File(procDir, "stat");
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new FileInputStream(stat), StandardCharsets.UTF_8))) {
+            return reader.readLine();
+        } catch (IOException ignored) {
+            return null;
+        }
+    }
+
+    private static void safeKill(int pid) {
+        if (pid <= 0) {
+            return;
+        }
+        try {
+            Os.kill(pid, android.system.OsConstants.SIGKILL);
+        } catch (Throwable ignored) {
+            // 进程可能已退出或权限受限，忽略。
+        }
     }
 }

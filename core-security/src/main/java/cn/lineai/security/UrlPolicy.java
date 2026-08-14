@@ -29,9 +29,51 @@ public class UrlPolicy {
     }
 
     private void registerDefaultPrivateNetworkPredicates() {
-        addPrivateNetworkPredicate(host -> host.startsWith("192.168."));
-        addPrivateNetworkPredicate(host -> host.startsWith("10."));
-        addPrivateNetworkPredicate(host -> host.matches("172\\.(1[6-9]|2[0-9]|3[01])\\..*"));
+        // Classify as private network ONLY for a literal IPv4 address (dotted-quad)
+        // in an RFC1918 range or loopback. Public DNS names such as "10.evil.com"
+        // or "192.168.attacker.example" must NOT be treated as private.
+        addPrivateNetworkPredicate(UrlPolicy::isPrivateIpv4);
+    }
+
+    private static boolean isPrivateIpv4(String host) {
+        String[] parts = host.split("\\.");
+        if (parts.length != 4) {
+            return false;
+        }
+        int[] octets = new int[4];
+        for (int i = 0; i < 4; i++) {
+            String part = parts[i];
+            if (part.length() == 0 || part.length() > 3) {
+                return false;
+            }
+            int value;
+            try {
+                value = Integer.parseInt(part);
+            } catch (NumberFormatException ignored) {
+                return false;
+            }
+            if (value < 0 || value > 255) {
+                return false;
+            }
+            octets[i] = value;
+        }
+        if (octets[0] == 10) {
+            // 10.0.0.0/8 (also covers the 10.0.2.2 emulator alias)
+            return true;
+        }
+        if (octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31) {
+            // 172.16.0.0/12
+            return true;
+        }
+        if (octets[0] == 192 && octets[1] == 168) {
+            // 192.168.0.0/16
+            return true;
+        }
+        if (octets[0] == 127) {
+            // loopback 127.0.0.0/8
+            return true;
+        }
+        return false;
     }
 
     public void addCleartextHost(String host) {

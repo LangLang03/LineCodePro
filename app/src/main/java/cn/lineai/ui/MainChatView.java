@@ -131,6 +131,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     private String shellCommandText = "";
     private String currentScreenId = "";
     private final ScreenRegistry screenRegistry = new ScreenRegistry();
+    private static final int SCREEN_CACHE_MAX = 12;
     private final LinkedHashMap<String, View> screenCache = new LinkedHashMap<>();
     private int screenAnimationGeneration;
     private boolean screenClosing;
@@ -660,6 +661,16 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             nextView = buildScreen(currentScreenId);
             if (currentScreenId.length() > 0 && nextView != null) {
                 screenCache.put(currentScreenId, nextView);
+                while (screenCache.size() > SCREEN_CACHE_MAX) {
+                    java.util.Map.Entry<String, View> eldest =
+                            screenCache.entrySet().iterator().next();
+                    String eldestKey = eldest.getKey();
+                    View eldestView = eldest.getValue();
+                    screenCache.remove(eldestKey);
+                    if (eldestView != null && eldestView.getParent() instanceof ViewGroup) {
+                        ((ViewGroup) eldestView.getParent()).removeView(eldestView);
+                    }
+                }
             }
         }
         if (nextView != null && nextView.getParent() == null) {

@@ -21,22 +21,30 @@ final class ExtensionManagementController {
         void refreshVisibleScreen(String screenId);
 
         void render();
+
+        void showSkillError(String message);
     }
 
     private final ExtensionStore extensionRepository;
     private final IpcProviderStore ipcProviderRepository;
     private final ToolRegistry toolRegistry;
+    private final BackgroundTaskRunner backgroundTasks;
+    private final MainThreadDispatcher mainThread;
     private final Host host;
 
     ExtensionManagementController(
             ExtensionStore extensionRepository,
             IpcProviderStore ipcProviderRepository,
             ToolRegistry toolRegistry,
+            BackgroundTaskRunner backgroundTasks,
+            MainThreadDispatcher mainThread,
             Host host
     ) {
         this.extensionRepository = extensionRepository;
         this.ipcProviderRepository = ipcProviderRepository;
         this.toolRegistry = toolRegistry;
+        this.backgroundTasks = backgroundTasks;
+        this.mainThread = mainThread;
         this.host = host;
     }
 
@@ -69,31 +77,60 @@ final class ExtensionManagementController {
     }
 
     SkillRecord createSkill(String location, String name, String description, String content) {
-        SkillRecord skill = extensionRepository.createSkill(host.projectPath(), location, name, description, content);
-        host.returnToScreen("extension:skills");
-        host.render();
-        return skill;
+        backgroundTasks.execute("skill-create", () -> {
+            try {
+                extensionRepository.createSkill(host.projectPath(), location, name, description, content);
+                mainThread.dispatch(this::completeSkillInstall);
+            } catch (Exception e) {
+                mainThread.dispatch(() -> host.showSkillError(errorMessage(e)));
+            }
+        });
+        return null;
     }
 
     SkillRecord installSkill(String location, String sourcePath, String name) throws Exception {
-        SkillRecord skill = extensionRepository.installSkill(host.projectPath(), location, sourcePath, name);
-        host.returnToScreen("extension:skills");
-        host.render();
-        return skill;
+        backgroundTasks.execute("skill-install", () -> {
+            try {
+                extensionRepository.installSkill(host.projectPath(), location, sourcePath, name);
+                mainThread.dispatch(this::completeSkillInstall);
+            } catch (Exception e) {
+                mainThread.dispatch(() -> host.showSkillError(errorMessage(e)));
+            }
+        });
+        return null;
     }
 
     SkillRecord installSkillFromUri(String location, String uri, String displayName) throws Exception {
-        SkillRecord skill = extensionRepository.installSkillFromUri(host.projectPath(), location, uri, displayName);
-        host.returnToScreen("extension:skills");
-        host.render();
-        return skill;
+        backgroundTasks.execute("skill-install-from-uri", () -> {
+            try {
+                extensionRepository.installSkillFromUri(host.projectPath(), location, uri, displayName);
+                mainThread.dispatch(this::completeSkillInstall);
+            } catch (Exception e) {
+                mainThread.dispatch(() -> host.showSkillError(errorMessage(e)));
+            }
+        });
+        return null;
     }
 
     SkillRecord installSkillFromGitHub(String location, String githubUrl) throws Exception {
-        SkillRecord skill = extensionRepository.installSkillFromGitHub(host.projectPath(), location, githubUrl);
+        backgroundTasks.execute("skill-install-from-github", () -> {
+            try {
+                extensionRepository.installSkillFromGitHub(host.projectPath(), location, githubUrl);
+                mainThread.dispatch(this::completeSkillInstall);
+            } catch (Exception e) {
+                mainThread.dispatch(() -> host.showSkillError(errorMessage(e)));
+            }
+        });
+        return null;
+    }
+
+    private void completeSkillInstall() {
         host.returnToScreen("extension:skills");
         host.render();
-        return skill;
+    }
+
+    private String errorMessage(Exception e) {
+        return e == null ? null : e.getMessage();
     }
 
     void deleteExtensions(String kind, List<String> ids) {

@@ -14,6 +14,9 @@ import java.io.File;
 import java.util.Locale;
 
 public final class MarkdownImageView extends LinearLayout {
+    private static final long MAX_DATA_URI_BASE64_CHARS = 5L * 1024 * 1024;
+    private static final int MAX_DECODED_EDGE_PX = 2048;
+
     public MarkdownImageView(Context context, String destination, String altText) {
         super(context);
         setOrientation(VERTICAL);
@@ -23,7 +26,7 @@ public final class MarkdownImageView extends LinearLayout {
             String imageLabel = context.getString(R.string.markdown_image_label);
             String fallbackText = altText == null || altText.trim().length() == 0
                     ? imageLabel
-                    : imageLabel.substring(0, imageLabel.length() - 1) + ": " + altText.trim() + "]";
+                    : imageLabel + ": " + altText.trim();
             TextView fallback = LineTheme.text(context,
                     fallbackText,
                     LineTheme.FONT_SM,
@@ -54,8 +57,18 @@ public final class MarkdownImageView extends LinearLayout {
                 if (comma < 0) {
                     return null;
                 }
-                byte[] bytes = decodeBase64(url.substring(comma + 1));
-                return BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+                String payload = url.substring(comma + 1);
+                if (payload.length() > MAX_DATA_URI_BASE64_CHARS) {
+                    // Reject oversized data-URI payloads before decoding to avoid OOM.
+                    return null;
+                }
+                byte[] bytes = decodeBase64(payload);
+                BitmapFactory.Options bounds = new BitmapFactory.Options();
+                bounds.inJustDecodeBounds = true;
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
+                BitmapFactory.Options options = new BitmapFactory.Options();
+                options.inSampleSize = computeSampleSize(bounds.outWidth, bounds.outHeight);
+                return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
             }
             String path = url.startsWith("file://") ? Uri.parse(url).getPath() : url;
             if (path == null || !path.startsWith("/")) {
@@ -69,6 +82,18 @@ public final class MarkdownImageView extends LinearLayout {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private static int computeSampleSize(int width, int height) {
+        if (width <= 0 || height <= 0) {
+            return 1;
+        }
+        int sampleSize = 1;
+        int longEdge = Math.max(width, height);
+        while (longEdge / sampleSize > MAX_DECODED_EDGE_PX && sampleSize < 128) {
+            sampleSize <<= 1;
+        }
+        return sampleSize;
     }
 
     private byte[] decodeBase64(String value) {

@@ -140,7 +140,6 @@ public final class ShellExecuteTool extends BaseTool {
                 @Override
                 public void onOutput(String content) {
                     synchronized (streamedOutput) {
-                        streamedOutput.setLength(0);
                         streamedOutput.append(content == null ? "" : content);
                     }
                     if (context != null) {
@@ -190,7 +189,6 @@ public final class ShellExecuteTool extends BaseTool {
         try {
             String output = sshService.executeCommand(command, (int) timeoutMs, null, streamed -> {
                 synchronized (streamedOutput) {
-                    streamedOutput.setLength(0);
                     streamedOutput.append(streamed == null ? "" : streamed);
                 }
                 if (context != null) {
