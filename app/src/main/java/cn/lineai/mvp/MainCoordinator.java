@@ -780,6 +780,11 @@ public final class MainCoordinator implements MainUiController {
     }
 
     @Override
+    public SkillRecord onSkillInstalledFromSkillHub(String location, String slug, String version) throws Exception {
+        return extensionManagementController.installSkillFromSkillHub(location, slug, version);
+    }
+
+    @Override
     public void onExtensionEnabledChanged(String kind, String id, boolean enabled) {
         extensionManagementController.setExtensionEnabled(kind, id, enabled);
     }

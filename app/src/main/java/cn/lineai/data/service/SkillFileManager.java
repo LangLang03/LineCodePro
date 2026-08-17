@@ -374,6 +374,10 @@ public final class SkillFileManager {
     }
 
     public void writeUtf8(File file, String content) {
+        writeBytes(file, safe(content).getBytes(StandardCharsets.UTF_8));
+    }
+
+    public void writeBytes(File file, byte[] content) {
         try {
             File parent = file.getParentFile();
             if (parent != null && !parent.exists()) {
@@ -381,7 +385,7 @@ public final class SkillFileManager {
             }
             FileOutputStream output = new FileOutputStream(file, false);
             try {
-                output.write(safe(content).getBytes(StandardCharsets.UTF_8));
+                output.write(content);
             } finally {
                 output.close();
             }
@@ -476,42 +480,73 @@ public final class SkillFileManager {
         }
     }
 
+    private static final int MAX_ZIP_FILES = 512;
+    private static final long MAX_ZIP_ENTRY_BYTES = 8L * 1024 * 1024;
+    private static final long MAX_ZIP_TOTAL_BYTES = 40L * 1024 * 1024;
+
     public void unzip(File source, File target) throws Exception {
         target.mkdirs();
         File canonicalTarget = target.getCanonicalFile();
+        int fileCount = 0;
+        long totalBytes = 0;
+        boolean hasSkillMd = false;
         ZipInputStream input = new ZipInputStream(new BufferedInputStream(new FileInputStream(source)));
         try {
             ZipEntry entry;
             while ((entry = input.getNextEntry()) != null) {
-                File out = new File(target, entry.getName()).getCanonicalFile();
+                String entryName = entry.getName() == null ? "" : entry.getName().replace('\\', '/');
+                if (entryName.length() == 0 || entryName.startsWith("/") || entryName.indexOf('\u0000') >= 0) {
+                    throw new IllegalArgumentException("ZIP 包含无效条目。");
+                }
+                File out = new File(target, entryName).getCanonicalFile();
                 if (!out.getPath().equals(canonicalTarget.getPath())
                         && !out.getPath().startsWith(canonicalTarget.getPath() + File.separator)) {
                     throw new IllegalArgumentException(resourceProvider != null
-                            ? resourceProvider.getString(R.string.skill_zip_entry_out_of_bounds, entry.getName())
-                            : "ZIP 条目越界: " + entry.getName());
+                            ? resourceProvider.getString(R.string.skill_zip_entry_out_of_bounds, entryName)
+                            : "ZIP 条目越界: " + entryName);
                 }
                 if (entry.isDirectory()) {
                     out.mkdirs();
                 } else {
+                    fileCount++;
+                    if (fileCount > MAX_ZIP_FILES) {
+                        throw new IllegalArgumentException("ZIP 文件数量超过限制。");
+                    }
                     File parent = out.getParentFile();
                     if (parent != null && !parent.exists()) {
                         parent.mkdirs();
                     }
+                    long entryBytes = 0;
                     BufferedOutputStream output = new BufferedOutputStream(new FileOutputStream(out, false));
                     try {
                         byte[] buffer = new byte[8192];
                         int read;
                         while ((read = input.read(buffer)) != -1) {
+                            entryBytes += read;
+                            totalBytes += read;
+                            if (entryBytes > MAX_ZIP_ENTRY_BYTES || totalBytes > MAX_ZIP_TOTAL_BYTES) {
+                                throw new IllegalArgumentException("ZIP 解压后大小超过限制。");
+                            }
                             output.write(buffer, 0, read);
                         }
                     } finally {
                         output.close();
                     }
+                    if ("skill.md".equalsIgnoreCase(out.getName())) {
+                        hasSkillMd = true;
+                    }
                 }
                 input.closeEntry();
             }
+        } catch (Exception e) {
+            deleteRecursive(target);
+            throw e;
         } finally {
             input.close();
+        }
+        if (fileCount == 0 || !hasSkillMd) {
+            deleteRecursive(target);
+            throw new IllegalArgumentException(fileCount == 0 ? "ZIP 技能包为空。" : "ZIP 技能包缺少 SKILL.md。");
         }
     }
 

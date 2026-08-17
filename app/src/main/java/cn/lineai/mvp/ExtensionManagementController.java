@@ -129,6 +129,11 @@ final class ExtensionManagementController {
         return e == null ? null : e.getMessage();
     }
 
+    SkillRecord installSkillFromSkillHub(String location, String slug, String version) throws Exception {
+        return extensionRepository.installSkillFromSkillHub(
+                host.projectPath(), location, slug, version);
+    }
+
     void deleteExtensions(String kind, List<String> ids) {
         if (ids == null || ids.isEmpty()) {
             return;

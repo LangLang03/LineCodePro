@@ -1275,6 +1275,11 @@ public final class ScreenFactories {
                 }
 
                 @Override
+                public void onOpenSkillStore() {
+                    controller.onSettingsItemSelected("skillStore");
+                }
+
+                @Override
                 public void onEnabledChanged(String kind, String id, boolean enabled) {
                     controller.onExtensionEnabledChanged(kind, id, enabled);
                 }
@@ -1292,6 +1297,170 @@ public final class ScreenFactories {
                 @Override
                 public void onShareWorkspace() {
                     cn.lineai.workspace.WorkspaceShareHelper.shareHome(view.getContext());
+                }
+            });
+        }
+
+        @Override
+        public String screenId() {
+            return PREFIX;
+        }
+
+        @Override
+        public boolean matches(String id) {
+            return id != null && id.startsWith(PREFIX);
+        }
+    }
+
+    public static final class SkillStoreScreenFactory implements ScreenFactory {
+        @Override
+        public View createScreen(MainChatView view, MainUiController controller, Context context) {
+            return new SkillStoreScreenView(context, new SkillStoreScreenView.Listener() {
+                @Override
+                public void onBack() {
+                    view.handleScreenBack();
+                }
+
+                @Override
+                public void onOpen(String slug) {
+                    controller.onSettingsItemSelected("skillStoreDetail:" + slug);
+                }
+
+                @Override
+                public void onLogin() {
+                    controller.onSettingsItemSelected("skillHubLogin");
+                }
+
+                @Override
+                public void onCenter() {
+                    controller.onSettingsItemSelected("skillHubCenter");
+                }
+
+                @Override
+                public void onPublish() {
+                    controller.onSettingsItemSelected("skillHubPublish");
+                }
+            });
+        }
+
+        @Override
+        public String screenId() {
+            return "skillStore";
+        }
+    }
+
+    public static final class SkillHubCenterScreenFactory implements ScreenFactory {
+        @Override
+        public View createScreen(MainChatView view, MainUiController controller, Context context) {
+            return new SkillHubCenterScreenView(context, new SkillHubCenterScreenView.Listener() {
+                @Override
+                public void onBack() {
+                    view.handleScreenBack();
+                }
+
+                @Override
+                public void onOpen(String destination) {
+                    controller.onSettingsItemSelected("skillHubWeb:" + destination);
+                }
+            });
+        }
+
+        @Override
+        public String screenId() {
+            return "skillHubCenter";
+        }
+    }
+
+    public static final class SkillHubWebScreenFactory implements ScreenFactory {
+        private static final String PREFIX = "skillHubWeb:";
+
+        @Override
+        public View createScreen(MainChatView view, MainUiController controller, Context context) {
+            String id = currentScreenId(view);
+            return new SkillHubWebScreenView(
+                    context, id.substring(PREFIX.length()), view::handleScreenBack);
+        }
+
+        @Override
+        public String screenId() {
+            return PREFIX;
+        }
+
+        @Override
+        public boolean matches(String id) {
+            return id != null && id.startsWith(PREFIX);
+        }
+    }
+
+    public static final class SkillHubPublishScreenFactory implements ScreenFactory {
+        @Override
+        public View createScreen(MainChatView view, MainUiController controller, Context context) {
+            return new SkillHubPublishScreenView(
+                    context,
+                    controller.getExtensionOverview().getSkills(),
+                    new SkillHubPublishScreenView.Listener() {
+                        @Override
+                        public void onBack() {
+                            view.handleScreenBack();
+                        }
+
+                        @Override
+                        public void onPublished() {
+                            view.handleScreenBack();
+                        }
+                    });
+        }
+
+        @Override
+        public String screenId() {
+            return "skillHubPublish";
+        }
+    }
+
+    public static final class SkillHubLoginScreenFactory implements ScreenFactory {
+        @Override
+        public View createScreen(MainChatView view, MainUiController controller, Context context) {
+            return new SkillHubLoginScreenView(
+                    context,
+                    view::handleScreenBack,
+                    view::handleScreenBack);
+        }
+
+        @Override
+        public String screenId() {
+            return "skillHubLogin";
+        }
+    }
+
+    public static final class SkillStoreDetailScreenFactory implements ScreenFactory {
+        private static final String PREFIX = "skillStoreDetail:";
+
+        @Override
+        public View createScreen(MainChatView view, MainUiController controller, Context context) {
+            String id = currentScreenId(view);
+            String slug = id.substring(PREFIX.length());
+            return new SkillStoreDetailScreenView(context, slug, new SkillStoreDetailScreenView.Listener() {
+                @Override
+                public void onBack() {
+                    view.handleScreenBack();
+                }
+
+                @Override
+                public void onLogin() {
+                    controller.onSettingsItemSelected("skillHubLogin");
+                }
+
+                @Override
+                public void onOfficial(String namespace, String slug) {
+                    String owner = namespace == null || namespace.length() == 0
+                            ? "official" : namespace;
+                    controller.onSettingsItemSelected(
+                            "skillHubWeb:skill:" + owner + ":" + slug);
+                }
+
+                @Override
+                public void onInstall(String location, String slug, String version) throws Exception {
+                    controller.onSkillInstalledFromSkillHub(location, slug, version);
                 }
             });
         }
