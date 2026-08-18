@@ -84,12 +84,12 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
         content.addView(add, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         if ("skills".equals(kind)) {
-            SettingsSectionView store = new SettingsSectionView(context, "在线商店");
+            SettingsSectionView store = new SettingsSectionView(context, getString(R.string.extension_online_store));
             store.addRow(new ActionRowView(
                     context,
                     IconButtonView.ARCHIVE,
-                    "SkillHub Skill 商店",
-                    "浏览、搜索并安全安装社区 Skill",
+                    getString(R.string.extension_skillhub_store),
+                    getString(R.string.extension_skillhub_store_desc),
                     false,
                     true,
                     listener::onOpenSkillStore

@@ -4,14 +4,52 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import cn.lineai.model.SkillRecord;
+import cn.lineai.resource.ResourceProvider;
 import java.io.File;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.Locale;
 import org.json.JSONObject;
 import org.junit.Test;
 
 public final class SkillHubSessionClientTest {
+    /**
+     * Fake resource provider used by the JVM unit tests (no Android resources
+     * available). It maps the handful of resource ids exercised by these tests
+     * back to the Chinese texts asserted below.
+     */
+    private static final ResourceProvider RES = new ResourceProvider() {
+        @Override
+        public InputStream openAsset(String path) {
+            throw new UnsupportedOperationException("openAsset not used in tests");
+        }
+
+        @Override
+        public String getString(int resId) {
+            if (resId == cn.lineai.R.string.skillhub_error_sensitive_file) {
+                return "Skill 包含敏感文件：";
+            }
+            if (resId == cn.lineai.R.string.skillhub_error_file_too_large_with_name) {
+                return "Skill 文件过大：";
+            }
+            if (resId == cn.lineai.R.string.skillhub_error_invalid_session) {
+                return "无效的 SkillHub 会话";
+            }
+            return "test";
+        }
+
+        @Override
+        public String getString(int resId, Object... formatArgs) {
+            return String.format(Locale.ROOT, getString(resId), formatArgs);
+        }
+    };
+
+    private static SkillHubSessionClient client() {
+        return new SkillHubSessionClient(RES);
+    }
+
     @Test
     public void parsesNestedUserAccount() throws Exception {
         JSONObject root = new JSONObject().put("user", new JSONObject()
@@ -19,7 +57,7 @@ public final class SkillHubSessionClientTest {
                 .put("handle", "tester")
                 .put("avatarUrl", "https://skillhub.cn/avatar.png"));
 
-        SkillHubSessionClient.Account account = SkillHubSessionClient.parseAccount(root);
+        SkillHubSessionClient.Account account = client().parseAccount(root);
 
         assertEquals("测试用户", account.getDisplayName());
         assertEquals("tester", account.getHandle());
@@ -32,7 +70,7 @@ public final class SkillHubSessionClientTest {
                 .put("nickname", "昵称")
                 .put("username", "name");
 
-        SkillHubSessionClient.Account account = SkillHubSessionClient.parseAccount(root);
+        SkillHubSessionClient.Account account = client().parseAccount(root);
 
         assertEquals("昵称", account.getDisplayName());
         assertEquals("name", account.getHandle());
@@ -46,7 +84,7 @@ public final class SkillHubSessionClientTest {
         SkillRecord skill = skill(root);
 
         List<SkillHubSessionClient.PublishFile> files =
-                SkillHubSessionClient.collectPublishFiles(skill);
+                client().collectPublishFiles(skill);
 
         assertEquals(2, files.size());
         assertEquals("SKILL.md", files.get(0).path);
@@ -60,7 +98,7 @@ public final class SkillHubSessionClientTest {
         write(root, ".env", "TOKEN=value");
 
         try {
-            SkillHubSessionClient.collectPublishFiles(skill(root));
+            client().collectPublishFiles(skill(root));
         } catch (IllegalArgumentException error) {
             assertTrue(error.getMessage().contains("敏感文件"));
             return;
@@ -85,6 +123,6 @@ public final class SkillHubSessionClientTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void rejectsCookieHeaderInjection() {
-        SkillHubSessionClient.requireSafeCookie("sid=value\r\nX-Test: injected");
+        client().requireSafeCookie("sid=value\r\nX-Test: injected");
     }
 }

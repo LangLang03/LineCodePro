@@ -2,8 +2,10 @@ package cn.lineai.data.service;
 
 import android.os.Build;
 import android.webkit.CookieManager;
+import cn.lineai.R;
 import cn.lineai.model.SkillHubModels;
 import cn.lineai.model.SkillRecord;
+import cn.lineai.resource.ResourceProvider;
 import cn.lineai.security.SimpleHttpClient;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -26,17 +28,27 @@ public final class SkillHubSessionClient {
     private static final int READ_TIMEOUT_MS = 30000;
     private static final int MAX_RESPONSE_CHARS = 256 * 1024;
     private static final int MAX_COOKIE_CHARS = 16 * 1024;
+    private static final int MAX_REQUEST_BODY_CHARS = 16 * 1024;
     private static final int MAX_PUBLISH_FILES = 200;
     private static final int MAX_PUBLISH_FILE_BYTES = 2 * 1024 * 1024;
     private static final int MAX_PUBLISH_TOTAL_BYTES = 10 * 1024 * 1024;
+    private static final int MAX_DISPLAY_NAME_CHARS = 100;
+    private static final int MAX_COMMENT_CHARS = 500;
+
+    private final ResourceProvider resources;
+
+    public SkillHubSessionClient(ResourceProvider resources) {
+        this.resources = resources;
+    }
 
     public void publish(
             SkillRecord skill, String rawSlug, String rawDisplayName, String rawVersion) throws Exception {
         if (skill == null || SkillRecord.LOCATION_SSH.equals(skill.getLocation())) {
-            throw new IllegalArgumentException("请选择 App 或当前项目中的本地 Skill");
+            throw new IllegalArgumentException(
+                    resources.getString(R.string.skillhub_error_select_local_skill));
         }
-        String slug = SkillHubClient.requireSlug(rawSlug);
-        String displayName = requireText(rawDisplayName, "Skill 名称", 100);
+        String slug = requireSlug(rawSlug);
+        String displayName = requireText(rawDisplayName);
         String version = requireVersion(rawVersion);
         List<PublishFile> files = collectPublishFiles(skill);
 
@@ -69,13 +81,13 @@ public final class SkillHubSessionClient {
         if (response.code == 401) {
             return Session.signedOut();
         }
-        requireSuccess(response, "获取 SkillHub 账号失败");
+        requireSuccess(response, resources.getString(R.string.skillhub_error_get_account_failed));
         return Session.signedIn(parseAccount(new JSONObject(response.body)));
     }
 
     public SkillHubModels.Comment postComment(
             String rawSlug, String namespace, String rawContent) throws Exception {
-        String slug = SkillHubClient.requireSlug(rawSlug);
+        String slug = requireSlug(rawSlug);
         String content = requireCommentContent(rawContent);
         JSONObject body = new JSONObject();
         body.put("content", content);
@@ -84,13 +96,13 @@ public final class SkillHubSessionClient {
                 "POST",
                 "/api/v1/skills/" + encode(slug) + "/comments" + namespaceQuery(namespace),
                 body.toString());
-        requireAuthenticatedSuccess(response, "发表评论失败");
+        requireAuthenticatedSuccess(response, resources.getString(R.string.skillhub_error_post_comment_failed));
         return SkillHubClient.parseComment(new JSONObject(response.body));
     }
 
     public SkillHubModels.Comment postCommentReply(
             String rawSlug, long commentId, String namespace, String rawContent) throws Exception {
-        String slug = SkillHubClient.requireSlug(rawSlug);
+        String slug = requireSlug(rawSlug);
         requireCommentId(commentId);
         String content = requireCommentContent(rawContent);
         JSONObject body = new JSONObject();
@@ -101,49 +113,53 @@ public final class SkillHubSessionClient {
                 "/api/v1/skills/" + encode(slug) + "/comments/" + commentId
                         + "/replies" + namespaceQuery(namespace),
                 body.toString());
-        requireAuthenticatedSuccess(response, "回复评论失败");
+        requireAuthenticatedSuccess(response, resources.getString(R.string.skillhub_error_reply_comment_failed));
         return SkillHubClient.parseComment(new JSONObject(response.body));
     }
 
     public void setCommentLiked(
             String rawSlug, long commentId, String namespace, boolean liked) throws Exception {
-        String slug = SkillHubClient.requireSlug(rawSlug);
+        String slug = requireSlug(rawSlug);
         requireCommentId(commentId);
         SimpleHttpClient.Response response = request(
                 liked ? "POST" : "DELETE",
                 "/api/v1/skills/" + encode(slug) + "/comments/" + commentId
                         + "/like" + namespaceQuery(namespace));
-        requireAuthenticatedSuccess(response, liked ? "点赞评论失败" : "取消点赞失败");
+        requireAuthenticatedSuccess(response, liked
+                ? resources.getString(R.string.skillhub_error_like_comment_failed)
+                : resources.getString(R.string.skillhub_error_unlike_comment_failed));
     }
 
     public void deleteComment(String rawSlug, long commentId, String namespace) throws Exception {
-        String slug = SkillHubClient.requireSlug(rawSlug);
+        String slug = requireSlug(rawSlug);
         requireCommentId(commentId);
         SimpleHttpClient.Response response = request(
                 "DELETE", "/api/v1/skills/" + encode(slug) + "/comments/" + commentId
                         + namespaceQuery(namespace));
-        requireAuthenticatedSuccess(response, "删除评论失败");
+        requireAuthenticatedSuccess(response, resources.getString(R.string.skillhub_error_delete_comment_failed));
     }
 
     public boolean starred(String rawSlug, String namespace) throws Exception {
-        String slug = SkillHubClient.requireSlug(rawSlug);
+        String slug = requireSlug(rawSlug);
         SimpleHttpClient.Response response = request(
                 "GET", "/api/v1/skills/" + encode(slug) + "/starred" + namespaceQuery(namespace));
-        requireAuthenticatedSuccess(response, "获取收藏状态失败");
+        requireAuthenticatedSuccess(response, resources.getString(R.string.skillhub_error_get_star_status_failed));
         return new JSONObject(response.body).optBoolean("starred");
     }
 
     public void setStarred(String rawSlug, String namespace, boolean starred) throws Exception {
-        String slug = SkillHubClient.requireSlug(rawSlug);
+        String slug = requireSlug(rawSlug);
         SimpleHttpClient.Response response = request(
                 starred ? "POST" : "DELETE",
                 "/api/v1/skills/" + encode(slug) + "/star" + namespaceQuery(namespace));
-        requireAuthenticatedSuccess(response, starred ? "收藏失败" : "取消收藏失败");
+        requireAuthenticatedSuccess(response, starred
+                ? resources.getString(R.string.skillhub_error_star_failed)
+                : resources.getString(R.string.skillhub_error_unstar_failed));
     }
 
     private SimpleHttpClient.Response jsonRequest(String method, String path, String body) throws Exception {
-        if (body == null || body.length() > 16 * 1024) {
-            throw new IllegalArgumentException("SkillHub 请求内容过大");
+        if (body == null || body.length() > MAX_REQUEST_BODY_CHARS) {
+            throw new IllegalArgumentException(resources.getString(R.string.skillhub_error_request_too_large));
         }
         return execute(method, path, body, "application/json");
     }
@@ -151,7 +167,7 @@ public final class SkillHubSessionClient {
     public void logout() throws Exception {
         SimpleHttpClient.Response response = request("POST", "/api/v1/auth/logout");
         if (response.code != 401) {
-            requireSuccess(response, "退出 SkillHub 账号失败");
+            requireSuccess(response, resources.getString(R.string.skillhub_error_logout_failed));
         }
         clearSkillHubCookies();
     }
@@ -175,7 +191,8 @@ public final class SkillHubSessionClient {
         }
         SimpleHttpClient.Response response = SimpleHttpClient.execute(request);
         if (response.body.length() > MAX_RESPONSE_CHARS) {
-            throw new IllegalArgumentException("SkillHub 账号响应过大");
+            throw new IllegalArgumentException(
+                    resources.getString(R.string.skillhub_error_account_response_too_large));
         }
         return response;
     }
@@ -185,17 +202,17 @@ public final class SkillHubSessionClient {
         return requireSafeCookie(cookie);
     }
 
-    static String requireSafeCookie(String rawCookie) {
+    String requireSafeCookie(String rawCookie) {
         String cookie = rawCookie == null ? "" : rawCookie.trim();
         if (cookie.length() > MAX_COOKIE_CHARS
                 || cookie.indexOf('\r') >= 0
                 || cookie.indexOf('\n') >= 0) {
-            throw new IllegalArgumentException("无效的 SkillHub 会话");
+            throw new IllegalArgumentException(resources.getString(R.string.skillhub_error_invalid_session));
         }
         return cookie;
     }
 
-    static Account parseAccount(JSONObject root) {
+    Account parseAccount(JSONObject root) {
         JSONObject user = root.optJSONObject("user");
         if (user == null) {
             user = root;
@@ -210,7 +227,8 @@ public final class SkillHubSessionClient {
                 user.optString("name"),
                 handle);
         if (displayName.length() == 0 && handle.length() == 0) {
-            throw new IllegalArgumentException("SkillHub 账号信息不完整");
+            throw new IllegalArgumentException(
+                    resources.getString(R.string.skillhub_error_incomplete_account));
         }
         return new Account(
                 displayName,
@@ -233,7 +251,7 @@ public final class SkillHubSessionClient {
         }
     }
 
-    private static void collectCookieNames(Map<String, Boolean> names, String rawCookie) {
+    private void collectCookieNames(Map<String, Boolean> names, String rawCookie) {
         String cookie = requireSafeCookie(rawCookie);
         if (cookie.length() == 0) {
             return;
@@ -247,30 +265,30 @@ public final class SkillHubSessionClient {
         }
     }
 
-    private static void requireAuthenticatedSuccess(
+    private void requireAuthenticatedSuccess(
             SimpleHttpClient.Response response, String message) throws Exception {
         if (response.code == 401) {
-            throw new IllegalStateException("请先登录 SkillHub 账号");
+            throw new IllegalStateException(resources.getString(R.string.skillhub_error_not_logged_in));
         }
         requireSuccess(response, message);
     }
 
-    private static String requireCommentContent(String rawContent) {
+    private String requireCommentContent(String rawContent) {
         String content = rawContent == null ? "" : rawContent.trim();
-        if (content.length() == 0 || content.codePointCount(0, content.length()) > 500) {
-            throw new IllegalArgumentException("评论内容应为 1–500 字");
+        if (content.length() == 0 || content.codePointCount(0, content.length()) > MAX_COMMENT_CHARS) {
+            throw new IllegalArgumentException(resources.getString(R.string.skillhub_error_comment_length));
         }
         return content;
     }
 
-    private static void requireCommentId(long commentId) {
+    private void requireCommentId(long commentId) {
         if (commentId <= 0) {
-            throw new IllegalArgumentException("无效的评论 ID");
+            throw new IllegalArgumentException(resources.getString(R.string.skillhub_error_invalid_comment_id));
         }
     }
 
-    private static String publishError(SimpleHttpClient.Response response) {
-        String fallback = "发布 Skill 失败";
+    private String publishError(SimpleHttpClient.Response response) {
+        String fallback = resources.getString(R.string.skillhub_error_publish_failed);
         if (response == null || response.body.length() == 0) {
             return fallback;
         }
@@ -283,26 +301,37 @@ public final class SkillHubSessionClient {
         }
     }
 
-    private static String requireText(String rawValue, String label, int maxLength) {
+    private String requireText(String rawValue) {
         String value = rawValue == null ? "" : rawValue.trim();
-        if (value.length() == 0 || value.codePointCount(0, value.length()) > maxLength) {
-            throw new IllegalArgumentException(label + "不能为空且不能超过 " + maxLength + " 字");
+        if (value.length() == 0 || value.codePointCount(0, value.length()) > MAX_DISPLAY_NAME_CHARS) {
+            throw new IllegalArgumentException(resources.getString(R.string.skillhub_error_name_too_long));
         }
         return value;
     }
 
-    private static String requireVersion(String rawVersion) {
+    private String requireVersion(String rawVersion) {
         String version = rawVersion == null ? "" : rawVersion.trim();
         if (!version.matches("[A-Za-z0-9][A-Za-z0-9._+-]{0,63}")) {
-            throw new IllegalArgumentException("无效的 Skill 版本");
+            throw new IllegalArgumentException(
+                    resources.getString(R.string.skillhub_error_invalid_skill_version));
         }
         return version;
     }
 
-    static List<PublishFile> collectPublishFiles(SkillRecord skill) throws Exception {
+    // Slug 校验与 SkillHubClient.requireSlug 保持一致；SkillHubSessionClient 持有自己的
+    // ResourceProvider，因此这里直接读取资源字符串，不再依赖 SkillHubClient 的静态方法。
+    private String requireSlug(String rawSlug) {
+        String slug = rawSlug == null ? "" : rawSlug.trim();
+        if (!slug.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,127}")) {
+            throw new IllegalArgumentException(resources.getString(R.string.skillhub_error_unsafe_slug));
+        }
+        return slug;
+    }
+
+    List<PublishFile> collectPublishFiles(SkillRecord skill) throws Exception {
         File root = new File(skill.getRootPath()).getCanonicalFile();
         if (!root.isDirectory()) {
-            throw new IllegalArgumentException("本地 Skill 目录不存在");
+            throw new IllegalArgumentException(resources.getString(R.string.skillhub_error_dir_not_exist));
         }
         ArrayList<PublishFile> files = new ArrayList<>();
         collectPublishFiles(root, root, files, new long[] {0});
@@ -315,22 +344,23 @@ public final class SkillHubSessionClient {
             }
         }
         if (!hasSkillMarkdown) {
-            throw new IllegalArgumentException("本地 Skill 缺少 SKILL.md");
+            throw new IllegalArgumentException(resources.getString(R.string.skillhub_error_missing_skill_md));
         }
         return files;
     }
 
-    private static void collectPublishFiles(
+    private void collectPublishFiles(
             File root, File current, List<PublishFile> files, long[] total) throws Exception {
         File[] children = current.listFiles();
         if (children == null) {
-            throw new IllegalArgumentException("无法读取本地 Skill 目录");
+            throw new IllegalArgumentException(resources.getString(R.string.skillhub_error_cannot_read_dir));
         }
         for (File child : children) {
             File canonical = child.getCanonicalFile();
             String rootPath = root.getPath();
             if (!canonical.getPath().startsWith(rootPath + File.separator)) {
-                throw new IllegalArgumentException("Skill 文件路径越界");
+                throw new IllegalArgumentException(
+                        resources.getString(R.string.skillhub_error_path_out_of_bounds));
             }
             String relative = canonical.getPath().substring(rootPath.length() + 1)
                     .replace(File.separatorChar, '/');
@@ -340,20 +370,24 @@ public final class SkillHubSessionClient {
             }
             if (!canonical.isFile() || isSensitive(relative)) {
                 if (isSensitive(relative)) {
-                    throw new IllegalArgumentException("Skill 包含敏感文件：" + relative);
+                    throw new IllegalArgumentException(
+                            resources.getString(R.string.skillhub_error_sensitive_file) + relative);
                 }
                 continue;
             }
             long length = canonical.length();
             if (length > MAX_PUBLISH_FILE_BYTES) {
-                throw new IllegalArgumentException("Skill 文件过大：" + relative);
+                throw new IllegalArgumentException(
+                        resources.getString(R.string.skillhub_error_file_too_large_with_name) + relative);
             }
             total[0] += length;
             if (total[0] > MAX_PUBLISH_TOTAL_BYTES) {
-                throw new IllegalArgumentException("Skill 文件总大小超过 10 MB");
+                throw new IllegalArgumentException(
+                        resources.getString(R.string.skillhub_error_total_size_exceeded));
             }
             if (files.size() >= MAX_PUBLISH_FILES) {
-                throw new IllegalArgumentException("Skill 文件数量超过 200 个");
+                throw new IllegalArgumentException(
+                        resources.getString(R.string.skillhub_error_file_count_exceeded));
             }
             files.add(new PublishFile(relative, readFile(canonical, (int) length)));
         }
@@ -385,7 +419,7 @@ public final class SkillHubSessionClient {
         return output.toByteArray();
     }
 
-    private static byte[] multipart(
+    private byte[] multipart(
             String boundary, String payload, List<PublishFile> files) throws Exception {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         writePart(output, boundary, "payload", null, "application/json",
@@ -396,7 +430,8 @@ public final class SkillHubSessionClient {
         }
         output.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
         if (output.size() > MAX_PUBLISH_TOTAL_BYTES + 512 * 1024) {
-            throw new IllegalArgumentException("Skill 发布请求过大");
+            throw new IllegalArgumentException(
+                    resources.getString(R.string.skillhub_error_publish_request_too_large));
         }
         return output.toByteArray();
     }
@@ -425,22 +460,22 @@ public final class SkillHubSessionClient {
         }
     }
 
-    private static String namespaceQuery(String namespace) {
+    private String namespaceQuery(String namespace) {
         String value = namespace == null ? "" : namespace.trim();
         return value.length() == 0 ? "" : "?namespace=" + encode(value);
     }
 
-    private static String encode(String value) {
+    private String encode(String value) {
         try {
             return URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20");
         } catch (Exception e) {
-            throw new IllegalArgumentException("无法编码 SkillHub 参数", e);
+            throw new IllegalArgumentException(resources.getString(R.string.skillhub_error_cannot_encode), e);
         }
     }
 
-    private static void requireSuccess(SimpleHttpClient.Response response, String message) throws Exception {
+    private void requireSuccess(SimpleHttpClient.Response response, String message) throws Exception {
         if (response.code < 200 || response.code >= 300) {
-            throw new Exception(message + "（HTTP " + response.code + "）");
+            throw new Exception(message + resources.getString(R.string.skillhub_error_http_status, response.code));
         }
     }
 

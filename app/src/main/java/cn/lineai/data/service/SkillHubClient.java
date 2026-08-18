@@ -1,6 +1,8 @@
 package cn.lineai.data.service;
 
+import cn.lineai.R;
 import cn.lineai.model.SkillHubModels;
+import cn.lineai.resource.ResourceProvider;
 import cn.lineai.security.SimpleHttpClient;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -19,6 +21,12 @@ public final class SkillHubClient {
     private static final int MAX_ZIP_BYTES = 20 * 1024 * 1024;
     private static final int MAX_ICON_BYTES = 512 * 1024;
 
+    private final ResourceProvider resourceProvider;
+
+    public SkillHubClient(ResourceProvider resourceProvider) {
+        this.resourceProvider = resourceProvider;
+    }
+
     public SkillHubModels.Page list(int page, int pageSize, String keyword, String category,
                                     String source, String sortBy, String order) throws Exception {
         int safePage = Math.max(1, page);
@@ -34,11 +42,12 @@ public final class SkillHubClient {
         append(url, "order", order);
         JSONObject root = getJson(url.toString());
         if (root.optInt("code", -1) != 0) {
-            throw new IllegalArgumentException("SkillHub 返回错误: " + root.optString("message"));
+            throw new IllegalArgumentException(resourceProvider.getString(R.string.skillhub_error_response)
+                    + " " + root.optString("message"));
         }
         JSONObject data = root.optJSONObject("data");
         if (data == null) {
-            throw new IllegalArgumentException("SkillHub 列表响应缺少 data");
+            throw new IllegalArgumentException(resourceProvider.getString(R.string.skillhub_error_missing_data));
         }
         JSONArray values = data.optJSONArray("skills");
         ArrayList<SkillHubModels.Summary> skills = new ArrayList<>();
@@ -58,7 +67,7 @@ public final class SkillHubClient {
         JSONObject root = getJson(API_ROOT + "/api/v1/skills/" + encode(slug));
         JSONObject skill = root.optJSONObject("skill");
         if (skill == null) {
-            throw new IllegalArgumentException("SkillHub 详情响应缺少 skill");
+            throw new IllegalArgumentException(resourceProvider.getString(R.string.skillhub_error_missing_skill));
         }
         JSONObject latestVersion = root.optJSONObject("latestVersion");
         JSONObject namespace = root.optJSONObject("namespace");
@@ -113,7 +122,7 @@ public final class SkillHubClient {
                 CONNECT_TIMEOUT_MS,
                 READ_TIMEOUT_MS);
         if (value.length() > MAX_MARKDOWN_CHARS) {
-            throw new IllegalArgumentException("SkillHub 文件内容过大");
+            throw new IllegalArgumentException(resourceProvider.getString(R.string.skillhub_error_file_too_large));
         }
         return value;
     }
@@ -129,7 +138,7 @@ public final class SkillHubClient {
         );
         byte[] bytes = result.bytes;
         if (bytes.length < 4 || bytes[0] != 'P' || bytes[1] != 'K') {
-            throw new IllegalArgumentException("SkillHub 下载内容不是有效 ZIP");
+            throw new IllegalArgumentException(resourceProvider.getString(R.string.skillhub_error_invalid_zip));
         }
         return bytes;
     }
@@ -139,12 +148,12 @@ public final class SkillHubClient {
         SimpleHttpClient.DownloadResult result = SimpleHttpClient.download(
                 url, CONNECT_TIMEOUT_MS, READ_TIMEOUT_MS, MAX_ICON_BYTES);
         if (!result.mimeType.toLowerCase().startsWith("image/")) {
-            throw new IllegalArgumentException("SkillHub 图标响应不是图片");
+            throw new IllegalArgumentException(resourceProvider.getString(R.string.skillhub_error_not_image));
         }
         return result.bytes;
     }
 
-    static String requireIconUrl(String rawUrl) {
+    String requireIconUrl(String rawUrl) {
         String value = rawUrl == null ? "" : rawUrl.trim();
         try {
             URI uri = new URI(value);
@@ -156,13 +165,14 @@ public final class SkillHubClient {
                     || "api.skillhub.cn".equalsIgnoreCase(host)
                     || "cloudcache.tencent-cloud.com".equalsIgnoreCase(host)
                     || "skillhub-1388575217.cos.accelerate.myqcloud.com".equalsIgnoreCase(host))) {
-                throw new IllegalArgumentException("无效的 SkillHub 图标地址");
+                throw new IllegalArgumentException(resourceProvider.getString(R.string.skillhub_error_invalid_icon_url));
             }
             return uri.toASCIIString();
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            throw new IllegalArgumentException("无效的 SkillHub 图标地址", e);
+            throw new IllegalArgumentException(
+                    resourceProvider.getString(R.string.skillhub_error_invalid_icon_url), e);
         }
     }
 
@@ -194,7 +204,7 @@ public final class SkillHubClient {
         }
         String value = SimpleHttpClient.get(url, CONNECT_TIMEOUT_MS, READ_TIMEOUT_MS);
         if (value.length() > MAX_MARKDOWN_CHARS) {
-            throw new IllegalArgumentException("SkillHub Skill 文档过大");
+            throw new IllegalArgumentException(resourceProvider.getString(R.string.skillhub_error_doc_too_large));
         }
         return value;
     }
@@ -219,7 +229,7 @@ public final class SkillHubClient {
             String rawSlug, long commentId, String namespace) throws Exception {
         String slug = requireSlug(rawSlug);
         if (commentId <= 0) {
-            throw new IllegalArgumentException("无效的评论 ID");
+            throw new IllegalArgumentException(resourceProvider.getString(R.string.skillhub_error_invalid_comment_id));
         }
         JSONObject root = getJson(API_ROOT + "/api/v1/skills/" + encode(slug)
                 + "/comments/" + commentId + "/replies" + namespaceQuery(namespace));
@@ -336,7 +346,8 @@ public final class SkillHubClient {
                 JSONObject value = values.optJSONObject(i);
                 if (value != null) {
                     result.add(new SkillHubModels.TestCase(
-                            "示例 " + (i + 1), value.optString("question"), value.optString("answer")));
+                            resourceProvider.getString(R.string.skillhub_testcase_label, i + 1),
+                            value.optString("question"), value.optString("answer")));
                 }
             }
         }
@@ -351,19 +362,20 @@ public final class SkillHubClient {
     private JSONObject getJson(String url) throws Exception {
         String body = SimpleHttpClient.get(url, CONNECT_TIMEOUT_MS, READ_TIMEOUT_MS);
         if (body.length() > MAX_JSON_CHARS) {
-            throw new IllegalArgumentException("SkillHub 响应过大");
+            throw new IllegalArgumentException(resourceProvider.getString(R.string.skillhub_error_response_too_large));
         }
         try {
             return new JSONObject(body);
         } catch (Exception e) {
-            throw new IllegalArgumentException("SkillHub 返回了无效 JSON", e);
+            throw new IllegalArgumentException(
+                    resourceProvider.getString(R.string.skillhub_error_invalid_json), e);
         }
     }
 
-    static SkillHubModels.Summary parseSummary(JSONObject value) {
+    SkillHubModels.Summary parseSummary(JSONObject value) {
         String slug = value.optString("slug").trim();
         if (!isSafeSlug(slug)) {
-            throw new IllegalArgumentException("SkillHub 返回了无效 slug");
+            throw new IllegalArgumentException(resourceProvider.getString(R.string.skillhub_error_invalid_slug));
         }
         JSONObject namespace = value.optJSONObject("namespace");
         JSONObject labels = value.optJSONObject("labels");
@@ -435,10 +447,10 @@ public final class SkillHubClient {
         }
     }
 
-    static String requireSlug(String value) {
+    String requireSlug(String value) {
         String slug = value == null ? "" : value.trim();
         if (!isSafeSlug(slug)) {
-            throw new IllegalArgumentException("无效的 SkillHub slug");
+            throw new IllegalArgumentException(resourceProvider.getString(R.string.skillhub_error_unsafe_slug));
         }
         return slug;
     }
@@ -447,24 +459,24 @@ public final class SkillHubClient {
         return value != null && value.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
     }
 
-    static String requireFilePath(String value) {
+    String requireFilePath(String value) {
         String path = value == null ? "" : value.trim();
         if (path.length() == 0 || path.length() > 512 || path.startsWith("/")
                 || path.indexOf('\\') >= 0 || path.indexOf('\u0000') >= 0) {
-            throw new IllegalArgumentException("无效的 SkillHub 文件路径");
+            throw new IllegalArgumentException(resourceProvider.getString(R.string.skillhub_error_invalid_path));
         }
         for (String segment : path.split("/", -1)) {
             if (segment.length() == 0 || ".".equals(segment) || "..".equals(segment)) {
-                throw new IllegalArgumentException("无效的 SkillHub 文件路径");
+                throw new IllegalArgumentException(resourceProvider.getString(R.string.skillhub_error_invalid_path));
             }
         }
         return path;
     }
 
-    private static String requireVersion(String value) {
+    private String requireVersion(String value) {
         String version = value == null ? "" : value.trim();
         if (!version.matches("[A-Za-z0-9][A-Za-z0-9._+-]{0,63}")) {
-            throw new IllegalArgumentException("无效的 SkillHub 版本");
+            throw new IllegalArgumentException(resourceProvider.getString(R.string.skillhub_error_invalid_version));
         }
         return version;
     }

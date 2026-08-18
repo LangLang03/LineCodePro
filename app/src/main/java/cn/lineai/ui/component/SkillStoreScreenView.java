@@ -14,6 +14,8 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import cn.lineai.R;
+import cn.lineai.data.service.ContextResourceProvider;
 import cn.lineai.data.service.SkillHubClient;
 import cn.lineai.data.service.SkillHubSessionClient;
 import cn.lineai.model.SkillHubModels;
@@ -21,7 +23,6 @@ import cn.lineai.ui.theme.IconButtonView;
 import cn.lineai.ui.theme.LineTheme;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 public final class SkillStoreScreenView extends ScreenScaffoldView {
     public interface Listener {
@@ -33,9 +34,9 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
     }
 
     private final Listener listener;
-    private final SkillHubClient client = new SkillHubClient();
-    private final SkillHubSessionClient sessionClient = new SkillHubSessionClient();
-    private final SkillIconLoader iconLoader = new SkillIconLoader();
+    private final SkillHubClient client;
+    private final SkillHubSessionClient sessionClient;
+    private final SkillIconLoader iconLoader;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final LinearLayout results;
     private final ProgressBar progress;
@@ -54,8 +55,11 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
     private String sortBy = "downloads";
 
     public SkillStoreScreenView(Context context, Listener listener) {
-        super(context, "Skill 商店", listener::onBack, null);
+        super(context, context.getString(R.string.skillhub_title_store), listener::onBack, null);
         this.listener = listener;
+        this.client = new SkillHubClient(new ContextResourceProvider(context));
+        this.sessionClient = new SkillHubSessionClient(new ContextResourceProvider(context));
+        this.iconLoader = new SkillIconLoader(context);
         LinearLayout content = getContent();
         LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
 
@@ -102,10 +106,11 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
         copy.setOrientation(VERTICAL);
         header.addView(copy, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
 
-        copy.addView(LineTheme.textMedium(getContext(), "发现社区 Skills",
+        copy.addView(LineTheme.textMedium(getContext(),
+                getContext().getString(R.string.skillhub_discover_community_skills),
                 LineTheme.FONT_XL, LineTheme.TEXT));
         TextView description = LineTheme.text(getContext(),
-                "浏览、检查并安装来自 SkillHub 的社区能力",
+                getContext().getString(R.string.skillhub_browse_install_desc),
                 LineTheme.FONT_SM, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
         LinearLayout.LayoutParams descriptionParams = new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
@@ -141,7 +146,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
 
         EditText field = new EditText(getContext());
         field.setSingleLine(true);
-        field.setHint("搜索名称、描述或作者");
+        field.setHint(getContext().getString(R.string.skillhub_search_hint));
         field.setHintTextColor(LineTheme.TEXT_TERTIARY);
         field.setTextColor(LineTheme.TEXT);
         field.setTextSize(LineTheme.FONT_MD);
@@ -174,9 +179,9 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         params.topMargin = LineTheme.dp(getContext(), LineTheme.SM);
         content.addView(filters, params);
-        addFilter(filters, "热门下载", "downloads");
-        addFilter(filters, "最多收藏", "stars");
-        addFilter(filters, "最近更新", "updated_at");
+        addFilter(filters, getContext().getString(R.string.skillhub_filter_hot_downloads), "downloads");
+        addFilter(filters, getContext().getString(R.string.skillhub_filter_most_stars), "stars");
+        addFilter(filters, getContext().getString(R.string.skillhub_filter_recent_update), "updated_at");
     }
 
     private void addFilter(LinearLayout host, String label, String value) {
@@ -185,7 +190,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
         chip.setGravity(Gravity.CENTER);
         chip.setClickable(true);
         chip.setFocusable(true);
-        chip.setContentDescription("按" + label + "排序");
+        chip.setContentDescription(getContext().getString(R.string.skillhub_sort_by, label));
         LineTheme.padding(chip, LineTheme.SM, LineTheme.SM, LineTheme.SM, LineTheme.SM);
         chip.setOnClickListener(v -> {
             if (!value.equals(sortBy)) {
@@ -224,7 +229,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
         accountRow.setGravity(Gravity.CENTER_VERTICAL);
         accountRow.setClickable(true);
         accountRow.setFocusable(true);
-        accountRow.setContentDescription("SkillHub 账号");
+        accountRow.setContentDescription(getContext().getString(R.string.skillhub_account_label));
         accountRow.setOnClickListener(v -> {
             if (accountSession != null && accountSession.isAuthenticated()) {
                 showAccountDialog(accountSession.getAccount());
@@ -250,10 +255,12 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
                 0, LayoutParams.WRAP_CONTENT, 1f);
         copyParams.leftMargin = LineTheme.dp(getContext(), LineTheme.SM);
         accountRow.addView(copy, copyParams);
-        accountTitle = LineTheme.textMedium(getContext(), "正在检查 SkillHub 账号…",
+        accountTitle = LineTheme.textMedium(getContext(),
+                getContext().getString(R.string.skillhub_checking_account),
                 LineTheme.FONT_SM, LineTheme.TEXT);
         copy.addView(accountTitle);
-        accountSubtitle = LineTheme.text(getContext(), "登录由 SkillHub 官方页面处理",
+        accountSubtitle = LineTheme.text(getContext(),
+                getContext().getString(R.string.skillhub_login_via_official),
                 LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
         LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
@@ -275,7 +282,8 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
     }
 
     private void addPublish(LinearLayout content) {
-        publishButton = LineTheme.textMedium(getContext(), "SkillHub 功能中心",
+        publishButton = LineTheme.textMedium(getContext(),
+                getContext().getString(R.string.skillhub_feature_center),
                 LineTheme.FONT_SM, LineTheme.ACCENT);
         publishButton.setGravity(Gravity.CENTER);
         publishButton.setClickable(true);
@@ -294,8 +302,8 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
 
     private void loadAccount() {
         accountRow.setEnabled(false);
-        accountTitle.setText("正在检查 SkillHub 账号…");
-        accountSubtitle.setText("登录由 SkillHub 官方页面处理");
+        accountTitle.setText(getContext().getString(R.string.skillhub_checking_account));
+        accountSubtitle.setText(getContext().getString(R.string.skillhub_login_via_official));
         new Thread(() -> {
             try {
                 SkillHubSessionClient.Session session = sessionClient.currentSession();
@@ -305,8 +313,9 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
                     accountSession = null;
                     publishButton.setVisibility(GONE);
                     accountRow.setEnabled(true);
-                    accountTitle.setText("账号状态检查失败");
-                    accountSubtitle.setText("点此重试 · " + safeMessage(e));
+                    accountTitle.setText(getContext().getString(R.string.skillhub_account_check_failed));
+                    accountSubtitle.setText(getContext().getString(R.string.skillhub_retry_here)
+                            + " · " + safeMessage(e));
                     accountAction.setIconType(IconButtonView.REFRESH_CW);
                     accountRow.setOnClickListener(v -> loadAccount());
                 });
@@ -326,8 +335,8 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
         });
         if (!session.isAuthenticated()) {
             publishButton.setVisibility(GONE);
-            accountTitle.setText("登录 SkillHub 账号");
-            accountSubtitle.setText("登录后可发布、评论和收藏 Skill");
+            accountTitle.setText(getContext().getString(R.string.skillhub_login_account));
+            accountSubtitle.setText(getContext().getString(R.string.skillhub_login_desc));
             accountAction.setIconType(IconButtonView.EXTERNAL_LINK);
             return;
         }
@@ -335,7 +344,9 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
         SkillHubSessionClient.Account account = session.getAccount();
         accountTitle.setText(account.getDisplayName());
         accountSubtitle.setText(account.getHandle().length() == 0
-                ? "SkillHub 已登录" : "@" + account.getHandle() + " · 已登录");
+                ? getContext().getString(R.string.skillhub_logged_in)
+                : "@" + account.getHandle() + " · "
+                        + getContext().getString(R.string.skillhub_logged_in_suffix));
         accountAction.setIconType(IconButtonView.CHEVRON_RIGHT);
     }
 
@@ -371,7 +382,8 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
             panel.addView(handle);
         }
 
-        TextView status = LineTheme.textMedium(getContext(), "SkillHub 账号已连接",
+        TextView status = LineTheme.textMedium(getContext(),
+                getContext().getString(R.string.skillhub_account_connected),
                 LineTheme.FONT_SM, LineTheme.ACCENT);
         status.setGravity(Gravity.CENTER);
         status.setBackground(LineTheme.rounded(getContext(), LineTheme.ACCENT_MUTED, 9));
@@ -383,8 +395,10 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
 
         LinearLayout actions = new LinearLayout(getContext());
         actions.setOrientation(HORIZONTAL);
-        TextView close = accountDialogButton("继续使用", false);
-        TextView logout = accountDialogButton("退出登录", true);
+        TextView close = accountDialogButton(
+                getContext().getString(R.string.skillhub_continue), false);
+        TextView logout = accountDialogButton(
+                getContext().getString(R.string.skillhub_logout), true);
         actions.addView(close, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
         LinearLayout.LayoutParams logoutParams = new LinearLayout.LayoutParams(
                 0, LayoutParams.WRAP_CONTENT, 1f);
@@ -400,21 +414,21 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
         logout.setOnClickListener(v -> {
             close.setEnabled(false);
             logout.setEnabled(false);
-            logout.setText("正在退出…");
+            logout.setText(getContext().getString(R.string.skillhub_logging_out));
             new Thread(() -> {
                 try {
                     sessionClient.logout();
                     main.post(() -> {
                         dialog.dismiss();
                         renderAccount(SkillHubSessionClient.Session.signedOut());
-                        Toast.makeText(getContext(), "已退出 SkillHub 账号",
+                        Toast.makeText(getContext(), getContext().getString(R.string.skillhub_logged_out_success),
                                 Toast.LENGTH_SHORT).show();
                     });
                 } catch (Exception e) {
                     main.post(() -> {
                         close.setEnabled(true);
                         logout.setEnabled(true);
-                        logout.setText("退出登录");
+                        logout.setText(getContext().getString(R.string.skillhub_logout));
                         Toast.makeText(getContext(), safeMessage(e), Toast.LENGTH_LONG).show();
                     });
                 }
@@ -439,7 +453,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
     private void addPager(LinearLayout content) {
         LinearLayout pager = new LinearLayout(getContext());
         pager.setGravity(Gravity.CENTER);
-        TextView previous = pagerButton("上一页");
+        TextView previous = pagerButton(getContext().getString(R.string.skillhub_previous_page));
         previous.setOnClickListener(v -> {
             if (page > 1) {
                 page--;
@@ -447,7 +461,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
             }
         });
         pager.addView(previous);
-        TextView next = pagerButton("下一页");
+        TextView next = pagerButton(getContext().getString(R.string.skillhub_next_page));
         next.setOnClickListener(v -> {
             page++;
             load();
@@ -480,7 +494,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
         final String keyword = search.getText().toString();
         final String requestedSort = sortBy;
         progress.setVisibility(VISIBLE);
-        status.setText("正在加载第 " + requestedPage + " 页…");
+        status.setText(getContext().getString(R.string.skillhub_loading_page, requestedPage));
         results.removeAllViews();
         new Thread(() -> {
             try {
@@ -495,7 +509,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
                 main.post(() -> {
                     if (generation != requestGeneration) return;
                     progress.setVisibility(GONE);
-                    status.setText("加载失败，点此重试\n" + safeMessage(e));
+                    status.setText(getContext().getString(R.string.skillhub_load_failed_retry) + "\n" + safeMessage(e));
                     status.setOnClickListener(v -> load());
                 });
             }
@@ -505,8 +519,9 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
     private void render(SkillHubModels.Page value, int requestedPage) {
         status.setOnClickListener(null);
         status.setText(value.getSkills().isEmpty()
-                ? "没有找到匹配的 Skill"
-                : "第 " + requestedPage + " 页 · 共 " + formatCount(value.getTotal()) + " 个 Skill");
+                ? getContext().getString(R.string.skillhub_no_matching_skills)
+                : getContext().getString(R.string.skillhub_page_count,
+                        requestedPage, formatCount(value.getTotal())));
         for (SkillHubModels.Summary skill : value.getSkills()) {
             results.addView(card(skill));
         }
@@ -518,7 +533,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
         card.setGravity(Gravity.CENTER_VERTICAL);
         card.setClickable(true);
         card.setFocusable(true);
-        card.setContentDescription(skill.getName() + "，查看详情");
+        card.setContentDescription(skill.getName() + getContext().getString(R.string.skillhub_view_details));
         card.setOnClickListener(v -> listener.onOpen(skill.getSlug()));
         card.setBackground(LineTheme.roundedStroke(
                 getContext(), LineTheme.SURFACE_ELEVATED, 12, LineTheme.BORDER));
@@ -555,7 +570,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
         titleRow.addView(title, new LinearLayout.LayoutParams(
                 0, LayoutParams.WRAP_CONTENT, 1f));
         if (skill.isVerified()) {
-            titleRow.addView(tag("已认证", LineTheme.ACCENT, LineTheme.ACCENT_MUTED));
+            titleRow.addView(tag(getContext().getString(R.string.skillhub_verified), LineTheme.ACCENT, LineTheme.ACCENT_MUTED));
         }
         copy.addView(titleRow);
 
@@ -577,7 +592,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
                 tags.addView(tag(skill.getCategory(), LineTheme.TEXT_SECONDARY, LineTheme.SURFACE_LIGHT));
             }
             if (skill.requiresApiKey()) {
-                TextView apiKey = tag("需要 API Key", LineTheme.WARNING, LineTheme.SURFACE_LIGHT);
+                TextView apiKey = tag(getContext().getString(R.string.skillhub_requires_api_key), LineTheme.WARNING, LineTheme.SURFACE_LIGHT);
                 LinearLayout.LayoutParams apiParams = new LinearLayout.LayoutParams(
                         LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
                 apiParams.leftMargin = LineTheme.dp(getContext(), LineTheme.XS);
@@ -623,13 +638,13 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
 
     private String formatCount(long value) {
         if (value >= 10000) {
-            return String.format(Locale.getDefault(), "%.1f万", value / 10000d);
+            return getContext().getString(R.string.skillhub_count_wan, value / 10000d);
         }
         return String.valueOf(value);
     }
 
     private String safeMessage(Exception e) {
-        return e.getMessage() == null ? "未知错误" : e.getMessage();
+        return e.getMessage() == null ? getContext().getString(R.string.skillhub_unknown_error) : e.getMessage();
     }
 
     private static final class FilterChip {

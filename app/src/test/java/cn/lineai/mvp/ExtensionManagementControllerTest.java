@@ -39,6 +39,8 @@ public final class ExtensionManagementControllerTest {
                 store,
                 null,
                 null,
+                null,
+                null,
                 host);
         AtomicReference<SkillRecord> result = new AtomicReference<>();
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -87,6 +89,11 @@ public final class ExtensionManagementControllerTest {
         @Override
         public void render() {
             renderCount++;
+        }
+
+        @Override
+        public void showSkillError(String message) {
+            // No-op for this test
         }
     }
 }

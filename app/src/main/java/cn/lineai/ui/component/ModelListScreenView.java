@@ -359,7 +359,8 @@ public final class ModelListScreenView extends LinearLayout {
 
     private String displayProvider(ModelConfig model) {
         String provider = model.getProviderLabel();
-        if (provider == null || provider.length() == 0 || "自定义".equals(provider)) {
+        String customLabel = getContext().getString(R.string.model_provider_custom);
+        if (provider == null || provider.length() == 0 || customLabel.equals(provider)) {
             return model.getProtocolType().getLabel();
         }
         return provider;

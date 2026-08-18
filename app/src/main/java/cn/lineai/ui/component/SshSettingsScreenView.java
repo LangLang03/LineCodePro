@@ -163,14 +163,14 @@ public final class SshSettingsScreenView extends ScreenScaffoldView {
 
     private String describeException(Exception error) {
         if (error == null) {
-            return "未知错误";
+            return getString(R.string.common_unknown_error);
         }
         String message = error.getMessage();
         if (message != null && message.trim().length() > 0) {
             return message.trim();
         }
         String name = error.getClass().getSimpleName();
-        return name.length() == 0 ? "未知错误" : name;
+        return name.length() == 0 ? getString(R.string.common_unknown_error) : name;
     }
 
     private LinearLayout button(Context context, String label, int iconType, boolean primary, View.OnClickListener listener) {

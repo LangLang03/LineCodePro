@@ -12,6 +12,7 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import cn.lineai.data.service.ContextResourceProvider;
 import cn.lineai.data.service.SkillHubSessionClient;
 import cn.lineai.model.SkillRecord;
 import cn.lineai.ui.theme.LineTheme;
@@ -24,7 +25,7 @@ public final class SkillHubPublishScreenView extends ScreenScaffoldView {
         void onPublished();
     }
 
-    private final SkillHubSessionClient client = new SkillHubSessionClient();
+    private final SkillHubSessionClient client;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Listener listener;
     private final List<SkillRecord> skills = new ArrayList<>();
@@ -38,8 +39,9 @@ public final class SkillHubPublishScreenView extends ScreenScaffoldView {
 
     public SkillHubPublishScreenView(
             Context context, List<SkillRecord> availableSkills, Listener listener) {
-        super(context, "发布 Skill", listener::onBack, null);
+        super(context, context.getString(cn.lineai.R.string.skillhub_publish_title), listener::onBack, null);
         this.listener = listener;
+        this.client = new SkillHubSessionClient(new ContextResourceProvider(context));
         if (availableSkills != null) {
             for (SkillRecord skill : availableSkills) {
                 if (skill != null && !SkillRecord.LOCATION_SSH.equals(skill.getLocation())) {
@@ -52,11 +54,14 @@ public final class SkillHubPublishScreenView extends ScreenScaffoldView {
         LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
         addNotice(content);
         selected = fieldButton(content);
-        slug = field(content, "Slug", "例如：my-skill", false);
-        displayName = field(content, "显示名称", "Skill 名称", false);
-        version = field(content, "版本", "例如：1.0.0", false);
+        slug = field(content, context.getString(cn.lineai.R.string.skillhub_slug_label),
+                context.getString(cn.lineai.R.string.skillhub_slug_hint), false);
+        displayName = field(content, context.getString(cn.lineai.R.string.skillhub_display_name_label),
+                context.getString(cn.lineai.R.string.skillhub_display_name_hint), false);
+        version = field(content, context.getString(cn.lineai.R.string.skillhub_version_label),
+                context.getString(cn.lineai.R.string.skillhub_version_hint), false);
 
-        publish = LineTheme.textMedium(context, "发布到 SkillHub",
+        publish = LineTheme.textMedium(context, context.getString(cn.lineai.R.string.skillhub_publish_to_hub),
                 LineTheme.FONT_MD, LineTheme.TEXT_ON_COLOR);
         publish.setGravity(Gravity.CENTER);
         publish.setClickable(true);
@@ -78,7 +83,7 @@ public final class SkillHubPublishScreenView extends ScreenScaffoldView {
         content.addView(progress, progressParams);
 
         if (skills.isEmpty()) {
-            selected.setText("没有可发布的本地 Skill");
+            selected.setText(getContext().getString(cn.lineai.R.string.skillhub_no_publishable_skills));
             selected.setEnabled(false);
             publish.setEnabled(false);
             publish.setAlpha(0.45f);
@@ -89,7 +94,7 @@ public final class SkillHubPublishScreenView extends ScreenScaffoldView {
 
     private void addNotice(LinearLayout content) {
         TextView notice = LineTheme.text(getContext(),
-                "将上传所选 Skill 目录中的文件。发布前会拒绝私钥、.env、凭据文件及超限内容；SkillHub 的实名认证等规则仍由官方服务校验。",
+                getContext().getString(cn.lineai.R.string.skillhub_publish_notice),
                 LineTheme.FONT_SM, LineTheme.TEXT_SECONDARY, Typeface.NORMAL);
         notice.setBackground(LineTheme.roundedStroke(
                 getContext(), LineTheme.SURFACE_ELEVATED, 12, LineTheme.BORDER_LIGHT));
@@ -99,7 +104,8 @@ public final class SkillHubPublishScreenView extends ScreenScaffoldView {
     }
 
     private TextView fieldButton(LinearLayout content) {
-        TextView value = LineTheme.textMedium(getContext(), "选择本地 Skill",
+        TextView value = LineTheme.textMedium(getContext(),
+                getContext().getString(cn.lineai.R.string.skillhub_select_local_skill),
                 LineTheme.FONT_MD, LineTheme.TEXT);
         value.setGravity(Gravity.CENTER_VERTICAL);
         value.setClickable(true);
@@ -168,12 +174,12 @@ public final class SkillHubPublishScreenView extends ScreenScaffoldView {
             try {
                 SkillHubSessionClient.Session session = client.currentSession();
                 if (!session.isAuthenticated()) {
-                    throw new IllegalStateException("请先登录 SkillHub 账号");
+                    throw new IllegalStateException(getContext().getString(cn.lineai.R.string.skillhub_error_not_logged_in));
                 }
                 client.publish(skill, slugValue, nameValue, versionValue);
                 main.post(() -> {
                     setBusy(false);
-                    Toast.makeText(getContext(), "Skill 发布成功", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), getContext().getString(cn.lineai.R.string.skillhub_publish_success), Toast.LENGTH_SHORT).show();
                     listener.onPublished();
                 });
             } catch (Exception e) {
@@ -191,12 +197,15 @@ public final class SkillHubPublishScreenView extends ScreenScaffoldView {
         displayName.setEnabled(!busy);
         version.setEnabled(!busy);
         publish.setEnabled(!busy);
-        publish.setText(busy ? "正在发布…" : "发布到 SkillHub");
+        publish.setText(busy ? getContext().getString(cn.lineai.R.string.skillhub_publishing)
+                : getContext().getString(cn.lineai.R.string.skillhub_publish_to_hub));
         progress.setVisibility(busy ? VISIBLE : GONE);
     }
 
-    private static String safeMessage(Exception error) {
+    private String safeMessage(Exception error) {
         String message = error.getMessage();
-        return message == null || message.trim().length() == 0 ? "发布 Skill 失败" : message;
+        return message == null || message.trim().length() == 0
+                ? getContext().getString(cn.lineai.R.string.skillhub_error_publish_failed)
+                : message;
     }
 }

@@ -5,11 +5,30 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import cn.lineai.model.SkillHubModels;
+import cn.lineai.resource.ResourceProvider;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
 
 public final class SkillHubClientTest {
+    private static final ResourceProvider RESOURCES = new ResourceProvider() {
+        @Override
+        public java.io.InputStream openAsset(String path) {
+            throw new UnsupportedOperationException("not needed in unit tests");
+        }
+
+        @Override
+        public String getString(int resId) {
+            return "error";
+        }
+
+        @Override
+        public String getString(int resId, Object... formatArgs) {
+            return "error";
+        }
+    };
+
+    private static final SkillHubClient CLIENT = new SkillHubClient(RESOURCES);
     @Test
     public void parseSummaryPrefersChineseDescriptionAndMapsRiskFields() throws Exception {
         JSONObject value = new JSONObject()
@@ -30,7 +49,7 @@ public final class SkillHubClientTest {
                 .put("subCategories", new JSONArray()
                         .put(new JSONObject().put("key", "pdf").put("name", "PDF 工具")));
 
-        SkillHubModels.Summary summary = SkillHubClient.parseSummary(value);
+        SkillHubModels.Summary summary = CLIENT.parseSummary(value);
 
         assertEquals("pdf-helper", summary.getSlug());
         assertEquals("中文说明", summary.getDescription());
@@ -42,20 +61,20 @@ public final class SkillHubClientTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void parseSummaryRejectsUnsafeSlug() throws Exception {
-        SkillHubClient.parseSummary(new JSONObject().put("slug", "../escape"));
+        CLIENT.parseSummary(new JSONObject().put("slug", "../escape"));
     }
 
     @Test
     public void iconUrlAllowsOnlySkillHubHttpsHosts() {
         assertEquals(
                 "https://api.skillhub.cn/icons/skill.png",
-                SkillHubClient.requireIconUrl("https://api.skillhub.cn/icons/skill.png"));
+                CLIENT.requireIconUrl("https://api.skillhub.cn/icons/skill.png"));
         assertEquals(
                 "https://cloudcache.tencent-cloud.com/qcloud/ui/icon.png",
-                SkillHubClient.requireIconUrl("https://cloudcache.tencent-cloud.com/qcloud/ui/icon.png"));
+                CLIENT.requireIconUrl("https://cloudcache.tencent-cloud.com/qcloud/ui/icon.png"));
         assertEquals(
                 "https://skillhub-1388575217.cos.accelerate.myqcloud.com/skill-icons/icon.png",
-                SkillHubClient.requireIconUrl(
+                CLIENT.requireIconUrl(
                         "https://skillhub-1388575217.cos.accelerate.myqcloud.com/skill-icons/icon.png"));
         assertRejectedIconUrl("http://skillhub.cn/icons/skill.png");
         assertRejectedIconUrl("https://skillhub.cn.evil.example/icons/skill.png");
@@ -65,23 +84,23 @@ public final class SkillHubClientTest {
 
     @Test
     public void filePathAllowsNestedRelativePaths() {
-        assertEquals("references/api.md", SkillHubClient.requireFilePath("references/api.md"));
-        assertEquals("SKILL.md", SkillHubClient.requireFilePath("SKILL.md"));
+        assertEquals("references/api.md", CLIENT.requireFilePath("references/api.md"));
+        assertEquals("SKILL.md", CLIENT.requireFilePath("SKILL.md"));
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void filePathRejectsTraversal() {
-        SkillHubClient.requireFilePath("references/../SKILL.md");
+        CLIENT.requireFilePath("references/../SKILL.md");
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void filePathRejectsAbsolutePath() {
-        SkillHubClient.requireFilePath("/SKILL.md");
+        CLIENT.requireFilePath("/SKILL.md");
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void filePathRejectsBackslashes() {
-        SkillHubClient.requireFilePath("references\\api.md");
+        CLIENT.requireFilePath("references\\api.md");
     }
     @Test
     public void parseCommentMapsPublicReplies() throws Exception {
@@ -109,7 +128,7 @@ public final class SkillHubClientTest {
 
     private static void assertRejectedIconUrl(String value) {
         try {
-            SkillHubClient.requireIconUrl(value);
+            CLIENT.requireIconUrl(value);
         } catch (IllegalArgumentException expected) {
             return;
         }

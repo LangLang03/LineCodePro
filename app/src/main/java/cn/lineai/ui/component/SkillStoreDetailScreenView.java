@@ -18,6 +18,8 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import cn.lineai.R;
+import cn.lineai.data.service.ContextResourceProvider;
 import cn.lineai.data.service.SkillHubClient;
 import cn.lineai.data.service.SkillHubSessionClient;
 import cn.lineai.model.SkillHubModels;
@@ -50,9 +52,9 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
 
     private final String slug;
     private final Listener listener;
-    private final SkillHubClient client = new SkillHubClient();
-    private final SkillHubSessionClient sessionClient = new SkillHubSessionClient();
-    private final SkillIconLoader iconLoader = new SkillIconLoader();
+    private final SkillHubClient client;
+    private final SkillHubSessionClient sessionClient;
+    private final SkillIconLoader iconLoader;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final LinearLayout body;
     private final ProgressBar progress;
@@ -63,9 +65,12 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
     private int activeTab = TAB_OVERVIEW;
 
     public SkillStoreDetailScreenView(Context context, String slug, Listener listener) {
-        super(context, "Skill 详情", listener::onBack, null);
+        super(context, context.getString(R.string.skillhub_title_detail), listener::onBack, null);
         this.slug = slug;
         this.listener = listener;
+        this.client = new SkillHubClient(new ContextResourceProvider(context));
+        this.sessionClient = new SkillHubSessionClient(new ContextResourceProvider(context));
+        this.iconLoader = new SkillIconLoader(context);
         body = getContent();
         LineTheme.padding(body, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
         progress = new ProgressBar(context);
@@ -134,7 +139,7 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         title.setMaxLines(2);
         titleRow.addView(title, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
         if (value.isVerified()) {
-            TextView verified = tag("已认证", LineTheme.ACCENT, LineTheme.ACCENT_MUTED);
+            TextView verified = tag(getString(R.string.skillhub_verified), LineTheme.ACCENT, LineTheme.ACCENT_MUTED);
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
             params.leftMargin = LineTheme.dp(getContext(), LineTheme.XS);
@@ -173,7 +178,7 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         addBadge(badges, "★ " + formatCount(value.getStars()), LineTheme.TEXT_SECONDARY);
         addBadge(badges, "v" + value.getVersion(), LineTheme.TEXT_SECONDARY);
         if ("benign".equalsIgnoreCase(value.getSecurityStatus())) {
-            addBadge(badges, "安全", LineTheme.ACCENT);
+            addBadge(badges, getString(R.string.skillhub_safe), LineTheme.ACCENT);
         }
         LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
@@ -186,12 +191,14 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         LinearLayout actions = new LinearLayout(getContext());
         actions.setOrientation(HORIZONTAL);
         actions.setGravity(Gravity.CENTER_VERTICAL);
-        actions.addView(actionButton(IconButtonView.COPY, "复制 Prompt", () -> copyPrompt(value)),
+        actions.addView(actionButton(IconButtonView.COPY, getString(R.string.skillhub_copy_prompt),
+                () -> copyPrompt(value)),
                 new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
         LinearLayout.LayoutParams starParams = new LinearLayout.LayoutParams(
                 0, LayoutParams.WRAP_CONTENT, 1f);
         starParams.leftMargin = LineTheme.dp(getContext(), LineTheme.SM);
-        String starLabel = Boolean.TRUE.equals(starred) ? "取消收藏" : "收藏";
+        String starLabel = Boolean.TRUE.equals(starred)
+                ? getString(R.string.skillhub_unstar) : getString(R.string.skillhub_star);
         starButton = actionButton(IconButtonView.SAVE, starLabel, () -> toggleStar(value));
         starButton.setEnabled(!starBusy);
         starButton.setAlpha(starBusy ? 0.55f : 1f);
@@ -202,11 +209,13 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         LinearLayout.LayoutParams shareParams = new LinearLayout.LayoutParams(
                 0, LayoutParams.WRAP_CONTENT, 1f);
         shareParams.leftMargin = LineTheme.dp(getContext(), LineTheme.SM);
-        actions.addView(actionButton(IconButtonView.SHARE, "分享", () -> share(value)), shareParams);
+        actions.addView(actionButton(IconButtonView.SHARE,
+                getString(R.string.skillhub_share), () -> share(value)), shareParams);
         LinearLayout.LayoutParams officialParams = new LinearLayout.LayoutParams(
                 0, LayoutParams.WRAP_CONTENT, 1f);
         officialParams.leftMargin = LineTheme.dp(getContext(), LineTheme.SM);
-        actions.addView(actionButton(IconButtonView.EXTERNAL_LINK, "完整功能",
+        actions.addView(actionButton(IconButtonView.EXTERNAL_LINK,
+                getString(R.string.skillhub_full_features),
                 () -> listener.onOfficial(namespaceHandle(value), value.getSlug())), officialParams);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
@@ -247,12 +256,12 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         tabs.setOrientation(HORIZONTAL);
         tabs.setBackground(LineTheme.rounded(getContext(), LineTheme.SURFACE_LIGHT, 10));
         LineTheme.padding(tabs, LineTheme.XS, LineTheme.XS, LineTheme.XS, LineTheme.XS);
-        addTab(tabs, TAB_OVERVIEW, "概述");
-        addTab(tabs, TAB_FILES, "文件 · " + detail.getFiles().size());
-        addTab(tabs, TAB_COMMENTS, "评论 · " + detail.getComments().size());
-        addTab(tabs, TAB_VERSIONS, "版本");
-        addTab(tabs, TAB_EVALUATION, "评测报告");
-        addTab(tabs, TAB_PREVIEW, "效果预览");
+        addTab(tabs, TAB_OVERVIEW, getString(R.string.skillhub_tab_overview));
+        addTab(tabs, TAB_FILES, getString(R.string.skillhub_tab_files, detail.getFiles().size()));
+        addTab(tabs, TAB_COMMENTS, getString(R.string.skillhub_tab_comments, detail.getComments().size()));
+        addTab(tabs, TAB_VERSIONS, getString(R.string.skillhub_tab_versions));
+        addTab(tabs, TAB_EVALUATION, getString(R.string.skillhub_tab_evaluation));
+        addTab(tabs, TAB_PREVIEW, getString(R.string.skillhub_tab_preview));
         scroll.addView(tabs, new HorizontalScrollView.LayoutParams(
                 LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
@@ -306,41 +315,42 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
     }
 
     private void addOverview(SkillHubModels.Detail value) {
-        LinearLayout meta = section("Skill 信息", IconButtonView.BOXES);
+        LinearLayout meta = section(getString(R.string.skillhub_skill_info), IconButtonView.BOXES);
         LinearLayout primary = new LinearLayout(getContext());
         primary.setOrientation(HORIZONTAL);
-        primary.addView(metadataCard("分类", value.getCategory()),
+        primary.addView(metadataCard(getString(R.string.skillhub_category), value.getCategory()),
                 new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
         LinearLayout.LayoutParams sourceParams = new LinearLayout.LayoutParams(
                 0, LayoutParams.WRAP_CONTENT, 1f);
         sourceParams.leftMargin = LineTheme.dp(getContext(), LineTheme.SM);
-        primary.addView(metadataCard("来源", sourceName(value.getSource())), sourceParams);
+        primary.addView(metadataCard(getString(R.string.skillhub_source), sourceName(value.getSource())), sourceParams);
         addSectionContent(meta, primary);
 
         LinearLayout secondary = new LinearLayout(getContext());
         secondary.setOrientation(HORIZONTAL);
-        secondary.addView(metadataCard("版本", "v" + value.getVersion()),
+        secondary.addView(metadataCard(getString(R.string.skillhub_tab_versions), "v" + value.getVersion()),
                 new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
         LinearLayout.LayoutParams dateParams = new LinearLayout.LayoutParams(
                 0, LayoutParams.WRAP_CONTENT, 1f);
         dateParams.leftMargin = LineTheme.dp(getContext(), LineTheme.SM);
-        secondary.addView(metadataCard("更新", formatDate(value.getUpdatedAt())), dateParams);
+        secondary.addView(metadataCard(getString(R.string.skillhub_updated), formatDate(value.getUpdatedAt())), dateParams);
         addSectionContent(meta, secondary);
         if (!value.getSubCategories().isEmpty()) {
-            addSectionContent(meta, metadataRow("子分类", join(value.getSubCategories())));
+            addSectionContent(meta, metadataRow(getString(R.string.skillhub_subcategories), join(value.getSubCategories())));
         }
         if (!value.getTags().isEmpty()) {
-            addSectionContent(meta, metadataRow("标签", join(value.getTags())));
+            addSectionContent(meta, metadataRow(getString(R.string.skillhub_tags), join(value.getTags())));
         }
         addSection(meta);
 
         addSecurity(value);
-        LinearLayout content = section("SKILL.md", IconButtonView.FILE_TEXT);
-        TextView zoomHint = LineTheme.text(getContext(), "双指缩放可调整文档字号",
+        LinearLayout content = section(getString(R.string.skillhub_skill_md), IconButtonView.FILE_TEXT);
+        TextView zoomHint = LineTheme.text(getContext(),
+                getString(R.string.skillhub_pinch_to_zoom),
                 LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
         addSectionContent(content, zoomHint);
         if (value.getMarkdown().trim().length() == 0) {
-            addSectionContent(content, emptyText("该版本暂无公开 Skill 文档"));
+            addSectionContent(content, emptyText(getString(R.string.skillhub_no_public_doc)));
         } else {
             LinearLayout reader = new LinearLayout(getContext());
             reader.setOrientation(VERTICAL);
@@ -362,16 +372,17 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         boolean unsafe = value.hasScripts()
                 || (!value.getSecurityStatus().isEmpty()
                 && !"benign".equalsIgnoreCase(value.getSecurityStatus()));
-        LinearLayout section = section("安全检查",
+        LinearLayout section = section(getString(R.string.skillhub_safety_check),
                 unsafe ? IconButtonView.CIRCLE_ALERT : IconButtonView.SHIELD_CHECK);
         String text = value.getSecurityStatusText().length() > 0
                 ? value.getSecurityStatusText()
-                : unsafe ? "需要在使用前检查 Skill 内容" : "未发现明确的安全风险";
+                : unsafe ? getString(R.string.skillhub_check_before_use)
+                : getString(R.string.skillhub_no_obvious_risk);
         if (value.hasScripts()) {
-            text += "\n包含 scripts/ 或脚本文件；安装只会落盘，不会自动执行。";
+            text += "\n" + getString(R.string.skillhub_contains_scripts);
         }
         if (value.requiresApiKey()) {
-            text += "\n可能需要自行配置 API Key，请勿将密钥写入 Skill 文件。";
+            text += "\n" + getString(R.string.skillhub_requires_api_key_warning);
         }
         addSectionContent(section, LineTheme.text(getContext(), text,
                 LineTheme.FONT_SM, unsafe ? LineTheme.WARNING : LineTheme.TEXT_SECONDARY,
@@ -380,12 +391,13 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
     }
 
     private void addFiles(SkillHubModels.Detail value) {
-        LinearLayout section = section("文件清单 · " + value.getFiles().size() + " 个",
+        LinearLayout section = section(getString(R.string.skillhub_file_list, value.getFiles().size()),
                 IconButtonView.FILE_TEXT);
-        addSectionContent(section, LineTheme.text(getContext(), "点击文件可预览公开文本内容",
+        addSectionContent(section, LineTheme.text(getContext(),
+                getString(R.string.skillhub_click_to_preview),
                 LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL));
         if (value.getFiles().isEmpty()) {
-            addSectionContent(section, emptyText("该版本没有公开文件"));
+            addSectionContent(section, emptyText(getString(R.string.skillhub_no_public_files)));
         } else {
             for (SkillHubModels.FileEntry file : value.getFiles()) {
                 addSectionContent(section, fileRow(value, file));
@@ -400,7 +412,7 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setClickable(true);
         row.setFocusable(true);
-        row.setContentDescription("预览 " + file.getPath());
+        row.setContentDescription(getString(R.string.skillhub_preview_file, file.getPath()));
         row.setBackground(LineTheme.rounded(getContext(), LineTheme.SURFACE_LIGHT, 9));
         LineTheme.padding(row, LineTheme.MD, LineTheme.SM, LineTheme.SM, LineTheme.SM);
 
@@ -421,7 +433,7 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         String path = file.getPath();
         int slash = path.lastIndexOf('/');
         String name = slash < 0 ? path : path.substring(slash + 1);
-        String directory = slash < 0 ? "根目录" : path.substring(0, slash);
+        String directory = slash < 0 ? getString(R.string.skillhub_root_dir) : path.substring(0, slash);
         copy.addView(LineTheme.textMedium(getContext(), name, LineTheme.FONT_SM, LineTheme.TEXT));
         TextView meta = LineTheme.text(getContext(), directory + " · " + formatBytes(file.getSize()),
                 LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
@@ -456,11 +468,11 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
 
     private void previewFile(SkillHubModels.Detail value, SkillHubModels.FileEntry file, View row) {
         if (!isPreviewable(file.getPath())) {
-            Toast.makeText(getContext(), "该文件类型不支持文本预览", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), getString(R.string.skillhub_file_not_supported), Toast.LENGTH_SHORT).show();
             return;
         }
         row.setEnabled(false);
-        Toast.makeText(getContext(), "正在加载文件…", Toast.LENGTH_SHORT).show();
+        Toast.makeText(getContext(), getString(R.string.skillhub_loading_file), Toast.LENGTH_SHORT).show();
         new Thread(() -> {
             try {
                 String content = client.fileContent(value.getSlug(), value.getVersion(), file.getPath());
@@ -493,7 +505,7 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         host.setPadding(padding, LineTheme.dp(getContext(), LineTheme.SM),
                 padding, LineTheme.dp(getContext(), LineTheme.SM));
         if (path.toLowerCase(Locale.ROOT).endsWith(".md")) {
-            host.addView(LineTheme.text(getContext(), "双指缩放可调整文档字号",
+            host.addView(LineTheme.text(getContext(), getString(R.string.skillhub_pinch_to_zoom),
                     LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL));
             MarkdownView markdown = new MarkdownView(getContext());
             markdown.setCodeWrapEnabled(true);
@@ -514,17 +526,20 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         new AlertDialog.Builder(getContext())
                 .setTitle(path)
                 .setView(host)
-                .setNegativeButton("关闭", null)
-                .setPositiveButton("复制", (dialog, which) -> {
+                .setNegativeButton(getString(R.string.skillhub_close), null)
+                .setPositiveButton(getString(R.string.skillhub_copy), (dialog, which) -> {
                     ShareHelper.copy(getContext(), content);
-                    Toast.makeText(getContext(), "文件内容已复制", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(),
+                            getString(R.string.skillhub_file_copied), Toast.LENGTH_SHORT).show();
                 })
                 .show();
     }
 
     private void addComments(SkillHubModels.Detail value) {
-        LinearLayout section = section("社区评论", IconButtonView.MESSAGE_CIRCLE);
-        TextView compose = LineTheme.textMedium(getContext(), "发表评论",
+        LinearLayout section = section(getString(R.string.skillhub_community_comments),
+                IconButtonView.MESSAGE_CIRCLE);
+        TextView compose = LineTheme.textMedium(getContext(),
+                getString(R.string.skillhub_post_comment),
                 LineTheme.FONT_SM, LineTheme.TEXT_ON_COLOR);
         compose.setGravity(Gravity.CENTER);
         compose.setClickable(true);
@@ -534,7 +549,7 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         compose.setOnClickListener(v -> checkSessionForComment(value, null));
         addSectionContent(section, compose);
         if (value.getComments().isEmpty()) {
-            addSectionContent(section, emptyText("暂无公开评论，登录后可发表第一条评论"));
+            addSectionContent(section, emptyText(getString(R.string.skillhub_no_comments_login_first)));
         } else {
             for (SkillHubModels.Comment comment : value.getComments()) {
                 addComment(section, comment, 0);
@@ -552,7 +567,9 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
                     if (session.isAuthenticated()) {
                         showCommentDialog(value, parent);
                     } else {
-                        Toast.makeText(getContext(), "请先登录 SkillHub 账号", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(getContext(),
+                                getString(R.string.skillhub_login_to_star),
+                                Toast.LENGTH_SHORT).show();
                         listener.onLogin();
                     }
                 });
@@ -570,11 +587,14 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         panel.setBackground(LineTheme.roundedStroke(
                 getContext(), LineTheme.SURFACE_ELEVATED, 16, LineTheme.BORDER_LIGHT));
         LineTheme.padding(panel, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
-        String dialogTitle = parent == null ? "发表评论" : "回复 "
-                + (parent.getAuthor().length() == 0 ? "SkillHub 用户" : parent.getAuthor());
+        String dialogTitle = parent == null ? getString(R.string.skillhub_post_comment)
+                : getString(R.string.skillhub_reply_to,
+                parent.getAuthor().length() == 0 ? getString(R.string.skillhub_user)
+                        : parent.getAuthor());
         panel.addView(LineTheme.textMedium(getContext(), dialogTitle,
                 LineTheme.FONT_LG, LineTheme.TEXT));
-        TextView hint = LineTheme.text(getContext(), "评论提交后需经过 SkillHub 审核，最多 500 字。",
+        TextView hint = LineTheme.text(getContext(),
+                getString(R.string.skillhub_comment_review_notice),
                 LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
         LinearLayout.LayoutParams hintParams = new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
@@ -582,7 +602,8 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         panel.addView(hint, hintParams);
 
         EditText input = new EditText(getContext());
-        input.setHint(parent == null ? "分享你的使用体验…" : "写下回复…");
+        input.setHint(parent == null ? getString(R.string.skillhub_share_experience_hint)
+                : getString(R.string.skillhub_write_reply_hint));
         input.setHintTextColor(LineTheme.TEXT_TERTIARY);
         input.setTextColor(LineTheme.TEXT);
         input.setTextSize(LineTheme.FONT_MD);
@@ -601,8 +622,8 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
 
         LinearLayout actions = new LinearLayout(getContext());
         actions.setOrientation(HORIZONTAL);
-        TextView cancel = dialogButton("取消", false);
-        TextView submit = dialogButton("提交评论", true);
+        TextView cancel = dialogButton(getString(R.string.skillhub_cancel), false);
+        TextView submit = dialogButton(getString(R.string.skillhub_submit_comment), true);
         actions.addView(cancel, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
         LinearLayout.LayoutParams submitParams = new LinearLayout.LayoutParams(
                 0, LayoutParams.WRAP_CONTENT, 1f);
@@ -618,13 +639,14 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         submit.setOnClickListener(v -> {
             String content = input.getText().toString().trim();
             if (content.length() == 0 || content.codePointCount(0, content.length()) > 500) {
-                Toast.makeText(getContext(), "评论内容应为 1–500 字", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(),
+                        getString(R.string.skillhub_error_comment_length), Toast.LENGTH_SHORT).show();
                 return;
             }
             submit.setEnabled(false);
             cancel.setEnabled(false);
             input.setEnabled(false);
-            submit.setText("正在提交…");
+            submit.setText(getString(R.string.skillhub_submitting));
             new Thread(() -> {
                 try {
                     if (parent == null) {
@@ -637,7 +659,8 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
                     main.post(() -> {
                         dialog.dismiss();
                         activeTab = TAB_COMMENTS;
-                        Toast.makeText(getContext(), "评论已提交，审核通过后展示",
+                        Toast.makeText(getContext(),
+                                getString(R.string.skillhub_comment_submitted),
                                 Toast.LENGTH_LONG).show();
                         load();
                     });
@@ -646,7 +669,7 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
                         submit.setEnabled(true);
                         cancel.setEnabled(true);
                         input.setEnabled(true);
-                        submit.setText("提交评论");
+                        submit.setText(getString(R.string.skillhub_submit_comment));
                         Toast.makeText(getContext(), safeMessage(e), Toast.LENGTH_LONG).show();
                     });
                 }
@@ -661,7 +684,8 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         card.setBackground(LineTheme.rounded(getContext(), LineTheme.SURFACE_LIGHT, 8));
         LineTheme.padding(card, LineTheme.MD, LineTheme.SM, LineTheme.MD, LineTheme.SM);
 
-        String header = (comment.getAuthor().length() == 0 ? "SkillHub 用户" : comment.getAuthor())
+        String header = (comment.getAuthor().length() == 0
+                ? getString(R.string.skillhub_user) : comment.getAuthor())
                 + " · " + formatDate(comment.getCreatedAt());
         card.addView(LineTheme.textMedium(getContext(), header,
                 LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY));
@@ -675,19 +699,21 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         LinearLayout actions = new LinearLayout(getContext());
         actions.setOrientation(HORIZONTAL);
         TextView like = commentAction(
-                (comment.isLiked() ? "取消赞" : "赞")
+                (comment.isLiked() ? getString(R.string.skillhub_unlike)
+                        : getString(R.string.skillhub_like))
                         + (comment.getLikeCount() > 0 ? " " + comment.getLikeCount() : ""));
         like.setOnClickListener(v -> updateCommentLike(comment, !comment.isLiked(), like));
         actions.addView(like);
-        TextView reply = commentAction("回复");
+        TextView reply = commentAction(getString(R.string.skillhub_reply));
         reply.setOnClickListener(v -> checkSessionForComment(detail, comment));
         actions.addView(reply);
         if (comment.getReplyCount() > comment.getReplies().size()) {
-            TextView allReplies = commentAction("全部回复 " + comment.getReplyCount());
+            TextView allReplies = commentAction(
+                getString(R.string.skillhub_all_replies, comment.getReplyCount()));
             allReplies.setOnClickListener(v -> loadCommentReplies(section, comment, allReplies));
             actions.addView(allReplies);
         }
-        TextView delete = commentAction("删除");
+        TextView delete = commentAction(getString(R.string.skillhub_delete));
         delete.setTextColor(LineTheme.DANGER);
         delete.setOnClickListener(v -> deleteComment(comment, delete));
         actions.addView(delete);
@@ -785,9 +811,10 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
     }
 
     private void addVersions(SkillHubModels.Detail value) {
-        LinearLayout section = section("版本历史", IconButtonView.CLOCK_3);
+        LinearLayout section = section(getString(R.string.skillhub_version_history),
+                IconButtonView.CLOCK_3);
         if (value.getVersions().isEmpty()) {
-            addSectionContent(section, emptyText("暂无版本历史"));
+            addSectionContent(section, emptyText(getString(R.string.skillhub_no_version_history)));
         } else {
             for (SkillHubModels.Version version : value.getVersions()) {
                 String text = "v" + version.getVersion() + " · " + formatDate(version.getCreatedAt());
@@ -805,14 +832,15 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
     }
 
     private void addEvaluation(SkillHubModels.Detail value) {
-        LinearLayout section = section("SkillHub 评测报告", IconButtonView.FLASK_CONICAL);
+        LinearLayout section = section(getString(R.string.skillhub_evaluation_report),
+                IconButtonView.FLASK_CONICAL);
         SkillHubModels.Evaluation evaluation = value.getEvaluation();
         if (evaluation == null || evaluation.getStatus().length() == 0) {
-            addSectionContent(section, emptyText("该 Skill 暂无公开评测报告"));
+            addSectionContent(section, emptyText(getString(R.string.skillhub_no_evaluation)));
         } else {
             if (evaluation.getScore() > 0) {
                 addSectionContent(section, LineTheme.textMedium(getContext(),
-                        String.format(Locale.getDefault(), "综合评分 %.1f", evaluation.getScore()),
+                        getString(R.string.skillhub_overall_score, evaluation.getScore()),
                         LineTheme.FONT_XL, LineTheme.ACCENT));
             }
             addSectionContent(section, LineTheme.text(getContext(), evaluation.getSummary(),
@@ -828,13 +856,13 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
     }
 
     private void addPreview(SkillHubModels.Detail value) {
-        LinearLayout section = section("效果预览", IconButtonView.PLAY);
+        LinearLayout section = section(getString(R.string.skillhub_tab_preview), IconButtonView.PLAY);
         if (value.getTestCases().isEmpty()) {
-            addSectionContent(section, emptyText("该 Skill 暂无公开使用示例"));
+            addSectionContent(section, emptyText(getString(R.string.skillhub_no_preview)));
         } else {
             for (SkillHubModels.TestCase testCase : value.getTestCases()) {
                 TextView prompt = LineTheme.textMedium(getContext(),
-                        testCase.getTitle() + "\n用户：" + testCase.getPrompt(),
+                        testCase.getTitle() + "\n" + getString(R.string.skillhub_user_colon) + testCase.getPrompt(),
                         LineTheme.FONT_SM, LineTheme.TEXT);
                 prompt.setBackground(LineTheme.rounded(getContext(), LineTheme.ACCENT_MUTED, 8));
                 LineTheme.padding(prompt, LineTheme.MD, LineTheme.SM, LineTheme.MD, LineTheme.SM);
@@ -857,7 +885,7 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         card.addView(LineTheme.text(getContext(), label, LineTheme.FONT_XS,
                 LineTheme.TEXT_TERTIARY, Typeface.NORMAL));
         TextView content = LineTheme.textMedium(getContext(),
-                value.length() == 0 ? "—" : value, LineTheme.FONT_SM, LineTheme.TEXT);
+                value.length() == 0 ? getString(R.string.skillhub_dash) : value, LineTheme.FONT_SM, LineTheme.TEXT);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         params.topMargin = LineTheme.dp(getContext(), 3);
@@ -914,12 +942,13 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
     }
 
     private void addInstallButton(SkillHubModels.Detail value) {
-        TextView install = LineTheme.textMedium(getContext(), "选择位置并安装",
+        TextView install = LineTheme.textMedium(getContext(),
+                getString(R.string.skillhub_select_location_install),
                 LineTheme.FONT_MD, LineTheme.TEXT_ON_COLOR);
         install.setGravity(Gravity.CENTER);
         install.setClickable(true);
         install.setFocusable(true);
-        install.setContentDescription("安装 " + value.getName());
+        install.setContentDescription(getString(R.string.skillhub_install_skill, value.getName()));
         install.setBackground(LineTheme.rounded(getContext(), LineTheme.ACCENT, 12));
         LineTheme.padding(install, LineTheme.LG, LineTheme.MD, LineTheme.LG, LineTheme.MD);
         install.setOnClickListener(v -> showInstallConfirm(value, install));
@@ -988,7 +1017,9 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
                     main.post(() -> {
                         starBusy = false;
                         updateStarButton();
-                        Toast.makeText(getContext(), "请先登录 SkillHub 账号", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(getContext(),
+                                getString(R.string.skillhub_login_to_star),
+                                Toast.LENGTH_SHORT).show();
                         listener.onLogin();
                     });
                     return;
@@ -1003,7 +1034,9 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
                     starBusy = false;
                     updateStarButton();
                     Toast.makeText(getContext(),
-                            next ? "收藏成功" : "已取消收藏", Toast.LENGTH_SHORT).show();
+                            next ? getString(R.string.skillhub_star_success)
+                                    : getString(R.string.skillhub_unstar_success),
+                            Toast.LENGTH_SHORT).show();
                 });
             } catch (Exception e) {
                 main.post(() -> {
@@ -1024,15 +1057,17 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         LinearLayout button = (LinearLayout) starButton;
         if (button.getChildCount() > 1 && button.getChildAt(1) instanceof TextView) {
             ((TextView) button.getChildAt(1)).setText(
-                    Boolean.TRUE.equals(starred) ? "取消收藏" : "收藏");
+                    Boolean.TRUE.equals(starred) ? getString(R.string.skillhub_unstar)
+                            : getString(R.string.skillhub_star));
         }
         starButton.setContentDescription(
-                Boolean.TRUE.equals(starred) ? "取消收藏" : "收藏");
+                Boolean.TRUE.equals(starred) ? getString(R.string.skillhub_unstar)
+                        : getString(R.string.skillhub_star));
     }
 
     private void copyPrompt(SkillHubModels.Detail value) {
         ShareHelper.copy(getContext(), installPrompt(value));
-        Toast.makeText(getContext(), "安装 Prompt 已复制", Toast.LENGTH_SHORT).show();
+        Toast.makeText(getContext(), getString(R.string.skillhub_prompt_copied), Toast.LENGTH_SHORT).show();
     }
 
     private void share(SkillHubModels.Detail value) {
@@ -1041,21 +1076,22 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
     }
 
     private String installPrompt(SkillHubModels.Detail value) {
-        return "请从 SkillHub 安装 Skill：" + value.getCanonicalName()
-                + "，版本 " + value.getVersion()
-                + "。安装前请检查文件与安全报告，不要自动执行其中的脚本。";
+        return getString(R.string.skillhub_install_prompt,
+                value.getCanonicalName(), value.getVersion());
     }
 
     private void openHttps(String rawUrl) {
         try {
             Uri uri = Uri.parse(rawUrl == null ? "" : rawUrl.trim());
             if (!"https".equalsIgnoreCase(uri.getScheme())) {
-                Toast.makeText(getContext(), "仅允许打开 HTTPS 链接", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), getString(R.string.skillhub_https_only),
+                        Toast.LENGTH_SHORT).show();
                 return;
             }
             getContext().startActivity(new Intent(Intent.ACTION_VIEW, uri));
         } catch (Exception e) {
-            Toast.makeText(getContext(), "无法打开链接", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), getString(R.string.toast_open_link_failed,
+                    rawUrl == null ? "" : rawUrl), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -1084,11 +1120,13 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
                 0, LayoutParams.WRAP_CONTENT, 1f);
         titleCopyParams.leftMargin = LineTheme.dp(getContext(), LineTheme.MD);
         heading.addView(titleCopy, titleCopyParams);
-        TextView title = LineTheme.textMedium(getContext(), "安装 " + value.getName(),
+        TextView title = LineTheme.textMedium(getContext(),
+                getString(R.string.skillhub_install_skill, value.getName()),
                 LineTheme.FONT_LG, LineTheme.TEXT);
         title.setMaxLines(2);
         titleCopy.addView(title);
-        TextView subtitle = LineTheme.text(getContext(), "选择 Skill 的安装范围",
+        TextView subtitle = LineTheme.text(getContext(),
+                getString(R.string.skillhub_install_scope_desc),
                 LineTheme.FONT_SM, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
         LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
@@ -1100,13 +1138,15 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         facts.setOrientation(HORIZONTAL);
         facts.addView(tag("SkillHub", LineTheme.TEXT_SECONDARY, LineTheme.SURFACE_LIGHT));
         addBadge(facts, "v" + value.getVersion(), LineTheme.TEXT_SECONDARY);
-        addBadge(facts, value.getFiles().size() + " 个文件", LineTheme.TEXT_SECONDARY);
+        addBadge(facts, getString(R.string.skillhub_file_count, value.getFiles().size()),
+                LineTheme.TEXT_SECONDARY);
         LinearLayout.LayoutParams factsParams = new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         factsParams.topMargin = LineTheme.dp(getContext(), LineTheme.MD);
         panel.addView(facts, factsParams);
 
-        TextView locationLabel = LineTheme.textMedium(getContext(), "安装位置",
+        TextView locationLabel = LineTheme.textMedium(getContext(),
+                getString(R.string.skillhub_install_location),
                 LineTheme.FONT_SM, LineTheme.TEXT_SECONDARY);
         LinearLayout.LayoutParams locationLabelParams = new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
@@ -1114,9 +1154,11 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         panel.addView(locationLabel, locationLabelParams);
 
         LinearLayout appOption = installLocationOption(
-                IconButtonView.SMARTPHONE, "App 全局 Skills", "所有工作区均可使用", true);
+                IconButtonView.SMARTPHONE, getString(R.string.skillhub_location_app_title),
+                getString(R.string.skillhub_location_app_desc), true);
         LinearLayout projectOption = installLocationOption(
-                IconButtonView.FOLDER, "当前项目", ".linecode/skills · 仅当前工作区", false);
+                IconButtonView.FOLDER, getString(R.string.skillhub_location_project_title),
+                getString(R.string.skillhub_location_project_desc), false);
         LinearLayout.LayoutParams optionParams = new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         optionParams.topMargin = LineTheme.dp(getContext(), LineTheme.SM);
@@ -1138,10 +1180,10 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
 
         if (value.hasScripts() || value.requiresApiKey()) {
             String warning = value.hasScripts()
-                    ? "包含脚本文件。安装只会落盘，不会自动执行；使用前请检查内容。"
-                    : "该 Skill 可能需要 API Key，请勿将密钥写入 Skill 文件。";
+                    ? getString(R.string.skillhub_contains_scripts_confirm)
+                    : getString(R.string.skillhub_may_require_api_key_confirm);
             if (value.hasScripts() && value.requiresApiKey()) {
-                warning += "\n可能还需要自行配置 API Key。";
+                warning += "\n" + getString(R.string.skillhub_may_also_require_api_key);
             }
             LinearLayout warningCard = new LinearLayout(getContext());
             warningCard.setOrientation(HORIZONTAL);
@@ -1169,8 +1211,8 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
 
         LinearLayout actions = new LinearLayout(getContext());
         actions.setOrientation(HORIZONTAL);
-        TextView cancel = dialogButton("取消", false);
-        TextView install = dialogButton("安装", true);
+        TextView cancel = dialogButton(getString(R.string.skillhub_cancel), false);
+        TextView install = dialogButton(getString(R.string.common_install), true);
         actions.addView(cancel, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
         LinearLayout.LayoutParams installParams = new LinearLayout.LayoutParams(
                 0, LayoutParams.WRAP_CONTENT, 1f);
@@ -1191,15 +1233,16 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
             appOption.setEnabled(false);
             projectOption.setEnabled(false);
             installButton.setEnabled(false);
-            install.setText("正在安装…");
-            installButton.setText("正在安装…");
+            install.setText(getString(R.string.skillhub_installing));
+            installButton.setText(getString(R.string.skillhub_installing));
             new Thread(() -> {
                 try {
                     listener.onInstall(location, value.getSlug(), value.getVersion());
                     main.post(() -> {
                         dialog.dismiss();
-                        installButton.setText("已安装");
-                        Toast.makeText(getContext(), "Skill 安装成功",
+                        installButton.setText(getString(R.string.skillhub_installed));
+                        Toast.makeText(getContext(),
+                                getString(R.string.skillhub_install_success),
                                 Toast.LENGTH_LONG).show();
                     });
                 } catch (Exception e) {
@@ -1209,8 +1252,8 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
                         appOption.setEnabled(true);
                         projectOption.setEnabled(true);
                         installButton.setEnabled(true);
-                        install.setText("安装");
-                        installButton.setText("选择位置并安装");
+                        install.setText(getString(R.string.common_install));
+                        installButton.setText(getString(R.string.skillhub_select_location_install));
                         Toast.makeText(getContext(), safeMessage(e),
                                 Toast.LENGTH_LONG).show();
                     });
@@ -1285,8 +1328,10 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
 
     private void renderError(Exception error) {
         body.removeAllViews();
-        LinearLayout errorCard = section("详情加载失败", IconButtonView.CIRCLE_ALERT);
-        TextView message = LineTheme.text(getContext(), safeMessage(error) + "\n点此重试",
+        LinearLayout errorCard = section(getString(R.string.skillhub_detail_load_failed),
+                IconButtonView.CIRCLE_ALERT);
+        TextView message = LineTheme.text(getContext(),
+                safeMessage(error) + "\n" + getString(R.string.skillhub_retry_here),
                 LineTheme.FONT_SM, LineTheme.DANGER, Typeface.NORMAL);
         message.setGravity(Gravity.CENTER);
         errorCard.setClickable(true);
@@ -1326,7 +1371,8 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
     }
 
     private String sourceName(String source) {
-        return "community".equalsIgnoreCase(source) ? "SkillHub 社区" : source;
+        return "community".equalsIgnoreCase(source)
+                ? getString(R.string.skillhub_source_community) : source;
     }
 
     private String join(List<String> values) {
@@ -1342,7 +1388,7 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
 
     private String formatCount(long value) {
         if (value >= 10000) {
-            return String.format(Locale.getDefault(), "%.1f万", value / 10000d);
+            return getString(R.string.skillhub_count_wan, value / 10000d);
         }
         return String.valueOf(value);
     }
@@ -1359,13 +1405,14 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
 
     private String formatDate(long value) {
         if (value <= 0) {
-            return "—";
+            return getString(R.string.skillhub_dash);
         }
         return DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.getDefault())
                 .format(new Date(value));
     }
 
     private String safeMessage(Exception error) {
-        return error.getMessage() == null ? "未知错误" : error.getMessage();
+        return error.getMessage() == null
+                ? getString(R.string.skillhub_unknown_error) : error.getMessage();
     }
 }

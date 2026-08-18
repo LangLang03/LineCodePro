@@ -32,14 +32,15 @@ public final class SkillHubWebScreenView extends LinearLayout {
             "workspace.tencent.com",
             "account.tencent.com"
     ));
-    private static final Map<String, Destination> DESTINATIONS = destinations();
+    private static Map<String, Destination> DESTINATIONS;
 
     private final WebView webView;
 
     @SuppressLint("SetJavaScriptEnabled")
     public SkillHubWebScreenView(Context context, String destinationId, Runnable onBack) {
         super(context);
-        Destination destination = requireDestination(destinationId);
+        DESTINATIONS = destinations(context);
+        Destination destination = requireDestination(destinationId, context);
         setOrientation(VERTICAL);
         setBackgroundColor(LineTheme.BG);
         addView(new ScreenHeaderView(context, destination.title, onBack, null),
@@ -57,7 +58,7 @@ public final class SkillHubWebScreenView extends LinearLayout {
         shield.setFocusable(false);
         notice.addView(shield, new LayoutParams(LineTheme.dp(context, 26), LineTheme.dp(context, 26)));
         TextView text = LineTheme.text(context,
-                "此功能由 SkillHub 官方页面提供，会话仅发送到允许的官方域名。",
+                context.getString(cn.lineai.R.string.skillhub_official_notice),
                 LineTheme.FONT_XS, LineTheme.TEXT_SECONDARY, Typeface.NORMAL);
         LayoutParams textParams = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
         textParams.leftMargin = LineTheme.dp(context, LineTheme.SM);
@@ -110,17 +111,18 @@ public final class SkillHubWebScreenView extends LinearLayout {
                 && uri.getHost() != null && ALLOWED_HOSTS.contains(uri.getHost().toLowerCase());
     }
 
-    private static Destination requireDestination(String id) {
-        Destination destination = DESTINATIONS.get(id);
+    private static Destination requireDestination(String id, Context context) {
+        Map<String, Destination> destinations = destinations(context);
+        Destination destination = destinations.get(id);
         if (destination == null && id != null && id.startsWith("skill:")) {
             String[] parts = id.split(":", -1);
             if (parts.length == 3 && safeSegment(parts[1]) && safeSegment(parts[2])) {
-                destination = new Destination("SkillHub 完整详情",
+                destination = new Destination(context.getString(cn.lineai.R.string.skillhub_full_detail),
                         "/skills/" + parts[1] + "/" + parts[2]);
             }
         }
         if (destination == null) {
-            throw new IllegalArgumentException("无效的 SkillHub 功能入口");
+            throw new IllegalArgumentException(context.getString(cn.lineai.R.string.skillhub_invalid_entry));
         }
         return destination;
     }
@@ -129,27 +131,27 @@ public final class SkillHubWebScreenView extends LinearLayout {
         return value != null && value.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
     }
 
-    private static Map<String, Destination> destinations() {
+    private static Map<String, Destination> destinations(Context context) {
         HashMap<String, Destination> values = new HashMap<>();
-        add(values, "account", "个人中心", "/dashboard");
-        add(values, "settings", "账号设置", "/dashboard/settings");
-        add(values, "verify", "实名认证", "/dashboard/verify");
+        add(values, "account", context.getString(cn.lineai.R.string.skillhub_account), "/dashboard");
+        add(values, "settings", context.getString(cn.lineai.R.string.skillhub_settings), "/dashboard/settings");
+        add(values, "verify", context.getString(cn.lineai.R.string.skillhub_verify), "/dashboard/verify");
         add(values, "tokens", "API Token", "/dashboard/keys");
-        add(values, "stars", "我的收藏", "/dashboard/stars");
-        add(values, "following", "我的关注", "/dashboard/following");
-        add(values, "notifications", "通知中心", "/notifications");
-        add(values, "creator", "创作者中心", "/dashboard");
-        add(values, "publish", "发布 Skill", "/dashboard/publish");
+        add(values, "stars", context.getString(cn.lineai.R.string.skillhub_stars), "/dashboard/stars");
+        add(values, "following", context.getString(cn.lineai.R.string.skillhub_following), "/dashboard/following");
+        add(values, "notifications", context.getString(cn.lineai.R.string.skillhub_notifications), "/notifications");
+        add(values, "creator", context.getString(cn.lineai.R.string.skillhub_creator), "/dashboard");
+        add(values, "publish", context.getString(cn.lineai.R.string.skillhub_publish), "/dashboard/publish");
         add(values, "skillsets", "SkillSet", "/skillspackage");
         add(values, "mcp", "MCP Server", "/mcp");
         add(values, "skill-hunt", "Skill Hunt", "/skill-hunt");
-        add(values, "contest", "赛事", "/contest");
-        add(values, "enterprises", "企业广场", "/enterprise-zone");
-        add(values, "enterprise-dashboard", "企业工作台", "/enterprise/dashboard");
-        add(values, "enterprise-publish", "企业发布", "/enterprise/dashboard/publish");
-        add(values, "merchant", "商户管理", "/admin/merchant");
-        add(values, "admin", "管理后台", "/admin");
-        add(values, "admin-reviews", "Skill 审核", "/admin/skill-reviews");
+        add(values, "contest", context.getString(cn.lineai.R.string.skillhub_contest), "/contest");
+        add(values, "enterprises", context.getString(cn.lineai.R.string.skillhub_enterprises), "/enterprise-zone");
+        add(values, "enterprise-dashboard", context.getString(cn.lineai.R.string.skillhub_enterprise_dashboard), "/enterprise/dashboard");
+        add(values, "enterprise-publish", context.getString(cn.lineai.R.string.skillhub_enterprise_publish), "/enterprise/dashboard/publish");
+        add(values, "merchant", context.getString(cn.lineai.R.string.skillhub_merchant), "/admin/merchant");
+        add(values, "admin", context.getString(cn.lineai.R.string.skillhub_admin), "/admin");
+        add(values, "admin-reviews", context.getString(cn.lineai.R.string.skillhub_admin_reviews), "/admin/skill-reviews");
         return Collections.unmodifiableMap(values);
     }
 

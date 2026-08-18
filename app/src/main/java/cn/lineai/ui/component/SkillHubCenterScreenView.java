@@ -15,44 +15,63 @@ public final class SkillHubCenterScreenView extends ScreenScaffoldView {
     }
 
     public SkillHubCenterScreenView(Context context, Listener listener) {
-        super(context, "SkillHub 功能中心", listener::onBack, null);
+        super(context, context.getString(cn.lineai.R.string.skillhub_center_title), listener::onBack, null);
         LinearLayout content = getContent();
         LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
 
         TextView notice = LineTheme.text(context,
-                "浏览、安装、评论和收藏使用 LineCode 原生界面；账号、创作者、企业及平台功能在受限 SkillHub 官方页面中完成。",
+                context.getString(cn.lineai.R.string.skillhub_center_notice),
                 LineTheme.FONT_SM, LineTheme.TEXT_SECONDARY, Typeface.NORMAL);
         notice.setBackground(LineTheme.roundedStroke(
                 context, LineTheme.SURFACE_ELEVATED, 12, LineTheme.BORDER_LIGHT));
         LineTheme.padding(notice, LineTheme.MD, LineTheme.MD, LineTheme.MD, LineTheme.MD);
         content.addView(notice);
 
-        section(content, "账号与社交");
-        entry(content, "个人中心", "资料、已发布内容和账号概览", "account", listener);
-        entry(content, "我的收藏", "查看全部已收藏 Skill", "stars", listener);
-        entry(content, "我的关注", "查看关注的创作者与动态", "following", listener);
-        entry(content, "通知中心", "评论、审核和平台通知", "notifications", listener);
-        entry(content, "账号设置", "头像、绑定、通知与账号安全", "settings", listener);
-        entry(content, "实名认证", "发布和企业功能所需的官方认证", "verify", listener);
-        entry(content, "API Token", "创建、查看和撤销平台 Token", "tokens", listener);
+        section(content, context.getString(cn.lineai.R.string.skillhub_section_account_social));
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_profile),
+                context.getString(cn.lineai.R.string.skillhub_entry_profile_desc), "account", listener);
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_my_stars),
+                context.getString(cn.lineai.R.string.skillhub_entry_my_stars_desc), "stars", listener);
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_following),
+                context.getString(cn.lineai.R.string.skillhub_entry_following_desc), "following", listener);
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_notifications),
+                context.getString(cn.lineai.R.string.skillhub_entry_notifications_desc), "notifications", listener);
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_account_settings),
+                context.getString(cn.lineai.R.string.skillhub_entry_account_settings_desc), "settings", listener);
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_verify_identity),
+                context.getString(cn.lineai.R.string.skillhub_entry_verify_identity_desc), "verify", listener);
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_api_token),
+                context.getString(cn.lineai.R.string.skillhub_entry_api_token_desc), "tokens", listener);
 
-        section(content, "创作者");
-        entry(content, "创作者中心", "管理发布、审核状态、版本和申诉", "creator", listener);
-        entry(content, "官方发布工作台", "图标、GitHub 导入、认领和版本发布", "publish", listener);
+        section(content, context.getString(cn.lineai.R.string.skillhub_section_creator));
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_creator_center),
+                context.getString(cn.lineai.R.string.skillhub_entry_creator_center_desc), "creator", listener);
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_publish_workbench),
+                context.getString(cn.lineai.R.string.skillhub_entry_publish_workbench_desc), "publish", listener);
 
-        section(content, "发现");
-        entry(content, "SkillSet", "浏览 Skill 组合与主题包", "skillsets", listener);
-        entry(content, "MCP Server", "搜索和查看 MCP Server", "mcp", listener);
-        entry(content, "Skill Hunt", "榜单、投票与称号", "skill-hunt", listener);
-        entry(content, "赛事", "赛事作品、排名和获奖信息", "contest", listener);
-        entry(content, "企业广场", "企业主页、热门 Skill 和关注", "enterprises", listener);
+        section(content, context.getString(cn.lineai.R.string.skillhub_section_discover));
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_skillset),
+                context.getString(cn.lineai.R.string.skillhub_entry_skillset_desc), "skillsets", listener);
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_mcp_server),
+                context.getString(cn.lineai.R.string.skillhub_entry_mcp_server_desc), "mcp", listener);
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_skill_hunt),
+                context.getString(cn.lineai.R.string.skillhub_entry_skill_hunt_desc), "skill-hunt", listener);
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_contest),
+                context.getString(cn.lineai.R.string.skillhub_entry_contest_desc), "contest", listener);
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_enterprise_square),
+                context.getString(cn.lineai.R.string.skillhub_entry_enterprise_square_desc), "enterprises", listener);
 
-        section(content, "企业与平台");
-        entry(content, "企业工作台", "团队 Skill、成员、审核和密钥", "enterprise-dashboard", listener);
-        entry(content, "企业发布", "发布和维护企业 Skill", "enterprise-publish", listener);
-        entry(content, "商户管理", "协议、商户状态和开发者密钥", "merchant", listener);
-        entry(content, "管理后台", "仅对 SkillHub 管理员账号开放", "admin", listener);
-        entry(content, "Skill 审核", "仅对有审核权限的账号开放", "admin-reviews", listener);
+        section(content, context.getString(cn.lineai.R.string.skillhub_section_enterprise_platform));
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_enterprise_dashboard),
+                context.getString(cn.lineai.R.string.skillhub_entry_enterprise_dashboard_desc), "enterprise-dashboard", listener);
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_enterprise_publish),
+                context.getString(cn.lineai.R.string.skillhub_entry_enterprise_publish_desc), "enterprise-publish", listener);
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_merchant),
+                context.getString(cn.lineai.R.string.skillhub_entry_merchant_desc), "merchant", listener);
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_admin),
+                context.getString(cn.lineai.R.string.skillhub_entry_admin_desc), "admin", listener);
+        entry(content, context.getString(cn.lineai.R.string.skillhub_entry_admin_reviews),
+                context.getString(cn.lineai.R.string.skillhub_entry_admin_reviews_desc), "admin-reviews", listener);
     }
 
     private void section(LinearLayout content, String title) {

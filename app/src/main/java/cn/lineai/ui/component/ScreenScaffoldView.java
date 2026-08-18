@@ -38,4 +38,17 @@ public class ScreenScaffoldView extends LinearLayout {
     protected View getRightAction() {
         return rightAction;
     }
+
+    /**
+     * Convenience access to string resources for screen subclasses, so screens
+     * can call {@code getString(R.string.xxx)} instead of
+     * {@code getContext().getString(...)}.
+     */
+    protected String getString(int resId) {
+        return getContext().getString(resId);
+    }
+
+    protected String getString(int resId, Object... formatArgs) {
+        return getContext().getString(resId, formatArgs);
+    }
 }

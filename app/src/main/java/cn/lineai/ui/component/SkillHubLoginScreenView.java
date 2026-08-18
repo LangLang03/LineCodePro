@@ -16,6 +16,8 @@ import android.webkit.WebViewClient;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import cn.lineai.R;
+import cn.lineai.data.service.ContextResourceProvider;
 import cn.lineai.data.service.SkillHubSessionClient;
 import cn.lineai.ui.theme.IconButtonView;
 import cn.lineai.ui.theme.LineTheme;
@@ -35,7 +37,7 @@ public final class SkillHubLoginScreenView extends LinearLayout {
 
     private static final long SESSION_CHECK_INTERVAL_MS = 1000L;
 
-    private final SkillHubSessionClient sessionClient = new SkillHubSessionClient();
+    private final SkillHubSessionClient sessionClient;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Runnable onLoginComplete;
     private final WebView webView;
@@ -47,9 +49,10 @@ public final class SkillHubLoginScreenView extends LinearLayout {
     public SkillHubLoginScreenView(Context context, Runnable onBack, Runnable onLoginComplete) {
         super(context);
         this.onLoginComplete = onLoginComplete;
+        this.sessionClient = new SkillHubSessionClient(new ContextResourceProvider(context));
         setOrientation(VERTICAL);
         setBackgroundColor(LineTheme.BG);
-        addView(new ScreenHeaderView(context, "SkillHub 官方登录", onBack, null),
+        addView(new ScreenHeaderView(context, context.getString(R.string.skillhub_official_login), onBack, null),
                 new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         LinearLayout notice = new LinearLayout(context);
@@ -64,7 +67,7 @@ public final class SkillHubLoginScreenView extends LinearLayout {
         shield.setFocusable(false);
         notice.addView(shield, new LayoutParams(LineTheme.dp(context, 28), LineTheme.dp(context, 28)));
         TextView noticeText = LineTheme.text(context,
-                "凭据仅提交到 SkillHub 官方页面，LineCode 不读取验证码或密码。",
+                context.getString(R.string.skillhub_credential_notice),
                 LineTheme.FONT_XS, LineTheme.TEXT_SECONDARY, Typeface.NORMAL);
         LayoutParams noticeTextParams = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
         noticeTextParams.leftMargin = LineTheme.dp(context, LineTheme.SM);
@@ -74,7 +77,7 @@ public final class SkillHubLoginScreenView extends LinearLayout {
                 LineTheme.dp(context, LineTheme.LG), 0);
         addView(notice, noticeParams);
 
-        status = LineTheme.text(context, "完成官方登录后将自动返回商店",
+        status = LineTheme.text(context, context.getString(R.string.skillhub_auto_return_notice),
                 LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
         status.setGravity(Gravity.CENTER);
         LayoutParams statusParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
@@ -83,7 +86,7 @@ public final class SkillHubLoginScreenView extends LinearLayout {
         addView(status, statusParams);
 
         webView = new WebView(context);
-        webView.setContentDescription("SkillHub 官方登录页面");
+        webView.setContentDescription(context.getString(R.string.skillhub_login_page_desc));
         harden(webView);
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
@@ -141,9 +144,11 @@ public final class SkillHubLoginScreenView extends LinearLayout {
                     completing = true;
                     main.removeCallbacks(sessionCheck);
                     String name = session.getAccount().getDisplayName();
-                    status.setText("已登录" + (name.length() == 0 ? "" : "：" + name));
+                    status.setText(getContext().getString(R.string.skillhub_logged_in)
+                            + (name.length() == 0 ? "" : "：" + name));
                     status.setTextColor(LineTheme.ACCENT);
-                    Toast.makeText(getContext(), "SkillHub 登录成功", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), getContext().getString(R.string.skillhub_login_success),
+                            Toast.LENGTH_SHORT).show();
                     main.postDelayed(onLoginComplete, 150);
                 });
             } catch (Exception ignored) {

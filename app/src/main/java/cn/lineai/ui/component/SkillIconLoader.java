@@ -1,18 +1,24 @@
 package cn.lineai.ui.component;
 
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.LruCache;
 import android.widget.ImageView;
+import cn.lineai.data.service.ContextResourceProvider;
 import cn.lineai.data.service.SkillHubClient;
 
 final class SkillIconLoader {
     private static final int ICON_SIZE_PX = 192;
     private static final LruCache<String, Bitmap> CACHE = new LruCache<>(32);
-    private final SkillHubClient client = new SkillHubClient();
+    private final SkillHubClient client;
     private final Handler main = new Handler(Looper.getMainLooper());
+
+    SkillIconLoader(Context context) {
+        client = new SkillHubClient(new ContextResourceProvider(context));
+    }
 
     void load(String url, ImageView target) {
         String value = url == null ? "" : url.trim();

@@ -790,7 +790,7 @@ public final class ComposerView extends LinearLayout implements QuoteController.
         }
         // 超过4条时显示折叠提示
         if (pendingQueue.size() > 4) {
-            TextView more = LineTheme.text(ctx, "   ... 还有 " + (pendingQueue.size() - 4) + " 条排队中", LineTheme.FONT_XS, 0xFFCC8800, Typeface.ITALIC);
+            TextView more = LineTheme.text(ctx, getContext().getString(R.string.common_more_queued, pendingQueue.size() - 4), LineTheme.FONT_XS, 0xFFCC8800, Typeface.ITALIC);
             LineTheme.padding(more, LineTheme.MD, 2, 0, 4);
             pendingContainer.addView(more, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         }

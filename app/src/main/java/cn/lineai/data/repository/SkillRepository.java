@@ -141,7 +141,7 @@ public final class SkillRepository extends BaseRepository {
         File tempRoot = new File(fileManager.getWorkspacePaths().getLinecodeRoot(), "tmp/skills-skillhub");
         File tempDir = fileManager.uniqueChild(tempRoot, fileManager.sanitizeFileName(slug));
         File archive = new File(tempDir, "skill.zip");
-        byte[] bytes = new SkillHubClient().download(slug, version);
+        byte[] bytes = new SkillHubClient(resourceProvider).download(slug, version);
         try {
             fileManager.writeBytes(archive, bytes);
         } catch (RuntimeException error) {
