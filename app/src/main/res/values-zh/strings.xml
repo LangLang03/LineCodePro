@@ -69,6 +69,8 @@
 
     <string name="message_user_attached_files">已附加文件</string>
     <string name="message_assistant_generating">正在生成…</string>
+    <string name="message_assistant_working">正在工作</string>
+    <string name="message_assistant_thinking">正在思考</string>
     <string name="message_empty_model_required">请先在设置中配置模型</string>
     <string name="message_empty_session_start">开始对话，问个问题吧</string>
     <string name="message_empty_permission_needed">工具调用需要权限确认</string>

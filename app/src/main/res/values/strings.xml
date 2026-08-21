@@ -69,6 +69,8 @@
 
     <string name="message_user_attached_files">Attached files</string>
     <string name="message_assistant_generating">Generating…</string>
+    <string name="message_assistant_working">Working</string>
+    <string name="message_assistant_thinking">Thinking</string>
     <string name="message_empty_model_required">Please configure a model in settings first</string>
     <string name="message_empty_session_start">Start the session with a question</string>
     <string name="message_empty_permission_needed">Tool calls need permission approval</string>

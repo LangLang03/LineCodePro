@@ -159,7 +159,17 @@ final class CodexOutputMerger {
             for (int i = 0; i < summary.length(); i++) {
                 JSONObject part = summary.optJSONObject(i);
                 if (part != null) {
-                    builder.append(part.optString("text"));
+                    String text = part.optString("text").trim();
+                    if (text.length() > 0) {
+                        if (builder.length() > 0) {
+                            while (builder.length() > 0
+                                    && Character.isWhitespace(builder.charAt(builder.length() - 1))) {
+                                builder.setLength(builder.length() - 1);
+                            }
+                            builder.append(" | ");
+                        }
+                        builder.append(text);
+                    }
                 }
             }
         }

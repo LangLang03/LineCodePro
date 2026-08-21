@@ -132,6 +132,82 @@ public final class OpenAiCompatibleProtocolTest {
     }
 
     @Test
+    public void streamParsesAndSeparatesReasoningSummaries() throws Exception {
+        JSONObject first = new JSONObject()
+                .put("type", "reasoning.summary")
+                .put("index", 0)
+                .put("summary", "**First step**\n");
+        JSONObject second = new JSONObject()
+                .put("type", "reasoning.summary")
+                .put("index", 1)
+                .put("summary", "  **Second step**");
+        LocalSseServer server = new LocalSseServer(
+                data(chunk(new JSONObject().put("reasoning_details", new JSONArray().put(first)), ""))
+                        + data(chunk(new JSONObject().put("reasoning_details", new JSONArray().put(second)), ""))
+                        + "data: [DONE]\n\n");
+        server.start();
+        try {
+            ModelConfig config = ModelConfig.builder(
+                    "m1", "GPT reasoning", ModelProtocolType.OPENAI_COMPATIBLE, "OpenAI",
+                    "http://127.0.0.1:" + server.port() + "/v1/chat/completions",
+                    "sk-test", "gpt-5.6-sol").build();
+
+            ModelCompletionResponse response = new OpenAiCompatibleProtocol().stream(
+                    config,
+                    Collections.<ModelMessage>singletonList(new UserModelMessage("test")),
+                    new NoopCallback(),
+                    null,
+                    new ModelRequestOptions(AiBehaviorSettings.REASONING_HIGH, false, Collections.emptyList())
+            );
+
+            assertEquals("**First step** | **Second step**", response.getReasoningContent());
+        } finally {
+            server.close();
+        }
+    }
+
+    @Test
+    public void streamPreservesFourAsterisksInOrdinaryReasoningContent() throws Exception {
+        LocalSseServer server = new LocalSseServer(
+                data(chunk(new JSONObject().put("reasoning_content", "redacted****token"), ""))
+                        + "data: [DONE]\n\n");
+        server.start();
+        try {
+            ModelConfig config = ModelConfig.builder(
+                    "m1", "GPT reasoning", ModelProtocolType.OPENAI_COMPATIBLE, "OpenAI",
+                    "http://127.0.0.1:" + server.port() + "/v1/chat/completions",
+                    "sk-test", "gpt-5.6-sol").build();
+
+            ModelCompletionResponse response = new OpenAiCompatibleProtocol().stream(
+                    config,
+                    Collections.<ModelMessage>singletonList(new UserModelMessage("test")),
+                    new NoopCallback(),
+                    null,
+                    new ModelRequestOptions(AiBehaviorSettings.REASONING_HIGH, false, Collections.emptyList())
+            );
+
+            assertEquals("redacted****token", response.getReasoningContent());
+        } finally {
+            server.close();
+        }
+    }
+
+    @Test
+    public void gptChatUsesTopLevelReasoningEffort() throws Exception {
+        ModelConfig config = ModelConfig.builder(
+                "gpt-sol", "GPT Sol", ModelProtocolType.OPENAI_COMPATIBLE, "OpenAI",
+                "https://api.openai.com/v1", "sk-test", "gpt-5.6-sol").build();
+
+        JSONObject body = new OpenAiCompatibleProtocol().reasoningRequestBodyForTest(
+                config,
+                new ModelRequestOptions(AiBehaviorSettings.REASONING_HIGH, false)
+        );
+
+        assertEquals("high", body.getString("reasoning_effort"));
+        assertFalse(body.has("reasoning"));
+    }
+
+    @Test
     public void nvidiaGatewayDoesNotSendUnsupportedThinkingParameters() throws Exception {
         ModelConfig config = ModelConfig.builder(
                 "nvidia-qwen",

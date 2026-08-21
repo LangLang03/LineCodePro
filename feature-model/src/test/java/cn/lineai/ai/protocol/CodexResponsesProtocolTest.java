@@ -260,6 +260,43 @@ public final class CodexResponsesProtocolTest {
     }
 
     @Test
+    public void codexStreamNormalizesReasoningSummaryParts() throws Exception {
+        LocalSseServer server = new LocalSseServer(
+                sse("message", new JSONObject()
+                        .put("type", "response.reasoning_summary_part.added")
+                        .toString())
+                        + sse("message", new JSONObject()
+                        .put("type", "response.reasoning_summary_text.delta")
+                        .put("delta", "**First step**\n")
+                        .toString())
+                        + sse("message", new JSONObject()
+                        .put("type", "response.reasoning_summary_part.added")
+                        .toString())
+                        + sse("message", new JSONObject()
+                        .put("type", "response.reasoning_summary_text.delta")
+                        .put("delta", "  **Second step**")
+                        .toString())
+                        + sse("message", new JSONObject()
+                        .put("type", "response.completed")
+                        .put("response", new JSONObject().put("id", "resp_1"))
+                        .toString()));
+        server.start();
+        try {
+            ModelCompletionResponse response = new CodexResponsesProtocol().stream(
+                    codexConfig(server.port()),
+                    Collections.<ModelMessage>singletonList(new UserModelMessage("test")),
+                    new NoopCallback(),
+                    null,
+                    new ModelRequestOptions(AiBehaviorSettings.REASONING_HIGH, false, Collections.emptyList())
+            );
+
+            assertEquals("**First step** | **Second step**", response.getReasoningContent());
+        } finally {
+            server.close();
+        }
+    }
+
+    @Test
     public void codexModelCatalogUsesClientVersionAndCodexHeaders() throws Exception {
         LocalSseServer server = new LocalSseServer(new JSONObject()
                 .put("data", new JSONArray()

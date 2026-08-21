@@ -6,6 +6,8 @@
 
 - **共享 `BoundedScrollView`（`:ui-theme`）** - 新增方向感知的受限滚动容器：`ACTION_DOWN` 在内容可见且有界时保守抢占手势（不依赖布局完成，消除流式更新中测量时序误判），`ACTION_MOVE` 仅当内容可滚且拖动方向仍有剩余滚动时保持手势（到达边界或内容不可滚时释放，外层列表平滑接管），`UP/CANCEL` 一律释放；`shouldHandleDrag` / `canScrollContent` / `shouldDisallowOnDown` 为纯静态决策方法，可脱离 Android 环境单测
 - **思考区滚动修复** - `ThinkingBlockView` 删除私有 `MaxHeightScrollView`，改用共享 `BoundedScrollView`；原实现对 `canScrollContent()` 的依赖在内容每帧重测时可能误判 false，导致下拉手势被外层聊天列表抢走；现改为「保守抢占 + 按方向动态交还」，流式输出中在思考区拖动不再整列表乱飞
+- **模型工作状态** - assistant 流式生成期间用可访问的点阵 + shimmer 状态行替代仅在正文阶段出现的闪烁光标；无正文时显示“正在工作”，仅有推理内容时显示“正在思考”，正文开始后切回“正在工作”，完成、回收或动画关闭时停止 animator
+- **思考链摘要适配** - OpenAI Compatible 解析 `reasoning.summary` 的 `summary` 字段并按 `id/index` 合并跨 SSE chunk 片段，真实 `delta.reasoning` 相邻粗体摘要和 Codex `response.reasoning_summary_part.added` 统一使用 ` | ` 分隔；普通 `reasoning_content` 保持原文，思考视图保留反引号代码 span
 - **`ToolCallGenericView` 裸 ScrollView 修复** - 泛型/MCP 工具卡的长内容原本使用无任何拦截逻辑的原生 `ScrollView`，内滚必被外层 ListView 抢占；改用共享 `BoundedScrollView`（220dp），内滚优先、边界交还
 - **消除无条件 disallow 滚动死区** - `ToolCallShellView` / `ToolCallAgentView` / `ToolCallAgentPipelineView` 各自的私有 `BoundedScrollView` 在 `onTouchEvent` / `onInterceptTouchEvent` 中无条件 `requestDisallowInterceptTouchEvent(true)` 且从不释放，内容短（不可滚）时外层列表永远无法滚动，表现为"滑动无反应"；全部替换为共享类，并删除 `ToolCallShellView` 冗余的 `setOnTouchListener` 双重拦截
 - **`ToolCallReadView` 长内容有界滚动** - 读取文件的长结果（>300 字符或 >8 行）不再直接撑高聊天列表行，包进 220dp `BoundedScrollView` 内部滚动，内容尾部可达，列表滚动性能提升
@@ -22,6 +24,7 @@
 ### 测试
 
 - 新增 `BoundedScrollViewTest`（`:ui-theme`，13 断言组）覆盖 `shouldHandleDrag` 全方向/边界组合、`canScrollContent` 边界、`shouldDisallowOnDown` 八种组合、DOWN→MOVE→反向→UP 完整手势序列决策
+- 新增模型工作状态、GPT reasoning summary、普通 reasoning 四星号保真、Codex summary part 空白规范化及思考摘要代码 span 回归测试
 - 新增 `ToolCallBlockViewSignatureTest`（13 例）覆盖结构/内容签名拆分：仅内容变化签名相等、isError/reviewState/id/name/arguments/projectPath 变化签名不等
 - 新增 `ToolCallAgentViewLayoutSignatureTest`（13 例）覆盖 agent 进度 JSON 的 status / tool_call_count / agent_id / output 存在性对布局签名的影响
 - 新增 `MemoryRankerRagInjectionTest` 证明 RAG 排序会选中记忆候选（`MemoryRanker` 相关性注入）
