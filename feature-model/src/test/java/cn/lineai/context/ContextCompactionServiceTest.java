@@ -36,6 +36,18 @@ public final class ContextCompactionServiceTest {
     }
 
     @Test
+    public void shouldCompactReturnsFalseWhenAllMessagesExcludedAfterCompaction() {
+        // 模拟压缩后：旧消息标记 excludeFromContext，tracker reset（observed=0）。
+        // 本地估算对 excludeFromContext 消息贡献 0，应远低于阈值，不触发压缩循环。
+        ArrayList<ChatMessage> messages = new ArrayList<>();
+        messages.add(new ChatMessage("m1", ChatMessage.Role.USER, repeat("a", 4000), false)
+                .withExcludeFromContext(true));
+        messages.add(new ChatMessage("m2", ChatMessage.Role.ASSISTANT, repeat("b", 4000), false)
+                .withExcludeFromContext(true));
+        assertFalse(service.shouldCompact(messages, 10000, contextManager, true, 0));
+    }
+
+    @Test
     public void shouldSoftCompactUsesObservedInputTokensIn50To80Band() {
         ArrayList<ChatMessage> messages = new ArrayList<>();
         for (int i = 0; i < 8; i++) {
