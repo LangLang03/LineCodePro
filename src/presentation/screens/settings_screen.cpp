@@ -1,12 +1,14 @@
 #include "presentation/screens/settings_screen.h"
 
-#include <algorithm>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
 #include <app_resources.h>
 #include <huxerui/huxerui.h>
 
+#include "presentation/components/legacy_screen_header_layout.h"
+#include "presentation/components/legacy_settings_card_frame.h"
 #include "presentation/line_theme.h"
 #include "presentation/platform_features.h"
 
@@ -20,48 +22,6 @@ struct SettingsItem final {
   StringResource title;
   StringResource description;
   ImageResource icon;
-};
-
-/// Keeps setting cards inside the scroll viewport instead of relying on
-/// Padding's outer-frame semantics. A vertical ScrollView supplies a tight
-/// cross-axis width; measuring the card at that width minus 32 DIP preserves
-/// the original 16 DIP gutter and makes both 12 DIP corners visible.
-class SettingsCardFrame final : public Layout<SettingsCardFrame> {
-public:
-  using Layout::Layout;
-
-  static LayoutResult Measure(LayoutContext &context, ViewNode &node,
-                              Constraints constraints) {
-    constexpr float kHorizontalGutter = 16.0F;
-    constexpr float kMaximumCardWidth = 760.0F;
-
-    LayoutResult result;
-    if (node.ChildCount() == 0) {
-      return result.SetSize(constraints.Constrain({0.0F, 0.0F}));
-    }
-
-    auto child_constraints = constraints.Loose();
-    if (constraints.HasBoundedWidth()) {
-      const float available =
-          std::max(0.0F, constraints.max_width - (kHorizontalGutter * 2.0F));
-      const float card_width = std::min(kMaximumCardWidth, available);
-      child_constraints.min_width = card_width;
-      child_constraints.max_width = card_width;
-    } else {
-      child_constraints.max_width = kMaximumCardWidth;
-    }
-
-    ViewNode &card = node.ChildAt(0);
-    const Size card_size = context.Measure(card, child_constraints);
-    const float desired_width = card_size.width + (kHorizontalGutter * 2.0F);
-    const float frame_width =
-        constraints.HasBoundedWidth() ? constraints.max_width : desired_width;
-    const Size frame_size =
-        constraints.Constrain({frame_width, card_size.height});
-    const float card_x =
-        std::max(0.0F, (frame_size.width - card_size.width) * 0.5F);
-    return result.Place(card, {card_x, 0.0F}).SetSize(frame_size);
-  }
 };
 
 TextStyle LabelStyle(float size, FontWeight weight = FontWeight::Regular,
@@ -87,7 +47,7 @@ View IconDisc(ImageResource icon) {
 View ScreenHeader(
     StringResource title,
     const RouteNavigationController<domain::AppRoute> &navigation) {
-  return Row{
+  return LegacyScreenHeaderLayout{
       Stack{
           Glyph(app::images::chevron_left, 22.0F, colors::text),
       }
@@ -95,15 +55,13 @@ View ScreenHeader(
           .With(Frame{.width = 36.0F, .height = 36.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
                 Focusable(), PointerCursor(PointerCursorKind::Hand)),
-      Text(title)
-          .Style(LabelStyle(17.0F, FontWeight::Bold))
-          .Align(TextAlign::Center)
-          .With(Grow()),
+      Stack{Text(title).Style(LabelStyle(17.0F, FontWeight::Bold))}.With(
+          Grow(),
+          Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
       Spacer().With(Frame{.width = 36.0F, .height = 36.0F}),
   }
       .With(Frame{.min_height = 60.0F},
             Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
-            CrossAlign(CrossAxisAlignment::Center),
             Background(colors::background), Border(Color::Transparent(), 0.0F));
 }
 
@@ -142,12 +100,14 @@ void AppendSection(
   rows.reserve(items.size() * 2);
   std::size_t index = 0;
   for (const auto &item : items) {
-    rows.push_back(SettingsRow(item, navigation).Key(item.route));
+    rows.push_back(
+        SettingsRow(item, navigation)
+            .Key(static_cast<std::uint64_t>(*item.route.PageValue())));
     if (++index < items.size()) {
       rows.push_back(Divider().With(Padding(EdgeInsets{.left = 68.0F})));
     }
   }
-  content.push_back(SettingsCardFrame{
+  content.push_back(LegacySettingsCardFrame{
       Column(std::move(rows))
           .With(CornerRadius(12.0F), Background(colors::elevated),
                 CrossAlign(CrossAxisAlignment::Stretch)),
@@ -155,7 +115,7 @@ void AppendSection(
 }
 
 StringResource RouteTitle(domain::AppRoute route) {
-  switch (route) {
+  switch (*route.PageValue()) {
   case domain::AppRoute::tutorial:
     return app::strings::settings_row_tutorial_title;
   case domain::AppRoute::models:
@@ -188,6 +148,8 @@ StringResource RouteTitle(domain::AppRoute route) {
     return app::strings::settings_row_keep_alive_title;
   case domain::AppRoute::about:
     return app::strings::settings_row_about_title;
+  case domain::AppRoute::licenses:
+    return app::strings::screen_licenses_title;
   case domain::AppRoute::settings:
     return app::strings::screen_settings_title;
   }

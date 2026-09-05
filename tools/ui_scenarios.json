@@ -94,6 +94,83 @@
         {"type": "expect_text", "value": "假音乐播放"},
         {"type": "expect_text", "value": "忽略电池优化"}
       ]
+    },
+    {
+      "name": "models",
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "模型管理"},
+        {"type": "sleep", "seconds": 0.7},
+        {"type": "expect_text", "value": "模型"},
+        {"type": "expect_text", "value": "还没有模型"}
+      ]
+    },
+    {
+      "name": "model_add_options",
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "模型管理"},
+        {"type": "sleep", "seconds": 0.7},
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.7},
+        {"type": "expect_text", "value": "添加模型"},
+        {"type": "expect_text", "value": "自定义模型"},
+        {"type": "expect_text", "value": "本地模型"},
+        {"type": "expect_text", "value": "DeepSeek"}
+      ]
+    },
+    {
+      "name": "theme",
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "主题与外观"},
+        {"type": "sleep", "seconds": 0.7},
+        {"type": "expect_text", "value": "跟随系统"},
+        {"type": "expect_text", "value": "暗色模式"},
+        {"type": "expect_text", "value": "自定义颜色"}
+      ]
+    },
+    {
+      "name": "about",
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "swipe", "x1": 540, "y1": 2100, "x2": 540, "y2": 450, "duration_ms": 700},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "关于 LineCode"},
+        {"type": "sleep", "seconds": 0.6},
+        {"type": "expect_text", "value": "APK 版本"},
+        {"type": "expect_text", "value": "LangLang03"},
+        {"type": "expect_text", "value": "github.com/LangLang03/LineCodePro"},
+        {"type": "expect_text", "value": "开源许可列表"}
+      ]
+    },
+    {
+      "name": "licenses",
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "swipe", "x1": 540, "y1": 2100, "x2": 540, "y2": 450, "duration_ms": 700},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "关于 LineCode"},
+        {"type": "sleep", "seconds": 0.6},
+        {"type": "tap_text", "value": "开源许可列表"},
+        {"type": "sleep", "seconds": 0.6},
+        {"type": "expect_text", "value": "开源许可"}
+      ]
     }
   ]
 }

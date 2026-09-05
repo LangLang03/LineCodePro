@@ -12,6 +12,7 @@
 
 #include "application/ports/keep_alive.h"
 #include "domain/app_state.h"
+#include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -33,21 +34,20 @@ View Glyph(ImageResource icon, float size, Color tint) {
 }
 
 View Header(const RouteNavigationController<domain::AppRoute> &navigation) {
-  return Row{
+  return LegacyScreenHeaderLayout{
       Stack{Glyph(app::images::chevron_left, 22.0F, colors::text)}
           .OnClick([navigation] { navigation.Pop(); })
           .With(Frame{.width = 36.0F, .height = 36.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
                 Focusable(), PointerCursor(PointerCursorKind::Hand)),
-      Text(app::strings::screen_keep_alive_title)
-          .Style(Label(17.0F, FontWeight::Bold))
-          .Align(TextAlign::Center)
-          .With(Grow()),
+      Stack{Text(app::strings::screen_keep_alive_title)
+                .Style(Label(17.0F, FontWeight::Bold))}
+          .With(Grow(),
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
       Spacer().With(Frame{.width = 36.0F, .height = 36.0F}),
   }
       .With(Frame{.min_height = 60.0F},
             Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
-            CrossAlign(CrossAxisAlignment::Center),
             Background(colors::background));
 }
 

@@ -18,7 +18,12 @@
 #include "presentation/components/drawer.h"
 #include "presentation/line_theme.h"
 #include "presentation/platform_features.h"
+#include "presentation/screens/about_screen.h"
+#include "presentation/screens/browser_screen.h"
+#include "presentation/screens/licenses_screen.h"
+#include "presentation/screens/model_management_screen.h"
 #include "presentation/screens/settings_screen.h"
+#include "presentation/screens/theme_settings_screen.h"
 #if defined(__ANDROID__)
 #include "presentation/screens/keep_alive_screen.h"
 #endif
@@ -151,7 +156,11 @@ HomeScreen(std::shared_ptr<application::ChatSession> initial_session,
 [[huxerui::composable]]
 huxerui::View
 MainScreen(std::shared_ptr<application::ChatSession> initial_session,
-           std::shared_ptr<application::ProjectWorkspaceStore> project_store) {
+           std::shared_ptr<application::ProjectWorkspaceStore> project_store,
+           std::shared_ptr<application::ModelStore> model_store,
+           std::shared_ptr<application::ModelCatalogGateway> model_catalog,
+           std::shared_ptr<application::ThemeSettingsService> theme_service,
+           huxerui::State<application::ThemeSettingsState> theme_settings) {
   using namespace huxerui;
 
   auto navigation_path = UseState(NavigationPath<domain::AppRoute>{});
@@ -161,18 +170,38 @@ MainScreen(std::shared_ptr<application::ChatSession> initial_session,
     return HomeScreen(initial_session, project_store);
   };
 
-  auto destination = [](domain::AppRoute route) -> View {
+  auto destination = [model_store = std::move(model_store),
+                      model_catalog = std::move(model_catalog),
+                      theme_service = std::move(theme_service),
+                      theme_settings](domain::AppRoute route) -> View {
+    if (const auto *browser = route.BrowserValue()) {
+      return BrowserScreen(*browser);
+    }
     if (route == domain::AppRoute::settings) {
       return SettingsScreen();
     }
     if (route == domain::AppRoute::keep_alive) {
       return PlatformKeepAliveDestination();
     }
+    if (route == domain::AppRoute::models) {
+      return ModelManagementScreen(model_store, model_catalog);
+    }
+    if (route == domain::AppRoute::theme) {
+      return ThemeSettingsScreen(theme_service, theme_settings);
+    }
+    if (route == domain::AppRoute::about) {
+      return AboutScreen(domain::AppRoute::licenses);
+    }
+    if (route == domain::AppRoute::licenses) {
+      return LicensesScreen();
+    }
     return PendingScreen(route);
   };
 
-  return NavigationStack(std::move(root), navigation_path,
-                         std::move(destination));
+  return Stack{
+      NavigationStack(std::move(root), navigation_path, std::move(destination)),
+  }
+      .With(Align(HorizontalAlignment::Stretch, VerticalAlignment::Stretch));
 }
 
 } // namespace linecode::presentation

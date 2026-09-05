@@ -9,7 +9,7 @@ import android.view.Window;
 import org.huxerui.HuxerUIActivity;
 
 public final class MainActivity extends HuxerUIActivity {
-    private static final int COFFEE_BACKGROUND = Color.rgb(244, 239, 230);
+    private static final int DEFAULT_BACKGROUND = Color.rgb(252, 252, 253);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -20,8 +20,8 @@ public final class MainActivity extends HuxerUIActivity {
     @SuppressWarnings("deprecation")
     private void configureWindowChrome() {
         Window window = getWindow();
-        window.setStatusBarColor(COFFEE_BACKGROUND);
-        window.setNavigationBarColor(COFFEE_BACKGROUND);
+        window.setStatusBarColor(DEFAULT_BACKGROUND);
+        window.setNavigationBarColor(DEFAULT_BACKGROUND);
         View decor = window.getDecorView();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             decor.setForceDarkAllowed(false);

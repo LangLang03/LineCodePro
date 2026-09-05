@@ -300,7 +300,7 @@ ChatScreen(std::function<void()> open_drawer, State<TextEditingValue> draft,
   auto attachment_layer = UseState(std::optional<LayerId>{});
   auto more_layer = UseState(std::optional<LayerId>{});
   auto permission_layer = UseState(std::optional<LayerId>{});
-  auto permission_mode = UseState(ChatPermissionMode::confirm);
+  auto permission_mode = UseState(ChatPermissionMode::automatic);
   auto external_storage_granted = UseState(false);
   auto has_saved_command_permissions = UseState(false);
   auto selected_attachment_paths = UseState(std::vector<std::string>{});

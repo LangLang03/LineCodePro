@@ -467,8 +467,7 @@ View ChatPermissionMenu(const ChatPermissionMenuState &state,
           state.manage_all_files_available, state.external_storage_granted},
       MenuItem<ChatPermissionAction>{
           ChatPermissionAction::revoke_saved_commands,
-          app::strings::chat_permissions_clear, std::nullopt,
-          state.has_saved_command_permissions},
+          app::strings::chat_permissions_clear, std::nullopt, true},
   };
 
   auto rows = BuildAvailableRows(items, callbacks,
