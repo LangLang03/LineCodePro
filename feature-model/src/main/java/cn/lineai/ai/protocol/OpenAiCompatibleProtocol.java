@@ -5,6 +5,7 @@ import cn.lineai.ai.ModelCompletionException;
 import cn.lineai.ai.ModelCompletionResponse;
 import cn.lineai.ai.ModelCancellationToken;
 import cn.lineai.ai.ModelRequestOptions;
+import cn.lineai.ai.ReasoningCompatibility;
 import cn.lineai.ai.ModelStreamCallback;
 import cn.lineai.ai.message.ModelMessage;
 import cn.lineai.model.AiBehaviorSettings;
@@ -271,11 +272,12 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         }
         String base = config.getBaseUrl().toLowerCase(java.util.Locale.ROOT);
         String model = ModelContextParser.apiModelId(config).toLowerCase(java.util.Locale.ROOT);
-        String effort = options.getReasoningEffort();
+        ModelRequestOptions compatibleOptions = ReasoningCompatibility.adapt(config, options);
+        String effort = compatibleOptions.getReasoningEffort();
         boolean enabled = AiBehaviorSettings.isReasoningEnabled(effort);
         String concrete = AiBehaviorSettings.concreteReasoningEffort(effort);
         ReasoningRequestContext context = new ReasoningRequestContext(
-                enabled, concrete, options.isPreserveReasoning(), base, model, thinkingBudget(concrete));
+                enabled, concrete, compatibleOptions.isPreserveReasoning(), base, model, thinkingBudget(concrete));
         ReasoningRequestStrategy strategy = reasoningStrategyRegistry.find(base, model);
         if (strategy != null) {
             strategy.apply(body, context);

@@ -157,7 +157,14 @@ public class SecondaryScreenLayoutTest {
         cn.lineai.model.tool.ToolResult result=cn.lineai.model.tool.ToolResult.of("generic","mcp_example","RESULT CONTENT",false);
         cn.lineai.tool.ui.ToolCallGenericView generic=new cn.lineai.tool.ui.ToolCallGenericView(activity,"MCP");
         generic.setExpansionState(state,"generic");generic.bind(call,result);assertNull(text(generic,"RESULT CONTENT"));
-        generic.getChildAt(0).performClick();assertNotNull(text(generic,"RESULT CONTENT"));
+        View genericHeader=generic.getChildAt(0);assertNull(genericHeader.getBackground());
+        assertEquals(48,genericHeader.getMinimumHeight());
+        genericHeader.performClick();assertNotNull(text(generic,"RESULT CONTENT"));
+        cn.lineai.ui.theme.BoundedScrollView genericDetail=find(generic,cn.lineai.ui.theme.BoundedScrollView.class);
+        assertNotNull(genericDetail);assertNotNull(genericDetail.getBackground());
+        activity.setContentView(generic);layout(generic,390,240);screenshot(generic,"native-light-390-mcp-card");
+        cn.lineai.tool.ui.ToolCallGenericView localGeneric=new cn.lineai.tool.ui.ToolCallGenericView(activity,"MCP");
+        localGeneric.bind(call,result);localGeneric.getChildAt(0).performClick();assertNotNull(text(localGeneric,"RESULT CONTENT"));
         cn.lineai.tool.ui.ToolCallGenericView rebound=new cn.lineai.tool.ui.ToolCallGenericView(activity,"MCP");
         rebound.setExpansionState(state,"generic");rebound.bind(call,result);assertNotNull(text(rebound,"RESULT CONTENT"));
         cn.lineai.tool.ui.ToolCallAgentView agent=new cn.lineai.tool.ui.ToolCallAgentView(activity);agent.bind(call,result);

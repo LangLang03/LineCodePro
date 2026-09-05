@@ -31,6 +31,7 @@ public final class ModelClient {
             ModelRequestOptions options
     ) throws ModelCompletionException {
         ModelProtocol protocol = protocolFactory.create(config.getProtocolType());
-        return protocol.stream(config, messages, callback, cancellationToken, options == null ? ModelRequestOptions.defaults() : options);
+        ModelRequestOptions compatibleOptions = ReasoningCompatibility.adapt(config, options);
+        return protocol.stream(config, messages, callback, cancellationToken, compatibleOptions);
     }
 }
