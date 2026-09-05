@@ -1,0 +1,41 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="LineCodePro" Manufacturer="com.linecode.linecodepro" Version="@HUXERUI_WINDOWS_PROJECT_VERSION@"
+           UpgradeCode="@HUXERUI_WINDOWS_MSI_UPGRADE_CODE@" Scope="perMachine">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of LineCodePro is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="LineCodePro" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="APPLICATIONPROGRAMMENU" Name="LineCodePro" />
+    </StandardDirectory>
+    <StandardDirectory Id="DesktopFolder" />
+
+    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
+      <Files Include="!(bindpath.Application)\**" />
+    </ComponentGroup>
+    <Component Id="ApplicationShortcut" Directory="APPLICATIONPROGRAMMENU">
+      <Shortcut Id="ApplicationStartMenuShortcut" Name="LineCodePro"
+                Target="[INSTALLFOLDER]linecodepro.exe" WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="RemoveApplicationProgramMenu" On="uninstall" />
+      <RegistryValue Root="HKLM" Key="Software\com.linecode.linecodepro\LineCodePro" Name="installed"
+                     Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+    <Component Id="ApplicationDesktopShortcut" Directory="DesktopFolder">
+      <Shortcut Id="ApplicationDesktopShortcutLink" Name="LineCodePro"
+                Target="[INSTALLFOLDER]linecodepro.exe" WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKLM" Key="Software\com.linecode.linecodepro\LineCodePro" Name="desktopShortcut"
+                     Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Feature Id="Application" Title="LineCodePro" Level="1">
+      <ComponentGroupRef Id="ApplicationFiles" />
+      <ComponentRef Id="ApplicationShortcut" />
+    </Feature>
+    <Feature Id="DesktopShortcut" Title="Desktop shortcut" Level="2" AllowAbsent="yes">
+      <Level Value="1" Condition="CREATE_DESKTOP_SHORTCUT = 1" />
+      <ComponentRef Id="ApplicationDesktopShortcut" />
+    </Feature>
+  </Package>
+</Wix>

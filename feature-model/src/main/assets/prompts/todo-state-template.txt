@@ -1,7 +1,0 @@
-## Current TODO List
-{{TODO_LIST}}
-
-- pending: not started; in_progress: in progress (at most 1 at a time); completed: done
-- Call todo_update to set the target item to in_progress before starting each task; immediately change it to completed when the task is done
-- New tasks are added at the bottom of the list; when all tasks are done, pass an empty list or all-completed items
-- The TODO list is maintained across multiple user turns within this session: do not reset the existing list when the user follows up, only append for new tasks or clear when all are completed

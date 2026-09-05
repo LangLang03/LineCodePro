@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="markdown_image_label">[图片]</string>
-    <string name="markdown_code_copy_desc">复制代码</string>
-    <string name="markdown_code_copied">已复制</string>
-</resources>

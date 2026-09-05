@@ -1,8 +1,0 @@
-## Working Directory
-Current workspace directory: {{HOME_PATH}}
-All file operations and SSH Shell are executed relative to this directory by default.
-Application private .linecode directory: {{LINECODE_ROOT}}
-Application global Skills directory: {{GLOBAL_SKILLS_ROOT}}
-Current workspace private directory: {{WORKSPACE_PRIVATE_ROOT}}
-Current workspace Skills directory: {{WORKSPACE_SKILLS_ROOT}}
-SSH Skills directory: ~/.linecode/skills

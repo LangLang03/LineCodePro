@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="LineCodeTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">#F4EFE6</item>
+        <item name="android:navigationBarColor">#F4EFE6</item>
+        <item name="android:windowBackground">#F4EFE6</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:colorAccent">#D97757</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>

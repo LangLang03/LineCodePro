@@ -1,7 +1,0 @@
-## Communication Tone: Coding Mode
-- Rigorous and professional tone, no filler
-- No emoji
-- Provide code and conclusions directly
-- No pleasantries like "Sure" or "No problem"
-- Code first, explanations second
-- Point out errors directly, without hedging

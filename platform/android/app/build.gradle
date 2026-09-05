@@ -1,0 +1,180 @@
+plugins {
+    alias(libs.plugins.android.application)
+}
+
+def releaseSigningProperties = new Properties()
+def releaseSigningFile = rootProject.file("signing.properties")
+def requiredReleaseSigningProperties = ["storeFile", "storePassword", "keyAlias", "keyPassword"]
+if (releaseSigningFile.isFile()) {
+    releaseSigningFile.withInputStream { releaseSigningProperties.load(it) }
+}
+def missingReleaseSigningProperties = requiredReleaseSigningProperties.findAll {
+    !releaseSigningProperties.getProperty(it)?.trim()
+}
+def hasReleaseSigning = releaseSigningFile.isFile() && missingReleaseSigningProperties.isEmpty()
+def validateReleaseSigning = tasks.register("validateReleaseSigning") {
+    doLast {
+        if (!releaseSigningFile.isFile()) {
+            throw new GradleException("signing.properties is required for release builds")
+        }
+        if (!missingReleaseSigningProperties.isEmpty()) {
+            throw new GradleException(
+                    "signing.properties is missing required keys: ${missingReleaseSigningProperties.join(', ')}"
+            )
+        }
+    }
+}
+
+def huxeruiProperty = { String name -> providers.gradleProperty(name).get() }
+def huxeruiHome = rootProject.gradle.ext.huxeruiHome
+def huxeruiLibraries = rootProject.gradle.ext.huxeruiLibraries
+def huxeruiCompileSdk = huxeruiProperty("huxeruiCompileSdk").toInteger()
+def huxeruiMinSdk = huxeruiProperty("huxeruiMinSdk").toInteger()
+def huxeruiTargetSdk = huxeruiProperty("huxeruiTargetSdk").toInteger()
+def huxeruiNdkVersion = huxeruiProperty("huxeruiNdkVersion")
+def huxeruiAbis = huxeruiProperty("huxeruiAbis").split(",")
+def huxeruiStl = huxeruiProperty("huxeruiStl")
+def huxeruiDebugResourceRoot = layout.buildDirectory.dir("generated/huxerui/resources/debug").get().asFile
+def huxeruiReleaseResourceRoot = layout.buildDirectory.dir("generated/huxerui/resources/release").get().asFile
+def huxeruiDebugAssets = layout.buildDirectory.dir("generated/huxerui/assets/debug").get().asFile
+def huxeruiReleaseAssets = layout.buildDirectory.dir("generated/huxerui/assets/release").get().asFile
+
+android {
+    namespace = "cn.lineai"
+    compileSdk = huxeruiCompileSdk
+    ndkVersion = huxeruiNdkVersion
+
+    defaultConfig {
+        applicationId = "cn.lineai"
+        minSdk = huxeruiMinSdk
+        targetSdk = huxeruiTargetSdk
+        versionCode = 32
+        versionName = "1.2.8-max"
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=${huxeruiStl}",
+                        "-DHUXERUI_HOME=${huxeruiHome.absolutePath}"
+            }
+        }
+
+        ndk {
+            abiFilters(*huxeruiAbis)
+        }
+    }
+
+    signingConfigs {
+        lineCodeRelease {
+            if (hasReleaseSigning) {
+                storeFile = file(releaseSigningProperties.getProperty("storeFile"))
+                storePassword = releaseSigningProperties.getProperty("storePassword")
+                keyAlias = releaseSigningProperties.getProperty("keyAlias")
+                keyPassword = releaseSigningProperties.getProperty("keyPassword")
+            }
+            // minSdk 23 devices do not understand APK Signature Scheme v2.
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+            enableV4Signing = true
+        }
+    }
+
+    buildTypes {
+        debug {
+            externalNativeBuild {
+                cmake {
+                    arguments "-DHUXERUI_ANDROID_RESOURCE_OUTPUT_ROOT=${huxeruiDebugResourceRoot.absolutePath}"
+                }
+            }
+        }
+        release {
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.lineCodeRelease
+            }
+            minifyEnabled = false
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            externalNativeBuild {
+                cmake {
+                    arguments "-DHUXERUI_ANDROID_RESOURCE_OUTPUT_ROOT=${huxeruiReleaseResourceRoot.absolutePath}"
+                }
+            }
+        }
+    }
+
+    sourceSets {
+        debug {
+            assets.srcDir huxeruiDebugAssets
+        }
+        release {
+            assets.srcDir huxeruiReleaseAssets
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("../../../CMakeLists.txt")
+        }
+    }
+}
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn validateReleaseSigning
+}
+
+dependencies {
+    if (rootProject.gradle.ext.huxeruiUsesSource) {
+        implementation project(":HuxerUI")
+    } else {
+        implementation files(rootProject.gradle.ext.huxeruiAndroidArchive)
+    }
+    huxeruiLibraries.each { library ->
+        implementation project(library.projectPath)
+    }
+}
+
+def registerHuxerUIResourceStaging = { String buildType, File resourceRoot, File assetsDirectory ->
+    def capitalizedBuildType = buildType.capitalize()
+    def nativeTaskName = "externalNativeBuild${capitalizedBuildType}"
+    def resolveResourcePackage = {
+        for (String abi : huxeruiAbis) {
+            def packageDirectory = new File(resourceRoot, "${abi}/package")
+            if (new File(packageDirectory, "huxerui/resources.bin").isFile()) {
+                return packageDirectory
+            }
+        }
+        return null
+    }
+    def verificationTask = tasks.register("verifyHuxerUI${capitalizedBuildType}Resources") {
+        dependsOn nativeTaskName
+        doLast {
+            if (resolveResourcePackage() == null) {
+                throw new GradleException("HuxerUI resource package is missing under ${resourceRoot}")
+            }
+        }
+    }
+    def stagingTask = tasks.register("stageHuxerUI${capitalizedBuildType}Resources", Sync) {
+        dependsOn verificationTask
+        from { resolveResourcePackage() ?: [] }
+        into assetsDirectory
+    }
+    tasks.matching { it.name == "merge${capitalizedBuildType}Assets" }.configureEach {
+        dependsOn stagingTask
+    }
+    tasks.matching { it.name == "generate${capitalizedBuildType}LintVitalReportModel" }.configureEach {
+        dependsOn stagingTask
+    }
+    tasks.matching {
+        it.name == "lintVitalAnalyze${capitalizedBuildType}" ||
+                it.name == "lintVitalReport${capitalizedBuildType}"
+    }.configureEach {
+        dependsOn stagingTask
+    }
+}
+
+registerHuxerUIResourceStaging("debug", huxeruiDebugResourceRoot, huxeruiDebugAssets)
+registerHuxerUIResourceStaging("release", huxeruiReleaseResourceRoot, huxeruiReleaseAssets)

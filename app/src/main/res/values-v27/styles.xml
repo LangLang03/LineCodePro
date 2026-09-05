@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="AppTheme" parent="@style/AppThemeBase">
-        <item name="android:windowLightNavigationBar">@bool/line_light_system_bars</item>
-    </style>
-</resources>

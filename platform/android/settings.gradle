@@ -1,0 +1,59 @@
+import groovy.json.JsonSlurper
+
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+    }
+}
+
+def huxeruiHomeValue = providers.environmentVariable("HUXERUI_HOME").orNull
+if (huxeruiHomeValue == null || huxeruiHomeValue.isBlank()) {
+    throw new GradleException("HUXERUI_HOME is required")
+}
+def huxeruiHome = file(huxeruiHomeValue)
+def huxeruiLibrary = new File(huxeruiHome, "platform/android/huxerui")
+def huxeruiArchive = new File(huxeruiHome, "share/huxerui/platform/android/HuxerUI.aar")
+def huxeruiUsesSource = huxeruiLibrary.isDirectory()
+if (!huxeruiUsesSource && !huxeruiArchive.isFile()) {
+    throw new GradleException("HuxerUI Android package does not exist under ${huxeruiHome}")
+}
+
+def huxeruiLibraryGraphFile = file("../../.huxerui/generated/libraries.json")
+if (!huxeruiLibraryGraphFile.isFile()) {
+    throw new GradleException("Run 'huxerui build android' to generate the library graph")
+}
+def huxeruiLibraryGraph = new JsonSlurper().parse(huxeruiLibraryGraphFile)
+def huxeruiLibraries = []
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+gradle.ext.huxeruiHome = huxeruiHome
+gradle.ext.huxeruiUsesSource = huxeruiUsesSource
+gradle.ext.huxeruiAndroidArchive = huxeruiArchive
+rootProject.name = "LineCodePro"
+if (huxeruiUsesSource) {
+    include(":HuxerUI")
+    project(":HuxerUI").projectDir = huxeruiLibrary
+}
+huxeruiLibraryGraph.libraries.eachWithIndex { library, index ->
+    def libraryDirectory = file("${library.sourceRoot}/platform/android")
+    if (libraryDirectory.isDirectory()) {
+        if (!new File(libraryDirectory, "build.gradle").isFile()) {
+            throw new GradleException("Android library package is missing build.gradle: ${libraryDirectory}")
+        }
+        def projectPath = ":huxeruiLibrary${index}"
+        include(projectPath)
+        project(projectPath).projectDir = libraryDirectory
+        huxeruiLibraries.add([target: library.target, projectPath: projectPath])
+    }
+}
+gradle.ext.huxeruiLibraries = huxeruiLibraries
+include(":app")
