@@ -16,6 +16,7 @@
 - **按回合组织处理过程** - 新增 `ConversationTimeline` 与 `AssistantTurnView`，将同一轮助手的过程文字、工具调用和结果组织到「处理中 / 已处理」区域，最终答复在折叠区域之外显示；普通无工具、无错误的文本答复不额外生成已处理区域
 - **连续工具调用分组折叠** - 中途没有正文输出的连续工具调用合并为一个工具组，默认收起，手动展开后查看各次调用；中间出现助手正文时结束当前分组，后续工具重新分组，展开状态在界面刷新时保留
 - **思考按发生顺序追加** - 每次思考作为独立组件进入对应位置，不再集中到顶部的单一思考区；连续工具执行期间的内部推理随工具过程收纳，不单独打断外层时间线，出现正文后再调用工具时继续按消息顺序展示思考
+- **工作状态与摘要兼容** - 整合主分支的 `WorkingStatusView`、OpenAI / Codex 思考摘要解析与思考文本强调样式；保留无正文时的工作状态，完成后隐藏状态行，同时维持新版消息操作栏默认隐藏、长按展开的交互
 - **Agent 独立展示** - 子 Agent 与 Agent 流水线继续使用各自的专用卡片，在处理时间线中直接展示，不并入需要再次展开的普通「使用了工具」汇总；保留 Agent 进度、内部输出和展开操作
 - **内部结束标记处理** - 系统工具规则加入 `<LEOF "完成了任务重写">` 作为处理结束标记；流式渲染隐藏从 `<L` 开始的未完整标记，完整标记解析后结束处理计时并进入正式答复展示，避免标记直接出现在用户界面
 - **处理耗时持久化** - 新增 `ProcessingDuration`，按秒、分钟、小时显示耗时（如 `3m 6s`、`1h 1m 1s`）；处理结束或停止生成后冻结计时，起止时间随消息保存，重新打开会话不再继续累加已经结束的处理时间
@@ -93,7 +94,7 @@
 - 新增 `CommandPermissionRepositoryTest`、`ToolConfirmationControllerTest`、`ToolPermissionPolicyTest`，覆盖精确命令授权、工作区范围变化、自动 / 确认 / 只读模式及 Agent 内部执行权限
 - 新增 `StablePromptPrefixTest`、`ToolPromptOrderTest`、`StablePromptSerializationTest`，验证待办、记忆、工具回合和附件变化后的前缀稳定性，工具预算与自定义模板生效，工具排序、JSON 和单次模板替换结果一致
 - 新增及扩展 `SkillHubClientTest`、`SkillHubSessionClientTest`、`ExtensionManagementControllerTest`，覆盖商店数据解析、会话与参数校验、安装控制器接口；补充压缩后排除消息不再误触发压缩的回归用例
-- 相关模块单元测试共 **518 项通过**；主应用与终端提供者 Debug 构建通过，Lint 无错误；界面已通过 Robolectric Native Graphics 截图核对，尚未完成真机验证
+- 合并主分支工作状态与思考摘要后，相关模块单元测试共 **528 项通过**；主应用 Debug / DebugUserCert 及终端提供者 Debug 构建通过，Lint 无错误；新增工作状态与紧凑消息操作兼容回归，界面已通过 Robolectric Native Graphics 截图核对，尚未完成真机验证
 
 ### 版本
 
