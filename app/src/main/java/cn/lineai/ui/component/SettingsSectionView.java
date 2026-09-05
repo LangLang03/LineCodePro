@@ -1,11 +1,14 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.LineTheme;
+
 import android.content.Context;
 import android.view.View;
 import android.widget.LinearLayout;
-import cn.lineai.ui.theme.LineTheme;
+
 public final class SettingsSectionView extends LinearLayout {
     private final SectionHeaderView header;
     private final LinearLayout group;
+
     public SettingsSectionView(Context context, String title) {
         super(context);
         setOrientation(VERTICAL);
@@ -30,11 +33,10 @@ public final class SettingsSectionView extends LinearLayout {
     }
 
     public void addRow(View row, boolean divider, int dividerInsetDp) {
-        if (row == null) {
-            return;
-        }
-        if (row.getParent() instanceof android.view.ViewGroup) {
-            ((android.view.ViewGroup) row.getParent()).removeView(row);
+        if (row != null) {
+            if (row.getParent() instanceof android.view.ViewGroup) {
+                ((android.view.ViewGroup) row.getParent()).removeView(row);
+            }
         }
         if (!divider) {
             group.addView(row, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));

@@ -25,7 +25,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
-public final class SkillHubLoginScreenView extends ScreenSurfaceView {
+public final class SkillHubLoginScreenView extends LinearLayout {
     private static final String LOGIN_URL = "https://skillhub.cn/";
     private static final Set<String> ALLOWED_HOSTS = new HashSet<>(Arrays.asList(
             "skillhub.cn",

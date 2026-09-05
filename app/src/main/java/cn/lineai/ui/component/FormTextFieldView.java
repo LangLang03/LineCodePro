@@ -28,10 +28,10 @@ public final class FormTextFieldView extends LinearLayout {
         input.setTextColor(LineTheme.TEXT);
         input.setTextSize(LineTheme.FONT_MD);
         input.setSingleLine(!multiline);
-        input.setMinHeight(LineTheme.dp(context, multiline ? 112 : 52));
+        input.setMinHeight(LineTheme.dp(context, multiline ? 120 : 44));
         input.setGravity((multiline ? Gravity.TOP : Gravity.CENTER_VERTICAL) | Gravity.START);
         input.setIncludeFontPadding(false);
-        input.setBackground(LineTheme.fieldBackground(context));
+        input.setBackground(LineTheme.roundedStroke(context, LineTheme.SURFACE_LIGHT, 8, LineTheme.BORDER_LIGHT));
         input.setPadding(LineTheme.dp(context, LineTheme.MD), LineTheme.dp(context, LineTheme.SM), LineTheme.dp(context, LineTheme.MD), LineTheme.dp(context, LineTheme.SM));
         if (secure) {
             input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
@@ -42,14 +42,14 @@ public final class FormTextFieldView extends LinearLayout {
             input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         }
         LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        inputParams.topMargin = LineTheme.dp(context, 10);
+        inputParams.topMargin = LineTheme.dp(context, LineTheme.XS);
         addView(input, inputParams);
 
         if (hint != null && hint.length() > 0) {
-            TextView hintView = LineTheme.text(context, hint, 13, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+            TextView hintView = LineTheme.text(context, hint, LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
             hintView.setLineSpacing(LineTheme.dp(context, 3), 1f);
             LinearLayout.LayoutParams hintParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-            hintParams.topMargin = LineTheme.dp(context, 10);
+            hintParams.topMargin = LineTheme.dp(context, LineTheme.XS);
             addView(hintView, hintParams);
         }
     }

@@ -6,29 +6,23 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 
-public class ScreenScaffoldView extends ScreenSurfaceView {
+public class ScreenScaffoldView extends LinearLayout {
     private final LinearLayout content;
     private final ScrollView scrollView;
     private final View rightAction;
 
     public ScreenScaffoldView(Context context, String title, Runnable onBack, View rightAction) {
-        this(context, title, onBack, rightAction, false);
-    }
-
-    protected ScreenScaffoldView(Context context, String title, Runnable onBack, View rightAction, boolean inlineTitle) {
         super(context);
         this.rightAction = rightAction;
         setOrientation(VERTICAL);
         setBackgroundColor(LineTheme.BG);
-        addView(new ScreenHeaderView(context, title, onBack, rightAction, inlineTitle), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        addView(new ScreenHeaderView(context, title, onBack, rightAction), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         scrollView = new ScrollView(context);
         scrollView.setFillViewport(false);
-        scrollView.setClipToPadding(false);
-        scrollView.setVerticalScrollBarEnabled(false);
         content = new LinearLayout(context);
         content.setOrientation(VERTICAL);
-        LineTheme.padding(content, 0, 0, 0, 48);
+        LineTheme.padding(content, 0, 0, 0, 100);
         scrollView.addView(content, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         addView(scrollView, new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
     }

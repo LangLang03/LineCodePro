@@ -21,7 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-public final class ModelListScreenView extends ScreenSurfaceView {
+public final class ModelListScreenView extends LinearLayout {
     public interface Listener {
         void onBack();
 
@@ -70,7 +70,7 @@ public final class ModelListScreenView extends ScreenSurfaceView {
         ScrollView scrollView = new ScrollView(context);
         list = new LinearLayout(context);
         list.setOrientation(VERTICAL);
-        LineTheme.padding(list, 16, 8, 16, 48);
+        LineTheme.padding(list, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
         scrollView.addView(list, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         addView(scrollView, new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
 
@@ -106,6 +106,7 @@ public final class ModelListScreenView extends ScreenSurfaceView {
         if (allowManagement) {
             add = new IconButtonView(context, IconButtonView.PLUS);
             add.setIconColor(LineTheme.TEXT);
+            add.setIconSizeDp(36, 20);
             add.setContentDescription(context.getString(R.string.screen_model_add_options_title));
             add.setOnClickListener(v -> listener.onAddModel());
         }
@@ -158,28 +159,34 @@ public final class ModelListScreenView extends ScreenSurfaceView {
             }
             return true;
         });
-        int background = selected || checked ? LineTheme.INPUT_BG : LineTheme.SURFACE_ELEVATED;
-        int border = LineTheme.BORDER_LIGHT;
+        int background = checked ? LineTheme.ACCENT_MUTED : LineTheme.BG;
+        int border = selected || checked ? LineTheme.ACCENT : Color.TRANSPARENT;
         card.setBackground(LineTheme.roundedStroke(context, background, 12, border));
-        LineTheme.padding(card, 12, 20, 12, 20);
+        LineTheme.padding(card, LineTheme.MD, LineTheme.MD, LineTheme.MD, LineTheme.MD);
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         cardParams.bottomMargin = LineTheme.dp(context, LineTheme.SM);
         list.addView(card, cardParams);
 
         String provider = displayProvider(model);
+        TextView badge = LineTheme.text(context, provider, LineTheme.FONT_XS, LineTheme.TEXT_ON_COLOR, Typeface.BOLD);
+        badge.setGravity(Gravity.CENTER);
+        badge.setBackground(LineTheme.rounded(context, badgeColor(model), 8));
+        LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        badgeParams.rightMargin = LineTheme.dp(context, LineTheme.MD);
+        LineTheme.padding(badge, LineTheme.SM, 4, LineTheme.SM, 4);
+        card.addView(badge, badgeParams);
+
         LinearLayout info = new LinearLayout(context);
         info.setOrientation(VERTICAL);
         card.addView(info, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
 
         TextView title = LineTheme.textMedium(context, model.getName(), LineTheme.FONT_MD, LineTheme.TEXT);
-        title.setMaxLines(2);
-        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        title.setSingleLine(true);
         info.addView(title, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        TextView sub = LineTheme.text(context, provider + " / " + model.getModelId(), LineTheme.FONT_SM, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
-        sub.setMaxLines(2);
-        sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        TextView sub = LineTheme.text(context, model.getModelId(), LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+        sub.setSingleLine(true);
         LinearLayout.LayoutParams subParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        subParams.topMargin = LineTheme.dp(context, 6);
+        subParams.topMargin = LineTheme.dp(context, 2);
         info.addView(sub, subParams);
 
         if (!multiSelectedIds.isEmpty()) {
@@ -281,7 +288,7 @@ public final class ModelListScreenView extends ScreenSurfaceView {
     private LinearLayout createBottomPanel(Context context) {
         LinearLayout panel = new LinearLayout(context);
         panel.setOrientation(VERTICAL);
-        panel.setBackground(LineTheme.rounded(context, LineTheme.BG, 24));
+        panel.setBackground(LineTheme.roundedTop(context, LineTheme.SURFACE_ELEVATED, 16));
         return panel;
     }
 
@@ -333,7 +340,7 @@ public final class ModelListScreenView extends ScreenSurfaceView {
         if (desc != null && desc.length() > 0) {
             TextView descView = LineTheme.text(context, desc, LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
             LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-            descParams.topMargin = LineTheme.dp(context, 6);
+            descParams.topMargin = LineTheme.dp(context, 2);
             labels.addView(descView, descParams);
         }
         panel.addView(row, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));

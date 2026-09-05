@@ -40,7 +40,7 @@ public final class TermuxIntegrationScreenView extends ScreenScaffoldView {
         this.listener = listener;
 
         LinearLayout content = getContent();
-        LineTheme.padding(content, 28, 8, 28, 48);
+        LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
 
         LinearLayout intro = card(context);
         intro.addView(title(context, context.getString(R.string.screen_termux_section_use)));
@@ -221,8 +221,8 @@ public final class TermuxIntegrationScreenView extends ScreenScaffoldView {
     private LinearLayout card(Context context) {
         LinearLayout card = new LinearLayout(context);
         card.setOrientation(VERTICAL);
-        card.setBackground(null);
-        LineTheme.padding(card, 0, 16, 0, 24);
+        card.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_ELEVATED, 12));
+        LineTheme.padding(card, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
         return card;
     }
 
@@ -243,7 +243,7 @@ public final class TermuxIntegrationScreenView extends ScreenScaffoldView {
         content.addView(card, params);
     }
 
-    private static final class GridLikeActions extends ScreenSurfaceView {
+    private static final class GridLikeActions extends LinearLayout {
         GridLikeActions(Context context) {
             super(context);
             setOrientation(VERTICAL);

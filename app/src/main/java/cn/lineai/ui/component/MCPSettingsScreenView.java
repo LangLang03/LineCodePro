@@ -88,7 +88,7 @@ public final class MCPSettingsScreenView extends ScreenScaffoldView {
         descParams.topMargin = LineTheme.dp(context, 2);
         card.addView(desc, descParams);
 
-        LinearLayout actions = new AdaptiveActionsView(context);
+        LinearLayout actions = new LinearLayout(context);
         actions.setOrientation(HORIZONTAL);
         LinearLayout ssh = actionButton(context, context.getString(R.string.screen_mcp_ssh_settings), IconButtonView.SERVER, true, v -> listener.onOpenSshSettings());
         LinearLayout termux = actionButton(context, context.getString(R.string.screen_mcp_termux_integration), IconButtonView.SMARTPHONE, false, v -> listener.onOpenTermuxIntegration());
@@ -133,7 +133,6 @@ public final class MCPSettingsScreenView extends ScreenScaffoldView {
         icon.setIconSizeDp(36, 18);
         icon.setClickable(false);
         icon.setBackground(LineTheme.rounded(context, LineTheme.ACCENT_MUTED, 18));
-
         header.addView(icon, new LinearLayout.LayoutParams(LineTheme.dp(context, 36), LineTheme.dp(context, 36)));
 
         LinearLayout labels = new LinearLayout(context);

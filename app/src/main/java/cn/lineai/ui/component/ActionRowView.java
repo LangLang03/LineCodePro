@@ -19,7 +19,6 @@ public final class ActionRowView extends LinearLayout {
 
         FrameLayout iconWrap = new FrameLayout(context);
         iconWrap.setBackground(LineTheme.rounded(context, destructive ? LineTheme.DANGER_MUTED : LineTheme.ACCENT_MUTED, 8));
-
         IconButtonView icon = new IconButtonView(context, iconType);
         icon.setIconColor(destructive ? LineTheme.DANGER : LineTheme.ACCENT);
         icon.setIconSizeDp(36, 20);

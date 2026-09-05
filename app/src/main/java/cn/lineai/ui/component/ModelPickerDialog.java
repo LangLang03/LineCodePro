@@ -35,7 +35,7 @@ public final class ModelPickerDialog {
 
         LinearLayout panel = new LinearLayout(context);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackground(LineTheme.rounded(context, LineTheme.BG, 24));
+        panel.setBackground(LineTheme.roundedTop(context, LineTheme.SURFACE_ELEVATED, 16));
 
         View handle = new View(context);
         handle.setBackground(LineTheme.rounded(context, LineTheme.TEXT_TERTIARY, 2));

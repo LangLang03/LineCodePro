@@ -66,12 +66,10 @@ public final class SshSettingsScreenView extends ScreenScaffoldView {
         form.addView(portField, formParams(context));
         form.addView(usernameField, formParams(context));
         form.addView(passwordField, formParams(context));
-        DisclosureSectionView keys = new DisclosureSectionView(context, context.getString(R.string.screen_ssh_field_private_key), !config.getPrivateKey().isEmpty());
-        keys.getBody().addView(privateKeyField, formParams(context));
-        keys.getBody().addView(passphraseField, formParams(context));
-        form.addView(keys, formParams(context));
+        form.addView(privateKeyField, formParams(context));
+        form.addView(passphraseField, formParams(context));
 
-        LinearLayout actions = new AdaptiveActionsView(context);
+        LinearLayout actions = new LinearLayout(context);
         actions.setOrientation(HORIZONTAL);
         LinearLayout saveButton = button(context, context.getString(R.string.screen_ssh_save), IconButtonView.SAVE, false, v -> {
             listener.onSaveConfig(readConfig());
