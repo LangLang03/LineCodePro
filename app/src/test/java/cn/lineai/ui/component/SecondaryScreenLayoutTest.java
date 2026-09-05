@@ -78,7 +78,7 @@ public class SecondaryScreenLayoutTest {
             try {
                 View view=screen(name);layout(view,320,720);
                 assertTrue(view.getMeasuredHeight()>0);
-                if(Arrays.asList("Settings","Extensions","ModelAdd","SshSettings","MCPSettings","ThemeSettings","SkillStore","TerminalProviderDetail","MemorySettings","Tutorial").contains(name)) {
+                if(Arrays.asList("Settings","Extensions","ModelAdd","SshSettings","MCPSettings","OutputSettings","ThemeSettings","SkillStore","TerminalProviderDetail","MemorySettings","Tutorial").contains(name)) {
                     layout(view,390,844);screenshot(view,"light-390-"+name);
                 }
             } catch(Throwable error) {

@@ -48,6 +48,7 @@ import cn.lineai.model.WebSearchConfig;
 import cn.lineai.security.UrlPolicy;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.model.ChatMessage;
+import cn.lineai.model.ChatUiState;
 import cn.lineai.model.FileTreeNode;
 import cn.lineai.model.KeepAliveSettings;
 import cn.lineai.model.StorageStatsUiModel;
@@ -625,6 +626,11 @@ public final class MainCoordinator implements MainUiController {
     }
 
     @Override
+    public void onProcessAutoExpandChanged(boolean enabled) {
+        settingsManagementController.setProcessAutoExpandEnabled(enabled);
+    }
+
+    @Override
     public void onBrowserModeChanged(String mode) {
         settingsManagementController.setBrowserMode(mode);
     }
@@ -1039,7 +1045,7 @@ public final class MainCoordinator implements MainUiController {
             return;
         }
         String activeChatMode = syncModePermission();
-        viewProxy.render(chatUiStateAssembler.assemble(
+        ChatUiState uiState = chatUiStateAssembler.assemble(
                 projectState.label(),
                 projectState.source(),
                 projectState.path(),
@@ -1047,7 +1053,12 @@ public final class MainCoordinator implements MainUiController {
                 activeChatMode,
                 chatSessionStore.isStreaming(),
                 messages
-        ).withToolApproval(generationFlowController == null ? null : generationFlowController.pendingToolApproval()));
+        );
+        if (toolReviewController != null) {
+            uiState = uiState.withDisplayMessages(toolReviewController.applyLocalReviews(messages));
+        }
+        viewProxy.render(uiState.withToolApproval(
+                generationFlowController == null ? null : generationFlowController.pendingToolApproval()));
     }
 
     void resetTodoState() {

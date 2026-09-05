@@ -453,6 +453,7 @@ public final class ChatMessageListView extends FrameLayout {
         private final Map<String, Boolean> disclosure = new HashMap<>();
         private boolean thinkingAutoExpand;
         private boolean thinkingScroll;
+        private boolean processAutoExpand;
         private boolean codeWrapEnabled;
         private boolean multiSelectMode;
         private Set<String> selectedMessageIds = java.util.Collections.emptySet();
@@ -497,6 +498,7 @@ public final class ChatMessageListView extends FrameLayout {
             boolean nextShowConfigureState = nextMessages.isEmpty() && state != null && !state.hasConfiguredModel();
             boolean nextThinkingAutoExpand = state != null && state.isThinkingAutoExpandEnabled();
             boolean nextThinkingScroll = state == null || state.isThinkingScrollEnabled();
+            boolean nextProcessAutoExpand = state != null && state.isProcessAutoExpandEnabled();
             boolean nextCodeWrapEnabled = state != null && state.isCodeWrapEnabled();
             String nextConversationId = state == null ? "" : state.getConversationId();
             String nextProjectPath = state == null ? "" : state.getProjectPath();
@@ -506,6 +508,7 @@ public final class ChatMessageListView extends FrameLayout {
                     && showConfigureState == nextShowConfigureState
                     && thinkingAutoExpand == nextThinkingAutoExpand
                     && thinkingScroll == nextThinkingScroll
+                    && processAutoExpand == nextProcessAutoExpand
                     && codeWrapEnabled == nextCodeWrapEnabled
                     && stringEquals(conversationId, nextConversationId)
                     && stringEquals(projectPath, nextProjectPath)
@@ -524,6 +527,7 @@ public final class ChatMessageListView extends FrameLayout {
             showConfigureState = nextShowConfigureState;
             thinkingAutoExpand = nextThinkingAutoExpand;
             thinkingScroll = nextThinkingScroll;
+            processAutoExpand = nextProcessAutoExpand;
             codeWrapEnabled = nextCodeWrapEnabled;
             conversationId = nextConversationId;
             projectPath = nextProjectPath;
@@ -598,7 +602,7 @@ public final class ChatMessageListView extends FrameLayout {
                         : obtain(AssistantTurnView.class, key, new AssistantTurnView(context));
                 view.bind(timeline.get(position), disclosure, projectPath, toolReviewListener,
                         markdownLinkHandler, messageActionListener, codeWrapEnabled,
-                        generating && position == timeline.size() - 1);
+                        generating && position == timeline.size() - 1, processAutoExpand);
                 return view;
             }
             if (message.isModelSwitchNotification()) {

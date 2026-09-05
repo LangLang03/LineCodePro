@@ -73,6 +73,7 @@ public final class ChatUiStateAssembler {
                 hasConfiguredModel,
                 aiSettings.isThinkingScrollEnabled(),
                 aiSettings.isThinkingAutoExpandEnabled(),
+                outputSettings.isProcessAutoExpandEnabled(),
                 outputSettings.isCodeWrapEnabled(),
                 outputSettings.getBrowserMode(),
                 inputSettings.getEnterKeyBehavior(),
@@ -80,7 +81,8 @@ public final class ChatUiStateAssembler {
                 conversationId,
                 messages,
                 selectedModelId,
-                availableModels
+                availableModels,
+                null
         );
     }
 

@@ -15,4 +15,6 @@ public interface DiffStore {
     DiffRepository.RevertResult revertDiff(String diffId);
 
     void markReverted(String diffId);
+
+    void setReview(String diffId, String state, String message);
 }

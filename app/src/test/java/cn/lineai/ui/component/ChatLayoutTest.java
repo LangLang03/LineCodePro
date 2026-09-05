@@ -92,8 +92,8 @@ public class ChatLayoutTest {
         view.bind(new ChatMessage("user", ChatMessage.Role.USER, "SSH 断开后，帮我自动重连。", false));
         wrapHeight(view, 390);
         TextView text = text(view, "SSH 断开后，帮我自动重连。");
-        assertNotNull(text.getBackground()); assertEquals(362, text.getRight());
-        assertTrue(text.getLeft() > 28);
+        assertNotNull(text.getBackground()); assertEquals(374, text.getRight());
+        assertTrue(text.getLeft() > 16);
     }
     @Test public void streamUpdatesRespectManualProcessAndToolDisclosure() {
         Map<String, Boolean> expansion = new HashMap<>();
@@ -122,6 +122,40 @@ public class ChatLayoutTest {
     private void bindTurn(AssistantTurnView view, Map<String, Boolean> expansion, ChatMessage work, ChatMessage answer) {
         view.bind(ConversationTimeline.build(Arrays.asList(work, answer)).get(0), expansion, "/workspace", null, null, null, false, true);
         wrapHeight(view, 390);
+    }
+    @Test public void processingCanAutoExpandWithoutOverridingAManualCollapse() {
+        ToolCall call = new ToolCall("read", ToolNames.FILE_READ, "{\"file_path\":\"/workspace/a.txt\"}");
+        ChatMessage work = new ChatMessage("work", ChatMessage.Role.ASSISTANT, "", false)
+                .withToolCalls(Collections.singletonList(call), false);
+        ChatMessage answer = new ChatMessage("answer", ChatMessage.Role.ASSISTANT, "done", false);
+        Map<String, Boolean> state = new HashMap<>();
+        AssistantTurnView view = new AssistantTurnView(activity);
+
+        view.bind(ConversationTimeline.build(Arrays.asList(work, answer)).get(0), state,
+                "/workspace", null, null, null, false, false, true);
+        assertTrue(state.get("work:process"));
+
+        state.put("work:process", false);
+        view.bind(ConversationTimeline.build(Arrays.asList(work, answer)).get(0), state,
+                "/workspace", null, null, null, false, false, true);
+        assertFalse(state.get("work:process"));
+    }
+    @Test public void readRowsUseToolSpecificWebIcons() {
+        cn.lineai.tool.ui.ToolInfoResolverProvider.setDefault(new cn.lineai.tool.ui.ToolInfoResolver() {
+            public cn.lineai.tool.ToolDisplayCategory getDisplayCategory(String name) { return cn.lineai.tool.ToolDisplayCategory.READ; }
+            public String getDisplayLabel(android.content.Context context, String name, org.json.JSONObject input, String workspace) { return name; }
+            public String getActionName(android.content.Context context, String name) { return name; }
+            public int getActionIcon(String name) { return "web_search".equals(name) ? cn.lineai.ui.theme.IconButtonView.SEARCH : cn.lineai.ui.theme.IconButtonView.GLOBE; }
+            public cn.lineai.tool.ToolInfo getToolInfo(String name) { return null; }
+        });
+        ToolCallReadView search = new ToolCallReadView(activity);
+        search.bind(new ToolCall("search", "web_search", "{}"), null);
+        assertEquals(cn.lineai.ui.theme.IconButtonView.SEARCH,
+                find(search, cn.lineai.ui.theme.IconButtonView.class).getIconType());
+        ToolCallReadView fetch = new ToolCallReadView(activity);
+        fetch.bind(new ToolCall("fetch", "web_fetch", "{}"), null);
+        assertEquals(cn.lineai.ui.theme.IconButtonView.GLOBE,
+                find(fetch, cn.lineai.ui.theme.IconButtonView.class).getIconType());
     }
     @Test public void readRowsAreNotClickableAndNeverContainTheFileContents() {
         ToolCallReadView view = new ToolCallReadView(activity);

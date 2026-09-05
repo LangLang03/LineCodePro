@@ -8,6 +8,7 @@ public final class OutputSettingsRepository {
     public static final String KEY_BROWSER_JAVASCRIPT = "@lineai_browser_javascript";
     public static final String KEY_ALLOW_ANY_HTTP = "@lineai_allow_any_http";
     public static final String KEY_BYPASS_PATH_PROTECTION = "@lineai_bypass_path_protection";
+    public static final String KEY_PROCESS_AUTO_EXPAND = "@lineai_process_auto_expand";
 
     private final SettingsRepository settingsRepository;
 
@@ -21,12 +22,17 @@ public final class OutputSettingsRepository {
                 settingsRepository.getString(KEY_BROWSER_MODE, OutputSettings.BROWSER_BUILTIN),
                 settingsRepository.getBoolean(KEY_BROWSER_JAVASCRIPT, false),
                 settingsRepository.getBoolean(KEY_ALLOW_ANY_HTTP, false),
-                settingsRepository.getBoolean(KEY_BYPASS_PATH_PROTECTION, false)
+                settingsRepository.getBoolean(KEY_BYPASS_PATH_PROTECTION, false),
+                settingsRepository.getBoolean(KEY_PROCESS_AUTO_EXPAND, false)
         );
     }
 
     public synchronized void setCodeWrapEnabled(boolean enabled) {
         settingsRepository.setBoolean(KEY_CODE_WRAP, enabled);
+    }
+
+    public synchronized void setProcessAutoExpandEnabled(boolean enabled) {
+        settingsRepository.setBoolean(KEY_PROCESS_AUTO_EXPAND, enabled);
     }
 
     public synchronized void setBrowserMode(String mode) {

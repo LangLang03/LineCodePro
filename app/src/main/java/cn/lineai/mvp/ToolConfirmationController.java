@@ -274,17 +274,6 @@ final class ToolConfirmationController {
             rememberSessionAutoConfirmation(pending.getToolCall());
         }
 
-        ToolResult accepted = ToolResult.withReview(
-                pending.getToolCall().getId(),
-                pending.getToolCall().getName(),
-                "",
-                false,
-                "",
-                "accepted",
-                ""
-        );
-        callback.addOrReplaceToolResult(accepted);
-        callback.persistCurrentConversation();
         callback.render();
         callback.executeAcceptedPendingTool(pending);
     }

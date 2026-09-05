@@ -6,6 +6,7 @@ import cn.lineai.data.db.LineCodeDatabase;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
+import org.json.JSONObject;
 
 public final class DiffRepository extends BaseRepository implements DiffStore {
     private final SecureRandom random = new SecureRandom();
@@ -92,7 +93,31 @@ public final class DiffRepository extends BaseRepository implements DiffStore {
         database.getWritableDatabase().update("diff_records", values, "id = ?", new String[] {diffId});
     }
 
+    @Override
+    public synchronized void setReview(String diffId, String state, String message) {
+        if (diffId == null || diffId.length() == 0) {
+            return;
+        }
+        JSONObject local = new JSONObject();
+        try {
+            local.put("review_state", state == null ? "" : state);
+            local.put("review_message", message == null ? "" : message);
+        } catch (Exception ignored) {
+            return;
+        }
+        ContentValues values = new ContentValues();
+        values.put("raw_json", local.toString());
+        database.getWritableDatabase().update("diff_records", values, "id = ?", new String[] {diffId});
+    }
+
     private DiffRecord readRecord(Cursor cursor) {
+        String rawJson = cursor.getString(cursor.getColumnIndexOrThrow("raw_json"));
+        JSONObject local;
+        try {
+            local = rawJson == null || rawJson.length() == 0 ? new JSONObject() : new JSONObject(rawJson);
+        } catch (Exception ignored) {
+            local = new JSONObject();
+        }
         return new DiffRecord(
                 cursor.getString(cursor.getColumnIndexOrThrow("id")),
                 cursor.getString(cursor.getColumnIndexOrThrow("file_path")),
@@ -100,7 +125,9 @@ public final class DiffRepository extends BaseRepository implements DiffStore {
                 cursor.getString(cursor.getColumnIndexOrThrow("new_content")),
                 cursor.getInt(cursor.getColumnIndexOrThrow("old_exists")) == 1,
                 cursor.getLong(cursor.getColumnIndexOrThrow("timestamp")),
-                cursor.getInt(cursor.getColumnIndexOrThrow("reverted")) == 1
+                cursor.getInt(cursor.getColumnIndexOrThrow("reverted")) == 1,
+                local.optString("review_state"),
+                local.optString("review_message")
         );
     }
 

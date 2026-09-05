@@ -7,6 +7,8 @@ public interface OutputSettingsController {
 
     void onCodeWrapChanged(boolean enabled);
 
+    void onProcessAutoExpandChanged(boolean enabled);
+
     void onBrowserModeChanged(String mode);
 
     void onBrowserJavaScriptChanged(boolean enabled);
