@@ -260,6 +260,33 @@ public class UiCorrectionsTest {
         assertEquals(1,visibleTextCount(view,label));
         screenshot(view,"retry-expanded-timed");
     }
+    @Test public void workingStatusAndReasoningKeepTheCompactMessageActions() throws Exception {
+        AssistantMessageView view = new AssistantMessageView(activity);
+        view.bind(new ChatMessage("reply", ChatMessage.Role.ASSISTANT, "", true));
+        layout(view);
+        WorkingStatusView status = all(view, WorkingStatusView.class).get(0);
+        MessageActionBarView actions = all(view, MessageActionBarView.class).get(0);
+        cn.lineai.ui.markdown.MarkdownView content = all(view, cn.lineai.ui.markdown.MarkdownView.class).get(0);
+        assertEquals(View.VISIBLE, status.getVisibility());
+        assertEquals(View.GONE, content.getVisibility());
+        assertEquals(View.GONE, actions.getVisibility());
+        view.bind(new ChatMessage("reply", ChatMessage.Role.ASSISTANT, "", "**检查重连**", true));
+        layout(view);
+        assertEquals(View.VISIBLE, all(view, ThinkingBlockView.class).get(0).getVisibility());
+        assertEquals(View.VISIBLE, status.getVisibility());
+        assertEquals(activity.getString(R.string.message_assistant_thinking), status.getContentDescription());
+        ChatMessage done = new ChatMessage("reply", ChatMessage.Role.ASSISTANT, "重连已恢复。", false);
+        view.bind(done);
+        layout(view);
+        assertEquals(View.GONE, status.getVisibility());
+        assertEquals(View.GONE, actions.getVisibility());
+        assertTrue(content.performLongClick());
+        assertEquals(View.VISIBLE, actions.getVisibility());
+        view.bind(done);
+        assertEquals(View.VISIBLE, actions.getVisibility());
+        screenshot(view, "working-status-compact-actions");
+    }
+
     @Test public void toolFailuresStillProduceLogFiles() throws Exception {
         Thread.UncaughtExceptionHandler previous=Thread.getDefaultUncaughtExceptionHandler();
         try {

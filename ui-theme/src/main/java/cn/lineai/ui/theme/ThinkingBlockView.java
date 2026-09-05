@@ -5,6 +5,9 @@ import cn.lineai.ui.theme.LineTheme;
 
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.StyleSpan;
 import android.content.Context;
 import android.graphics.Typeface;
 import android.view.Gravity;
@@ -83,7 +86,7 @@ public final class ThinkingBlockView extends LinearLayout {
         labelView.setText(streaming
                 ? getContext().getString(R.string.thinking_label)
                 : getContext().getString(R.string.thinking_done_label));
-        contentView.setText(content == null ? "" : content);
+        contentView.setText(styledContent(content == null ? "" : content));
         contentView.setMaxLines(Integer.MAX_VALUE);
         contentScrollView.setMaxHeightDp(scrollable ? 180 : 0);
         updateExpanded();
@@ -106,6 +109,30 @@ public final class ThinkingBlockView extends LinearLayout {
             pulseAnimator = null;
         }
         super.onDetachedFromWindow();
+    }
+
+    static CharSequence styledContent(String content) {
+        InlineEmphasisParser.Parsed parsed = InlineEmphasisParser.parse(content);
+        SpannableString styled = new SpannableString(parsed.getText());
+        for (InlineEmphasisParser.Span span : parsed.getSpans()) {
+            styled.setSpan(
+                    new StyleSpan(typefaceStyle(span.getStyle())),
+                    span.getStart(),
+                    span.getEnd(),
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            );
+        }
+        return styled;
+    }
+
+    private static int typefaceStyle(int style) {
+        if (style == InlineEmphasisParser.BOLD) {
+            return Typeface.BOLD;
+        }
+        if (style == InlineEmphasisParser.ITALIC) {
+            return Typeface.ITALIC;
+        }
+        return Typeface.BOLD_ITALIC;
     }
 
     private void updateExpanded() {

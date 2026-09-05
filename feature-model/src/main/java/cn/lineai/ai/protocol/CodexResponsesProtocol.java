@@ -72,14 +72,17 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
 
             StringBuilder text = new StringBuilder();
             StringBuilder reasoning = new StringBuilder();
+            ReasoningSummaryStream reasoningSummaryStream = new ReasoningSummaryStream(reasoning, callback);
             LinkedHashMap<String, CodexOutputMerger.ToolCallBuilder> toolCallBuilders = new LinkedHashMap<>();
             HashMap<String, StringBuilder> customToolInputs = new HashMap<>();
             final int[] usageInputTokens = new int[1];
             final int[] usageOutputTokens = new int[1];
 
             postJsonSse(requestBuilder.responsesEndpoint(config.getBaseUrl()), body, headers, cancellationToken, (eventType, data) -> {
-                handleSseEvent(eventType, data, callback, text, reasoning, toolCallBuilders, customToolInputs, usageInputTokens, usageOutputTokens);
+                handleSseEvent(eventType, data, callback, text, reasoning, reasoningSummaryStream,
+                        toolCallBuilders, customToolInputs, usageInputTokens, usageOutputTokens);
             });
+            reasoningSummaryStream.flush();
 
             return new ModelCompletionResponse(
                     text.toString(),
@@ -101,6 +104,7 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             ModelStreamCallback callback,
             StringBuilder text,
             StringBuilder reasoning,
+            ReasoningSummaryStream reasoningSummaryStream,
             LinkedHashMap<String, CodexOutputMerger.ToolCallBuilder> toolCallBuilders,
             HashMap<String, StringBuilder> customToolInputs,
             int[] usageInputTokens,
@@ -143,8 +147,13 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             return;
         }
 
-        if (("response.reasoning_summary_text.delta".equals(type) || "response.reasoning_text.delta".equals(type))
-                && event.has("delta")) {
+        if ("response.reasoning_summary_text.delta".equals(type) && event.has("delta")) {
+            reasoningSummaryStream.append(event.optString("delta"));
+            return;
+        }
+
+        if ("response.reasoning_text.delta".equals(type) && event.has("delta")) {
+            reasoningSummaryStream.flush();
             String delta = event.optString("delta");
             reasoning.append(delta);
             if (callback != null) {
@@ -153,12 +162,15 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             return;
         }
 
-        if ("response.reasoning_summary_part.added".equals(type) && reasoning.length() > 0) {
-            reasoning.append('\n');
-            if (callback != null) {
-                callback.onReasoningDelta("\n");
-            }
+        if ("response.reasoning_summary_part.added".equals(type)) {
+            reasoningSummaryStream.startPart();
             return;
+        }
+
+        if ("response.completed".equals(type)
+                || "response.output_item.added".equals(type)
+                || "response.output_item.done".equals(type)) {
+            reasoningSummaryStream.flush();
         }
 
         handleCompleted(type, event, callback, text, reasoning, toolCallBuilders, customToolInputs, usageInputTokens, usageOutputTokens);
@@ -240,5 +252,75 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             toolCallBuilders.put(callId, builder);
         }
         builder.arguments.append(delta);
+    }
+
+    private static final class ReasoningSummaryStream {
+        private final StringBuilder target;
+        private final ModelStreamCallback callback;
+        private final StringBuilder pendingWhitespace = new StringBuilder();
+        private boolean hasContent;
+        private boolean separatorPending;
+
+        ReasoningSummaryStream(StringBuilder target, ModelStreamCallback callback) {
+            this.target = target;
+            this.callback = callback;
+        }
+
+        void startPart() {
+            if (!hasContent) {
+                return;
+            }
+            pendingWhitespace.setLength(0);
+            separatorPending = true;
+        }
+
+        void append(String delta) {
+            if (delta == null || delta.length() == 0) {
+                return;
+            }
+            int start = 0;
+            if (separatorPending) {
+                while (start < delta.length() && Character.isWhitespace(delta.charAt(start))) {
+                    start++;
+                }
+                if (start == delta.length()) {
+                    return;
+                }
+                pendingWhitespace.setLength(0);
+                emit(" | ");
+                separatorPending = false;
+            }
+
+            int end = delta.length();
+            while (end > start && Character.isWhitespace(delta.charAt(end - 1))) {
+                end--;
+            }
+            if (end == start) {
+                pendingWhitespace.append(delta, start, delta.length());
+                return;
+            }
+            if (pendingWhitespace.length() > 0) {
+                emit(pendingWhitespace.toString());
+                pendingWhitespace.setLength(0);
+            }
+            emit(delta.substring(start, end));
+            pendingWhitespace.append(delta, end, delta.length());
+            hasContent = true;
+        }
+
+        void flush() {
+            if (!separatorPending && pendingWhitespace.length() > 0) {
+                emit(pendingWhitespace.toString());
+            }
+            pendingWhitespace.setLength(0);
+            separatorPending = false;
+        }
+
+        private void emit(String delta) {
+            target.append(delta);
+            if (callback != null) {
+                callback.onReasoningDelta(delta);
+            }
+        }
     }
 }

@@ -69,6 +69,8 @@
 
     <string name="message_user_attached_files">Прикреплённые файлы</string>
     <string name="message_assistant_generating">Генерация…</string>
+    <string name="message_assistant_working">Выполняется</string>
+    <string name="message_assistant_thinking">Размышление</string>
     <string name="message_empty_model_required">Сначала настройте модель в настройках</string>
     <string name="message_empty_session_start">Начните сессию с вопроса</string>
     <string name="message_empty_permission_needed">Вызовы инструментов требуют подтверждения разрешений</string>

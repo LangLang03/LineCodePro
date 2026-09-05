@@ -17,6 +17,7 @@ import cn.lineai.ai.protocol.reasoning.DefaultReasoningStrategy;
 import cn.lineai.ai.protocol.reasoning.KimiReasoningStrategy;
 import cn.lineai.ai.protocol.reasoning.MinimaxReasoningStrategy;
 import cn.lineai.ai.protocol.reasoning.MoonshotReasoningStrategy;
+import cn.lineai.ai.protocol.reasoning.OpenAiChatReasoningStrategy;
 import cn.lineai.ai.protocol.reasoning.ReasoningDeltaExtractor;
 import cn.lineai.tool.ToolInfo;
 import cn.lineai.util.StringUtils;
@@ -31,7 +32,6 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
 
     private final OpenAiMessageSerializer messageSerializer = new OpenAiMessageSerializer();
     private final ReasoningStrategyRegistry reasoningStrategyRegistry = createDefaultRegistry();
-    private final ReasoningDeltaExtractor reasoningDeltaExtractor = new ReasoningDeltaExtractor();
 
     private static ReasoningStrategyRegistry createDefaultRegistry() {
         ReasoningStrategyRegistry registry = new ReasoningStrategyRegistry();
@@ -40,6 +40,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         registry.register(new DeepseekReasoningStrategy());
         registry.register(new KimiReasoningStrategy());
         registry.register(new MoonshotReasoningStrategy());
+        registry.register(new OpenAiChatReasoningStrategy());
         registry.register(new DefaultReasoningStrategy());
         return registry;
     }
@@ -116,6 +117,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
 
             StringBuilder text = new StringBuilder();
             StringBuilder reasoning = new StringBuilder();
+            ReasoningDeltaExtractor reasoningDeltaExtractor = new ReasoningDeltaExtractor();
             ThinkTagParser thinkTagParser = new ThinkTagParser();
             HashMap<Integer, ToolCallBuilder> toolCallBuilders = new HashMap<>();
             final int[] usageInputTokens = new int[1];
@@ -169,6 +171,13 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                     appendParsedDelta(text, reasoning, parsed, callback);
                 }
             });
+            String trailingReasoning = reasoningDeltaExtractor.flush();
+            if (trailingReasoning.length() > 0) {
+                reasoning.append(trailingReasoning);
+                if (callback != null) {
+                    callback.onReasoningDelta(trailingReasoning);
+                }
+            }
 
             appendParsedDelta(text, reasoning, thinkTagParser.flush(), callback);
             return new ModelCompletionResponse(

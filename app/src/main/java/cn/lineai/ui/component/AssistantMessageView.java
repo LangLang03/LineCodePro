@@ -20,7 +20,7 @@ public final class AssistantMessageView extends LinearLayout {
     private final ContextCompactBlockView compactBlockView;
     private final ThinkingBlockView thinkingBlockView;
     private final MarkdownView contentView;
-    private final StreamingCursorView cursorView;
+    private final WorkingStatusView workingStatusView;
     private final LinearLayout toolCallsContainer;
     private final MessageActionBarView actionBar;
     private final int defaultPaddingLeft;
@@ -67,11 +67,10 @@ public final class AssistantMessageView extends LinearLayout {
         contentView = new MarkdownView(context);
         addView(contentView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
-        cursorView = new StreamingCursorView(context);
-        LinearLayout.LayoutParams cursorParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
-        cursorParams.leftMargin = LineTheme.dp(context, 2);
-        cursorParams.topMargin = LineTheme.dp(context, 2);
-        addView(cursorView, cursorParams);
+        workingStatusView = new WorkingStatusView(context);
+        LinearLayout.LayoutParams workingParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        workingParams.topMargin = LineTheme.dp(context, 2);
+        addView(workingStatusView, workingParams);
 
         toolCallsContainer = new LinearLayout(context);
         toolCallsContainer.setOrientation(VERTICAL);
@@ -147,7 +146,7 @@ public final class AssistantMessageView extends LinearLayout {
             compactBlockView.bind(message.getCompactStatus());
             thinkingBlockView.setVisibility(GONE);
             contentView.setVisibility(GONE);
-            setCursorVisible(false);
+            setWorkingStatusVisible(false, false);
             toolCallsContainer.setVisibility(GONE);
             toolCallsContainer.removeAllViews();
             actionBar.setVisibility(GONE);
@@ -161,7 +160,7 @@ public final class AssistantMessageView extends LinearLayout {
             return;
         }
         compactBlockView.setVisibility(GONE);
-        String content = message.isStreaming() && message.getContent().length() == 0 && !hasReasoning ? "..." : message.getContent();
+        String content = message.getContent();
         contentView.setCodeWrapEnabled(codeWrapEnabled);
         contentView.setLinkHandler(markdownLinkHandler);
 
@@ -177,7 +176,7 @@ public final class AssistantMessageView extends LinearLayout {
         } else {
             thinkingBlockView.setVisibility(GONE);
         }
-        if (content.trim().length() == 0 && message.hasToolCalls()) {
+        if (content.trim().length() == 0) {
             contentView.setVisibility(GONE);
         } else {
             contentView.setVisibility(VISIBLE);
@@ -192,8 +191,7 @@ public final class AssistantMessageView extends LinearLayout {
         installMessageLongPress(contentView);
         bindToolCalls(message);
         if (!lastMessageId.equals(messageId) || message.isStreaming()) actionBar.setVisibility(GONE);
-        boolean streamingText = message.isStreaming() && message.getContent().trim().length() > 0;
-        setCursorVisible(streamingText);
+        setWorkingStatusVisible(message.isStreaming(), WorkingStatusView.isThinking(safeReasoning, content));
         lastMessageId = messageId;
         lastReasoning = safeReasoning;
         lastContent = content;
@@ -219,15 +217,16 @@ public final class AssistantMessageView extends LinearLayout {
         }
     }
 
-    private void setCursorVisible(boolean visible) {
+    private void setWorkingStatusVisible(boolean visible, boolean thinking) {
         if (visible) {
-            if (cursorView.getVisibility() != VISIBLE) {
-                cursorView.setVisibility(VISIBLE);
-                cursorView.startBlinking();
+            workingStatusView.bind(thinking);
+            if (workingStatusView.getVisibility() != VISIBLE) {
+                workingStatusView.setVisibility(VISIBLE);
             }
-        } else if (cursorView.getVisibility() != GONE) {
-            cursorView.stopBlinking();
-            cursorView.setVisibility(GONE);
+            workingStatusView.startWorking();
+        } else {
+            workingStatusView.stopWorking();
+            workingStatusView.setVisibility(GONE);
         }
     }
 
