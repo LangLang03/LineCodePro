@@ -9,7 +9,7 @@
 
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B%20(API%2026)-3DDC84.svg)](app/build.gradle.kts)
-[![Latest: 1.2.2](https://img.shields.io/badge/version-1.2.2-success.svg)](app/build.gradle.kts)
+[![Latest: 1.2.8-max](https://img.shields.io/badge/version-1.2.8--max-success.svg)](app/build.gradle.kts)
 [![Java only](https://img.shields.io/badge/code-Java%2011-orange.svg)](#project-layout)
 
 ---
@@ -19,17 +19,18 @@
 1. [What is LineCode Pro?](#what-is-linecode-pro)
 2. [What it can do](#what-it-can-do)
 3. [Highlights](#highlights)
-4. [Project layout](#project-layout)
-5. [Install](#install)
-6. [Getting started](#getting-started)
-7. [Execution modes](#execution-modes)
-8. [Model providers](#model-providers)
-9. [Tool system](#tool-system)
-10. [Extending LineCode](#extending-linecode)
-11. [Building from source](#building-from-source)
-12. [Privacy & security](#privacy--security)
-13. [Contributing](#contributing)
-14. [License](#license)
+4. [What's new in v1.2.8-max](#whats-new-in-v128-max)
+5. [Project layout](#project-layout)
+6. [Install](#install)
+7. [Getting started](#getting-started)
+8. [Execution modes](#execution-modes)
+9. [Model providers](#model-providers)
+10. [Tool system](#tool-system)
+11. [Extending LineCode](#extending-linecode)
+12. [Building from source](#building-from-source)
+13. [Privacy & security](#privacy--security)
+14. [Contributing](#contributing)
+15. [License](#license)
 
 ---
 
@@ -39,7 +40,7 @@
 
 LineCode is not a thin chat client. It is a full coding workspace: the system prompt, the tool registry, the context manager, the diff store, the file tree, the project picker, the SSH / IPC plumbing, the import/export archive, the extensions framework, and the security policy all live in the app. Nothing leaves your phone unless you wire it up to a remote model.
 
-The application id is `cn.lineai` and the project is a multi-module Gradle project with 12 modules: `:build-logic` (composite build), `:core-model`, `:core-api`, `:core-security`, `:ui-theme`, `:markdown`, `:data`, `:feature-tool`, `:feature-model`, `:feature-ssh`, `:feature-share`, `:app`, plus the reusable `:ipc` library and the sample `:terminal-provider` app.
+The application id is `cn.lineai` and the project is a multi-module Gradle project with 14 included modules: `:core-model`, `:core-api`, `:core-security`, `:ui-theme`, `:markdown`, `:data`, `:feature-tool`, `:feature-model`, `:feature-ssh`, `:feature-share`, `:tool-ui`, `:app`, the reusable `:ipc` library, and the sample `:terminal-provider` app. `:build-logic` is included as a composite build.
 
 ---
 
@@ -49,6 +50,7 @@ The application id is `cn.lineai` and the project is a multi-module Gradle proje
 
 - Streaming chat with **multiple model protocols** in the same UI: OpenAI-compatible HTTP APIs, Anthropic Messages, OpenAI Codex Responses, and a local GGUF runtime.
 - Reasoning blocks (`<think>…</think>`) are extracted and rendered separately from the final answer.
+- Each assistant turn is rendered as an expandable processing timeline: reasoning, grouped tool calls, retries, errors, and Agent progress stay in order while the final answer remains separate. Completed processing duration is persisted with the message.
 - Tool-call text inside a stream is parsed and dispatched by `ToolCallTextParser`; everything the model asks to do is shown to you before it runs.
 - System prompts are assembled from `feature-model/src/main/assets/prompts/*.txt` — tone variants (chat / coding), context-compaction, work-directory, learning-context, and model-identity templates. You can override the tone, the work directory, the identity block, and the prompt template from settings.
 - Long conversations are summarised in the background by `ContextCompactionService` with **dynamic compaction** (50% soft trigger + 80% hard trigger) using the active model itself; durable knowledge saved via the `memory_update` tool or the memory screen is reinjected next session by `LearningContextRepository`.
@@ -64,10 +66,10 @@ The model has access to a registry of tools (`ToolRegistry`) with session-scoped
 | Shell       | `shell_execute` (Termux or via IPC) |
 | Web         | `web_search`, `web_fetch` |
 | Media       | `image_understanding`, `image_generation` |
-| Sub-agents  | `agent`, `agent_pipeline` (delegate work to another LLM loop) |
+| Sub-agents  | `agent`, `agent_pipeline`, `agent_output` (delegate work to another LLM loop) |
 | Productivity| `todo_update` |
 
-Every file-touching tool routes paths through `FileToolPathPolicy` so the model can only act inside the workspace you opened. Shell calls go through Termux or an IPC provider — never the app process itself.
+Every file-touching tool routes paths through `FileToolPathPolicy` so the model can only act inside the workspace you opened. Shell calls go through Termux or an IPC provider — never the app process itself. Confirmation mode supports one-time approval and persistent, exact-match command permissions scoped by execution mode, tool, command, and working directory.
 
 ### Context protection
 
@@ -112,6 +114,17 @@ Every file-touching tool routes paths through `FileToolPathPolicy` so the model 
 - **Private by default.** URL allow-list, strict `network_security_config.xml`, secrets redacted from exports, in-app browser keeps JavaScript off.
 - **Java-only, on purpose.** No Kotlin runtime, no XML layouts — the app is built entirely in Java 11 for transparency and reviewability.
 
+## What's new in v1.2.8-max
+
+The current release focuses on a denser native Android UI and a clearer model-workflow surface:
+
+- **Native UI refresh.** Chat, settings, drawers, sheets, tool cards, themes, Markdown, wide-screen layouts, large text, and narrow-screen actions were rebuilt around shared adaptive View components.
+- **Processing timeline.** Reasoning, tool groups, Agent cards, retries, errors, work status, and final answers are presented in the order they happen, with compact expandable summaries and persisted processing duration.
+- **Safer execution approvals.** Automatic, confirmation, and read-only modes are aligned across the main flow and Agents. Permanent approvals match the full execution scope, tool, command, and working directory.
+- **Skill Hub.** Browse and search community Skills, inspect files, versions, comments, evaluations, previews, and security hints, then sign in, install, publish, and manage community Skills from the app.
+- **Prompt and context stability.** Stable system prefixes, deterministic tool/extension ordering, canonical JSON serialization, attachment-local context, and corrected post-compaction token baselines improve cache reuse and prevent repeated compaction.
+- **Release verification.** Robolectric 4.16 native View tests cover layouts, timelines, permissions, prompts, Skill Hub flows, and diff rendering; the v1.2.8-max release notes record 528 passing unit tests plus successful Debug/DebugUserCert builds and lint.
+
 ---
 
 ## Project layout
@@ -152,6 +165,7 @@ LineCode/
 │           └── ai/message/               # SystemModelMessage, UserModelMessage, etc.
 ├── feature-ssh/               # :feature-ssh — SshService, SshConnectionPool, TermuxHelper
 ├── feature-share/             # :feature-share — export/share/PDF
+├── tool-ui/                   # :tool-ui — reusable tool-call cards and view registry
 ├── app/                       # :app — MainActivity, MainCoordinator, controllers, UI components
 │   ├── build.gradle.kts
 │   ├── lint.xml
@@ -276,10 +290,10 @@ Built-in tools live in `feature-tool/src/main/java/cn/lineai/tool/builtin/`:
 FileReadTool      FileWriteTool      FileEditTool      FileDeleteTool
 GlobTool          ListDirectoryTool  ShellExecuteTool
 ImageUnderstandingTool  ImageGenerationTool  WebSearchTool  WebFetchTool
-AgentTool  AgentPipelineTool  TodoUpdateTool
+AgentTool  AgentPipelineTool  AgentOutputTool  TodoUpdateTool
 ```
 
-Execution is driven by `ToolExecutionCoordinator` + `ToolExecutor`. Every call goes through `PermissionModeController` + `ToolReviewListener`; the user can confirm per-call or auto-confirm for the session. The list of auto-confirmed tools is tracked on the coordinator (`MainCoordinator.sessionAutoConfirmedTools`).
+Execution is driven by `ToolExecutionCoordinator` + `ToolExecutor`. Every call goes through `PermissionModeController` + `ToolReviewListener`; automatic, confirmation, and read-only modes are supported. Confirmation mode offers one-time approval or persistent exact-match permissions scoped by execution mode, tool, command, and working directory.
 
 Tool results are truncated at 50KB by `ToolResult.truncateContent()` before entering the context. File reads use KB-based parameters with a 50KB range limit; files over 1MB are rejected. Shell outputs exceeding 50KB are middle-truncated.
 
@@ -296,6 +310,8 @@ Three extension points are first-class:
 3. **Custom IPC provider** — implement the `IBaseIpcService` / `ITerminalProviderService` AIDL in any Android app, ship it as a normal APK, and LineCode will auto-detect, bind, and route shell + file ops through it. See [`ipc/README.md`](ipc/README.md) for the full protocol and a working example.
 
 All three are persisted via `ExtensionRepository` and hot-reloaded by `ToolRegistry.reloadExtensions()`.
+
+The built-in **Skill Hub** in the Extensions area lets you discover, review, install, and manage community Skills. URI, GitHub, and Skill Hub installs share the same temporary-source cleanup and file-management path.
 
 ---
 
@@ -320,7 +336,7 @@ All Gradle commands go through the wrapper. The settings file forces `FAIL_ON_PR
 ./gradlew :app:assembleDebugUserCert
 # → app/build/outputs/apk/debugUserCert/export/LineCode-user-cert-debug.apk
 
-# Run the unit test suite (JUnit 4 only, no Robolectric)
+# Run the unit test suite (JUnit 4 + Robolectric 4.16 where Android resources are needed)
 ./gradlew :app:testDebugUnitTest
 
 # Run a single test class
@@ -400,7 +416,7 @@ Bug reports, ideas and patches are welcome. A few notes if you plan to send code
 * **Views in Java, not XML.** `lint.xml` silences `ViewConstructor` and `IconDuplicates` deliberately.
 * **Choose the lowest-level module.** When adding code, pick the lowest-level module that fits: DTOs → `:core-model`; interfaces → `:core-api`; UI infrastructure → `:ui-theme`; a new tool → `:feature-tool`; a new protocol → `:feature-model`. Do not reach back into `:app` from a library module.
 * **Extend the controllers.** When adding chat or tool behaviour, extend the matching controller in `cn.lineai.mvp.*` and thread state through `ChatUiStateAssembler` → `ChatUiState` → `MainContract.View.render(...)`. Do not reach into views from new code.
-* **Tests mirror the package layout.** `app/src/test/java/cn/lineai/...` mirrors production. JUnit 4 + `org.json` only (no Robolectric, no Mockito). When testing repository or controller logic, prefer the in-memory fakes that already exist in sibling tests. Feature modules have their own tests under `feature-*/src/test/java`.
+* **Tests mirror the package layout.** `app/src/test/java/cn/lineai/...` mirrors production. Tests use JUnit 4, `org.json`, and Robolectric 4.16 for Android resource/View behavior (no Mockito). When testing repository or controller logic, prefer the in-memory fakes that already exist in sibling tests. Feature modules have their own tests under `feature-*/src/test/java`.
 * **Run the gates before sending a PR:**
 
   ```bash

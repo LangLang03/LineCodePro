@@ -9,7 +9,7 @@
 
 [![许可证: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B%20(API%2026)-3DDC84.svg)](app/build.gradle.kts)
-[![当前版本: 1.2.2](https://img.shields.io/badge/version-1.2.2-success.svg)](app/build.gradle.kts)
+[![当前版本: 1.2.8-max](https://img.shields.io/badge/version-1.2.8--max-success.svg)](app/build.gradle.kts)
 [![Java 11 only](https://img.shields.io/badge/code-Java%2011-orange.svg)](#项目结构)
 
 ---
@@ -19,17 +19,18 @@
 1. [LineCode Pro 是什么？](#linecode-pro-是什么)
 2. [它能做什么](#它能做什么)
 3. [功能亮点](#功能亮点)
-4. [项目结构](#项目结构)
-5. [安装](#安装)
-6. [上手指南](#上手指南)
-7. [执行模式](#执行模式)
-8. [支持的模型协议](#支持的模型协议)
-9. [工具系统](#工具系统)
-10. [扩展 LineCode](#扩展-linecode)
-11. [从源码构建](#从源码构建)
-12. [隐私与安全](#隐私与安全)
-13. [参与贡献](#参与贡献)
-14. [许可证](#许可证)
+4. [v1.2.8-max 更新内容](#v128-max-更新内容)
+5. [项目结构](#项目结构)
+6. [安装](#安装)
+7. [上手指南](#上手指南)
+8. [执行模式](#执行模式)
+9. [支持的模型协议](#支持的模型协议)
+10. [工具系统](#工具系统)
+11. [扩展 LineCode](#扩展-linecode)
+12. [从源码构建](#从源码构建)
+13. [隐私与安全](#隐私与安全)
+14. [参与贡献](#参与贡献)
+15. [许可证](#许可证)
 
 ---
 
@@ -39,7 +40,7 @@
 
 LineCode 不是一个轻量聊天客户端，它是一个**完整的编程工作台**：系统提示、工具注册表、上下文管理、Diff 存档、文件树、项目选择器、SSH / IPC 管道、导入导出归档、扩展框架、安全策略……全部跑在 App 内部。除非你自己接到远程模型，否则项目文件不会离开你的手机。
 
-应用包名是 `cn.lineai`，仓库采用 12 模块 Gradle 结构：`:build-logic`（composite build）、`:core-model`、`:core-api`、`:core-security`、`:ui-theme`、`:markdown`、`:data`、`:feature-tool`、`:feature-model`、`:feature-ssh`、`:feature-share`、`:app`，外加可复用库 `:ipc` 与示例 Provider `:terminal-provider`。
+应用包名是 `cn.lineai`，仓库采用 14 个 Gradle 模块：`:core-model`、`:core-api`、`:core-security`、`:ui-theme`、`:markdown`、`:data`、`:feature-tool`、`:feature-model`、`:feature-ssh`、`:feature-share`、`:tool-ui`、`:app`、可复用库 `:ipc` 与示例 Provider `:terminal-provider`；`:build-logic` 作为 composite build 引入。
 
 ---
 
@@ -49,6 +50,7 @@ LineCode 不是一个轻量聊天客户端，它是一个**完整的编程工作
 
 - 同一个聊天界面下支持**多种模型协议**：OpenAI 兼容 HTTP API、Anthropic Messages、OpenAI Codex Responses、本地 GGUF 推理。
 - 推理块（`<think>…</think>`）会被 `ThinkTagParser` 单独抽出来，和最终回答分块渲染。
+- 每轮助手消息都按发生顺序渲染为可展开的处理时间线：思考、工具分组、重试、错误和 Agent 进度集中展示，最终答复保持独立；处理耗时会随消息持久化。
 - 流中的工具调用文本由 `ToolCallTextParser` 解析并派发；模型请求做的每件事，在真正执行前都会先展示给你看。
 - 系统提示由 `feature-model/src/main/assets/prompts/*.txt` 中的模板拼装：语气（聊天 / 编程）变体、上下文压缩、工作目录、学习上下文、模型身份。你可以在设置里覆盖语气、工作目录、身份块、提示模板。
 - 长对话由 `ContextCompactionService` 后台用**当前模型本身**做**动态压缩**（50% 软触发 + 80% 硬触发）；通过 `memory_update` 工具或记忆管理界面保存的长期知识，由 `LearningContextRepository` 在下一次会话中喂回上下文。
@@ -56,7 +58,7 @@ LineCode 不是一个轻量聊天客户端，它是一个**完整的编程工作
 
 ### 工具执行
 
-模型可以调用 `ToolRegistry` 里的全部工具，并支持会话级自动确认：
+模型可以调用 `ToolRegistry` 里的全部工具，并支持自动、确认和只读执行模式：
 
 | 分类 | 内置工具 |
 | ---- | -------- |
@@ -64,10 +66,10 @@ LineCode 不是一个轻量聊天客户端，它是一个**完整的编程工作
 | Shell | `shell_execute`（经 Termux 或 IPC Provider） |
 | 网络 | `web_search`、`web_fetch` |
 | 媒体 | `image_understanding`、`image_generation` |
-| 子任务 | `agent`、`agent_pipeline`（分派给另一个 LLM 循环） |
+| 子任务 | `agent`、`agent_pipeline`、`agent_output`（分派给另一个 LLM 循环） |
 | 效率 | `todo_update` |
 
-每个会触碰文件的工具都走 `FileToolPathPolicy` 路径校验，模型只能动你授权的目录里的内容。Shell 调用走 Termux 或 IPC Provider —— **永远不在 App 自身进程里跑命令**。
+每个会触碰文件的工具都走 `FileToolPathPolicy` 路径校验，模型只能动你授权的目录里的内容。Shell 调用走 Termux 或 IPC Provider —— **永远不在 App 自身进程里跑命令**。确认模式支持单次允许和永久精确匹配授权，范围包含执行模式、工具、完整命令和工作目录。
 
 ### 上下文保护
 
@@ -102,7 +104,7 @@ LineCode 不是一个轻量聊天客户端，它是一个**完整的编程工作
 ## 功能亮点
 
 - **一个聊天，多家后端。** OpenAI 兼容、Anthropic Messages、Codex Responses、本地 GGUF 在同一 UI 内任意切换。
-- **真正能干活的工具循环。** 模型能读、改、glob、新建、删除文件，能跑 Shell，能抓取和搜索网页，能看图，能生图，能递归调子任务 —— 全部由你逐条审批或会话级自动确认。
+- **真正能干活的工具循环。** 模型能读、改、glob、新建、删除文件，能跑 Shell，能抓取和搜索网页，能看图，能生图，能递归调子任务 —— 全部受自动、确认或只读模式控制。
 - **可在任意目录工作。** 本地（SAF + 可选 `MANAGE_EXTERNAL_STORAGE`）、远程（jsch SSH）、或第三方 IPC Provider。
 - **支持自定义扩展。** 自定义 Agent（`agentx_*`）和 MCP-HTTP 工具（`mcpx_*`）即配即用。
 - **可插拔 IPC Provider。** 把 Shell 和文件操作放到独立进程里以做安全隔离。可以把 Provider 当成普通 Android App 上架，详见 [`ipc/README.md`](ipc/README.md)。
@@ -111,6 +113,17 @@ LineCode 不是一个轻量聊天客户端，它是一个**完整的编程工作
 - **免费网页搜索。** 内置 Bing RSS 搜索 Provider，无需任何 API key。
 - **默认隐私优先。** URL 白名单、严格 `network_security_config.xml`、导出文件去敏、内置浏览器默认关闭 JavaScript。
 - **纯 Java 写在骨子里。** 无 Kotlin 运行时、无 XML 布局 —— App 全部由 Java 11 写成，便于审计。
+
+## v1.2.8-max 更新内容
+
+当前版本重点更新了更紧凑的 Android 原生界面和更清晰的模型工作流：
+
+- **原生 UI 重写。** 聊天、设置、抽屉、底部弹窗、工具卡片、主题、Markdown、宽屏布局、大字体和窄屏操作统一使用共享的自适应 View 组件。
+- **处理时间线。** 思考、工具组、Agent 卡片、重试、错误、工作状态和最终答复按实际发生顺序展示，过程默认紧凑折叠，处理耗时会持久化。
+- **更安全的执行授权。** 自动、确认、只读模式在主流程与 Agent 内统一生效；永久授权精确匹配完整的执行范围、工具、命令和工作目录。
+- **Skill Hub。** 可在应用内搜索和浏览社区 Skills，查看文件、版本、评论、评测、预览和安全提示，并完成登录、安装、发布与管理。
+- **提示词与上下文稳定性。** 固定系统前缀、稳定的工具 / 扩展排序、规范化 JSON、附件归属原消息，以及压缩后的用量基线修复，改善缓存复用并避免重复压缩。
+- **发版验证。** Robolectric 4.16 原生 View 测试覆盖布局、时间线、权限、提示词、Skill Hub 流程和 Diff；v1.2.8-max 更新日志记录相关模块单元测试 **528 项通过**，主应用 Debug / DebugUserCert 构建和 Lint 也已通过。
 
 ---
 
@@ -152,6 +165,7 @@ LineCode/
 │           └── ai/message/               # SystemModelMessage、UserModelMessage 等
 ├── feature-ssh/               # :feature-ssh — SshService、SshConnectionPool、TermuxHelper
 ├── feature-share/             # :feature-share — 导出 / 分享 / PDF
+├── tool-ui/                   # :tool-ui — 可复用工具调用卡片和 View 注册表
 ├── app/                       # :app — MainActivity、MainCoordinator、控制器、UI 组件
 │   ├── build.gradle.kts
 │   ├── lint.xml
@@ -274,10 +288,10 @@ LineCode 在 **设置 → MCP execution mode** 里提供三种 Shell / 文件工
 FileReadTool      FileWriteTool      FileEditTool      FileDeleteTool
 GlobTool          ListDirectoryTool  ShellExecuteTool
 ImageUnderstandingTool  ImageGenerationTool  WebSearchTool  WebFetchTool
-AgentTool  AgentPipelineTool  TodoUpdateTool
+AgentTool  AgentPipelineTool  AgentOutputTool  TodoUpdateTool
 ```
 
-执行由 `ToolExecutionCoordinator` + `ToolExecutor` 驱动；每次调用都要过 `PermissionModeController` + `ToolReviewListener`，用户可逐条确认或会话级自动确认。自动确认列表由 `MainCoordinator.sessionAutoConfirmedTools` 跟踪。
+执行由 `ToolExecutionCoordinator` + `ToolExecutor` 驱动；每次调用都要过 `PermissionModeController` + `ToolReviewListener`，支持自动、确认和只读模式。确认模式提供单次允许或永久精确匹配授权，授权范围包含执行模式、工具、命令和工作目录。
 
 工具结果由 `ToolResult.truncateContent()` 在 50KB 处截断（首尾各 25KB）后进入上下文。文件读取使用 KB 参数，50KB 范围上限；超过 1MB 的文件直接拒绝。Shell 输出超过 50KB 同样中间截断。
 
@@ -294,6 +308,8 @@ AgentTool  AgentPipelineTool  TodoUpdateTool
 3. **自定义 IPC Provider** —— 在任意 Android App 里实现 `IBaseIpcService` / `ITerminalProviderService` AIDL，发布为普通 APK，LineCode 就会自动发现、绑定、把 Shell + 文件操作路由过去。完整协议与可运行示例见 [`ipc/README.md`](ipc/README.md)。
 
 以上三类都通过 `ExtensionRepository` 持久化，由 `ToolRegistry.reloadExtensions()` 热加载。
+
+扩展页面内置 **Skill Hub**，可以发现、审查、安装和管理社区 Skills。URI、GitHub 与 Skill Hub 安装共用临时来源清理和文件管理流程。
 
 ---
 
@@ -318,7 +334,7 @@ AgentTool  AgentPipelineTool  TodoUpdateTool
 ./gradlew :app:assembleDebugUserCert
 # → app/build/outputs/apk/debugUserCert/export/LineCode-user-cert-debug.apk
 
-# 单元测试
+# 单元测试（需要 Android 资源 / View 行为时使用 JUnit 4 + Robolectric 4.16）
 ./gradlew :app:testDebugUnitTest
 
 # 单个测试类
@@ -398,7 +414,7 @@ Release 流水线刻意加强：
 * **视图用 Java 写，不用 XML。** `lint.xml` 故意屏蔽 `ViewConstructor` 与 `IconDuplicates`。
 * **选择最低层模块。** 加新代码时挑能容纳它的最低层模块：DTO → `:core-model`；接口 → `:core-api`；UI 基础设施 → `:ui-theme`；新工具 → `:feature-tool`；新协议 → `:feature-model`。库模块不要回头引用 `:app`。
 * **通过控制器扩展。** 新增聊天或工具行为时，扩展 `cn.lineai.mvp.*` 下对应的控制器，状态走 `ChatUiStateAssembler` → `ChatUiState` → `MainContract.View.render(...)`。不要绕过控制器去直接动 View。
-* **测试镜像包路径。** `app/src/test/java/cn/lineai/...` 与生产代码同包名。仅用 JUnit 4 + `org.json`（无 Robolectric、无 Mockito）。仓库或控制器单测优先用 sibling test 里已有的内存 fake。Feature 模块有各自独立的 `feature-*/src/test/java`。
+* **测试镜像包路径。** `app/src/test/java/cn/lineai/...` 与生产代码同包名。测试使用 JUnit 4、`org.json`，并在需要 Android 资源 / View 行为时使用 Robolectric 4.16（无 Mockito）。仓库或控制器单测优先用 sibling test 里已有的内存 fake。Feature 模块有各自独立的 `feature-*/src/test/java`。
 * **发 PR 前跑门禁：**
 
   ```bash
