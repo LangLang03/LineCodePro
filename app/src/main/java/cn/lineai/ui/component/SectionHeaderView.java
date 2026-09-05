@@ -5,12 +5,12 @@ import cn.lineai.ui.theme.LineTheme;
 public final class SectionHeaderView extends TextView {
     public SectionHeaderView(Context context, String title) {
         super(context);
-        setText(title == null ? "" : title);
-        setTextColor(LineTheme.TEXT_SECONDARY);
-        setTextSize(14);
+        setText(title == null ? "" : title.toUpperCase(java.util.Locale.ROOT));
+        setTextColor(LineTheme.TEXT_TERTIARY);
+        setTextSize(LineTheme.FONT_XS);
         setIncludeFontPadding(false);
         setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
-        LineTheme.padding(this, 28, 0, 28, 0);
-        if (android.os.Build.VERSION.SDK_INT >= 28) setAccessibilityHeading(true);
+        setLetterSpacing(0.05f);
+        LineTheme.padding(this, LineTheme.LG, 0, LineTheme.LG, 0);
     }
 }

@@ -228,11 +228,11 @@ public class SecondaryScreenLayoutTest {
         screenshot(view, "storage-restored");
     }
 
-    @Test public void extensionsHaveGapsAndExecutionCardsHideInternalIds() throws Exception {
+    @Test public void extensionsUseRestoredCardSpacingAndExecutionCardsHideInternalIds() throws Exception {
         View view = screen("Extensions"); layout(view, 390, 844);
         ViewGroup list = (ViewGroup) find(view, android.widget.ScrollView.class).getChildAt(0);
         for (int i = 1; i < list.getChildCount(); i++)
-            assertTrue(list.getChildAt(i).getTop() - list.getChildAt(i - 1).getBottom() >= 12);
+            assertTrue(list.getChildAt(i).getTop() - list.getChildAt(i - 1).getBottom() >= 8);
         screenshot(view, "extensions-spaced");
         McpToolConfig config = new McpToolConfig("files", "文件操作", "读取和编辑工作区", true,
                 new String[]{"internal_tool_id"});

@@ -36,9 +36,9 @@ public final class OptionRowView extends LinearLayout {
         content.addView(labelView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         if (desc != null && desc.length() > 0) {
-            TextView descView = LineTheme.text(context, desc, 14, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+            TextView descView = LineTheme.text(context, desc, LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
             LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-            descParams.topMargin = LineTheme.dp(context, 6);
+            descParams.topMargin = LineTheme.dp(context, 2);
             content.addView(descView, descParams);
         }
 
@@ -51,10 +51,10 @@ public final class OptionRowView extends LinearLayout {
 
     public void setActive(boolean active) {
         this.active = active;
-        setBackground(active ? LineTheme.roundedStroke(getContext(), LineTheme.INPUT_BG, 12, LineTheme.ACCENT) : LineTheme.pressable(getContext()));
+        setBackgroundColor(active ? LineTheme.ACCENT_MUTED : android.graphics.Color.TRANSPARENT);
         setSelected(active);
-        icon.setIconColor(LineTheme.TEXT_SECONDARY);
-        labelView.setTextColor(LineTheme.TEXT);
+        icon.setIconColor(active ? LineTheme.ACCENT : LineTheme.TEXT_SECONDARY);
+        labelView.setTextColor(active ? LineTheme.ACCENT : LineTheme.TEXT);
         labelView.setTypeface(Typeface.create(active ? "sans-serif-medium" : "sans-serif", Typeface.NORMAL));
     }
 

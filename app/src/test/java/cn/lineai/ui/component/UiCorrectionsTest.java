@@ -113,14 +113,21 @@ public class UiCorrectionsTest {
         assertEquals(22,iconSize(left));assertEquals(iconSize(left),iconSize(right));
         assertEquals(left.getWidth(),right.getWidth());assertEquals(left.getHeight(),right.getHeight());
     }
-    @Test public void settingsOptionsAndProvidersHaveVisibleGaps() throws Exception {
+    @Test public void settingsRowsUseRestoredGroupsAndStandaloneCardsKeepGaps() throws Exception {
         LLMSettingsScreenView llm=new LLMSettingsScreenView(activity,null,listener(LLMSettingsScreenView.Listener.class));layout(llm);
-        List<OptionRowView> rows=all(llm,OptionRowView.class);
-        assertTrue(rows.get(1).getTop()-rows.get(0).getBottom()>=8);
-        assertNotNull(rows.get(1).getBackground());screenshot(llm,"reasoning-options");
+        List<SettingsSectionView> sections=all(llm,SettingsSectionView.class);
+        assertFalse(sections.isEmpty());
+        LinearLayout group=sections.get(0).getGroup();
+        assertNotNull(group.getBackground());
+        assertTrue(group.getChildCount()>=2);
+        assertEquals(0,((LinearLayout.LayoutParams)group.getChildAt(1).getLayoutParams()).topMargin);
+        assertEquals(2,((ViewGroup)group.getChildAt(0)).getChildCount());
+        screenshot(llm,"reasoning-options");
         ModelAddOptionsScreenView providers=new ModelAddOptionsScreenView(activity,listener(ModelAddOptionsScreenView.Listener.class));layout(providers);
-        List<ActionRowView> actions=all(providers,ActionRowView.class);
-        for(int i=1;i<actions.size();i++) assertTrue(actions.get(i).getTop()-actions.get(i-1).getBottom()>=8);
+        List<LinearLayout> providerCards=all(providers,LinearLayout.class);
+        int visibleCards=0;
+        for(LinearLayout card:providerCards) if(card.isClickable()&&card.getBackground()!=null) visibleCards++;
+        assertTrue(visibleCards>=4);
         screenshot(providers,"providers");
         McpSettingsState toolState=new McpSettingsState("local",Arrays.asList(
                 new McpToolConfig("files","文件操作","读取、编辑和搜索项目文件",true,new String[]{"file_read","file_edit"}),
@@ -146,6 +153,14 @@ public class UiCorrectionsTest {
                     +Math.abs(android.graphics.Color.blue(p.bg)-android.graphics.Color.blue(p.surfaceElevated));
             assertTrue(mode+": card and app colors too close",delta>=45);
             LineTheme.apply(p);SettingsScreenView settings=new SettingsScreenView(activity,listener(SettingsScreenView.Listener.class));layout(settings);
+            TextView modelTitle=text(settings,activity.getString(R.string.settings_row_models_title));
+            LinearLayout labels=(LinearLayout)modelTitle.getParent();
+            assertTrue(all(labels,TextView.class).size()>=2);
+            LinearLayout item=(LinearLayout)labels.getParent();
+            assertEquals(36,item.getChildAt(0).getLayoutParams().width);
+            assertNotNull(item.getChildAt(0).getBackground());
+            ViewGroup wrapper=(ViewGroup)item.getParent();
+            assertNotNull(((View)wrapper.getParent()).getBackground());
             screenshot(settings,"settings-"+mode);
         }
         LineTheme.apply(ThemePalette.forMode("light"));
