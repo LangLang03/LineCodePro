@@ -39,7 +39,7 @@ public abstract class BaseToolCallView extends LinearLayout {
     public BaseToolCallView(Context context) {
         super(context);
         setOrientation(LinearLayout.VERTICAL);
-        setBackground(LineTheme.roundedStroke(context, LineTheme.CODE_BG, 8, LineTheme.CODE_BORDER));
+        setBackground(null);
     }
 
     /**
@@ -121,7 +121,7 @@ public abstract class BaseToolCallView extends LinearLayout {
         LinearLayout row = new LinearLayout(getContext());
         row.setOrientation(HORIZONTAL);
         row.setGravity(Gravity.TOP);
-        LineTheme.padding(row, LineTheme.SM, LineTheme.XS, LineTheme.SM, LineTheme.XS);
+        LineTheme.padding(row, 12, 12, 12, 12);
 
         IconButtonView icon = new IconButtonView(getContext(), iconType);
         icon.setIconColor(color);

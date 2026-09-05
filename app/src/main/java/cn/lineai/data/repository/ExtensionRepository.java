@@ -106,6 +106,11 @@ public final class ExtensionRepository extends BaseRepository implements Extensi
     }
 
     @Override
+    public synchronized SkillRecord installSkillFromSkillHub(String homePath, String location, String slug, String version) throws Exception {
+        return skillRepository.installSkillFromSkillHub(homePath, location, slug, version);
+    }
+
+    @Override
     public synchronized void setSkillEnabled(String id, boolean enabled) {
         skillRepository.setSkillEnabled(id, enabled);
     }

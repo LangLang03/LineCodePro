@@ -108,13 +108,15 @@ public final class SimpleHttpClient {
             for (Map.Entry<String, String> entry : request.headers.entrySet()) {
                 connection.setRequestProperty(entry.getKey(), entry.getValue());
             }
-            if (request.body != null) {
+            byte[] requestBytes = request.bodyBytes != null
+                    ? request.bodyBytes
+                    : request.body == null ? null : request.body.getBytes(StandardCharsets.UTF_8);
+            if (requestBytes != null) {
                 connection.setDoOutput(true);
-                byte[] bytes = request.body.getBytes(StandardCharsets.UTF_8);
-                connection.setFixedLengthStreamingMode(bytes.length);
+                connection.setFixedLengthStreamingMode(requestBytes.length);
                 OutputStream output = connection.getOutputStream();
                 try {
-                    output.write(bytes);
+                    output.write(requestBytes);
                 } finally {
                     output.close();
                 }
@@ -190,6 +192,7 @@ public final class SimpleHttpClient {
         public String url;
         public String method;
         public String body;
+        public byte[] bodyBytes;
         public int connectTimeoutMs = 15000;
         public int readTimeoutMs = 30000;
         public final LinkedHashMap<String, String> headers = new LinkedHashMap<>();

@@ -184,6 +184,12 @@ public final class IconButtonView extends ImageButton {
     private int iconType;
     private int iconColor = Color.WHITE;
 
+    @Override public void setClickable(boolean clickable) {
+        super.setClickable(clickable);
+        setFocusable(clickable);
+        setImportantForAccessibility(clickable ? IMPORTANT_FOR_ACCESSIBILITY_AUTO : IMPORTANT_FOR_ACCESSIBILITY_NO);
+    }
+
     public IconButtonView(Context context, int iconType) {
         super(context);
         setScaleType(ScaleType.FIT_CENTER);
@@ -217,8 +223,26 @@ public final class IconButtonView extends ImageButton {
     }
 
     public void setIconSizeDp(int containerDp, int iconDp) {
+        requestedIconDp = iconDp;
         int padding = Math.max(0, Math.round((containerDp - iconDp) / 2f));
         setIconPaddingDp(padding, padding, padding, padding);
+        updateIconPadding(getWidth(), getHeight());
+    }
+
+    private int requestedIconDp;
+
+    @Override
+    protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight);
+        updateIconPadding(width, height);
+    }
+
+    private void updateIconPadding(int width, int height) {
+        if (requestedIconDp <= 0 || width <= 0 || height <= 0) return;
+        int size = Math.min(Math.min(width, height), LineTheme.dp(getContext(), requestedIconDp));
+        int horizontal = (width - size) / 2;
+        int vertical = (height - size) / 2;
+        setPadding(horizontal, vertical, width - size - horizontal, height - size - vertical);
     }
 
     public int getIconType() {

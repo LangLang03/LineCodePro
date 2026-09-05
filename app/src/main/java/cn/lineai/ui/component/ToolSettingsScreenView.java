@@ -46,7 +46,7 @@ public final class ToolSettingsScreenView extends ScreenScaffoldView {
         this.imageUnderstandingModelLabel = imageUnderstandingModelLabel == null ? "" : imageUnderstandingModelLabel.trim();
         this.imageGenerationModelLabel = imageGenerationModelLabel == null ? "" : imageGenerationModelLabel.trim();
         LinearLayout content = getContent();
-        LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
+        LineTheme.padding(content, 28, 8, 28, 48);
 
         addSectionHeader(content, context.getString(R.string.screen_tools_section_images));
         addImageUnderstanding(content);
@@ -316,8 +316,8 @@ public final class ToolSettingsScreenView extends ScreenScaffoldView {
     private LinearLayout card(Context context) {
         LinearLayout card = new LinearLayout(context);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_ELEVATED, 12));
-        LineTheme.padding(card, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
+        card.setBackground(null);
+        LineTheme.padding(card, 0, 16, 0, 24);
         return card;
     }
 

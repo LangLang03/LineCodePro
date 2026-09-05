@@ -30,6 +30,13 @@ public final class ToolRunController {
         return executionCoordinator.createPlan(toolCalls);
     }
 
+    boolean isCommandPermanentlyAllowed(String scope, ToolCall call) {
+        return toolSettingsRepository != null && toolSettingsRepository.isCommandPermanentlyAllowed(scope, call);
+    }
+    void allowCommandPermanently(String scope, ToolCall call) {
+        if (toolSettingsRepository != null) toolSettingsRepository.allowCommandPermanently(scope, call);
+    }
+
     public ArrayList<ToolResult> orderedResults(List<ToolCall> toolCalls, HashMap<String, ToolResult> resultById) {
         ArrayList<ToolResult> ordered = new ArrayList<>();
         if (toolCalls == null || resultById == null) {

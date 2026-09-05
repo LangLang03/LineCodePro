@@ -12,7 +12,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import cn.lineai.R;
 
-public final class ShellCommandScreenView extends LinearLayout {
+public final class ShellCommandScreenView extends ScreenSurfaceView {
     public interface Listener {
         void onBack();
     }
@@ -24,45 +24,12 @@ public final class ShellCommandScreenView extends LinearLayout {
         setOrientation(VERTICAL);
         setBackgroundColor(LineTheme.BG);
 
-        LinearLayout header = new LinearLayout(context) {
-            @Override
-            protected void onDraw(Canvas canvas) {
-                super.onDraw(canvas);
-                borderPaint.setColor(LineTheme.BORDER_LIGHT);
-                borderPaint.setStrokeWidth(1f);
-                canvas.drawLine(0, getHeight() - 1, getWidth(), getHeight() - 1, borderPaint);
-            }
-        };
-        header.setWillNotDraw(false);
-        header.setOrientation(HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setBackgroundColor(LineTheme.SURFACE_ELEVATED);
-        LineTheme.padding(header, LineTheme.MD, LineTheme.MD, LineTheme.MD, LineTheme.MD);
-        header.setMinimumHeight(LineTheme.dp(context, 48));
-
-        LinearLayout back = new LinearLayout(context);
-        back.setOrientation(HORIZONTAL);
-        back.setGravity(Gravity.CENTER_VERTICAL);
-        back.setOnClickListener(v -> listener.onBack());
-        IconButtonView chevron = new IconButtonView(context, IconButtonView.CHEVRON_LEFT);
-        chevron.setIconColor(LineTheme.TEXT);
-        chevron.setIconSizeDp(22, 22);
-        chevron.setClickable(false);
-        back.addView(chevron, new LinearLayout.LayoutParams(LineTheme.dp(context, 22), LineTheme.dp(context, 22)));
-        TextView exit = LineTheme.text(context, context.getString(R.string.in_app_browser_exit), LineTheme.FONT_MD, LineTheme.TEXT, Typeface.NORMAL);
-        back.addView(exit, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
-        header.addView(back, new LinearLayout.LayoutParams(LineTheme.dp(context, 68), LayoutParams.WRAP_CONTENT));
-
-        TextView title = LineTheme.textMedium(context, context.getString(R.string.shell_command_title), LineTheme.FONT_MD, LineTheme.TEXT);
-        title.setGravity(Gravity.CENTER);
-        header.addView(title, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
-        header.addView(new LinearLayout(context), new LinearLayout.LayoutParams(LineTheme.dp(context, 68), 1));
-        addView(header, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        addView(new ScreenHeaderView(context, context.getString(R.string.shell_command_title), listener::onBack, null), new LayoutParams(-1,-2));
 
         ScrollView body = new ScrollView(context);
         LinearLayout content = new LinearLayout(context);
         content.setOrientation(VERTICAL);
-        LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
+        LineTheme.padding(content, 28, 8, 28, 48);
         TextView commandBox = LineTheme.text(context, command == null || command.length() == 0 ? context.getString(R.string.shell_command_empty) : command, LineTheme.FONT_SM, LineTheme.TEXT, Typeface.NORMAL);
         commandBox.setTypeface(Typeface.MONOSPACE);
         commandBox.setTextIsSelectable(true);

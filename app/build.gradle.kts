@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
-val releaseVersionName = "1.2.6"
+val releaseVersionName = "1.2.8-max"
 val releaseApkName = "LineCode Pro $releaseVersionName.APK"
 val releaseIdsigName = "$releaseApkName.idsig"
 val releaseSigningProperties = Properties()
@@ -92,6 +92,16 @@ val validateReleaseSigning by tasks.registering {
 }
 
 android {
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED",
+                "--add-opens=java.base/java.util=ALL-UNNAMED",
+                "--add-opens=java.base/java.io=ALL-UNNAMED",
+                "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
+        }
+    }
+
     namespace = "cn.lineai"
     compileSdk {
         version = release(36) {
@@ -103,7 +113,7 @@ android {
         applicationId = "cn.lineai"
         minSdk = 26
         targetSdk = 37
-        versionCode = 31
+        versionCode = 32
         versionName = releaseVersionName
     }
 
@@ -237,6 +247,7 @@ dependencies {
     implementation(project(":ui-theme"))
     implementation(project(":markdown"))
     implementation(project(":tool-ui"))
+    testImplementation(libs.robolectric)
     testImplementation(libs.junit)
     testImplementation(libs.json)
 }

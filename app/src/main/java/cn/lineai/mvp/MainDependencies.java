@@ -45,6 +45,7 @@ import cn.lineai.data.repository.SshFileTreeStore;
 import cn.lineai.data.repository.StorageStatsRepository;
 import cn.lineai.data.repository.ThemeSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsRepository;
+import cn.lineai.data.service.ContextResourceProvider;
 import cn.lineai.resource.ResourceProvider;
 import cn.lineai.resource.SystemConfigProvider;
 import cn.lineai.data.repository.ToolSettingsStore;
@@ -76,7 +77,6 @@ import cn.lineai.tool.ui.WriteToolCallViewFactory;
 import cn.lineai.workspace.SafPathResolver;
 import cn.lineai.workspace.WorkspacePaths;
 import cn.lineai.workspace.StoragePermissionManager;
-import java.io.InputStream;
 
 public final class MainDependencies {
     final Context context;
@@ -269,33 +269,6 @@ public final class MainDependencies {
         registry.register(cn.lineai.tool.ui.ToolCallAgentPipelineView.class, new AgentPipelineToolCallViewFactory());
         registry.register(cn.lineai.tool.ui.ToolCallGenericView.class, new GenericToolCallViewFactory());
         return registry;
-    }
-
-    private static final class ContextResourceProvider implements ResourceProvider {
-        private final Context context;
-
-        ContextResourceProvider(Context context) {
-            this.context = context.getApplicationContext();
-        }
-
-        @Override
-        public InputStream openAsset(String path) {
-            try {
-                return context.getAssets().open(path);
-            } catch (Exception e) {
-                throw new IllegalStateException(e);
-            }
-        }
-
-        @Override
-        public String getString(int resId) {
-            return context.getString(resId);
-        }
-
-        @Override
-        public String getString(int resId, Object... formatArgs) {
-            return context.getString(resId, formatArgs);
-        }
     }
 
     private static final class ContextSystemConfigProvider implements SystemConfigProvider {

@@ -8,7 +8,7 @@
         <item name="android:windowBackground">@color/line_bg</item>
         <item name="android:navigationBarColor">@color/line_bg</item>
         <item name="android:statusBarColor">@color/line_bg</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightStatusBar">@bool/line_light_system_bars</item>
     </style>
 
     <style name="AppTheme" parent="@style/AppThemeBase" />

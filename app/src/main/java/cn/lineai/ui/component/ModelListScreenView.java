@@ -21,7 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-public final class ModelListScreenView extends LinearLayout {
+public final class ModelListScreenView extends ScreenSurfaceView {
     public interface Listener {
         void onBack();
 
@@ -70,7 +70,7 @@ public final class ModelListScreenView extends LinearLayout {
         ScrollView scrollView = new ScrollView(context);
         list = new LinearLayout(context);
         list.setOrientation(VERTICAL);
-        LineTheme.padding(list, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
+        LineTheme.padding(list, 16, 8, 16, 48);
         scrollView.addView(list, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         addView(scrollView, new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
 
@@ -106,7 +106,7 @@ public final class ModelListScreenView extends LinearLayout {
         if (allowManagement) {
             add = new IconButtonView(context, IconButtonView.PLUS);
             add.setIconColor(LineTheme.TEXT);
-            add.setIconSizeDp(36, 20);
+            add.setContentDescription(context.getString(R.string.screen_model_add_options_title));
             add.setOnClickListener(v -> listener.onAddModel());
         }
         headerHost.addView(
@@ -158,34 +158,28 @@ public final class ModelListScreenView extends LinearLayout {
             }
             return true;
         });
-        int background = checked ? LineTheme.ACCENT_MUTED : LineTheme.BG;
-        int border = selected || checked ? LineTheme.ACCENT : Color.TRANSPARENT;
+        int background = selected || checked ? LineTheme.INPUT_BG : LineTheme.SURFACE_ELEVATED;
+        int border = LineTheme.BORDER_LIGHT;
         card.setBackground(LineTheme.roundedStroke(context, background, 12, border));
-        LineTheme.padding(card, LineTheme.MD, LineTheme.MD, LineTheme.MD, LineTheme.MD);
+        LineTheme.padding(card, 12, 20, 12, 20);
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         cardParams.bottomMargin = LineTheme.dp(context, LineTheme.SM);
         list.addView(card, cardParams);
 
         String provider = displayProvider(model);
-        TextView badge = LineTheme.text(context, provider, LineTheme.FONT_XS, LineTheme.TEXT_ON_COLOR, Typeface.BOLD);
-        badge.setGravity(Gravity.CENTER);
-        badge.setBackground(LineTheme.rounded(context, badgeColor(model), 8));
-        LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
-        badgeParams.rightMargin = LineTheme.dp(context, LineTheme.MD);
-        LineTheme.padding(badge, LineTheme.SM, 4, LineTheme.SM, 4);
-        card.addView(badge, badgeParams);
-
         LinearLayout info = new LinearLayout(context);
         info.setOrientation(VERTICAL);
         card.addView(info, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
 
         TextView title = LineTheme.textMedium(context, model.getName(), LineTheme.FONT_MD, LineTheme.TEXT);
-        title.setSingleLine(true);
+        title.setMaxLines(2);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         info.addView(title, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        TextView sub = LineTheme.text(context, model.getModelId(), LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
-        sub.setSingleLine(true);
+        TextView sub = LineTheme.text(context, provider + " / " + model.getModelId(), LineTheme.FONT_SM, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+        sub.setMaxLines(2);
+        sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams subParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        subParams.topMargin = LineTheme.dp(context, 2);
+        subParams.topMargin = LineTheme.dp(context, 6);
         info.addView(sub, subParams);
 
         if (!multiSelectedIds.isEmpty()) {
@@ -287,20 +281,12 @@ public final class ModelListScreenView extends LinearLayout {
     private LinearLayout createBottomPanel(Context context) {
         LinearLayout panel = new LinearLayout(context);
         panel.setOrientation(VERTICAL);
-        panel.setBackground(LineTheme.roundedTop(context, LineTheme.SURFACE_ELEVATED, 16));
+        panel.setBackground(LineTheme.rounded(context, LineTheme.BG, 24));
         return panel;
     }
 
     private void showBottomDialog(Dialog dialog, LinearLayout panel) {
-        dialog.setContentView(panel);
-        dialog.show();
-        Window window = dialog.getWindow();
-        if (window == null) {
-            return;
-        }
-        window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        window.setLayout(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        window.setGravity(Gravity.BOTTOM);
+        DialogBuilder.showBottomSheet(dialog, panel);
     }
 
     private void addHandle(LinearLayout panel) {
@@ -347,19 +333,20 @@ public final class ModelListScreenView extends LinearLayout {
         if (desc != null && desc.length() > 0) {
             TextView descView = LineTheme.text(context, desc, LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
             LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-            descParams.topMargin = LineTheme.dp(context, 2);
+            descParams.topMargin = LineTheme.dp(context, 6);
             labels.addView(descView, descParams);
         }
         panel.addView(row, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
     }
 
     private void addBottomInset(LinearLayout panel) {
-        panel.addView(new View(panel.getContext()), new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(panel.getContext(), 34)));
+        panel.setPadding(0, 0, 0, LineTheme.dp(panel.getContext(), 12));
     }
 
     private String displayProvider(ModelConfig model) {
         String provider = model.getProviderLabel();
-        if (provider == null || provider.length() == 0 || "自定义".equals(provider)) {
+        String customLabel = getContext().getString(R.string.model_provider_custom);
+        if (provider == null || provider.length() == 0 || customLabel.equals(provider)) {
             return model.getProtocolType().getLabel();
         }
         return provider;

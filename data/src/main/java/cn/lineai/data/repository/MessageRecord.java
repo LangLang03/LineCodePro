@@ -105,7 +105,24 @@ public final class MessageRecord {
                 readString(rawJson, "review_message"),
                 readString(rawJson, "compact_status"),
                 readString(rawJson, "response_input_item_json"),
-                readAttachments(rawJson));
+                readAttachments(rawJson),
+                readString(rawJson, "model_switch_notification"),
+                readLong(rawJson, "processing_started_at"),
+                restoredProcessingFinish());
+    }
+
+    private long restoredProcessingFinish() {
+        long start = readLong(rawJson, "processing_started_at");
+        if (start == 0) return 0;
+        long finish = readLong(rawJson, "processing_finished_at");
+        if (finish > 0) return finish;
+        // A loaded conversation cannot keep counting an interrupted generation.
+        return Math.max(start, readLong(rawJson, "processing_observed_at"));
+    }
+
+    private long readLong(String rawJson, String key) {
+        try { return new JSONObject(rawJson).optLong(key, 0); }
+        catch (Exception ignored) { return 0; }
     }
 
     private ArrayList<ToolCall> readToolCalls(String rawJson) {

@@ -49,17 +49,20 @@ public final class DirectoryPickerSheetView extends FrameLayout {
         backdrop.setOnClickListener(v -> close());
         addView(backdrop, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
-        panel = new LinearLayout(context);
+        panel = new InsetSheetLayout(context);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackground(LineTheme.roundedTop(context, LineTheme.SURFACE_ELEVATED, 16));
+        panel.setClipToOutline(true);
+        panel.setBackground(LineTheme.roundedStroke(context, LineTheme.BG, 24, LineTheme.BORDER_LIGHT));
         FrameLayout.LayoutParams panelParams = new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(context, 560));
-        panelParams.gravity = Gravity.BOTTOM;
+        panelParams.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        panelParams.leftMargin = panelParams.rightMargin = LineTheme.dp(context, 16);
+        panelParams.bottomMargin = LineTheme.dp(context, 16);
         addView(panel, panelParams);
 
         LinearLayout header = new LinearLayout(context);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        LineTheme.padding(header, LineTheme.LG, LineTheme.MD, LineTheme.LG, LineTheme.MD);
+        LineTheme.padding(header, 20, 20, 20, 16);
         panel.addView(header, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         LinearLayout titles = new LinearLayout(context);
@@ -78,10 +81,10 @@ public final class DirectoryPickerSheetView extends FrameLayout {
 
         IconButtonView close = new IconButtonView(context, IconButtonView.CLOSE);
         close.setIconColor(LineTheme.TEXT_SECONDARY);
-        close.setIconSizeDp(36, 18);
-        close.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_LIGHT, 18));
+        close.setIconSizeDp(48, 18);
+
         close.setOnClickListener(v -> close());
-        LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 36), LineTheme.dp(context, 36));
+        LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 48), LineTheme.dp(context, 48));
         closeParams.leftMargin = LineTheme.dp(context, LineTheme.MD);
         header.addView(close, closeParams);
 
@@ -96,7 +99,7 @@ public final class DirectoryPickerSheetView extends FrameLayout {
         confirmButton = new IconButtonView(context, IconButtonView.CHECK);
         confirmButton.setIconColor(LineTheme.TEXT_ON_COLOR);
         confirmButton.setIconSizeDp(52, 22);
-        confirmButton.setBackground(LineTheme.rounded(context, LineTheme.ACCENT, 26));
+        confirmButton.setBackground(LineTheme.rounded(context, LineTheme.ACCENT, 14));
         confirmButton.setOnClickListener(v -> {
             if (listener != null) {
                 listener.onDirectoryPickerConfirmed();
@@ -106,7 +109,16 @@ public final class DirectoryPickerSheetView extends FrameLayout {
         confirmParams.gravity = Gravity.BOTTOM | Gravity.END;
         confirmParams.rightMargin = LineTheme.dp(context, LineTheme.LG);
         confirmParams.bottomMargin = LineTheme.dp(context, LineTheme.LG);
-        addView(confirmButton, confirmParams);
+        header.addView(confirmButton, new LinearLayout.LayoutParams(LineTheme.dp(context, 48), LineTheme.dp(context, 48)));
+    }
+
+    @Override protected void onMeasure(int width, int height) {
+        int available = Math.max(1, MeasureSpec.getSize(height)-LineTheme.dp(getContext(),64));
+        ((InsetSheetLayout)panel).setAvailableHeight(available);
+        android.view.ViewGroup.LayoutParams params = panel.getLayoutParams();
+        int target = Math.min(LineTheme.dp(getContext(),640),available);
+        if (params.height != target) { params.height = target; panel.setLayoutParams(params); }
+        super.onMeasure(width,height);
     }
 
     public void setListener(Listener listener) {
@@ -130,7 +142,7 @@ public final class DirectoryPickerSheetView extends FrameLayout {
             ScrollView scrollView = new ScrollView(getContext());
             LinearLayout treeList = new LinearLayout(getContext());
             treeList.setOrientation(LinearLayout.VERTICAL);
-            LineTheme.padding(treeList, LineTheme.SM, LineTheme.SM, LineTheme.SM, 90);
+            LineTheme.padding(treeList, 12, 8, 12, 24);
             scrollView.addView(treeList, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
             body.addView(scrollView, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
             addParentRow(treeList, tree);
@@ -166,14 +178,9 @@ public final class DirectoryPickerSheetView extends FrameLayout {
         bringToFront();
         float offset = pageOffset();
         panel.setTranslationX(offset);
-        confirmButton.setTranslationX(offset);
+
         backdrop.setAlpha(0f);
         panel.animate()
-                .translationX(0f)
-                .setDuration(OPEN_MS)
-                .setInterpolator(new DecelerateInterpolator())
-                .start();
-        confirmButton.animate()
                 .translationX(0f)
                 .setDuration(OPEN_MS)
                 .setInterpolator(new DecelerateInterpolator())
@@ -191,11 +198,6 @@ public final class DirectoryPickerSheetView extends FrameLayout {
         backdrop.animate().cancel();
         float offset = pageOffset();
         panel.animate()
-                .translationX(offset)
-                .setDuration(CLOSE_MS)
-                .setInterpolator(new AccelerateInterpolator())
-                .start();
-        confirmButton.animate()
                 .translationX(offset)
                 .setDuration(CLOSE_MS)
                 .setInterpolator(new AccelerateInterpolator())
@@ -260,6 +262,7 @@ public final class DirectoryPickerSheetView extends FrameLayout {
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(LineTheme.dp(context, 52));
         row.setClickable(true);
         row.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_LIGHT, 8));
         row.setOnClickListener(v -> {
@@ -333,6 +336,7 @@ public final class DirectoryPickerSheetView extends FrameLayout {
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(LineTheme.dp(context, 52));
         row.setBackground(selected ? LineTheme.rounded(context, LineTheme.ACCENT_MUTED, 8) : null);
         row.setClickable(node.isDirectory());
         if (node.isDirectory()) {

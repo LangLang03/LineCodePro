@@ -30,16 +30,16 @@ public final class UserMessageView extends LinearLayout {
         super(context);
         setOrientation(VERTICAL);
         setGravity(Gravity.END);
-        LineTheme.padding(this, LineTheme.LG, 0, LineTheme.LG, LineTheme.MD);
+        LineTheme.padding(this, 28, 16, 28, 32);
         defaultPaddingLeft = getPaddingLeft();
         defaultPaddingTop = getPaddingTop();
         defaultPaddingRight = getPaddingRight();
         defaultPaddingBottom = getPaddingBottom();
 
-        contentText = LineTheme.text(context, "", 16, LineTheme.TEXT_ON_COLOR, Typeface.NORMAL);
-        contentText.setLineSpacing(LineTheme.dp(context, 2), 1.0f);
+        contentText = LineTheme.text(context, "", 16, LineTheme.textOn(LineTheme.USER_BUBBLE), Typeface.NORMAL);
+        contentText.setLineSpacing(LineTheme.dp(context, 5), 1.0f);
         contentText.setBackground(LineTheme.userBubble(context));
-        LineTheme.padding(contentText, LineTheme.MD, 5, LineTheme.MD, 5);
+        LineTheme.padding(contentText, 15, 10, 15, 10);
         int horizontalPaddingPx = LineTheme.dp(context, LineTheme.LG) * 2;
         int availableWidth = context.getResources().getDisplayMetrics().widthPixels - horizontalPaddingPx;
         contentText.setMaxWidth((int) (availableWidth * 0.80f));
@@ -98,9 +98,18 @@ public final class UserMessageView extends LinearLayout {
                 }
             }
         });
-        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LineTheme.dp(context, 22));
+        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LineTheme.dp(context, 44));
         actionParams.topMargin = LineTheme.dp(context, 3);
         addView(actionBar, actionParams);
+        actionBar.setVisibility(GONE);
+        contentText.setOnLongClickListener(v -> { actionBar.setVisibility(actionBar.getVisibility() == VISIBLE ? GONE : VISIBLE); return true; });
+    }
+
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        int available = Math.max(0, MeasureSpec.getSize(widthMeasureSpec) - getPaddingLeft() - getPaddingRight());
+        contentText.setMaxWidth((int) (available * 0.90f));
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
     }
 
     public void setMessageActionListener(MessageActionListener listener) {
@@ -116,8 +125,7 @@ public final class UserMessageView extends LinearLayout {
         String messageId = message.getId() == null ? "" : message.getId();
         if (!lastAnimatedMessageId.equals(messageId)) {
             lastAnimatedMessageId = messageId;
-            setAlpha(0f);
-            animate().alpha(1f).setDuration(ENTRANCE_FADE_MS).start();
+            actionBar.setVisibility(GONE);
         }
         String content = visibleUserContent(message);
         if (!lastContent.equals(content)) {

@@ -8,6 +8,7 @@ import cn.lineai.ai.SkillPromptProvider;
 import cn.lineai.data.db.LineCodeDatabase;
 import cn.lineai.data.service.GitHubSkillInstaller;
 import cn.lineai.data.service.SkillFileManager;
+import cn.lineai.data.service.SkillHubClient;
 import cn.lineai.model.ExtensionAgentConfig;
 import cn.lineai.model.ExtensionMcpConfig;
 import cn.lineai.model.McpToolSummary;
@@ -106,11 +107,12 @@ public final class SkillRepository extends BaseRepository {
         File tempDir = fileManager.uniqueChild(tempRoot, fileManager.stripExtension(fileName));
         File tempFile = new File(tempDir, fileName.toLowerCase(Locale.ROOT).endsWith(".zip") ? fileName : "SKILL.md");
         fileManager.copyUriToFile(uri, tempFile);
-        try {
-            return installSkill(homePath, location, tempFile.getAbsolutePath(), fileManager.stripExtension(fileName));
-        } finally {
-            fileManager.deleteRecursive(tempDir);
-        }
+        return installTemporarySkill(
+                homePath,
+                location,
+                tempFile,
+                fileManager.stripExtension(fileName),
+                tempDir);
     }
 
     public synchronized SkillRecord installSkillFromGitHub(String homePath, String location, String githubUrl) throws Exception {
@@ -121,10 +123,45 @@ public final class SkillRepository extends BaseRepository {
                 fileManager
         );
         File downloaded = installer.downloadToTemp(githubUrl);
+        return installTemporarySkill(
+                homePath,
+                location,
+                downloaded,
+                downloaded.getName(),
+                downloaded);
+    }
+
+    public synchronized SkillRecord installSkillFromSkillHub(
+            String homePath,
+            String location,
+            String slug,
+            String version
+    ) throws Exception {
+        fileManager.ensureSkillRoots(homePath);
+        File tempRoot = new File(fileManager.getWorkspacePaths().getLinecodeRoot(), "tmp/skills-skillhub");
+        File tempDir = fileManager.uniqueChild(tempRoot, fileManager.sanitizeFileName(slug));
+        File archive = new File(tempDir, "skill.zip");
+        byte[] bytes = new SkillHubClient(resourceProvider).download(slug, version);
         try {
-            return installSkill(homePath, location, downloaded.getAbsolutePath(), downloaded.getName());
+            fileManager.writeBytes(archive, bytes);
+        } catch (RuntimeException error) {
+            fileManager.deleteRecursive(tempDir);
+            throw error;
+        }
+        return installTemporarySkill(homePath, location, archive, slug, tempDir);
+    }
+
+    private SkillRecord installTemporarySkill(
+            String homePath,
+            String location,
+            File source,
+            String name,
+            File cleanupTarget
+    ) throws Exception {
+        try {
+            return installSkill(homePath, location, source.getAbsolutePath(), name);
         } finally {
-            fileManager.deleteRecursive(downloaded);
+            fileManager.deleteRecursive(cleanupTarget);
         }
     }
 
@@ -163,6 +200,7 @@ public final class SkillRepository extends BaseRepository {
                 enabledAgents.add(agent);
             }
         }
+        enabledAgents.sort(java.util.Comparator.comparing(ExtensionAgentConfig::getId));
         if (!enabledAgents.isEmpty()) {
             hasContent = true;
             builder.append("\n### 自定义 Agent\n");
@@ -185,6 +223,7 @@ public final class SkillRepository extends BaseRepository {
                 enabledMcps.add(mcp);
             }
         }
+        enabledMcps.sort(java.util.Comparator.comparing(ExtensionMcpConfig::getId));
         if (!enabledMcps.isEmpty()) {
             hasContent = true;
             builder.append("\n### 自定义 HTTP MCP\n");
@@ -200,6 +239,7 @@ public final class SkillRepository extends BaseRepository {
                 enabledSkills.add(skill);
             }
         }
+        enabledSkills.sort(java.util.Comparator.comparing(SkillRecord::getId));
         if (!enabledSkills.isEmpty()) {
             hasContent = true;
             builder.append("\n### 已安装 Skills\n");
@@ -227,6 +267,7 @@ public final class SkillRepository extends BaseRepository {
                 names.add(tool.getName());
             }
         }
+        java.util.Collections.sort(names);
         return join(names, ", ", "未启用 tools");
     }
 

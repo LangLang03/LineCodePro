@@ -32,6 +32,8 @@ public interface ExtensionController {
 
     void onSkillInstalledFromGitHub(String location, String githubUrl) throws Exception;
 
+    SkillRecord onSkillInstalledFromSkillHub(String location, String slug, String version) throws Exception;
+
     void onExtensionEnabledChanged(String kind, String id, boolean enabled);
 
     void onExtensionDeleted(String kind, String id);

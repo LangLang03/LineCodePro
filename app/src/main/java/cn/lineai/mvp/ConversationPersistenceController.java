@@ -199,13 +199,13 @@ final class ConversationPersistenceController {
         return host.defaultConversationTitle(context);
     }
 
-    String messageRawJson(ChatMessage message) {
+    static String messageRawJson(ChatMessage message) {
         if (message == null) {
             return "";
         }
         try {
             JSONObject object = new JSONObject();
-            if (message.getRole() == ChatMessage.Role.TOOL) {
+            if (message.getRole() == ChatMessage.Role.TOOL || message.isRetryNotice()) {
                 object.put("diff_id", message.getDiffId());
                 object.put("review_state", message.getReviewState());
                 object.put("review_message", message.getReviewMessage());
@@ -225,6 +225,14 @@ final class ConversationPersistenceController {
             }
             if (message.getResponseInputItemJson().length() > 0) {
                 object.put("response_input_item_json", message.getResponseInputItemJson());
+            }
+            if (message.isModelSwitchNotification()) {
+                object.put("model_switch_notification", message.getModelSwitchNotification());
+            }
+            if (message.getProcessingStartedAt() > 0) {
+                object.put("processing_started_at", message.getProcessingStartedAt());
+                object.put("processing_finished_at", message.getProcessingFinishedAt());
+                object.put("processing_observed_at", System.currentTimeMillis());
             }
             if (message.hasAttachments()) {
                 JSONArray array = new JSONArray();

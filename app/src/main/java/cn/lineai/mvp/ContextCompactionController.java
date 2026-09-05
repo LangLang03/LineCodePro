@@ -479,12 +479,17 @@ final class ContextCompactionController {
         HashSet<String> retainedIds = messageIdSet(retainedUserMessages);
         ArrayList<ChatMessage> compacted = new ArrayList<>();
         for (ChatMessage message : messages) {
-            if (progressId.equals(message.getId()) || preservedIds.contains(message.getId()) || retainedIds.contains(message.getId())) {
+            if (progressId.equals(message.getId()) || preservedIds.contains(message.getId())) {
                 continue;
             }
-            compacted.add(baseIds.contains(message.getId()) ? message.withExcludeFromContext(true) : message);
+            if (retainedIds.contains(message.getId())) {
+                compacted.add(message);
+            } else if (baseIds.contains(message.getId())) {
+                compacted.add(message.withExcludeFromContext(true));
+            } else {
+                compacted.add(message);
+            }
         }
-        compacted.addAll(retainedUserMessages);
         // 摘要必须进入上下文（excludeFromContext=false），否则模型侧会像"上下文被清空"一样丢失历史。
         // 注意：不能用 .withResponseInputItemJson(...) 链式构造，它会基于当前 excludeFromContext 副本，
         // 这里显式传 false 保证摘要一定进上下文。

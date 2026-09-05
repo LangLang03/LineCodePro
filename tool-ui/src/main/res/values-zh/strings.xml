@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="tool_call_error_details">错误详情</string>
     <string name="shell_output_line_count">%1$d 行</string>
     <string name="common_cancel">取消</string>
     <string name="common_delete">删除</string>
@@ -57,4 +58,12 @@
     <string name="tool_call_block_mcp">MCP 调用</string>
     <string name="tool_call_generic_mcp">MCP 调用</string>
     <string name="tool_call_phone_action_default">手机操作</string>
+    <string name="tool_call_read_done">已读取</string>
+    <string name="tool_call_copy_file">复制文件内容</string>
+    <string name="tool_call_write_done">已编辑</string>
+    <string name="tool_call_write_reverted">已撤销</string>
+    <string name="tool_call_diff_loading">正在加载差异…</string>
+    <string name="tool_call_diff_unavailable">暂无可用差异</string>
+    <string name="tool_call_write_created">已创建</string>
+    <string name="tool_call_diff_no_newline">文件末尾没有换行符</string>
 </resources>

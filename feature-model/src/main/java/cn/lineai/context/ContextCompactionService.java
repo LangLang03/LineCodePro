@@ -310,8 +310,10 @@ public final class ContextCompactionService {
     }
 
     /**
-     * codex 式压缩调用：独立模型请求生成摘要，失败时带退避重试，成功后把
-     * 服务器观测到的 usage 记入 {@link TokenUsageTracker}（压缩后上下文的新基线）。
+     * codex 式压缩调用：独立模型请求生成摘要，失败时带退避重试。压缩调用的输入是
+     * 整个 transcript，其 usage 远大于压缩后实际上下文，不能作为压缩后基线，否则
+     * shouldCompact 会误判仍超阈值导致压缩循环。这里 reset tracker，让触发判断
+     * 回退到本地估算（本地估算已排除 excludeFromContext 消息）。
      */
     private ModelCompletionResponse streamSummaryWithRetry(
             SummaryStreamCall call,
@@ -322,7 +324,7 @@ public final class ContextCompactionService {
             try {
                 ModelCompletionResponse response = call.call();
                 if (tokenUsageTracker != null) {
-                    tokenUsageTracker.record(response);
+                    tokenUsageTracker.reset();
                 }
                 return response;
             } catch (ModelCompletionException e) {

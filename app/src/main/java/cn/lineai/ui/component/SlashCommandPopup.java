@@ -47,6 +47,7 @@ public final class SlashCommandPopup {
     private final Context context;
     private final PopupWindow popup;
     private final LinearLayout content;
+    private final android.widget.ScrollView viewport;
     private int selectedIndex = -1;
     private int lastRowCount = 0;
     private String lastTitle = null;
@@ -56,7 +57,10 @@ public final class SlashCommandPopup {
         content = new LinearLayout(context);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setBackground(LineTheme.roundedStroke(context, LineTheme.INPUT_BG, 14, LineTheme.BORDER_LIGHT));
-        LineTheme.padding(content, 3, 3, 3, 3);
+        LineTheme.padding(content, 8, 8, 8, 8);
+        viewport = new android.widget.ScrollView(context);
+        viewport.setFillViewport(false);viewport.addView(content);
+        viewport.setBackground(LineTheme.rounded(context,LineTheme.INPUT_BG,14));viewport.setClipToOutline(true);
         popup = new PopupWindow(context);
         popup.setOutsideTouchable(true);
         popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
@@ -73,11 +77,6 @@ public final class SlashCommandPopup {
             return;
         }
         String safeTitle = title == null ? "" : title;
-        if (popup.isShowing()
-                && safeTitle.equals(lastTitle)
-                && rows.size() == lastRowCount) {
-            return;
-        }
         content.removeAllViews();
         lastTitle = safeTitle;
         lastRowCount = rows.size();
@@ -105,7 +104,8 @@ public final class SlashCommandPopup {
         int heightMeasureSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
         content.measure(widthMeasureSpec, heightMeasureSpec);
         int popupWidth = anchor.getWidth() - 2 * LineTheme.dp(context, LineTheme.LG);
-        int popupHeight = content.getMeasuredHeight();
+        int[] anchorLocation = new int[2]; anchor.getLocationOnScreen(anchorLocation);
+        int popupHeight = Math.min(content.getMeasuredHeight(),Math.max(LineTheme.dp(context,52),anchorLocation[1]-LineTheme.dp(context,24)));
         if (popupWidth <= 0 || popupHeight <= 0) {
             return;
         }
@@ -119,7 +119,7 @@ public final class SlashCommandPopup {
         anchor.getLocationOnScreen(location);
         int x = location[0] + LineTheme.dp(context, LineTheme.LG);
         int y = Math.max(0, location[1] - popupHeight - LineTheme.dp(context, 8));
-        popup.setContentView(content);
+        popup.setContentView(viewport);
         popup.showAtLocation(anchor, Gravity.NO_GRAVITY, x, y);
     }
 
@@ -160,7 +160,8 @@ public final class SlashCommandPopup {
     private View rowView(Row row, int index) {
         LinearLayout container = new LinearLayout(context);
         container.setOrientation(LinearLayout.VERTICAL);
-        LineTheme.padding(container, LineTheme.MD, LineTheme.SM, LineTheme.MD, LineTheme.SM);
+        LineTheme.padding(container, 16, 14, 16, 14);
+        container.setMinimumHeight(LineTheme.dp(context, 52));
         container.setGravity(Gravity.CENTER_VERTICAL);
 
         LinearLayout row1 = new LinearLayout(context);

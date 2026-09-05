@@ -47,7 +47,7 @@ public final class AssistantMessageView extends LinearLayout {
         super(context);
         setOrientation(VERTICAL);
         setGravity(Gravity.START);
-        LineTheme.padding(this, LineTheme.LG, 0, LineTheme.LG, LineTheme.MD);
+        LineTheme.padding(this, 16, 0, 16, 28);
         defaultPaddingLeft = getPaddingLeft();
         defaultPaddingTop = getPaddingTop();
         defaultPaddingRight = getPaddingRight();
@@ -116,9 +116,15 @@ public final class AssistantMessageView extends LinearLayout {
                 }
             }
         });
-        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LineTheme.dp(context, 22));
+        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LineTheme.dp(context, 44));
         actionParams.topMargin = LineTheme.dp(context, 3);
         addView(actionBar, actionParams);
+        actionBar.setVisibility(GONE);
+        contentView.setOnLongClickListener(v -> {
+            if (currentMessage == null || currentMessage.isStreaming()) return false;
+            actionBar.setVisibility(actionBar.getVisibility() == VISIBLE ? GONE : VISIBLE);
+            return true;
+        });
     }
 
     public void bind(ChatMessage message) {
@@ -182,14 +188,10 @@ public final class AssistantMessageView extends LinearLayout {
                 contentView.setMarkdown(content);
             }
         }
+        installMessageLongPress(contentView);
         bindToolCalls(message);
-        actionBar.setVisibility(message.isStreaming() || message.getContent().trim().isEmpty() ? GONE : VISIBLE);
+        if (!lastMessageId.equals(messageId) || message.isStreaming()) actionBar.setVisibility(GONE);
         setWorkingStatusVisible(message.isStreaming(), WorkingStatusView.isThinking(safeReasoning, content));
-        if (!lastAnimatedMessageId.equals(messageId)) {
-            lastAnimatedMessageId = messageId;
-            setAlpha(0f);
-            animate().alpha(1f).setDuration(ENTRANCE_FADE_MS).start();
-        }
         lastMessageId = messageId;
         lastReasoning = safeReasoning;
         lastContent = content;
@@ -198,6 +200,21 @@ public final class AssistantMessageView extends LinearLayout {
         lastThinkingAutoExpand = thinkingAutoExpand;
         lastThinkingScrollable = thinkingScrollable;
         lastCompactStatus = "";
+    }
+
+    private void installMessageLongPress(android.view.View view) {
+        view.setOnLongClickListener(v -> {
+            if (currentMessage == null || currentMessage.isStreaming()) return false;
+            actionBar.setVisibility(actionBar.getVisibility() == VISIBLE ? GONE : VISIBLE);
+            return true;
+        });
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                android.view.View child = group.getChildAt(i);
+                if (child instanceof android.widget.TextView || child instanceof cn.lineai.ui.markdown.MarkdownView) installMessageLongPress(child);
+            }
+        }
     }
 
     private void setWorkingStatusVisible(boolean visible, boolean thinking) {

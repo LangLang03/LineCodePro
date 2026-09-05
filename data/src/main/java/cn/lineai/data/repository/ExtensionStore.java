@@ -91,6 +91,11 @@ public interface ExtensionStore {
     SkillRecord installSkillFromGitHub(String homePath, String location, String githubUrl) throws Exception;
 
     /**
+     * 从 SkillHub 下载并安装指定版本的 Skill。
+     */
+    SkillRecord installSkillFromSkillHub(String homePath, String location, String slug, String version) throws Exception;
+
+    /**
      * 设置 Skill 启用状态。
      */
     void setSkillEnabled(String id, boolean enabled);

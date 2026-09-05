@@ -18,7 +18,7 @@ import android.widget.TextView;
 import cn.lineai.R;
 import cn.lineai.security.UrlPolicy;
 
-public final class InAppBrowserScreenView extends LinearLayout {
+public final class InAppBrowserScreenView extends ScreenSurfaceView {
     public interface Listener {
         void onBack();
     }
@@ -30,40 +30,11 @@ public final class InAppBrowserScreenView extends LinearLayout {
         setOrientation(VERTICAL);
         setBackgroundColor(LineTheme.BG);
 
-        LinearLayout header = new LinearLayout(context) {
-            @Override
-            protected void onDraw(Canvas canvas) {
-                super.onDraw(canvas);
-                borderPaint.setColor(LineTheme.BORDER);
-                borderPaint.setStrokeWidth(1f);
-                canvas.drawLine(0, getHeight() - 1, getWidth(), getHeight() - 1, borderPaint);
-            }
-        };
-        header.setWillNotDraw(false);
-        header.setOrientation(HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setBackgroundColor(LineTheme.SURFACE_ELEVATED);
-        LineTheme.padding(header, LineTheme.MD, LineTheme.MD, LineTheme.MD, LineTheme.MD);
+        addView(new ScreenHeaderView(context, context.getString(R.string.in_app_browser_default_title), listener::onBack, null), new LayoutParams(-1,-2));
 
-        LinearLayout back = new LinearLayout(context);
-        back.setOrientation(HORIZONTAL);
-        back.setGravity(Gravity.CENTER_VERTICAL);
-        back.setOnClickListener(v -> listener.onBack());
-        IconButtonView chevron = new IconButtonView(context, IconButtonView.CHEVRON_LEFT);
-        chevron.setIconColor(LineTheme.TEXT);
-        chevron.setIconSizeDp(22, 22);
-        chevron.setClickable(false);
-        back.addView(chevron, new LinearLayout.LayoutParams(LineTheme.dp(context, 22), LineTheme.dp(context, 22)));
-        back.addView(LineTheme.text(context, getContext().getString(R.string.in_app_browser_exit), LineTheme.FONT_MD, LineTheme.TEXT, Typeface.NORMAL));
-        header.addView(back, new LinearLayout.LayoutParams(LineTheme.dp(context, 56), LayoutParams.WRAP_CONTENT));
-
-        TextView title = LineTheme.textMedium(context, url == null ? context.getString(R.string.in_app_browser_default_title) : url, LineTheme.FONT_MD, LineTheme.TEXT);
-        title.setGravity(Gravity.CENTER);
-        title.setSingleLine(true);
-        header.addView(title, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
-        header.addView(new LinearLayout(context), new LinearLayout.LayoutParams(LineTheme.dp(context, 56), 1));
-        addView(header, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-
+        TextView address = LineTheme.text(context, url == null ? "" : url, 13, LineTheme.TEXT_SECONDARY, Typeface.NORMAL);
+        address.setSingleLine(true); address.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+        LineTheme.padding(address,28,0,28,16); addView(address,new LayoutParams(-1,-2));
         WebView webView = new WebView(context);
         webView.setBackgroundColor(LineTheme.BG);
         webView.setContentDescription(getContext().getString(R.string.in_app_browser_content_desc));

@@ -49,6 +49,11 @@ public final class ComposerView extends LinearLayout implements QuoteController.
 
         void onModeChanged(String mode);
 
+        default void onPermissionClick() { }
+        default void onProjectClick() { }
+        default void onSettingsClick() { }
+        default void onMoreClick() { }
+
         void onStop();
 
         void onModelQuickSwitch(String modelId);
@@ -123,7 +128,7 @@ public final class ComposerView extends LinearLayout implements QuoteController.
         setOrientation(VERTICAL);
         setBackgroundColor(LineTheme.BG);
         setWillNotDraw(false);
-        LineTheme.padding(this, LineTheme.LG, LineTheme.SM, LineTheme.LG, LineTheme.LG);
+        LineTheme.padding(this, 20, 14, 20, 20);
 
         buildQuotePreview();
 
@@ -141,12 +146,13 @@ public final class ComposerView extends LinearLayout implements QuoteController.
 
         LinearLayout panel = new LinearLayout(context);
         panel.setOrientation(VERTICAL);
-        panel.setMinimumHeight(LineTheme.dp(context, 148));
-        panel.setBackground(LineTheme.roundedStroke(context, LineTheme.INPUT_BG, 22, LineTheme.BORDER));
+        panel.setMinimumHeight(LineTheme.dp(context, 56));
+        panel.setBackground(LineTheme.rounded(context, LineTheme.INPUT_BG, 20));
         addView(panel, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         LinearLayout metaRow = new LinearLayout(context);
         metaRow.setOrientation(HORIZONTAL);
+        metaRow.setVisibility(GONE);
         metaRow.setGravity(Gravity.CENTER_VERTICAL);
         LineTheme.padding(metaRow, LineTheme.LG, 0, LineTheme.LG, 0);
         panel.addView(metaRow, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(context, 34)));
@@ -185,13 +191,14 @@ public final class ComposerView extends LinearLayout implements QuoteController.
 
         android.view.View divider = new android.view.View(context);
         divider.setBackgroundColor(LineTheme.BORDER_LIGHT);
+        divider.setVisibility(GONE);
         panel.addView(divider, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 1));
 
         // Quote block (hidden by default)
         quoteBlock = new LinearLayout(context);
         quoteBlock.setOrientation(HORIZONTAL);
         quoteBlock.setGravity(Gravity.CENTER_VERTICAL);
-        quoteBlock.setBackgroundColor(0xFF1E1E2E);
+        quoteBlock.setBackgroundColor(LineTheme.SURFACE);
         LineTheme.padding(quoteBlock, LineTheme.MD, LineTheme.SM, LineTheme.SM, LineTheme.SM);
         quoteBlock.setVisibility(GONE);
         android.view.View quoteBar = new android.view.View(context);
@@ -218,14 +225,15 @@ public final class ComposerView extends LinearLayout implements QuoteController.
 
         LinearLayout inputRow = new LinearLayout(context);
         inputRow.setOrientation(HORIZONTAL);
-        inputRow.setGravity(Gravity.TOP);
-        LineTheme.padding(inputRow, LineTheme.SM, LineTheme.SM, LineTheme.SM, 0);
+        inputRow.setGravity(Gravity.BOTTOM);
+        LineTheme.padding(inputRow, 8, 6, 8, 6);
         panel.addView(inputRow, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         attachButton = new IconButtonView(context, IconButtonView.PLUS);
         attachButton.setIconColor(LineTheme.TEXT_SECONDARY);
-        attachButton.setIconSizeDp(40, 22);
-        attachButton.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_LIGHT, 20));
+        attachButton.setIconSizeDp(44, 20);
+        attachButton.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+        attachButton.setContentDescription(context.getString(R.string.composer_image_button_desc));
         attachButton.setOnClickListener(v -> {
             if (!streaming && listener != null) {
                 listener.onAttachClick();
@@ -247,19 +255,18 @@ public final class ComposerView extends LinearLayout implements QuoteController.
         input.setTextColor(LineTheme.TEXT);
         input.setHintTextColor(LineTheme.TEXT_TERTIARY);
         input.setHint(context.getString(R.string.composer_hint_default));
-        input.setTextSize(LineTheme.FONT_MD);
+        input.setTextSize(14);
         input.setSingleLine(false);
-        input.setMinLines(2);
-        input.setMaxLines(6);
-        input.setMinHeight(LineTheme.dp(context, 68));
-        input.setMaxHeight(LineTheme.dp(context, 152));
-        input.setGravity(Gravity.TOP | Gravity.START);
+        input.setMinLines(1);
+        input.setMaxLines(3);
+        input.setMinHeight(LineTheme.dp(context, 44));
+        input.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
         input.setImeOptions(EditorInfo.IME_ACTION_SEND);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         input.setBackgroundColor(android.graphics.Color.TRANSPARENT);
         input.setIncludeFontPadding(false);
-        input.setPadding(LineTheme.dp(context, LineTheme.SM), LineTheme.dp(context, LineTheme.SM),
-                LineTheme.dp(context, LineTheme.SM), LineTheme.dp(context, LineTheme.SM));
+        input.setPadding(LineTheme.dp(context, 3), LineTheme.dp(context, 10),
+                LineTheme.dp(context, 3), LineTheme.dp(context, 10));
         input.setOnEditorActionListener((view, actionId, event) -> {
             if (!InputSettings.ENTER_SEND.equals(enterKeyBehavior)) {
                 return false;
@@ -294,6 +301,7 @@ public final class ComposerView extends LinearLayout implements QuoteController.
             }
         });
         LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
+        inputRow.addView(attachButton, new LayoutParams(LineTheme.dp(context, 44), LineTheme.dp(context, 44)));
         inputRow.addView(input, inputParams);
 
         sendButton = new IconButtonView(context, IconButtonView.ARROW_UP);
@@ -315,13 +323,14 @@ public final class ComposerView extends LinearLayout implements QuoteController.
 
         LinearLayout modeRow = new LinearLayout(context);
         modeRow.setOrientation(HORIZONTAL);
+        modeRow.setVisibility(GONE);
         modeRow.setGravity(Gravity.CENTER_VERTICAL);
         LineTheme.padding(modeRow, LineTheme.SM, 0, LineTheme.SM, LineTheme.SM);
         panel.addView(modeRow, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         LinearLayout.LayoutParams attachParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 40), LineTheme.dp(context, 40));
         attachParams.rightMargin = LineTheme.dp(context, LineTheme.SM);
-        modeRow.addView(attachButton, attachParams);
+
 
         LinearLayout.LayoutParams imageButtonParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 40), LineTheme.dp(context, 40));
         imageButtonParams.rightMargin = LineTheme.dp(context, LineTheme.SM);
@@ -352,7 +361,7 @@ public final class ComposerView extends LinearLayout implements QuoteController.
 
         LinearLayout.LayoutParams sendParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 40), LineTheme.dp(context, 40));
         sendParams.leftMargin = LineTheme.dp(context, LineTheme.SM);
-        modeRow.addView(sendButton, sendParams);
+        inputRow.addView(sendButton, new LayoutParams(LineTheme.dp(context, 44), LineTheme.dp(context, 44)));
 
         input.addTextChangedListener(new TextWatcher() {
             @Override
@@ -590,6 +599,7 @@ public final class ComposerView extends LinearLayout implements QuoteController.
             modelPopup.dismiss();
         }
         if (streaming) {
+            if (contextDialog != null) contextDialog.dismiss();
             dismissSlashPopup();
         } else {
             updateSlashPopup();
@@ -607,44 +617,58 @@ public final class ComposerView extends LinearLayout implements QuoteController.
         updateSendButton();
     }
 
-    @Override
-    protected void onDraw(Canvas canvas) {
-        super.onDraw(canvas);
-        borderPaint.setColor(LineTheme.BORDER);
-        borderPaint.setStrokeWidth(1f);
-        canvas.drawLine(0, 0, getWidth(), 0, borderPaint);
-    }
-
     private void updateSendButton() {
         boolean hasContent = canSend();
-        if (streaming) {
-            if (!pendingQueue.isEmpty() && !hasContent) {
-                // 有队列 + 输入框空：红色停止按钮（按=停止AI并发送队列）
-                sendButton.setIconType(IconButtonView.STOP);
-                sendButton.setIconColor(LineTheme.TEXT_ON_COLOR);
-                sendButton.setIconSizeDp(40, 18);
-                sendButton.setBackground(LineTheme.rounded(getContext(), 0xFFFF8800, 20));
-            } else if (hasContent) {
-                // 有内容：橙色箭头（按=追加排队）
-                sendButton.setIconType(IconButtonView.ARROW_UP);
-                sendButton.setIconColor(LineTheme.TEXT_ON_COLOR);
-                sendButton.setIconSizeDp(40, 22);
-                sendButton.setBackground(LineTheme.rounded(getContext(), 0xFFFFAA33, 20));
-            } else {
-                // 无内容无队列：红色停止
-                sendButton.setIconType(IconButtonView.STOP);
-                sendButton.setIconColor(LineTheme.TEXT_ON_COLOR);
-                sendButton.setIconSizeDp(40, 18);
-                sendButton.setBackground(LineTheme.rounded(getContext(), LineTheme.DANGER, 20));
-            }
-        } else {
-            sendButton.setIconType(IconButtonView.ARROW_UP);
-            sendButton.setIconColor(hasContent ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_TERTIARY);
-            sendButton.setIconSizeDp(40, 22);
-            sendButton.setBackground(LineTheme.rounded(getContext(), hasContent ? LineTheme.ACCENT : LineTheme.SURFACE_LIGHT, 20));
-        }
+        sendButton.setIconType(streaming && !hasContent ? IconButtonView.STOP : IconButtonView.ARROW_UP);
+        sendButton.setIconSizeDp(44, streaming && !hasContent ? 17 : 20);
+        sendButton.setIconColor(streaming || hasContent ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_SECONDARY);
+        sendButton.setBackground(LineTheme.rounded(getContext(), streaming || hasContent
+                ? LineTheme.ACCENT : android.graphics.Color.TRANSPARENT, 22));
+        sendButton.setContentDescription(getContext().getString(streaming && !hasContent
+                ? R.string.chat_stop : R.string.chat_send));
         sendButton.setEnabled(streaming || hasContent);
-        sendButton.setAlpha(sendButton.isEnabled() ? 1f : 0.72f);
+        sendButton.setAlpha(1f);
+    }
+
+    private android.app.Dialog contextDialog;
+
+    private void showConversationMenu() {
+        if (contextDialog != null) contextDialog.dismiss();
+        contextDialog = new android.app.Dialog(getContext());
+        LinearLayout content = new LinearLayout(getContext());
+        content.setOrientation(VERTICAL);
+        content.setBackground(LineTheme.roundedTop(getContext(), LineTheme.BG, 24));
+        LineTheme.padding(content, 28, 24, 28, 28);
+        TextView title = LineTheme.textMedium(getContext(), getContext().getString(R.string.chat_context_title), 22, LineTheme.TEXT);
+        content.addView(title, new LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(getContext(), 52)));
+        addContextOption(content, getContext().getString(R.string.chat_context_files), () -> listener.onAttachClick());
+        addContextOption(content, getContext().getString(R.string.composer_image_button_desc), () -> listener.onImagePickerClick());
+        addContextOption(content, modelText.getText().toString(), () -> showModelPopup(attachButton));
+        addContextOption(content, getContext().getString(R.string.chat_context_mode, modeLabel(chatMode)), () -> showModePopup(attachButton));
+        addContextOption(content, getContext().getString(R.string.chat_context_workspace), () -> listener.onProjectClick());
+        addContextOption(content, getContext().getString(R.string.header_permission_desc), () -> listener.onPermissionClick());
+        addContextOption(content, getContext().getString(R.string.chat_context_settings), () -> listener.onSettingsClick());
+        addContextOption(content, getContext().getString(R.string.chat_context_more), () -> listener.onMoreClick());
+        DialogBuilder.showBottomSheet(contextDialog, content);
+    }
+
+    private void addContextOption(LinearLayout parent, String label, Runnable action) {
+        TextView row = LineTheme.text(getContext(), label, 15, LineTheme.TEXT, Typeface.NORMAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(LineTheme.dp(getContext(), 52));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setOnClickListener(v -> { if (contextDialog != null) contextDialog.dismiss(); if (listener != null) action.run(); });
+        parent.addView(row, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        if (contextDialog != null) contextDialog.dismiss();
+        if (modePopup != null) modePopup.dismiss();
+        if (modelPopup != null) modelPopup.dismiss();
+        dismissSlashPopup();
+        super.onDetachedFromWindow();
     }
 
     private boolean canSend() {
@@ -760,11 +784,11 @@ public final class ComposerView extends LinearLayout implements QuoteController.
             LinearLayout row = new LinearLayout(ctx);
             row.setOrientation(HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setBackgroundColor(0xFF252536);
+            row.setBackgroundColor(LineTheme.INPUT_BG);
             LineTheme.padding(row, LineTheme.MD, 4, LineTheme.SM, 4);
             // 左侧橙色竖条
             android.view.View bar = new android.view.View(ctx);
-            bar.setBackgroundColor(0xFFFFAA33);
+            bar.setBackgroundColor(LineTheme.WARNING);
             row.addView(bar, new LinearLayout.LayoutParams(LineTheme.dp(ctx, 3), LineTheme.dp(ctx, 20)));
             // 序号 + 预览文字
             String preview = (i + 1) + ". " + (item.text.length() > 30 ? item.text.substring(0, 30) + "..." : item.text);
@@ -790,7 +814,7 @@ public final class ComposerView extends LinearLayout implements QuoteController.
         }
         // 超过4条时显示折叠提示
         if (pendingQueue.size() > 4) {
-            TextView more = LineTheme.text(ctx, "   ... 还有 " + (pendingQueue.size() - 4) + " 条排队中", LineTheme.FONT_XS, 0xFFCC8800, Typeface.ITALIC);
+            TextView more = LineTheme.text(ctx, getContext().getString(R.string.common_more_queued, pendingQueue.size() - 4), LineTheme.FONT_XS, 0xFFCC8800, Typeface.ITALIC);
             LineTheme.padding(more, LineTheme.MD, 2, 0, 4);
             pendingContainer.addView(more, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         }
@@ -876,6 +900,7 @@ public final class ComposerView extends LinearLayout implements QuoteController.
             return;
         }
         if (streaming) {
+            if (contextDialog != null) contextDialog.dismiss();
             dismissSlashPopup();
             return;
         }
@@ -1167,164 +1192,47 @@ public final class ComposerView extends LinearLayout implements QuoteController.
     }
 
     private PopupWindow modelSubPopup;
-    
+
     private void showModelPopup(View anchor) {
         if (streaming) return;
-        dismissSlashPopup();
-        input.clearFocus();
-        if (modelPopup != null && modelPopup.isShowing()) { modelPopup.dismiss(); return; }
-        Context ctx = getContext();
-        int rowHeight = LineTheme.dp(ctx, 40);
-        int manageRowHeight = LineTheme.dp(ctx, 36);
-        int popupWidth = LineTheme.dp(ctx, 140);
-    
-        // Deduplicate sources by providerLabel
-        java.util.LinkedHashMap<String, String> sources = new java.util.LinkedHashMap<>();
-        java.util.LinkedHashMap<String, ModelConfig> sourceFirstModel = new java.util.LinkedHashMap<>();
-        for (ModelConfig m : availableModels) {
-            String key = m.getProviderLabel().length() > 0 ? m.getProviderLabel() : "Other";
-            if (!sources.containsKey(key)) {
-                sources.put(key, m.getBaseUrl());
-                sourceFirstModel.put(key, m);
+        dismissSlashPopup(); input.clearFocus();
+        if (availableModels.isEmpty()) { if (listener != null) listener.onModelManageClick(); return; }
+        if (contextDialog != null) contextDialog.dismiss();
+        contextDialog = DialogBuilder.create(getContext());
+        LinearLayout panel = choicePanel(getContext().getString(R.string.screen_models_title));
+        java.util.LinkedHashMap<String, java.util.List<ModelConfig>> sources = new java.util.LinkedHashMap<>();
+        for (ModelConfig model : availableModels) {
+            String source = model.getProviderLabel().isEmpty() ? model.getProtocolType().getLabel() : model.getProviderLabel();
+            sources.computeIfAbsent(source, key -> new java.util.ArrayList<>()).add(model);
+        }
+        for (java.util.Map.Entry<String, java.util.List<ModelConfig>> source : sources.entrySet()) {
+            TextView sourceTitle = LineTheme.textMedium(getContext(), source.getKey(), 14, LineTheme.TEXT_SECONDARY);
+            LineTheme.padding(sourceTitle, 0, 24, 0, 8); panel.addView(sourceTitle);
+            for (ModelConfig model : source.getValue()) {
+                String name = model.getName().isEmpty() ? model.getModelId() : model.getName();
+                panel.addView(new OptionRowView(getContext(), IconButtonView.BOX, name, model.getModelId(),
+                        model.getId().equals(selectedModelId), () -> {
+                            contextDialog.dismiss();
+                            if (listener != null && !model.getId().equals(selectedModelId)) listener.onModelQuickSwitch(model.getId());
+                        }), new LayoutParams(-1, -2));
             }
-        }
-    
-        if (sources.isEmpty()) {
-            // No models configured, just open manage
-            if (listener != null) listener.onModelManageClick();
-            return;
-        }
-    
-        // Build source list popup
-        LinearLayout content = new LinearLayout(ctx);
-        content.setOrientation(VERTICAL);
-        content.setBackground(LineTheme.roundedStroke(ctx, LineTheme.INPUT_BG, 12, LineTheme.BORDER_LIGHT));
-        LineTheme.padding(content, 4, 4, 4, 4);
-    
-        java.util.List<String> sourceNames = new java.util.ArrayList<>(sources.keySet());
-        for (String sName : sourceNames) {
-            // Find current model for this source
-            String currentModelName = "";
-            for (ModelConfig m : availableModels) {
-                String pk = m.getProviderLabel().length() > 0 ? m.getProviderLabel() : "Other";
-                if (pk.equals(sName) && m.getId().equals(selectedModelId)) {
-                    currentModelName = m.getName().length() > 0 ? m.getName() : m.getModelId();
-                    break;
-                }
-            }
-    
-            LinearLayout row = new LinearLayout(ctx);
-            row.setOrientation(HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            boolean isActive = currentModelName.length() > 0;
-            row.setBackground(LineTheme.rounded(ctx, isActive ? 0xFF1A2A1A : android.graphics.Color.TRANSPARENT, 8));
-            LineTheme.padding(row, LineTheme.SM, 0, LineTheme.SM, 0);
-            row.setClickable(true);
-    
-            TextView nameView = LineTheme.textMedium(ctx, sName, LineTheme.FONT_SM, isActive ? LineTheme.ACCENT : LineTheme.TEXT);
-            nameView.setSingleLine(true);
-            row.addView(nameView, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
-    
-            // Small arrow indicating submenu
-            TextView arrow = LineTheme.text(ctx, "\u203A", LineTheme.FONT_SM, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
-            row.addView(arrow, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
-    
-            final String sourceName = sName;
-            row.setOnClickListener(v -> showModelSubMenu(v, sourceName, sources.get(sourceName)));
-            content.addView(row, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, rowHeight));
-        }
-    
-        // Manage button
-        View div = new View(ctx);
-        div.setBackgroundColor(LineTheme.BORDER_LIGHT);
-        content.addView(div, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 1));
-        TextView manageItem = LineTheme.textMedium(ctx, "\u2699 \u7ba1\u7406\u6a21\u578b...", LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY);
-        manageItem.setGravity(Gravity.CENTER_VERTICAL);
-        manageItem.setPadding(LineTheme.dp(ctx, LineTheme.SM), 0, 0, 0);
-        manageItem.setClickable(true);
-        manageItem.setOnClickListener(v -> {
-            if (modelPopup != null) modelPopup.dismiss();
-            post(() -> { if (listener != null) listener.onModelManageClick(); });
-        });
-        content.addView(manageItem, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, manageRowHeight));
-    
-        int popupHeight = rowHeight * sourceNames.size() + manageRowHeight + LineTheme.dp(ctx, 12);
-        modelPopup = new PopupWindow(content, popupWidth, popupHeight, true);
-        modelPopup.setOutsideTouchable(true);
-        modelPopup.setBackgroundDrawable(new ColorDrawable(android.graphics.Color.TRANSPARENT));
-        modelPopup.setOnDismissListener(() -> { if (modelSubPopup != null && modelSubPopup.isShowing()) modelSubPopup.dismiss(); });
-        int[] location = new int[2];
-        anchor.getLocationOnScreen(location);
-        int screenWidth = ctx.getResources().getDisplayMetrics().widthPixels;
-        int centeredX = location[0] + (anchor.getWidth() - popupWidth) / 2;
-        int popupX = Math.max(LineTheme.dp(ctx, LineTheme.SM), Math.min(centeredX, screenWidth - popupWidth - LineTheme.dp(ctx, LineTheme.SM)));
-        modelPopup.showAtLocation(this, Gravity.NO_GRAVITY, popupX, Math.max(0, location[1] - popupHeight - LineTheme.dp(ctx, 8)));
-    }
-    
-    private void showModelSubMenu(View sourceRow, String sourceName, String baseUrl) {
-        if (modelSubPopup != null && modelSubPopup.isShowing()) modelSubPopup.dismiss();
-        Context ctx = getContext();
-        int rowHeight = LineTheme.dp(ctx, 36);
-        int subWidth = LineTheme.dp(ctx, 160);
-    
-        // Collect models for this source
-        java.util.List<ModelConfig> models = new java.util.ArrayList<>();
-        for (ModelConfig m : availableModels) {
-            String pk = m.getProviderLabel().length() > 0 ? m.getProviderLabel() : "Other";
-            if (pk.equals(sourceName)) models.add(m);
-        }
-    
-        LinearLayout sub = new LinearLayout(ctx);
-        sub.setOrientation(VERTICAL);
-        sub.setBackground(LineTheme.roundedStroke(ctx, LineTheme.INPUT_BG, 10, LineTheme.BORDER_LIGHT));
-        LineTheme.padding(sub, 4, 4, 4, 4);
-    
-        // Query button
-        TextView queryBtn = LineTheme.textMedium(ctx, ctx.getString(R.string.composer_model_submenu_query_button), LineTheme.FONT_XS, LineTheme.ACCENT);
-        queryBtn.setGravity(Gravity.CENTER);
-        queryBtn.setBackground(LineTheme.roundedStroke(ctx, LineTheme.SURFACE_LIGHT, 6, LineTheme.ACCENT));
-        LineTheme.padding(queryBtn, 0, 3, 0, 3);
-        queryBtn.setClickable(true);
-        queryBtn.setOnClickListener(v -> {
-            queryBtn.setText(R.string.screen_model_add_query_button_loading);
-            queryModelCount(baseUrl, queryBtn, ctx);
-        });
-        sub.addView(queryBtn, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(ctx, 28)));
-    
-        // Model items
-        for (ModelConfig m : models) {
-            boolean sel = m.getId().equals(selectedModelId);
-            TextView item = LineTheme.textMedium(ctx, m.getName().length() > 0 ? m.getName() : m.getModelId(), LineTheme.FONT_SM, sel ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT);
-            item.setSingleLine(true);
-            item.setEllipsize(TextUtils.TruncateAt.END);
-            item.setGravity(Gravity.CENTER_VERTICAL);
-            item.setBackground(LineTheme.rounded(ctx, sel ? LineTheme.ACCENT : android.graphics.Color.TRANSPARENT, 8));
-            LineTheme.padding(item, LineTheme.SM, 0, LineTheme.SM, 0);
-            item.setClickable(true);
-            final String mid = m.getId();
-            item.setOnClickListener(v2 -> {
-                if (modelSubPopup != null) modelSubPopup.dismiss();
-                if (modelPopup != null) modelPopup.dismiss();
-                post(() -> { if (listener != null && !mid.equals(selectedModelId)) listener.onModelQuickSwitch(mid); });
+            TextView query = LineTheme.text(getContext(), getContext().getString(R.string.composer_model_submenu_query_button), 14, LineTheme.TEXT_SECONDARY, Typeface.NORMAL);
+            query.setMinimumHeight(LineTheme.dp(getContext(),48)); query.setGravity(Gravity.CENTER_VERTICAL);
+            query.setOnClickListener(v -> {
+                query.setText(R.string.screen_model_add_query_button_loading);
+                queryModelCount(source.getValue().get(0).getBaseUrl(), query, getContext());
             });
-            sub.addView(item, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, rowHeight));
+            panel.addView(query, new LayoutParams(-1, -2));
         }
-    
-        int subHeight = LineTheme.dp(ctx, 28) + rowHeight * Math.min(models.size(), 8) + LineTheme.dp(ctx, 8);
-        if (subHeight > LineTheme.dp(ctx, 320)) subHeight = LineTheme.dp(ctx, 320);
-        modelSubPopup = new PopupWindow(sub, subWidth, subHeight, false);
-        modelSubPopup.setOutsideTouchable(true);
-        modelSubPopup.setBackgroundDrawable(new ColorDrawable(android.graphics.Color.TRANSPARENT));
-    
-        // Position to the right of the source row
-        int[] loc = new int[2];
-        sourceRow.getLocationOnScreen(loc);
-        int subX = loc[0] + sourceRow.getWidth() + LineTheme.dp(ctx, 4);
-        int screenW = ctx.getResources().getDisplayMetrics().widthPixels;
-        if (subX + subWidth > screenW - LineTheme.dp(ctx, 8)) {
-            subX = loc[0] - subWidth - LineTheme.dp(ctx, 4);
-        }
-        modelSubPopup.showAtLocation(this, Gravity.NO_GRAVITY, subX, loc[1]);
+        addContextOption(panel, getContext().getString(R.string.screen_models_title), () -> listener.onModelManageClick());
+        DialogBuilder.showBottomSheet(contextDialog, panel);
+    }
+
+    private LinearLayout choicePanel(String title) {
+        LinearLayout panel = new LinearLayout(getContext()); panel.setOrientation(VERTICAL);
+        LineTheme.padding(panel, 24, 24, 24, 24);
+        TextView heading = LineTheme.textMedium(getContext(), title, 22, LineTheme.TEXT);
+        panel.addView(heading, new LayoutParams(-1, -2)); return panel;
     }
 
     private void queryModelCount(String baseUrl, TextView queryBtn, Context ctx) {
@@ -1343,90 +1251,20 @@ public final class ComposerView extends LinearLayout implements QuoteController.
         }, "linecode-model-query").start();
     }
 
-    private LinearLayout modelOptionRow(Context ctx, ModelConfig model, boolean selected) {
-        LinearLayout row = new LinearLayout(ctx);
-        row.setOrientation(HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(LineTheme.dp(ctx, LineTheme.MD), 0, LineTheme.dp(ctx, LineTheme.MD), 0);
-        row.setBackground(LineTheme.rounded(ctx, selected ? LineTheme.ACCENT : android.graphics.Color.TRANSPARENT, 11));
-        row.setClickable(true);
-        row.setOnClickListener(v -> {
-            if (modelPopup != null) modelPopup.dismiss();
-            final String mid = model.getId();
-            post(() -> {
-                if (!mid.equals(selectedModelId) && listener != null) {
-                    listener.onModelQuickSwitch(mid);
-                }
-            });
-        });
-        View dot = new View(ctx);
-        dot.setBackground(LineTheme.rounded(ctx, selected ? LineTheme.TEXT_ON_COLOR : LineTheme.BORDER, 4));
-        LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(LineTheme.dp(ctx, 7), LineTheme.dp(ctx, 7));
-        dotParams.rightMargin = LineTheme.dp(ctx, LineTheme.SM);
-        row.addView(dot, dotParams);
-        String displayName = model.getName().length() > 0 ? model.getName() : model.getModelId();
-        TextView name = LineTheme.textMedium(ctx, displayName, LineTheme.FONT_SM, selected ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_SECONDARY);
-        name.setSingleLine(true);
-        name.setEllipsize(TextUtils.TruncateAt.END);
-        row.addView(name, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
-        TextView provider = LineTheme.text(ctx, model.getProviderLabel(), LineTheme.FONT_XS, selected ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
-        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
-        pp.leftMargin = LineTheme.dp(ctx, LineTheme.SM);
-        row.addView(provider, pp);
-        return row;
-    }
-
     private void showModePopup(View anchor) {
-        if (streaming) {
-            return;
-        }
+        if (streaming) return;
         dismissSlashPopup();
-        if (modePopup != null && modePopup.isShowing()) {
-            modePopup.dismiss();
-            return;
+        if (contextDialog != null) contextDialog.dismiss();
+        contextDialog = DialogBuilder.create(getContext());
+        LinearLayout panel = choicePanel(getContext().getString(R.string.chat_context_mode, modeLabel(chatMode)));
+        for (String mode : new String[] {ChatMode.CHAT, ChatMode.PLAN, ChatMode.AGENT, ChatMode.CONTROL}) {
+            panel.addView(new OptionRowView(getContext(), IconButtonView.MESSAGE_SQUARE, modeLabel(mode), null,
+                    mode.equals(chatMode), () -> {
+                        contextDialog.dismiss();
+                        if (listener != null && !mode.equals(chatMode)) listener.onModeChanged(mode);
+                    }), new LayoutParams(-1, -2));
         }
-        Context context = getContext();
-        int popupWidth = LineTheme.dp(context, 112);
-        int rowHeight = LineTheme.dp(context, 38);
-        int popupHeight = rowHeight * 4 + LineTheme.dp(context, 6);
-        LinearLayout content = new LinearLayout(context);
-        content.setOrientation(VERTICAL);
-        content.setBackground(LineTheme.roundedStroke(context, LineTheme.INPUT_BG, 14, LineTheme.BORDER_LIGHT));
-        LineTheme.padding(content, 3, 3, 3, 3);
-        content.addView(modeOption(context, "Chat", ChatMode.CHAT), new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, rowHeight));
-        content.addView(modeOption(context, "Plan", ChatMode.PLAN), new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, rowHeight));
-        content.addView(modeOption(context, "Agent", ChatMode.AGENT), new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, rowHeight));
-        content.addView(modeOption(context, "\u63a7\u5236", ChatMode.CONTROL), new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, rowHeight));
-        modePopup = new PopupWindow(content, popupWidth, popupHeight, true);
-        modePopup.setOutsideTouchable(true);
-        modePopup.setBackgroundDrawable(new ColorDrawable(android.graphics.Color.TRANSPARENT));
-        int[] location = new int[2];
-        anchor.getLocationOnScreen(location);
-        int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
-        int centeredX = location[0] + (anchor.getWidth() - popupWidth) / 2;
-        int popupX = Math.max(LineTheme.dp(context, LineTheme.SM),
-                Math.min(centeredX, screenWidth - popupWidth - LineTheme.dp(context, LineTheme.SM)));
-        modePopup.showAtLocation(this, Gravity.NO_GRAVITY, popupX, Math.max(0, location[1] - popupHeight - LineTheme.dp(context, 8)));
-    }
-
-    private TextView modeOption(Context context, String label, String mode) {
-        boolean selected = mode.equals(chatMode);
-        TextView item = LineTheme.textMedium(context, label, LineTheme.FONT_SM,
-                selected ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_SECONDARY);
-        item.setGravity(Gravity.CENTER_VERTICAL);
-        item.setSingleLine(true);
-        item.setPadding(LineTheme.dp(context, LineTheme.MD), 0, LineTheme.dp(context, LineTheme.MD), 0);
-        item.setBackground(LineTheme.rounded(context, selected ? LineTheme.ACCENT : android.graphics.Color.TRANSPARENT, 11));
-        item.setClickable(true);
-        item.setOnClickListener(v -> {
-            if (modePopup != null) {
-                modePopup.dismiss();
-            }
-            if (!mode.equals(chatMode) && listener != null) {
-                listener.onModeChanged(mode);
-            }
-        });
-        return item;
+        DialogBuilder.showBottomSheet(contextDialog, panel);
     }
 
     private String modeLabel(String mode) {

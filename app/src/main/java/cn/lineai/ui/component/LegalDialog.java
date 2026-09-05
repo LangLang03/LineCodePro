@@ -34,8 +34,8 @@ public final class LegalDialog {
 
         LinearLayout panel = new LinearLayout(context);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_ELEVATED, 18));
-        LineTheme.padding(panel, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
+        panel.setBackground(LineTheme.rounded(context, LineTheme.BG, 24));
+        LineTheme.padding(panel, 24, 24, 24, 24);
 
         TextView titleView = LineTheme.text(context, title == null ? "" : title, LineTheme.FONT_LG, LineTheme.TEXT, Typeface.BOLD);
         panel.addView(titleView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -57,7 +57,7 @@ public final class LegalDialog {
         scrollView.addView(textView, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         panel.addView(scrollView);
 
-        LinearLayout actions = new LinearLayout(context);
+        LinearLayout actions = new AdaptiveActionsView(context);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.END);
 

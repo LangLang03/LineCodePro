@@ -7,6 +7,7 @@ import java.util.HashMap;
 public class StreamingRenderController {
 
     private static final long STREAM_RENDER_INTERVAL_MS = 80L;
+    private static final java.util.regex.Pattern PROCESSING_END_MARKER = java.util.regex.Pattern.compile("<LEOF\\s+\"[^\"]*\">", java.util.regex.Pattern.DOTALL);
 
     private final MainThreadDispatcher mainThread;
     private final FlushCallback flushCallback;
@@ -105,6 +106,36 @@ public class StreamingRenderController {
 
     public FlushResult getLastFlushResult() {
         return lastFlushResult;
+    }
+
+    public static boolean hasProcessingEndMarker(String raw) {
+        return raw != null && PROCESSING_END_MARKER.matcher(raw).find();
+    }
+
+    /** Removes the internal final-answer capture markers from model output. */
+    public static String visibleCapturedText(String raw) {
+        if (raw == null || raw.length() == 0) return "";
+        String cleaned = raw;
+        int marker = cleaned.indexOf("<L");
+        if (marker < 0) return cleaned;
+        int markerEnd = cleaned.indexOf("\">", marker + 2);
+        if (markerEnd < 0) return cleaned.substring(0, marker);
+        return cleaned.substring(markerEnd + 2);
+        /*
+        int eof = cleaned.indexOf("<LEOF");
+        while (eof >= 0) {
+            int eofEnd = cleaned.indexOf("\">", eof + 5);
+            if (eofEnd < 0) return cleaned.substring(0, eof);
+            cleaned = cleaned.substring(0, eof) + cleaned.substring(eofEnd + 2);
+            eof = cleaned.indexOf("<LEOF");
+        }
+        int start = cleaned.indexOf("<L");
+        if (start < 0) return cleaned;
+        String before = cleaned.substring(0, start);
+        int end = cleaned.indexOf("\">", start + 2);
+        if (end < 0) return before;
+        String after = cleaned.substring(end + 2);
+        return before + after;*/
     }
 
     private void scheduleFlush() {

@@ -44,6 +44,8 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
 
         void onInstallSkillFromGitHub(String location, String githubUrl);
 
+        void onOpenSkillStore();
+
         void onEnabledChanged(String kind, String id, boolean enabled);
 
         void onDelete(String kind, String id);
@@ -82,6 +84,18 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
         content.addView(add, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         if ("skills".equals(kind)) {
+            SettingsSectionView store = new SettingsSectionView(context, getString(R.string.extension_online_store));
+            store.addRow(new ActionRowView(
+                    context,
+                    IconButtonView.ARCHIVE,
+                    getString(R.string.extension_skillhub_store),
+                    getString(R.string.extension_skillhub_store_desc),
+                    false,
+                    true,
+                    listener::onOpenSkillStore
+            ), false);
+            content.addView(store, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
             SettingsSectionView workspace = new SettingsSectionView(context, context.getString(R.string.screen_extension_detail_workspace_share));
             workspace.addRow(new ActionRowView(
                     context,

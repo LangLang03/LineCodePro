@@ -24,7 +24,6 @@ import cn.lineai.model.MessageContentSanitizer;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelContextParser;
 import cn.lineai.model.ModelStore;
-import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolInfo;
 import cn.lineai.tool.ToolRegistry;
 import cn.lineai.workspace.WorkspacePaths;
@@ -134,24 +133,35 @@ final class ModelPromptController {
         String promptHomePath = promptHomePath();
         String extensionContext = extensionRepository.buildExtensionPrompt(projectPath);
         String attachmentContext = buildAttachmentPrompt(messages);
-        String systemContext = joinPromptContext(joinPromptContext(learningContext, attachmentContext), extensionContext);
         String systemPrompt = systemPromptProvider.build(
                 promptHomePath,
                 aiSettings.getToneMode(),
                 chatModePromptContext(activeChatMode),
-                systemContext,
-                buildToolPrompt(selectedModel, usedToolCallCount),
+                extensionContext,
+                buildToolPrompt(selectedModel),
                 selectedModel,
-                renderTodoStateForPrompt()
-        );
+                ""
+        ) + SystemPromptProvider.runtimeContextRule()
+                + (aiSettings.isLearningModeEnabled() ? "\nLearning Mode is enabled."
+                        : "\nLearning Mode is disabled. Manual memories may still be supplied as background data.");
+        String runtimeContext = systemPromptProvider.buildRuntimeContext(learningContext,
+                renderTodoStateForPrompt(), hasRemainingToolCalls(selectedModel, usedToolCallCount)
+                        ? "" : host.toolsUnavailablePrompt());
         modelMessages.add(new SystemModelMessage(systemPrompt));
         int contextTokens = ModelContextParser.parse(selectedModel).getContextTokens();
-        int reservedTokens = contextManager.estimateTokens(systemPrompt) + 2048;
+        int reservedTokens = contextManager.estimateTokens(systemPrompt)
+                + contextManager.estimateTokens(runtimeContext)
+                + contextManager.estimateTokens(attachmentContext) + 2048;
         boolean includeReasoning = aiSettings.isPreserveReasoningEnabled();
         List<ChatMessage> contextWindow = contextManager.selectWindow(messages, contextTokens, reservedTokens, includeReasoning);
         for (ChatMessage message : completeToolCallPairsForRequest(contextWindow, host.interruptedGenerationMessage())) {
             modelMessages.add(toModelMessage(message, includeReasoning));
+            if (message.getRole() == ChatMessage.Role.USER && message.hasAttachments()) {
+                // Keep paths with their originating user turn (including native image input).
+                modelMessages.add(new UserModelMessage(buildAttachmentPrompt(java.util.Collections.singletonList(message))));
+            }
         }
+        modelMessages.add(new UserModelMessage(runtimeContext));
         return modelMessages;
     }
 
@@ -296,11 +306,8 @@ final class ModelPromptController {
         return MessageContentSanitizer.toolContentForModel(message);
     }
 
-    private String buildToolPrompt(ModelConfig selectedModel, int usedToolCallCount) {
+    private String buildToolPrompt(ModelConfig selectedModel) {
         host.syncModePermission();
-        if (!hasRemainingToolCalls(selectedModel, usedToolCallCount)) {
-            return host.toolsUnavailablePrompt();
-        }
         toolRegistry.reloadExtensions();
         return toolSettingsRepository.buildToolPrompt(new ArrayList<ToolInfo>(toolRegistry.getAll()), modelProtocolFactory.create(selectedModel.getProtocolType()).supportsNativeTools(selectedModel));
     }
@@ -340,18 +347,6 @@ final class ModelPromptController {
         return host.attachmentFilesHeader() + "\n"
                 + host.attachmentFilesDescription() + "\n"
                 + builder.toString().trim();
-    }
-
-    private String joinPromptContext(String first, String second) {
-        String left = first == null ? "" : first.trim();
-        String right = second == null ? "" : second.trim();
-        if (left.length() == 0) {
-            return right;
-        }
-        if (right.length() == 0) {
-            return left;
-        }
-        return left + "\n\n" + right;
     }
 
     private boolean hasRemainingToolCalls(ModelConfig selectedModel, int usedToolCallCount) {

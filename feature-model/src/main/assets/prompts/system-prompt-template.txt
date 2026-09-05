@@ -68,12 +68,12 @@ After each tool return, you must continue analyzing the result and deciding the 
 
 {{CHAT_MODE_CONTEXT}}
 
-{{WORK_DIRECTORY_CONTEXT}}
+{{MODEL_IDENTITY}}
 
 {{TOOLS_CONTEXT}}
 
-{{LEARNING_CONTEXT}}
-
-{{MODEL_IDENTITY}}
+{{WORK_DIRECTORY_CONTEXT}}
 
 {{TODO_STATE}}
+
+{{LEARNING_CONTEXT}}

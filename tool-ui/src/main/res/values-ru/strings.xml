@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="tool_call_error_details">Подробности ошибки</string>
     <string name="shell_output_line_count">%1$d строк</string>
     <string name="common_cancel">Отмена</string>
     <string name="common_delete">Удалить</string>
@@ -57,4 +58,12 @@
     <string name="tool_call_block_mcp">MCP вызов</string>
     <string name="tool_call_generic_mcp">MCP вызов</string>
     <string name="tool_call_phone_action_default">Действие с телефоном</string>
+    <string name="tool_call_read_done">Прочитано</string>
+    <string name="tool_call_copy_file">Скопировать содержимое файла</string>
+    <string name="tool_call_write_done">Изменено</string>
+    <string name="tool_call_write_reverted">Отменено</string>
+    <string name="tool_call_diff_loading">Загрузка изменений…</string>
+    <string name="tool_call_diff_unavailable">Изменения недоступны</string>
+    <string name="tool_call_write_created">Создано</string>
+    <string name="tool_call_diff_no_newline">Нет перевода строки в конце файла</string>
 </resources>

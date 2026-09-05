@@ -22,7 +22,7 @@ public final class ToolCallUtils {
         return ToolDisplayCategory.fallbackDisplayCategory(name);
     }
 
-    static JSONObject parseInput(ToolCall toolCall) {
+    public static JSONObject parseInput(ToolCall toolCall) {
         return ToolCallInputParser.parseInput(toolCall);
     }
 

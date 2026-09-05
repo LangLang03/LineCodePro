@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 public final class ChatUiState {
+    private final ToolApproval toolApproval;
     private final String projectLabel;
     private final String projectPath;
     private final String modelLabel;
@@ -96,6 +97,20 @@ public final class ChatUiState {
             String chatMode, String conversationId, List<ChatMessage> messages,
             String selectedModelId, List<ModelConfig> availableModels
     ) {
+        this(projectLabel, projectPath, modelLabel, contextLabel, contextPercent, streaming, hasConfiguredModel,
+                thinkingScrollEnabled, thinkingAutoExpandEnabled, codeWrapEnabled, browserMode, enterKeyBehavior,
+                chatMode, conversationId, messages, selectedModelId, availableModels, null);
+    }
+
+    public ChatUiState(
+            String projectLabel, String projectPath, String modelLabel, String contextLabel,
+            int contextPercent, boolean streaming, boolean hasConfiguredModel,
+            boolean thinkingScrollEnabled, boolean thinkingAutoExpandEnabled,
+            boolean codeWrapEnabled, String browserMode, String enterKeyBehavior,
+            String chatMode, String conversationId, List<ChatMessage> messages,
+            String selectedModelId, List<ModelConfig> availableModels, ToolApproval toolApproval
+    ) {
+        this.toolApproval = toolApproval;
         this.projectLabel = projectLabel;
         this.projectPath = projectPath == null ? "" : projectPath;
         this.modelLabel = modelLabel;
@@ -119,6 +134,12 @@ public final class ChatUiState {
                 : Collections.unmodifiableList(new ArrayList<>(availableModels));
     }
 
+    public ToolApproval getToolApproval() { return toolApproval; }
+    public ChatUiState withToolApproval(ToolApproval approval) {
+        return new ChatUiState(projectLabel, projectPath, modelLabel, contextLabel, contextPercent, streaming,
+                hasConfiguredModel, thinkingScrollEnabled, thinkingAutoExpandEnabled, codeWrapEnabled, browserMode,
+                enterKeyBehavior, chatMode, conversationId, messages, selectedModelId, availableModels, approval);
+    }
     public String getProjectLabel() { return projectLabel; }
     public String getProjectPath() { return projectPath; }
     public String getModelLabel() { return modelLabel; }

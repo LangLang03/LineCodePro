@@ -41,7 +41,7 @@ public final class MCPSettingsScreenView extends ScreenScaffoldView {
         this.listener = listener;
         this.state = state == null ? new McpSettingsState(EXECUTION_LOCAL, null) : state;
         LinearLayout content = getContent();
-        LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
+        LineTheme.padding(content, 16, 8, 16, 48);
 
         addExecutionTarget(content);
         if (EXECUTION_SSH.equals(this.state.getExecutionMode())) {
@@ -54,16 +54,13 @@ public final class MCPSettingsScreenView extends ScreenScaffoldView {
         Context context = content.getContext();
         LinearLayout card = card(context);
         card.addView(title(context, context.getString(R.string.screen_mcp_section_execution)));
-        LinearLayout segment = new LinearLayout(context);
-        segment.setOrientation(HORIZONTAL);
-        segment.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_LIGHT, 8));
-        LineTheme.padding(segment, 3, 3, 3, 3);
-        addModeButton(segment, context.getString(R.string.screen_mcp_execution_local), EXECUTION_LOCAL);
-        addModeButton(segment, context.getString(R.string.screen_mcp_execution_ssh), EXECUTION_SSH);
-        addModeButton(segment, context.getString(R.string.screen_mcp_execution_terminal_provider), EXECUTION_TERMINAL_PROVIDER);
-        LinearLayout.LayoutParams segmentParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(context, 42));
-        segmentParams.topMargin = LineTheme.dp(context, LineTheme.SM);
-        card.addView(segment, segmentParams);
+        for (String mode : new String[] {EXECUTION_LOCAL, EXECUTION_SSH, EXECUTION_TERMINAL_PROVIDER}) {
+            int label = EXECUTION_LOCAL.equals(mode) ? R.string.screen_mcp_execution_local : EXECUTION_SSH.equals(mode) ? R.string.screen_mcp_execution_ssh : R.string.screen_mcp_execution_terminal_provider;
+            LayoutParams modeParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+            modeParams.topMargin = LineTheme.dp(context, 8);
+            card.addView(new OptionRowView(context, IconButtonView.TERMINAL, context.getString(label), null,
+                    mode.equals(state.getExecutionMode()), () -> listener.onExecutionModeChanged(mode)), modeParams);
+        }
         String executionDesc;
         if (EXECUTION_LOCAL.equals(state.getExecutionMode())) {
             executionDesc = context.getString(R.string.screen_mcp_execution_local_desc);
@@ -88,7 +85,7 @@ public final class MCPSettingsScreenView extends ScreenScaffoldView {
         descParams.topMargin = LineTheme.dp(context, 2);
         card.addView(desc, descParams);
 
-        LinearLayout actions = new LinearLayout(context);
+        LinearLayout actions = new AdaptiveActionsView(context);
         actions.setOrientation(HORIZONTAL);
         LinearLayout ssh = actionButton(context, context.getString(R.string.screen_mcp_ssh_settings), IconButtonView.SERVER, true, v -> listener.onOpenSshSettings());
         LinearLayout termux = actionButton(context, context.getString(R.string.screen_mcp_termux_integration), IconButtonView.SMARTPHONE, false, v -> listener.onOpenTermuxIntegration());
@@ -132,7 +129,7 @@ public final class MCPSettingsScreenView extends ScreenScaffoldView {
         icon.setIconColor(config.isEnabled() ? LineTheme.ACCENT : LineTheme.TEXT_TERTIARY);
         icon.setIconSizeDp(36, 18);
         icon.setClickable(false);
-        icon.setBackground(LineTheme.rounded(context, LineTheme.ACCENT_MUTED, 18));
+
         header.addView(icon, new LinearLayout.LayoutParams(LineTheme.dp(context, 36), LineTheme.dp(context, 36)));
 
         LinearLayout labels = new LinearLayout(context);
@@ -153,24 +150,6 @@ public final class MCPSettingsScreenView extends ScreenScaffoldView {
         header.addView(toggle, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
         card.addView(header, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
-        View divider = new View(context);
-        divider.setBackgroundColor(LineTheme.BORDER_LIGHT);
-        LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 1);
-        dividerParams.topMargin = LineTheme.dp(context, LineTheme.MD);
-        card.addView(divider, dividerParams);
-
-        FlowLayoutView toolWrap = new FlowLayoutView(context);
-        toolWrap.setSpacingDp(LineTheme.SM, LineTheme.SM);
-        for (String tool : config.getTools()) {
-            TextView badge = LineTheme.text(context, tool, LineTheme.FONT_XS, LineTheme.TEXT_SECONDARY, Typeface.NORMAL);
-            badge.setTypeface(Typeface.MONOSPACE);
-            badge.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_LIGHT, 4));
-            LineTheme.padding(badge, LineTheme.SM, 2, LineTheme.SM, 2);
-            toolWrap.addView(badge);
-        }
-        LinearLayout.LayoutParams toolWrapParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        toolWrapParams.topMargin = LineTheme.dp(context, LineTheme.SM);
-        card.addView(toolWrap, toolWrapParams);
         addCard(content, card);
     }
 
@@ -198,8 +177,11 @@ public final class MCPSettingsScreenView extends ScreenScaffoldView {
     private LinearLayout card(Context context) {
         LinearLayout card = new LinearLayout(context);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_ELEVATED, 12));
-        LineTheme.padding(card, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
+        card.setBackground(LineTheme.roundedStroke(context, LineTheme.SURFACE_ELEVATED, 14, LineTheme.BORDER_LIGHT));
+        LineTheme.padding(card, 16, 14, 16, 16);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        params.bottomMargin = LineTheme.dp(context, 14);
+        card.setLayoutParams(params);
         return card;
     }
 

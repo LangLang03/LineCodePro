@@ -18,7 +18,9 @@ public final class ModelRequestOptions {
     public ModelRequestOptions(String reasoningEffort, boolean preserveReasoning, List<ToolInfo> tools) {
         this.reasoningEffort = AiBehaviorSettings.normalizeReasoningEffort(reasoningEffort);
         this.preserveReasoning = preserveReasoning;
-        this.tools = tools == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(tools));
+        ArrayList<ToolInfo> ordered = tools == null ? new ArrayList<>() : new ArrayList<>(tools);
+        ordered.sort(java.util.Comparator.comparing(ToolInfo::getName));
+        this.tools = Collections.unmodifiableList(ordered);
     }
 
     public String getReasoningEffort() {
