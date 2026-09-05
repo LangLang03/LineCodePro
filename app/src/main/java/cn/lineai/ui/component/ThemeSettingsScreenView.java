@@ -176,7 +176,9 @@ public final class ThemeSettingsScreenView extends ScreenScaffoldView {
         LinearLayout header = new LinearLayout(context);
         header.setOrientation(HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
+        LineTheme.padding(header, 16, 0, 16, 0);
         SectionHeaderView title = new SectionHeaderView(context, getResources().getString(R.string.screen_theme_custom_colors));
+        LineTheme.padding(title, 0, 0, 8, 0);
         header.addView(title, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
 
         IconButtonView reset = new IconButtonView(context, IconButtonView.ROTATE_CCW);

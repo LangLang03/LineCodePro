@@ -33,18 +33,26 @@ public final class ToolCallTodoView extends BaseToolCallView implements ToolCall
         super(context);
         circleSize = LineTheme.dp(context, 14);
         circleStroke = LineTheme.dp(context, 2);
-        minRowHeight = LineTheme.dp(context, 28);
+        minRowHeight = LineTheme.dp(context, 44);
     }
 
     @Override
     public void bind(ToolCall toolCall, ToolResult result) {
         List<TodoItem> items = parseItems(toolCall);
-        String signature = signature(items);
+        boolean failed = result != null && result.isError();
+        String signature = signature(items) + "|" + failed + "|" + (failed ? result.getContent() : "");
         if (signature.equals(lastSignature)) {
             return;
         }
         lastSignature = signature;
         lastItems = items;
+        if (failed) {
+            removeAllViews();
+            ToolErrorView output = new ToolErrorView(getContext());
+            output.bind(result);
+            addView(output, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+            return;
+        }
         rebuild(items);
     }
 
@@ -56,7 +64,7 @@ public final class ToolCallTodoView extends BaseToolCallView implements ToolCall
         }
         LinearLayout list = new LinearLayout(getContext());
         list.setOrientation(VERTICAL);
-        LineTheme.padding(list, LineTheme.MD, LineTheme.SM, LineTheme.MD, LineTheme.SM);
+        LineTheme.padding(list, 0, 12, 0, 12);
         for (TodoItem item : items) {
             LinearLayout row = buildRow(item);
             row.setMinimumHeight(minRowHeight);
@@ -95,7 +103,7 @@ public final class ToolCallTodoView extends BaseToolCallView implements ToolCall
             text.setPaintFlags(text.getPaintFlags() & ~Paint.STRIKE_THRU_TEXT_FLAG);
         }
         text.setSingleLine(false);
-        text.setMaxLines(2);
+
         text.setEllipsize(null);
         LayoutParams textParams = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
         textParams.leftMargin = LineTheme.dp(getContext(), LineTheme.SM);

@@ -963,6 +963,23 @@ public final class MainCoordinator implements MainUiController {
         return projectState.isTerminalProviderExecutionMode(toolSettingsRepository);
     }
 
+    String executionPermissionScope() {
+        org.json.JSONArray target = new org.json.JSONArray();
+        target.put(toolSettingsRepository.getExecutionMode());
+        if (isTerminalProviderExecutionMode()) {
+            cn.lineai.ipc.BaseIpcProvider provider = ipcProviderManager.getProviderByType(cn.lineai.ipc.IpcProviderType.TERMINAL);
+            if (provider == null || !provider.isBound()) return "";
+            cn.lineai.ipc.IpcProviderConfig config = provider.getConfig();
+            target.put(config.getId()).put(config.getPackageName()).put(config.getServiceClass());
+        } else {
+            // ShellExecuteTool uses SSH for every non-provider execution mode.
+            SshConfig config = sshService.getConfig();
+            if (config == null || config.getHost().isEmpty() || config.getUsername().isEmpty()) return "";
+            target.put(config.getHost()).put(config.getPort()).put(config.getUsername());
+        }
+        return target.put(projectState.source()).put(projectState.path()).toString();
+    }
+
     boolean isTermuxSshHost() {
         SshConfig config = sshService.getConfig();
         String host = config == null ? "" : config.getHost();
@@ -1030,7 +1047,7 @@ public final class MainCoordinator implements MainUiController {
                 activeChatMode,
                 chatSessionStore.isStreaming(),
                 messages
-        ));
+        ).withToolApproval(generationFlowController == null ? null : generationFlowController.pendingToolApproval()));
     }
 
     void resetTodoState() {

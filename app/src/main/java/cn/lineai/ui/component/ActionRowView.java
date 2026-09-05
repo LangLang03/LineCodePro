@@ -14,17 +14,17 @@ public final class ActionRowView extends LinearLayout {
         super(context);
         setOrientation(HORIZONTAL);
         setGravity(Gravity.CENTER_VERTICAL);
-        setMinimumHeight(LineTheme.dp(context, 68));
+        setMinimumHeight(LineTheme.dp(context, 56));
         LineTheme.padding(this, LineTheme.LG, LineTheme.MD, LineTheme.LG, LineTheme.MD);
 
         FrameLayout iconWrap = new FrameLayout(context);
-        iconWrap.setBackground(LineTheme.rounded(context, destructive ? LineTheme.DANGER_MUTED : LineTheme.ACCENT_MUTED, 8));
+
         IconButtonView icon = new IconButtonView(context, iconType);
-        icon.setIconColor(destructive ? LineTheme.DANGER : LineTheme.ACCENT);
-        icon.setIconSizeDp(36, 20);
+        icon.setIconColor(destructive ? LineTheme.DANGER : LineTheme.TEXT_SECONDARY);
+        icon.setIconSizeDp(24, 20);
         icon.setClickable(false);
-        iconWrap.addView(icon, new FrameLayout.LayoutParams(LineTheme.dp(context, 36), LineTheme.dp(context, 36), Gravity.CENTER));
-        addView(iconWrap, new LayoutParams(LineTheme.dp(context, 36), LineTheme.dp(context, 36)));
+        iconWrap.addView(icon, new FrameLayout.LayoutParams(LineTheme.dp(context, 24), LineTheme.dp(context, 24), Gravity.CENTER));
+        addView(iconWrap, new LayoutParams(LineTheme.dp(context, 24), LineTheme.dp(context, 24)));
 
         LinearLayout textWrap = new LinearLayout(context);
         textWrap.setOrientation(VERTICAL);
@@ -37,10 +37,10 @@ public final class ActionRowView extends LinearLayout {
         textWrap.addView(title, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         if (desc != null && desc.length() > 0) {
-            TextView description = LineTheme.text(context, desc, LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+            TextView description = LineTheme.text(context, desc, 14, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
             description.setLineSpacing(LineTheme.dp(context, 3), 1f);
             LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-            descParams.topMargin = LineTheme.dp(context, 2);
+            descParams.topMargin = LineTheme.dp(context, 6);
             textWrap.addView(description, descParams);
         }
 
@@ -54,6 +54,7 @@ public final class ActionRowView extends LinearLayout {
 
         if (onClick != null) {
             setClickable(true);
+            setBackground(LineTheme.pressable(context));
             setOnClickListener(v -> onClick.run());
         }
     }

@@ -61,6 +61,15 @@ public final class ToolExecutor {
     }
 
     private ToolResult execute(ToolCall toolCall, ToolContext context, boolean confirmed) {
+        ToolResult result = executeTool(toolCall, context, confirmed);
+        if (result.isError()) {
+            cn.lineai.log.ErrorLog.record("tool_execution", "Tool failed: " + result.getToolName(), null,
+                    "Call: " + result.getToolCallId() + "\n" + result.getContent());
+        }
+        return result;
+    }
+
+    private ToolResult executeTool(ToolCall toolCall, ToolContext context, boolean confirmed) {
         if (toolCall == null) {
             return ToolResult.error("工具调用为空");
         }

@@ -25,7 +25,7 @@ public final class MessageActionBarView extends LinearLayout {
         super(context);
         setOrientation(HORIZONTAL);
         setGravity(align == ALIGN_RIGHT ? Gravity.END : Gravity.START);
-        setMinimumHeight(LineTheme.dp(context, 22));
+        setMinimumHeight(LineTheme.dp(context, 44));
 
         copyButton = icon(context, IconButtonView.COPY);
         copyButton.setContentDescription(context.getString(R.string.message_action_copy_desc));
@@ -130,13 +130,13 @@ public final class MessageActionBarView extends LinearLayout {
     private IconButtonView icon(Context context, int type) {
         IconButtonView icon = new IconButtonView(context, type);
         icon.setIconColor(LineTheme.TEXT_TERTIARY);
-        icon.setIconPaddingDp(4, 3, 5, 4);
+        icon.setIconSizeDp(44, 16);
         icon.setClickable(true);
         return icon;
     }
 
     private LinearLayout.LayoutParams iconParams(Context context) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LineTheme.dp(context, 24), LineTheme.dp(context, 22));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LineTheme.dp(context, 40), LineTheme.dp(context, 44));
         params.rightMargin = LineTheme.dp(context, LineTheme.XS);
         return params;
     }

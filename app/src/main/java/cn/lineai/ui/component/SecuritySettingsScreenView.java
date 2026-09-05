@@ -73,7 +73,7 @@ public final class SecuritySettingsScreenView extends ScreenScaffoldView {
         if (bypassPathProtectionSwitch != null) {
             bypassPathProtectionSwitch.setChecked(false);
         }
-        new AlertDialog.Builder(context)
+        new LineAlertDialog.Builder(context)
                 .setTitle(context.getString(R.string.settings_row_security_bypass_path_warning_title))
                 .setMessage(context.getString(R.string.settings_row_security_bypass_path_warning_message))
                 .setNegativeButton(context.getString(R.string.common_cancel), (dialog, which) -> bypassDialogInProgress = false)

@@ -89,7 +89,7 @@ public final class DrawerView extends FrameLayout {
 
         sidebar = new LinearLayout(context);
         sidebar.setOrientation(LinearLayout.VERTICAL);
-        sidebar.setBackgroundColor(LineTheme.SURFACE_ELEVATED);
+        sidebar.setBackgroundColor(LineTheme.BG);
         FrameLayout.LayoutParams sidebarParams = new FrameLayout.LayoutParams(drawerWidth(context), LayoutParams.MATCH_PARENT);
         sidebarParams.gravity = Gravity.START;
         addView(sidebar, sidebarParams);
@@ -97,7 +97,7 @@ public final class DrawerView extends FrameLayout {
         LinearLayout header = new LinearLayout(context);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        LineTheme.padding(header, LineTheme.LG, 50, LineTheme.LG, LineTheme.MD);
+        LineTheme.padding(header, 24, 40, 16, 24);
         sidebar.addView(header, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         headerTitle = LineTheme.text(context, context.getString(R.string.drawer_title_conversations), LineTheme.FONT_LG, LineTheme.TEXT, Typeface.BOLD);
@@ -110,7 +110,7 @@ public final class DrawerView extends FrameLayout {
 
         tabs = new LinearLayout(context);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
-        tabs.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_LIGHT, 8));
+
         LineTheme.padding(tabs, 2, 2, 2, 2);
         LinearLayout.LayoutParams tabParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         tabParams.leftMargin = LineTheme.dp(context, LineTheme.LG);
@@ -306,8 +306,9 @@ public final class DrawerView extends FrameLayout {
         Context context = getContext();
         LinearLayout newButton = new LinearLayout(context);
         newButton.setOrientation(LinearLayout.HORIZONTAL);
-        newButton.setGravity(Gravity.CENTER);
-        newButton.setBackground(LineTheme.rounded(context, LineTheme.ACCENT, 12));
+        newButton.setGravity(Gravity.CENTER_VERTICAL);
+        LineTheme.padding(newButton, 16, 12, 16, 12);
+        newButton.setBackground(LineTheme.rounded(context, LineTheme.INPUT_BG, 14));
         newButton.setClickable(true);
         newButton.setOnClickListener(v -> {
             if (listener != null) {
@@ -315,13 +316,13 @@ public final class DrawerView extends FrameLayout {
             }
             close();
         });
-        IconButtonView plus = inlineIcon(context, IconButtonView.PLUS, android.graphics.Color.BLACK, 18);
+        IconButtonView plus = inlineIcon(context, IconButtonView.PLUS, LineTheme.TEXT, 18);
         newButton.addView(plus, new LinearLayout.LayoutParams(LineTheme.dp(context, 18), LineTheme.dp(context, 18)));
-        TextView label = LineTheme.text(context, context.getString(R.string.drawer_new_conversation), LineTheme.FONT_MD, android.graphics.Color.BLACK, Typeface.BOLD);
+        TextView label = LineTheme.text(context, context.getString(R.string.drawer_new_conversation), LineTheme.FONT_MD, LineTheme.TEXT, Typeface.BOLD);
         LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
         labelParams.leftMargin = LineTheme.dp(context, LineTheme.SM);
         newButton.addView(label, labelParams);
-        LinearLayout.LayoutParams newParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(context, 45));
+        LinearLayout.LayoutParams newParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(context, 52));
         newParams.leftMargin = LineTheme.dp(context, LineTheme.LG);
         newParams.rightMargin = LineTheme.dp(context, LineTheme.LG);
         newParams.bottomMargin = LineTheme.dp(context, LineTheme.MD);
@@ -330,7 +331,7 @@ public final class DrawerView extends FrameLayout {
         ScrollView scrollView = new ScrollView(context);
         LinearLayout list = new LinearLayout(context);
         list.setOrientation(LinearLayout.VERTICAL);
-        LineTheme.padding(list, LineTheme.SM, 0, LineTheme.SM, 0);
+        LineTheme.padding(list, 12, 12, 12, 32);
         scrollView.addView(list, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         body.addView(scrollView, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
 
@@ -357,7 +358,7 @@ public final class DrawerView extends FrameLayout {
         Context context = getContext();
         LinearLayout strip = new LinearLayout(context);
         strip.setOrientation(LinearLayout.VERTICAL);
-        strip.setBackground(LineTheme.roundedStroke(context, LineTheme.SURFACE_LIGHT, 8, LineTheme.BORDER_LIGHT));
+
         LineTheme.padding(strip, LineTheme.SM, LineTheme.SM, LineTheme.SM, LineTheme.SM);
         if (projectRemovable) {
             strip.setClickable(true);
@@ -371,7 +372,7 @@ public final class DrawerView extends FrameLayout {
         path.setEllipsize(TextUtils.TruncateAt.END);
         path.setHorizontallyScrolling(false);
         LinearLayout.LayoutParams pathParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        pathParams.topMargin = LineTheme.dp(context, 2);
+        pathParams.topMargin = LineTheme.dp(context, 6);
         strip.addView(path, pathParams);
         if (projectRemovable) {
             attachRemoveProjectLongPress(strip);
@@ -403,7 +404,7 @@ public final class DrawerView extends FrameLayout {
 
     private void showRemoveProjectDialog() {
         Context context = getContext();
-        AlertDialog dialog = new AlertDialog.Builder(context)
+        AlertDialog dialog = new LineAlertDialog.Builder(context)
                 .setTitle(context.getString(R.string.drawer_project_remove_title))
                 .setMessage(context.getString(R.string.drawer_project_remove_message, projectLabel))
                 .setNegativeButton(context.getString(R.string.common_cancel), null)
@@ -483,7 +484,9 @@ public final class DrawerView extends FrameLayout {
         LinearLayout item = new LinearLayout(context);
         item.setOrientation(LinearLayout.HORIZONTAL);
         item.setGravity(Gravity.CENTER_VERTICAL);
-        item.setBackground(active ? LineTheme.rounded(context, LineTheme.ACCENT_MUTED, 8) : null);
+        item.setBackground(active
+                ? LineTheme.roundedStroke(context, LineTheme.INPUT_BG, 12, LineTheme.ACCENT)
+                : LineTheme.pressable(context));
         item.setClickable(true);
         item.setOnClickListener(v -> {
             if (listener != null) {
@@ -491,15 +494,17 @@ public final class DrawerView extends FrameLayout {
             }
             close();
         });
-        LineTheme.padding(item, LineTheme.MD, LineTheme.MD, LineTheme.MD, LineTheme.MD);
-        list.addView(item, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        LineTheme.padding(item, 8, 16, 4, 16);
+        LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        itemParams.bottomMargin = LineTheme.dp(context, 8);
+        list.addView(item, itemParams);
 
         FrameLayout iconBox = new FrameLayout(context);
         iconBox.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_LIGHT, 14));
         IconButtonView messageIcon = inlineIcon(context, IconButtonView.MESSAGE_SQUARE, active ? LineTheme.ACCENT : LineTheme.TEXT_TERTIARY, 16);
         FrameLayout.LayoutParams messageParams = new FrameLayout.LayoutParams(LineTheme.dp(context, 16), LineTheme.dp(context, 16), Gravity.CENTER);
         iconBox.addView(messageIcon, messageParams);
-        item.addView(iconBox, new LinearLayout.LayoutParams(LineTheme.dp(context, 28), LineTheme.dp(context, 28)));
+
 
         LinearLayout texts = new LinearLayout(context);
         texts.setOrientation(LinearLayout.VERTICAL);
@@ -509,23 +514,23 @@ public final class DrawerView extends FrameLayout {
         item.addView(texts, textsParams);
 
         TextView titleView = active
-                ? LineTheme.textMedium(context, title, LineTheme.FONT_SM, LineTheme.ACCENT)
-                : LineTheme.text(context, title, LineTheme.FONT_SM, LineTheme.TEXT, Typeface.NORMAL);
+                ? LineTheme.textMedium(context, title, LineTheme.FONT_MD, LineTheme.TEXT)
+                : LineTheme.text(context, title, LineTheme.FONT_MD, LineTheme.TEXT, Typeface.NORMAL);
         titleView.setSingleLine(true);
         texts.addView(titleView, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         TextView timeView = LineTheme.text(context, time, LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
         LinearLayout.LayoutParams timeParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        timeParams.topMargin = LineTheme.dp(context, 2);
+        timeParams.topMargin = LineTheme.dp(context, 6);
         texts.addView(timeView, timeParams);
 
-        IconButtonView trash = sizedIcon(context, IconButtonView.TRASH_2, LineTheme.TEXT_TERTIARY, 22, 14);
+        IconButtonView trash = sizedIcon(context, IconButtonView.TRASH_2, LineTheme.TEXT_TERTIARY, 48, 16);
         trash.setOnClickListener(v -> {
             if (listener != null) {
                 listener.onConversationDeleted(id);
             }
         });
-        item.addView(trash, new LinearLayout.LayoutParams(LineTheme.dp(context, 22), LineTheme.dp(context, 22)));
+        item.addView(trash, new LinearLayout.LayoutParams(LineTheme.dp(context, 48), LineTheme.dp(context, 48)));
     }
 
     private void addFileNode(LinearLayout tree, FileTreeNode node, int depth, boolean root) {
@@ -577,8 +582,9 @@ public final class DrawerView extends FrameLayout {
             }
             return true;
         });
-        int left = LineTheme.SM + depth * 16;
-        LineTheme.padding(row, left, 4, LineTheme.SM, 4);
+        int left = 16 + Math.min(depth, 5) * 16;
+        LineTheme.padding(row, left, 12, 16, 12);
+        row.setMinimumHeight(LineTheme.dp(context, 48));
         tree.addView(row, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         IconButtonView icon = inlineIcon(context, iconType, iconColor, iconSize);

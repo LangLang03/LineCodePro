@@ -44,12 +44,13 @@ public final class StorageManagementScreenView extends ScreenScaffoldView {
         this.refreshButton = (RefreshCwButtonView) getRightAction();
         this.refreshButton.setOnClickListener(v -> loadStats());
         LinearLayout content = getContent();
-        LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
+        LineTheme.padding(content, 16, 8, 16, 32);
 
         LinearLayout summary = new LinearLayout(context);
         summary.setOrientation(VERTICAL);
-        summary.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_ELEVATED, 12));
-        LineTheme.padding(summary, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
+
+        summary.setBackground(LineTheme.roundedStroke(context, LineTheme.SURFACE_ELEVATED, 14, LineTheme.BORDER_LIGHT));
+        LineTheme.padding(summary, 16, 16, 16, 20);
         TextView label = LineTheme.textMedium(context, context.getString(R.string.screen_storage_counted), LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY);
         summary.addView(label, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         totalSizeView = LineTheme.text(context, context.getString(R.string.screen_storage_calculating), LineTheme.FONT_XXL, LineTheme.TEXT, Typeface.BOLD);
@@ -88,18 +89,21 @@ public final class StorageManagementScreenView extends ScreenScaffoldView {
     }
 
     private static View createRefreshButton(Context context) {
-        return new RefreshCwButtonView(context, 18);
+        View button = new RefreshCwButtonView(context, ScreenHeaderView.ICON_SIZE_DP);
+        button.setContentDescription(context.getString(R.string.common_refresh));
+        return button;
     }
 
     private LinearLayout createStorageRow(int iconType, String title, String desc) {
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_ELEVATED, 12));
-        LineTheme.padding(row, LineTheme.MD, LineTheme.MD, LineTheme.MD, LineTheme.MD);
+
+        row.setBackground(LineTheme.roundedStroke(context, LineTheme.SURFACE_ELEVATED, 14, LineTheme.BORDER_LIGHT));
+        LineTheme.padding(row, 12, 16, 12, 16);
 
         FrameLayout iconWrap = new FrameLayout(context);
-        iconWrap.setBackground(LineTheme.rounded(context, LineTheme.ACCENT_MUTED, 19));
+        iconWrap.setBackground(null);
         IconButtonView icon = new IconButtonView(context, iconType);
         icon.setIconColor(LineTheme.ACCENT);
         icon.setIconSizeDp(38, 19);

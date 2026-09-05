@@ -62,7 +62,7 @@ public final class DialogManager {
         if (context == null) {
             return;
         }
-        AlertDialog dialog = new AlertDialog.Builder(context)
+        AlertDialog dialog = new LineAlertDialog.Builder(context)
                 .setTitle(title == null ? "" : title)
                 .setMessage(message == null ? "" : message)
                 .setNegativeButton(context.getString(R.string.common_cancel), (d, which) -> {
@@ -97,7 +97,7 @@ public final class DialogManager {
         if (context == null) {
             return;
         }
-        new AlertDialog.Builder(context)
+        new LineAlertDialog.Builder(context)
                 .setTitle(title == null ? "" : title)
                 .setMessage(message == null ? "" : message)
                 .setPositiveButton(context.getString(R.string.common_confirm), null)
@@ -137,7 +137,7 @@ public final class DialogManager {
                 horizontalPadding,
                 LineTheme.dp(context, LineTheme.SM));
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(context)
+        AlertDialog.Builder builder = new LineAlertDialog.Builder(context)
                 .setTitle(title == null ? "" : title)
                 .setNegativeButton(context.getString(R.string.common_cancel), null)
                 .setPositiveButton(context.getString(R.string.common_confirm), (d, which) -> {

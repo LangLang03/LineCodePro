@@ -35,7 +35,7 @@ public final class ToolPromptService {
         if (implementedToolNames != null) {
             enabled.retainAll(implementedToolNames);
         }
-        return toolPromptRenderer.renderToolPrompt(collectEnabledTools(enabled), nativeToolProtocol);
+        return withPermissionMode(toolPromptRenderer.renderToolPrompt(collectEnabledTools(enabled), nativeToolProtocol));
     }
 
     public String buildToolPrompt(Collection<ToolInfo> implementedTools, boolean nativeToolProtocol) {
@@ -50,7 +50,21 @@ public final class ToolPromptService {
                 }
             }
         }
-        return toolPromptRenderer.renderToolPrompt(enabledTools, nativeToolProtocol);
+        enabledTools.sort(java.util.Comparator.comparing(ToolInfo::getName));
+        return withPermissionMode(toolPromptRenderer.renderToolPrompt(enabledTools, nativeToolProtocol));
+    }
+
+    private String withPermissionMode(String prompt) {
+        String mode = toolSettingsStore.getPermissionMode();
+        if (ToolSettingsStore.PERMISSION_AUTO.equals(mode)) {
+            return "Permission mode: automatic. Enabled tools execute without per-call confirmation. "
+                    + "Submit tool calls directly instead of asking the user for execution approval.\n\n" + prompt;
+        }
+        if (ToolSettingsStore.PERMISSION_CONFIRM.equals(mode)) {
+            return "Permission mode: confirmation. Submit tool calls directly; the app will request approval "
+                    + "for tools that require it before execution.\n\n" + prompt;
+        }
+        return prompt;
     }
 
     private boolean isEnabledExtensionTool(String toolName, ToolCategory category) {
@@ -84,6 +98,7 @@ public final class ToolPromptService {
                 }
             }
         }
+        tools.sort(java.util.Comparator.comparing(ToolInfo::getName));
         return tools;
     }
 }

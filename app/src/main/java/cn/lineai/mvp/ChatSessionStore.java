@@ -13,6 +13,8 @@ public final class ChatSessionStore {
     private int messageSequence = 1;
     private int generationSequence = 1;
     private boolean streaming;
+    private long processingStartedAt;
+    private long processingFinishedAt;
 
     public ArrayList<ChatMessage> mutableMessages() {
         return messages;
@@ -101,7 +103,28 @@ public final class ChatSessionStore {
     }
 
     public void setStreaming(boolean streaming) {
+        if (streaming && !this.streaming) {
+            processingStartedAt = System.currentTimeMillis();
+            processingFinishedAt = 0;
+        } else if (!streaming) {
+            finishProcessing(System.currentTimeMillis());
+        }
         this.streaming = streaming;
+    }
+
+    public ChatMessage withProcessingTimes(ChatMessage message) {
+        return message.withProcessingTimes(processingStartedAt, processingFinishedAt);
+    }
+
+    void finishProcessing(long now) {
+        if (processingStartedAt <= 0 || processingFinishedAt > 0) return;
+        processingFinishedAt = Math.max(processingStartedAt, now);
+        for (int i = 0; i < messages.size(); i++) {
+            ChatMessage message = messages.get(i);
+            if (message.getProcessingStartedAt() == processingStartedAt && message.getProcessingFinishedAt() == 0) {
+                messages.set(i, message.withProcessingTimes(processingStartedAt, processingFinishedAt));
+            }
+        }
     }
 
     private void resetMessageSequence() {

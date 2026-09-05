@@ -122,6 +122,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     private final LinearLayout contentView;
     private final ChatMessageListView messageListView;
     private final ComposerView composerView;
+    private final cn.lineai.ui.component.ToolApprovalView toolApprovalView;
     private final DrawerView drawerView;
     private final BottomSheetView bottomSheetView;
     private final DirectoryPickerSheetView directoryPickerSheetView;
@@ -153,7 +154,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         MainChatViewLayoutBuilder.Result layout = MainChatViewLayoutBuilder.build(context);
         contentView = layout.contentView;
         screenHost = layout.screenHost;
-        addView(contentView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        addView(contentView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, android.view.Gravity.CENTER_HORIZONTAL));
         addView(screenHost, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
         headerView = new HeaderView(context);
@@ -289,6 +290,11 @@ public final class MainChatView extends FrameLayout implements MainContract.View
                 MainChatView.this.presenter.onImagePickerRequested();
             }
 
+            @Override public void onPermissionClick() { MainChatView.this.presenter.onPermissionClick(); }
+            @Override public void onProjectClick() { MainChatView.this.presenter.onProjectClick(); }
+            @Override public void onSettingsClick() { MainChatView.this.presenter.onSheetOptionSelected("settings"); }
+            @Override public void onMoreClick() { MainChatView.this.presenter.onMoreClick(); }
+
             @Override
             public void onModeChanged(String mode) {
                 MainChatView.this.presenter.onChatModeChanged(mode);
@@ -325,6 +331,10 @@ public final class MainChatView extends FrameLayout implements MainContract.View
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
+
+        toolApprovalView = new cn.lineai.ui.component.ToolApprovalView(context);
+        toolApprovalView.setToolReviewListener((toolCallId, state, diffId) -> presenter.onToolReview(toolCallId, state, diffId));
+        contentView.addView(toolApprovalView, new LinearLayout.LayoutParams(-1, -2));
 
         drawerView = new DrawerView(context);
         drawerView.setListener(new DrawerView.Listener() {
@@ -486,6 +496,8 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         headerView.render(state);
         messageListView.render(state);
         composerView.render(state);
+        toolApprovalView.bind(state == null ? null : state.getToolApproval());
+        composerView.setVisibility(state != null && state.getToolApproval() != null ? GONE : VISIBLE);
         if (drawerView.getVisibility() == VISIBLE) {
             renderDrawer(state);
         }

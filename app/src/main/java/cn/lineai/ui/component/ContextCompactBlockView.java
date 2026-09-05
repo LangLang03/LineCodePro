@@ -22,9 +22,9 @@ public final class ContextCompactBlockView extends LinearLayout {
         super(context);
         setOrientation(HORIZONTAL);
         setGravity(Gravity.CENTER_VERTICAL);
-        setMinimumHeight(LineTheme.dp(context, 34));
-        setBackground(LineTheme.rounded(context, LineTheme.CODE_BG, 6));
-        LineTheme.padding(this, LineTheme.MD, LineTheme.XS, LineTheme.MD, LineTheme.XS);
+        setMinimumHeight(LineTheme.dp(context, 48));
+
+        LineTheme.padding(this, 28, 12, 28, 12);
 
         icon = new IconButtonView(context, IconButtonView.ARCHIVE);
         icon.setClickable(false);
@@ -32,7 +32,7 @@ public final class ContextCompactBlockView extends LinearLayout {
         addView(icon, new LayoutParams(LineTheme.dp(context, 18), LineTheme.dp(context, 18)));
 
         label = LineTheme.text(context, context.getString(R.string.context_compact_label), LineTheme.FONT_SM, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
-        label.setTypeface(Typeface.MONOSPACE);
+
         LayoutParams labelParams = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
         labelParams.leftMargin = LineTheme.dp(context, 6);
         addView(label, labelParams);

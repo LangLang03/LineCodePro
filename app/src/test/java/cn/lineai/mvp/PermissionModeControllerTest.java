@@ -17,7 +17,8 @@ public final class PermissionModeControllerTest {
 
         fixture.controller.showPermissionSheet();
 
-        Assert.assertEquals(4, fixture.host.options.size());
+        Assert.assertEquals(5, fixture.host.options.size());
+        Assert.assertEquals("commands:revoke", fixture.host.options.get(4).getId());
         Assert.assertEquals(ToolSettingsRepository.PERMISSION_CONFIRM, fixture.host.options.get(1).getId());
         Assert.assertTrue(fixture.host.options.get(1).isSelected());
         Assert.assertEquals("storage:manage_all_files", fixture.host.options.get(3).getId());
@@ -79,6 +80,14 @@ public final class PermissionModeControllerTest {
         Assert.assertEquals(ToolSettingsRepository.PERMISSION_AUTO, fixture.permissionStore.permissionMode);
     }
 
+    @Test public void revokingCommandGrantsDoesNotChangePermissionMode() {
+        Fixture fixture = new Fixture();
+        fixture.permissionStore.permissionMode = ToolSettingsRepository.PERMISSION_READONLY;
+        Assert.assertTrue(fixture.controller.applyPermissionModeOption("commands:revoke"));
+        Assert.assertTrue(fixture.permissionStore.cleared);
+        Assert.assertEquals(ToolSettingsRepository.PERMISSION_READONLY, fixture.permissionStore.permissionMode);
+    }
+
     private static final class Fixture {
         private final FakePermissionStore permissionStore = new FakePermissionStore();
         private final FakeChatModeStore chatModeStore = new FakeChatModeStore();
@@ -92,6 +101,8 @@ public final class PermissionModeControllerTest {
 
     private static final class FakePermissionStore implements PermissionModeController.PermissionStore {
         private String permissionMode = ToolSettingsRepository.PERMISSION_AUTO;
+        private boolean cleared;
+        @Override public void clearPermanentCommandPermissions() { cleared = true; }
 
         @Override
         public String getPermissionMode() {

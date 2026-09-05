@@ -34,6 +34,9 @@ public final class ToolPermissionService {
     }
 
     public boolean needsConfirmation(String toolName) {
+        if (ToolSettingsStore.PERMISSION_AUTO.equals(toolSettingsStore.getPermissionMode())) {
+            return false;
+        }
         if (toolRegistry != null) {
             ToolInfo tool = toolRegistry.get(toolName);
             if (tool != null && tool.needsConfirmation()) {

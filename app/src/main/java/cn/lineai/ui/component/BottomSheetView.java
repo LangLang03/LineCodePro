@@ -46,12 +46,21 @@ public final class BottomSheetView extends FrameLayout {
         backdrop.setOnClickListener(v -> close());
         addView(backdrop, new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
-        panel = new LinearLayout(context);
+        panel = new InsetSheetLayout(context);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackground(LineTheme.roundedTop(context, LineTheme.SURFACE_ELEVATED, 16));
+        panel.setClipToOutline(true);
+        panel.setBackground(LineTheme.roundedStroke(context, LineTheme.BG, 24, LineTheme.BORDER_LIGHT));
         FrameLayout.LayoutParams panelParams = new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        panelParams.gravity = Gravity.BOTTOM;
+        panelParams.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        panelParams.leftMargin = panelParams.rightMargin = LineTheme.dp(context, 16);
+        panelParams.bottomMargin = LineTheme.dp(context, 16);
         addView(panel, panelParams);
+    }
+
+    @Override protected void onMeasure(int width, int height) {
+        int available = Math.max(1, MeasureSpec.getSize(height)-LineTheme.dp(getContext(),64));
+        ((InsetSheetLayout)panel).setAvailableHeight(available);
+        super.onMeasure(width,height);
     }
 
     public void setListener(Listener listener) {
@@ -73,7 +82,7 @@ public final class BottomSheetView extends FrameLayout {
         LinearLayout header = new LinearLayout(context);
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setOrientation(LinearLayout.HORIZONTAL);
-        LineTheme.padding(header, LineTheme.LG, 0, LineTheme.LG, LineTheme.MD);
+        LineTheme.padding(header, 24, 12, 24, 20);
         TextView titleView = LineTheme.text(context, title, LineTheme.FONT_LG, LineTheme.TEXT, Typeface.BOLD);
         header.addView(titleView, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
         panel.addView(header, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
@@ -82,12 +91,15 @@ public final class BottomSheetView extends FrameLayout {
         divider.setBackgroundColor(LineTheme.BORDER_LIGHT);
         panel.addView(divider, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 1));
 
-        for (SheetOption option : options) {
-            panel.addView(createOptionRow(option), new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        android.widget.ScrollView scroll = new android.widget.ScrollView(context);
+        scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout choices = new LinearLayout(context); choices.setOrientation(LinearLayout.VERTICAL);
+        LineTheme.padding(choices, 0, 0, 0, 16);
+        if (options != null) for (SheetOption option : options) {
+            choices.addView(createOptionRow(option), new LinearLayout.LayoutParams(-1, -2));
         }
-
-        View bottomInset = new View(context);
-        panel.addView(bottomInset, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(context, 34)));
+        scroll.addView(choices, new android.widget.ScrollView.LayoutParams(-1, -2));
+        panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
 
         openAnimated();
     }
@@ -159,6 +171,7 @@ public final class BottomSheetView extends FrameLayout {
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(LineTheme.dp(context, 52));
         row.setBackgroundColor(option.isSelected() ? LineTheme.ACCENT_MUTED : android.graphics.Color.TRANSPARENT);
         LineTheme.padding(row, LineTheme.LG, 14, LineTheme.LG, 14);
         row.setClickable(true);
@@ -193,7 +206,7 @@ public final class BottomSheetView extends FrameLayout {
 
     private void showDeleteConfirmation(SheetOption option) {
         Context context = getContext();
-        AlertDialog dialog = new AlertDialog.Builder(context)
+        AlertDialog dialog = new LineAlertDialog.Builder(context)
                 .setTitle(context.getString(R.string.drawer_project_remove_title))
                 .setMessage(context.getString(R.string.drawer_project_remove_message, option.getLabel()))
                 .setNegativeButton(context.getString(R.string.common_cancel), null)

@@ -92,13 +92,13 @@ public final class MarkdownRenderer {
                 headingSize(heading.getLevel()),
                 true,
                 linkHandler
-        ), depth == 0 ? 4 : 2, 6);
+        ), depth == 0 ? 8 : 4, depth == 0 ? 20 : 10);
     }
 
     private void renderParagraph(LinearLayout target, Node node, int depth) {
         Image image = onlyImage(node);
         if (image != null) {
-            addBlock(target, new MarkdownImageView(context, image.getDestination(), plainText(image)), depth == 0 ? 2 : 0, 7);
+            addBlock(target, new MarkdownImageView(context, image.getDestination(), plainText(image)), depth == 0 ? 2 : 0, depth == 0 ? 18 : 8);
             return;
         }
         if (hasDirectImage(node)) {
@@ -107,7 +107,7 @@ public final class MarkdownRenderer {
         }
         CharSequence text = inlineRenderer.render(node);
         if (text.toString().trim().length() > 0) {
-            addBlock(target, new MarkdownTextBlockView(context, text, LineTheme.FONT_MD, false, linkHandler), depth == 0 ? 2 : 0, 7);
+            addBlock(target, new MarkdownTextBlockView(context, text, LineTheme.FONT_MD, false, linkHandler), depth == 0 ? 2 : 0, depth == 0 ? 18 : 8);
         }
     }
 
@@ -229,7 +229,7 @@ public final class MarkdownRenderer {
             return false;
         }
         addBlock(target, new MarkdownTextBlockView(context, text, LineTheme.FONT_MD, false, linkHandler),
-                afterBlock ? 1 : depth == 0 ? 2 : 0, 7);
+                afterBlock ? 1 : depth == 0 ? 2 : 0, depth == 0 ? 18 : 8);
         return true;
     }
 
@@ -253,13 +253,13 @@ public final class MarkdownRenderer {
 
     private int headingSize(int level) {
         if (level <= 1) {
-            return 22;
+            return 28;
         }
         if (level == 2) {
-            return LineTheme.FONT_XL;
+            return 24;
         }
         if (level == 3) {
-            return LineTheme.FONT_LG;
+            return 20;
         }
         return LineTheme.FONT_MD;
     }

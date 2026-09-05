@@ -1,181 +1,73 @@
 package cn.lineai.tool.ui;
-import cn.lineai.tool.ToolCallCardView;
-import cn.lineai.tool.ToolReviewListener;
-import cn.lineai.model.tool.ToolCall;
-import cn.lineai.model.tool.ToolResult;
-import cn.lineai.ui.theme.BoundedScrollView;
-import cn.lineai.ui.theme.IconButtonView;
-import cn.lineai.ui.theme.LineTheme;
-
 import android.content.Context;
 import android.graphics.Typeface;
 import android.view.Gravity;
-import android.view.View;
 import android.widget.LinearLayout;
-import android.widget.ProgressBar;
-import android.widget.ScrollView;
 import android.widget.TextView;
-import cn.lineai.tool.ui.R;
-import cn.lineai.tool.ToolDisplayCategory;
-import org.json.JSONObject;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
+import cn.lineai.tool.ToolCallCardView;
+import cn.lineai.tool.ToolReviewListener;
+import cn.lineai.ui.theme.BoundedScrollView;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
+import java.util.Map;
 
-public final class ToolCallGenericView extends BaseToolCallView implements ToolCallCardView {
+/** Unknown and extension tools share the same manual disclosure as built-in tools. */
+public final class ToolCallGenericView extends BaseToolCallView implements ToolCallCardView, ToolCallExpansion {
     private final String label;
-    private TextView outputTextView;
-    private TerminalStatus lastTerminalStatus;
-
+    private Map<String,Boolean> expansion;
+    private String key = "";
+    private boolean open;
+    private ToolCall call;
+    private ToolResult result;
     public ToolCallGenericView(Context context, String label) {
-        super(context);
-        this.label = label == null || label.length() == 0 ? getContext().getString(R.string.tool_call_generic_mcp) : label;
+        super(context); this.label = label == null ? "" : label;
     }
-
-    public void bind(ToolCall toolCall, ToolResult result) {
-        removeAllViews();
-        outputTextView = null;
-        String name = toolCall == null ? "" : toolCall.getName();
-        JSONObject input = ToolCallUtils.parseInput(toolCall);
-        // 简化进度圈逻辑：直接根据结果决定最终状态
-        TerminalStatus status = computeTerminalStatus(result);
-        lastTerminalStatus = status;
-        boolean running = status == TerminalStatus.RUNNING;
-        boolean error = status == TerminalStatus.FAILED;
-        boolean unknown = status == TerminalStatus.UNKNOWN;
-        boolean hasResult = result != null && result.getContent().length() > 0;
-        int statusColor = error ? LineTheme.DANGER
-                : (status == TerminalStatus.SUCCESS) ? LineTheme.SUCCESS
-                : unknown ? LineTheme.TEXT_TERTIARY
-                : LineTheme.ACCENT;
-
-        LinearLayout header = new LinearLayout(getContext());
-        header.setOrientation(HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        LineTheme.padding(header, LineTheme.SM, LineTheme.XS, LineTheme.SM, LineTheme.XS);
-
-        IconButtonView icon = new IconButtonView(getContext(), iconFor(name));
-        icon.setIconColor(statusColor);
-        icon.setIconSizeDp(24, 12);
-        icon.setClickable(false);
-        header.addView(icon, new LayoutParams(LineTheme.dp(getContext(), 24), LineTheme.dp(getContext(), 24)));
-
-        LinearLayout titleBlock = new LinearLayout(getContext());
-        titleBlock.setOrientation(VERTICAL);
-        LayoutParams titleParams = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
-        titleParams.leftMargin = LineTheme.dp(getContext(), LineTheme.SM);
-        titleParams.rightMargin = LineTheme.dp(getContext(), LineTheme.SM);
-        header.addView(titleBlock, titleParams);
-        titleBlock.addView(LineTheme.text(getContext(), label, 10, LineTheme.TEXT_TERTIARY, Typeface.BOLD),
-                new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        TextView nameView = LineTheme.text(getContext(), name, LineTheme.FONT_SM, error ? LineTheme.DANGER : LineTheme.TEXT, Typeface.NORMAL);
-        nameView.setTypeface(Typeface.MONOSPACE);
-        nameView.setSingleLine(true);
-        titleBlock.addView(nameView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-
-        if (running) {
-            ProgressBar bar = new ProgressBar(getContext());
-            bar.setIndeterminate(true);
-            header.addView(bar, new LayoutParams(LineTheme.dp(getContext(), 18), LineTheme.dp(getContext(), 18)));
-        } else {
-            // 工具调用结束：成功 → CHECK；失败 → CLOSE；未知 → CLOCK_3 表示等待结果
-            int doneIcon = error ? IconButtonView.CLOSE
-                    : (status == TerminalStatus.SUCCESS) ? IconButtonView.CHECK
-                    : IconButtonView.CLOCK_3;
-            IconButtonView done = new IconButtonView(getContext(), doneIcon);
-            done.setIconColor(statusColor);
-            done.setIconSizeDp(18, 13);
-            done.setClickable(false);
-            header.addView(done, new LayoutParams(LineTheme.dp(getContext(), 18), LineTheme.dp(getContext(), 18)));
-        }
-        addView(header, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-
-        String inputText = ToolCallUtils.prettyJson(input);
-        if (!"{}".equals(inputText)) {
-            addSection(getContext().getString(R.string.tool_call_input), inputText, LineTheme.TEXT_SECONDARY, 2);
-        }
-        if (hasResult) {
-            // If content is structured agent progress but we fell through to generic
-            // (missing registry), prefer human output over raw JSON dump.
-            outputTextView = addSection(
-                    running ? getContext().getString(R.string.tool_call_progress)
-                            : getContext().getString(R.string.tool_call_output),
-                    outputDisplayText(result, running, error),
-                    error ? LineTheme.DANGER : LineTheme.TEXT_SECONDARY,
-                    running ? 3 : 8);
-        }
+    @Override public void setExpansionState(Map<String,Boolean> state, String key) {
+        expansion = state; this.key = key; open = state != null && Boolean.TRUE.equals(state.get(key));
     }
-
-    private String outputDisplayText(ToolResult result, boolean running, boolean error) {
-        String rawContent = result == null ? "" : result.getContent();
-        String displayContent = AgentToolResultDisplay.progressPayload(rawContent) != null
-                ? AgentToolResultDisplay.displayOutput(rawContent)
-                : rawContent;
-        if (displayContent == null || displayContent.trim().length() == 0) {
-            displayContent = error
-                    ? getContext().getString(R.string.tool_call_agent_failed)
-                    : getContext().getString(R.string.tool_call_agent_done);
-        }
-        return displayContent;
-    }
-
-    @Override
-    public void updateContent(ToolCall toolCall, ToolResult result) {
-        TerminalStatus status = computeTerminalStatus(result);
-        if (outputTextView == null || status != lastTerminalStatus) {
-            bind(toolCall, result);
-            return;
-        }
-        boolean running = status == TerminalStatus.RUNNING;
+    @Override public void bind(ToolCall call, ToolResult result) {
+        this.call = call; this.result = result; removeAllViews();
         boolean error = result != null && result.isError();
-        outputTextView.setText(outputDisplayText(result, running, error));
-    }
-
-    @Override
-    public void setToolReviewListener(ToolReviewListener listener) {
-        // Generic view does not use tool review
-    }
-
-    @Override
-    public void setProjectPath(String projectPath) {
-        // Generic view does not use project path
-    }
-
-    private int iconFor(String name) {
-        ToolDisplayCategory category = ToolCallUtils.getDisplayCategory(name);
-        if (category == ToolDisplayCategory.SHELL) return IconButtonView.TERMINAL;
-        if (ToolCallUtils.isCustomMcpTool(name)) return IconButtonView.MCP;
-        if (category == ToolDisplayCategory.DELETE) return IconButtonView.TRASH_2;
-        return IconButtonView.MCP;
-    }
-
-    private TextView addSection(String title, String content, int color, int maxHeightRows) {
-        View divider = new View(getContext());
-        divider.setBackgroundColor(LineTheme.CODE_BORDER);
-        addView(divider, new LayoutParams(LayoutParams.MATCH_PARENT, 1));
-
-        LinearLayout section = new LinearLayout(getContext());
-        section.setOrientation(VERTICAL);
-        LineTheme.padding(section, LineTheme.MD, LineTheme.SM, LineTheme.MD, LineTheme.SM);
-        section.addView(LineTheme.text(getContext(), title, LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.BOLD),
-                new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-
-        TextView text = LineTheme.text(getContext(), content, LineTheme.FONT_XS, color, Typeface.NORMAL);
-        text.setTypeface(Typeface.MONOSPACE);
-        text.setTextIsSelectable(true);
-        LayoutParams textParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        textParams.topMargin = LineTheme.dp(getContext(), 4);
-        if (maxHeightRows > 4) {
-            BoundedScrollView scroll = new BoundedScrollView(getContext(), 220);
-            scroll.setFillViewport(false);
-            scroll.setBackground(LineTheme.roundedStroke(getContext(), LineTheme.SURFACE, 8, LineTheme.CODE_BORDER));
-            LineTheme.padding(scroll, LineTheme.SM, LineTheme.SM, LineTheme.SM, LineTheme.SM);
-            scroll.addView(text, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-            LayoutParams scrollParams = new LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(getContext(), 220));
-            scrollParams.topMargin = LineTheme.dp(getContext(), 4);
-            section.addView(scroll, scrollParams);
-        } else {
-            text.setMaxLines(maxHeightRows);
-            section.addView(text, textParams);
+        LinearLayout header = new LinearLayout(getContext()); header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setMinimumHeight(LineTheme.dp(getContext(),48));
+        LineTheme.padding(header,0,12,0,12); header.setBackground(LineTheme.pressable(getContext()));
+        IconButtonView icon = new IconButtonView(getContext(),IconButtonView.MCP);
+        icon.setIconColor(error ? LineTheme.DANGER : LineTheme.TEXT_SECONDARY); icon.setIconSizeDp(16,16); icon.setClickable(false);
+        header.addView(icon,new LayoutParams(LineTheme.dp(getContext(),16),LineTheme.dp(getContext(),16)));
+        String name = call == null ? label : call.getName();
+        int status = error ? R.string.tool_call_status_failed : isTerminal(result) ? R.string.tool_call_status_done : R.string.tool_call_status_running;
+        TextView title = LineTheme.text(getContext(), getContext().getString(status) + "  " + name,14,error ? LineTheme.DANGER : LineTheme.TEXT_SECONDARY,Typeface.NORMAL);
+        title.setMaxLines(2); title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LayoutParams tp = new LayoutParams(0,-2,1); tp.leftMargin=LineTheme.dp(getContext(),10);header.addView(title,tp);
+        IconButtonView arrow = new IconButtonView(getContext(),open ? IconButtonView.CHEVRON_DOWN : IconButtonView.CHEVRON_RIGHT);
+        arrow.setIconSizeDp(24,14); arrow.setIconColor(LineTheme.TEXT_SECONDARY); arrow.setClickable(false);
+        header.addView(arrow,new LayoutParams(LineTheme.dp(getContext(),24),LineTheme.dp(getContext(),24)));
+        header.setOnClickListener(v -> {open=!open;if(expansion!=null)expansion.put(key,open);bind(this.call,this.result);});
+        addView(header,new LayoutParams(-1,-2));
+        if (!open) return;
+        LinearLayout content = new LinearLayout(getContext());content.setOrientation(VERTICAL);
+        content.setBackground(LineTheme.rounded(getContext(),LineTheme.INPUT_BG,12));LineTheme.padding(content,16,16,16,16);
+        String input = ToolCallUtils.prettyJson(ToolCallUtils.parseInput(call));
+        if (!"{}".equals(input)) section(content,R.string.tool_call_input,input,LineTheme.TEXT_SECONDARY);
+        if (result != null && !result.getContent().isEmpty()) {
+            String raw=result.getContent();
+            String output=AgentToolResultDisplay.progressPayload(raw)!=null ? AgentToolResultDisplay.displayOutput(raw) : raw;
+            section(content,R.string.tool_call_output,output,error?LineTheme.DANGER:LineTheme.TEXT);
         }
-        addView(section, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        return text;
+        BoundedScrollView scroll = new BoundedScrollView(getContext(),280);scroll.addView(content,new android.widget.ScrollView.LayoutParams(-1,-2));
+        addView(scroll,new LayoutParams(-1,-2));
     }
+    private void section(LinearLayout parent,int title,String value,int color) {
+        TextView heading = LineTheme.text(getContext(),getContext().getString(title),13,LineTheme.TEXT_SECONDARY,Typeface.NORMAL);
+        LineTheme.padding(heading,0,8,0,8); parent.addView(heading);
+        String preview=value==null?"":value.length()>65536?value.substring(0,65536)+"…":value;
+        TextView body=LineTheme.text(getContext(),preview,13,color,Typeface.NORMAL);
+        body.setTypeface(Typeface.MONOSPACE);body.setTextIsSelectable(true);body.setLineSpacing(LineTheme.dp(getContext(),6),1);
+        parent.addView(body,new LayoutParams(-1,-2));
+    }
+    @Override public void updateContent(ToolCall call,ToolResult result) {bind(call,result);}
+    @Override public void setToolReviewListener(ToolReviewListener listener) { }
+    @Override public void setProjectPath(String path) { }
 }

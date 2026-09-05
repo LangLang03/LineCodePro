@@ -172,7 +172,7 @@ abstract class AbstractHttpModelProtocol implements ModelProtocol {
         }
 
         BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(connection.getOutputStream(), StandardCharsets.UTF_8));
-        writer.write(body.toString());
+        writer.write(cn.lineai.ai.prompt.StableJson.stringify(body));
         writer.flush();
         writer.close();
         return connection;

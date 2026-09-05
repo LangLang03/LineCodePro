@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="tool_call_error_details">Error details</string>
     <string name="shell_output_line_count">%1$d lines</string>
     <string name="common_cancel">Cancel</string>
     <string name="common_delete">Delete</string>
@@ -57,4 +58,12 @@
     <string name="tool_call_block_mcp">MCP call</string>
     <string name="tool_call_generic_mcp">MCP call</string>
     <string name="tool_call_phone_action_default">Phone action</string>
+    <string name="tool_call_read_done">Read</string>
+    <string name="tool_call_copy_file">Copy file contents</string>
+    <string name="tool_call_write_done">Edited</string>
+    <string name="tool_call_write_reverted">Reverted</string>
+    <string name="tool_call_diff_loading">Loading changes…</string>
+    <string name="tool_call_diff_unavailable">No diff available</string>
+    <string name="tool_call_write_created">Created</string>
+    <string name="tool_call_diff_no_newline">No newline at end of file</string>
 </resources>

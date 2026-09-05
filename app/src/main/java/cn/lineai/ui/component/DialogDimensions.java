@@ -22,6 +22,6 @@ public final class DialogDimensions {
      */
     public static int insetDialogWidth(Context context) {
         int width = context.getResources().getDisplayMetrics().widthPixels - LineTheme.dp(context, 32);
-        return Math.max(LineTheme.dp(context, 280), width);
+        return Math.max(1, Math.min(LineTheme.dp(context, 560), width));
     }
 }

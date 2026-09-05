@@ -271,7 +271,7 @@ public final class McpExtensionEditScreenView extends ScreenScaffoldView {
         Context context = content.getContext();
         LinearLayout group = new LinearLayout(context);
         group.setOrientation(LinearLayout.VERTICAL);
-        group.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_ELEVATED, 12));
+        group.setBackground(null);
         LineTheme.padding(group, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
         group.addView(first, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams secondParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
@@ -310,7 +310,7 @@ public final class McpExtensionEditScreenView extends ScreenScaffoldView {
         return value;
     }
 
-    private static final class HeaderRow extends LinearLayout {
+    private static final class HeaderRow extends ScreenSurfaceView {
         private final EditText nameInput;
         private final EditText valueInput;
 

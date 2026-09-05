@@ -63,7 +63,12 @@ public final class MainChatViewLayoutBuilder {
      * @return a {@link Result} carrying {@code contentView} and {@code screenHost}.
      */
     public static Result build(Context context) {
-        LinearLayout contentView = new LinearLayout(context);
+        LinearLayout contentView = new LinearLayout(context) {
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                int width = Math.min(View.MeasureSpec.getSize(widthSpec), LineTheme.dp(getContext(), 792));
+                super.onMeasure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), heightSpec);
+            }
+        };
         contentView.setOrientation(LinearLayout.VERTICAL);
         contentView.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -100,11 +105,11 @@ public final class MainChatViewLayoutBuilder {
             return;
         }
         host.setOnApplyWindowInsetsListener((view, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsets.Type.systemBars());
+            Insets systemBars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
             Insets ime = insets.getInsets(WindowInsets.Type.ime());
             int bottomInset = Math.max(systemBars.bottom, ime.bottom);
-            contentView.setPadding(0, systemBars.top, 0, bottomInset);
-            screenHost.setPadding(0, systemBars.top, 0, bottomInset);
+            contentView.setPadding(systemBars.left, systemBars.top, systemBars.right, bottomInset);
+            screenHost.setPadding(systemBars.left, systemBars.top, systemBars.right, bottomInset);
             return insets;
         });
         host.post(host::requestApplyInsets);

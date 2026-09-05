@@ -33,10 +33,17 @@ public final class ErrorLogRepository {
 
     public File record(String type, String summary, Throwable throwable, String details) {
         long now = System.currentTimeMillis();
-        File file = new File(directory(), FILE_TIME_FORMAT.format(new Date(now)) + "-" + safeName(type) + ".log");
+        File file;
+        String stamp;
+        synchronized (FILE_TIME_FORMAT) { stamp = FILE_TIME_FORMAT.format(new Date(now)); }
+        try {
+            file = File.createTempFile(stamp + "-" + safeName(type) + "-", ".log", directory());
+        } catch (java.io.IOException ignored) {
+            return null;
+        }
         StringBuilder builder = new StringBuilder();
         builder.append("LineCode Error Log\n");
-        builder.append("Time: ").append(DISPLAY_TIME_FORMAT.format(new Date(now))).append('\n');
+        builder.append("Time: ").append(displayTime(now)).append('\n');
         builder.append("Type: ").append(type == null ? "error" : type).append('\n');
         builder.append("Summary: ").append(summary == null ? "" : ErrorLogRedactor.redact(summary)).append("\n\n");
         if (details != null && details.length() > 0) {
@@ -60,7 +67,7 @@ public final class ErrorLogRepository {
         }
         Arrays.sort(files, Comparator.comparingLong(File::lastModified).reversed());
         for (File file : files) {
-            entries.add(new ErrorLogEntry(file, file.getName(), DISPLAY_TIME_FORMAT.format(new Date(file.lastModified())), file.lastModified()));
+            entries.add(new ErrorLogEntry(file, file.getName(), displayTime(file.lastModified()), file.lastModified()));
         }
         return entries;
     }
@@ -79,6 +86,10 @@ public final class ErrorLogRepository {
         StringWriter writer = new StringWriter();
         throwable.printStackTrace(new PrintWriter(writer));
         return writer.toString();
+    }
+
+    private static String displayTime(long time) {
+        synchronized (DISPLAY_TIME_FORMAT) { return DISPLAY_TIME_FORMAT.format(new Date(time)); }
     }
 
     private static String safeName(String value) {

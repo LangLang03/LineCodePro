@@ -15,9 +15,9 @@ public final class TextSelectionDialog {
         EditText editText = new EditText(context);
         editText.setText(content);
         editText.setTextSize(15);
-        editText.setTextColor(Color.WHITE);
-        editText.setBackgroundColor(0xFF1E1E2E);
-        editText.setPadding(30, 30, 30, 30);
+        editText.setTextColor(cn.lineai.ui.theme.LineTheme.TEXT);
+        editText.setBackgroundColor(cn.lineai.ui.theme.LineTheme.BG);
+        cn.lineai.ui.theme.LineTheme.padding(editText, 24, 24, 24, 24);
         editText.setFocusable(true);
         editText.setFocusableInTouchMode(true);
         editText.setKeyListener(null);          // Read-only
@@ -27,7 +27,7 @@ public final class TextSelectionDialog {
         ScrollView scrollView = new ScrollView(context);
         scrollView.addView(editText);
 
-        new AlertDialog.Builder(context)
+        new LineAlertDialog.Builder(context)
                 .setTitle(R.string.dialog_select_text_title)
                 .setView(scrollView)
                 .setPositiveButton(R.string.common_close, null)

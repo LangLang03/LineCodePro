@@ -16,6 +16,15 @@ public final class ToolCallBlockView extends LinearLayout {
     private ToolCallCardView childView;
     private String projectPath = "";
     private ToolReviewListener toolReviewListener;
+    private String childIdentity = "";
+    private java.util.Map<String, Boolean> expansionState;
+    private String expansionKey = "";
+
+    public void setExpansionState(java.util.Map<String, Boolean> state, String key) {
+        expansionState = state;
+        expansionKey = key;
+        if (childView instanceof ToolCallExpansion) ((ToolCallExpansion) childView).setExpansionState(state, key);
+    }
 
     public ToolCallBlockView(Context context) {
         this(context, ToolCallViewFactoryRegistry.getDefault());
@@ -44,9 +53,16 @@ public final class ToolCallBlockView extends LinearLayout {
         }
         String name = toolCall == null ? "" : toolCall.getName();
         ToolDisplayCategory category = resolveDisplayCategory(name);
+        String identity = toolCall == null ? "" : toolCall.getId() + ":" + name;
+        if (childView != null && childIdentity.equals(identity)) {
+            childView.bind(toolCall, result);
+            return;
+        }
+        childIdentity = identity;
         childView = registry.createView(getContext(), resolveViewClass(name), category);
         if (childView != null) {
             removeAllViews();
+            if (childView instanceof ToolCallExpansion) ((ToolCallExpansion) childView).setExpansionState(expansionState, expansionKey);
             childView.setToolReviewListener(toolReviewListener);
             childView.setProjectPath(projectPath);
             addView((View) childView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));

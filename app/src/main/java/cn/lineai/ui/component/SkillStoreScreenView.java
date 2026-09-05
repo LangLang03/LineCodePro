@@ -55,13 +55,13 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
     private String sortBy = "downloads";
 
     public SkillStoreScreenView(Context context, Listener listener) {
-        super(context, context.getString(R.string.skillhub_title_store), listener::onBack, null);
+        super(context, context.getString(R.string.skillhub_title_store), listener::onBack, null, true);
         this.listener = listener;
         this.client = new SkillHubClient(new ContextResourceProvider(context));
         this.sessionClient = new SkillHubSessionClient(new ContextResourceProvider(context));
         this.iconLoader = new SkillIconLoader(context);
         LinearLayout content = getContent();
-        LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
+        LineTheme.padding(content, 16, 16, 16, 32);
 
         addIntro(content);
         search = addSearch(content);
@@ -122,7 +122,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
         storeIcon.setIconSizeDp(44, 24);
         storeIcon.setClickable(false);
         storeIcon.setFocusable(false);
-        storeIcon.setBackground(LineTheme.rounded(getContext(), LineTheme.ACCENT_MUTED, 12));
+        storeIcon.setBackground(null);
         header.addView(storeIcon, new LinearLayout.LayoutParams(
                 LineTheme.dp(getContext(), 44), LineTheme.dp(getContext(), 44)));
         content.addView(header);
@@ -393,7 +393,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
         statusParams.topMargin = LineTheme.dp(getContext(), LineTheme.MD);
         panel.addView(status, statusParams);
 
-        LinearLayout actions = new LinearLayout(getContext());
+        LinearLayout actions = new AdaptiveActionsView(getContext());
         actions.setOrientation(HORIZONTAL);
         TextView close = accountDialogButton(
                 getContext().getString(R.string.skillhub_continue), false);
@@ -535,9 +535,8 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
         card.setFocusable(true);
         card.setContentDescription(skill.getName() + getContext().getString(R.string.skillhub_view_details));
         card.setOnClickListener(v -> listener.onOpen(skill.getSlug()));
-        card.setBackground(LineTheme.roundedStroke(
-                getContext(), LineTheme.SURFACE_ELEVATED, 12, LineTheme.BORDER));
-        LineTheme.padding(card, LineTheme.MD, LineTheme.MD, LineTheme.SM, LineTheme.MD);
+        card.setBackground(LineTheme.pressable(getContext()));
+        LineTheme.padding(card, 0, 20, 0, 20);
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         cardParams.bottomMargin = LineTheme.dp(getContext(), LineTheme.SM);
@@ -548,7 +547,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
         icon.setIconSizeDp(48, 25);
         icon.setClickable(false);
         icon.setFocusable(false);
-        icon.setBackground(LineTheme.rounded(getContext(), LineTheme.ACCENT_MUTED, 12));
+
         card.addView(icon, new LinearLayout.LayoutParams(
                 LineTheme.dp(getContext(), 48), LineTheme.dp(getContext(), 48)));
         iconLoader.load(skill.getIconUrl(), icon);
@@ -566,7 +565,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = LineTheme.textMedium(getContext(), skill.getName(),
                 LineTheme.FONT_MD, LineTheme.TEXT);
-        title.setMaxLines(1);
+        title.setMaxLines(2);
         titleRow.addView(title, new LinearLayout.LayoutParams(
                 0, LayoutParams.WRAP_CONTENT, 1f));
         if (skill.isVerified()) {
@@ -598,7 +597,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
                 apiParams.leftMargin = LineTheme.dp(getContext(), LineTheme.XS);
                 tags.addView(apiKey, apiParams);
             }
-            copy.addView(tags, tagsParams);
+
         }
 
         TextView description = LineTheme.text(getContext(), skill.getDescription(),
@@ -616,7 +615,7 @@ public final class SkillStoreScreenView extends ScreenScaffoldView {
         LinearLayout.LayoutParams statsParams = new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         statsParams.topMargin = LineTheme.dp(getContext(), LineTheme.XS);
-        copy.addView(stats, statsParams);
+
 
         IconButtonView chevron = new IconButtonView(getContext(), IconButtonView.CHEVRON_RIGHT);
         chevron.setIconColor(LineTheme.TEXT_TERTIARY);

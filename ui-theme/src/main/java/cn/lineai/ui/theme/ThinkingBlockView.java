@@ -38,23 +38,19 @@ public final class ThinkingBlockView extends LinearLayout {
         header.setOrientation(HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setClickable(true);
-        LineTheme.padding(header, 0, 4, 0, 4);
+        LineTheme.padding(header, 0, 8, 0, 8);
+        header.setMinimumHeight(LineTheme.dp(context,48));
         this.header = header;
 
-        TextView mark = LineTheme.text(context, "✦", 10, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
-        header.addView(mark, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
-
-        labelView = LineTheme.text(context, context.getString(R.string.thinking_label), LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+        labelView = LineTheme.text(context, context.getString(R.string.thinking_label), 13, LineTheme.TEXT_SECONDARY, Typeface.NORMAL);
         LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
-        labelParams.leftMargin = LineTheme.dp(context, 4);
         header.addView(labelView, labelParams);
 
         chevronView = new IconButtonView(context, IconButtonView.CHEVRON_RIGHT);
         chevronView.setIconColor(LineTheme.TEXT_TERTIARY);
-        chevronView.setIconSizeDp(12, 12);
+        chevronView.setIconSizeDp(28, 16);
         chevronView.setClickable(false);
-        LinearLayout.LayoutParams chevronParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 12), LineTheme.dp(context, 12));
-        chevronParams.leftMargin = LineTheme.dp(context, 4);
+        LinearLayout.LayoutParams chevronParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 28), LineTheme.dp(context, 32));
         header.addView(chevronView, chevronParams);
         header.setOnClickListener(v -> {
             expanded = !expanded;
@@ -68,7 +64,7 @@ public final class ThinkingBlockView extends LinearLayout {
         contentScrollView.setOverScrollMode(OVER_SCROLL_IF_CONTENT_SCROLLS);
         contentScrollView.setVerticalScrollBarEnabled(true);
 
-        contentView = LineTheme.text(context, "", LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+        contentView = LineTheme.text(context, "", LineTheme.FONT_SM, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
         contentView.setLineSpacing(LineTheme.dp(context, 4), 1f);
         contentScrollView.addView(contentView, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams contentParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
@@ -99,19 +95,8 @@ public final class ThinkingBlockView extends LinearLayout {
             return;
         }
         this.streaming = streaming;
-        if (streaming) {
-            pulseAnimator = ObjectAnimator.ofFloat(header, View.ALPHA, 1f, STREAMING_PULSE_MIN_ALPHA);
-            pulseAnimator.setDuration(STREAMING_PULSE_MS);
-            pulseAnimator.setRepeatCount(ValueAnimator.INFINITE);
-            pulseAnimator.setRepeatMode(ValueAnimator.REVERSE);
-            pulseAnimator.start();
-        } else {
-            if (pulseAnimator != null) {
-                pulseAnimator.cancel();
-                pulseAnimator = null;
-            }
-            header.setAlpha(1f);
-        }
+        if (pulseAnimator != null) { pulseAnimator.cancel(); pulseAnimator = null; }
+        header.setAlpha(1f);
     }
 
     @Override

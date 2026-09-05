@@ -44,6 +44,8 @@ final class GenerationFlowController {
 
         String currentConversationId();
 
+        default String executionPermissionScope() { return ""; }
+
         String syncModePermission();
 
         void persistCurrentConversation();
@@ -69,6 +71,8 @@ final class GenerationFlowController {
         String toolLimitNotExecutedMessage();
     }
 
+    cn.lineai.model.ToolApproval pendingToolApproval() { return toolConfirmationController.pendingToolApproval(); }
+
     private static final int MAX_RETRIES = 3;
     private static final long RETRY_DELAY_MS = 5000L;
 
@@ -86,6 +90,7 @@ final class GenerationFlowController {
     private final MainThreadDispatcher mainThread;
     private final BackgroundTaskRunner backgroundTasks;
     private final Host host;
+    private final ToolRunController toolRunController;
     private final ToolConfirmationController toolConfirmationController;
     private final ToolExecutionScheduler toolExecutionScheduler;
     private final StreamingRenderController streamingRenderController;
@@ -223,6 +228,14 @@ final class GenerationFlowController {
         public String currentConversationId() {
             return host.currentConversationId();
         }
+
+        @Override public String executionPermissionScope() { return host.executionPermissionScope(); }
+        @Override public boolean isPermanentlyAllowed(String scope, ToolCall call) {
+            return toolRunController.isCommandPermanentlyAllowed(scope, call);
+        }
+        @Override public void rememberPermanentAllowance(String scope, ToolCall call) {
+            toolRunController.allowCommandPermanently(scope, call);
+        }
     };
 
     private final ToolExecutionScheduler.Host schedulerHost;
@@ -306,6 +319,7 @@ final class GenerationFlowController {
         this.contextCompactionController = contextCompactionController;
         this.tokenUsageTracker = tokenUsageTracker;
         this.host = host;
+        this.toolRunController = toolRunController;
         this.schedulerHost = () -> host.syncModePermission();
         this.toolConfirmationController = new ToolConfirmationController(reviewCallback);
         this.toolExecutionScheduler = new ToolExecutionScheduler(
@@ -325,7 +339,7 @@ final class GenerationFlowController {
             ChatMessage message = messages.get(index);
             String visibleText = result.parsedToolCalls.hasToolMarkup()
                     ? result.parsedToolCalls.getText()
-                    : message.getContent() + result.textDelta;
+                    : StreamingRenderController.visibleCapturedText(result.rawText);
             List<ToolCall> toolCalls = result.parsedToolCalls.hasToolMarkup()
                     ? mergeToolCalls(message.getToolCalls(), result.parsedToolCalls.getToolCalls())
                     : message.getToolCalls();
@@ -334,6 +348,9 @@ final class GenerationFlowController {
                     message.getReasoningContent() + result.reasoningDelta,
                     true
             ).withToolCalls(toolCalls, false));
+            if (StreamingRenderController.hasProcessingEndMarker(result.rawText)) {
+                chatSessionStore.finishProcessing(System.currentTimeMillis());
+            }
             host.render();
         }, generationId -> chatSessionStore.isActiveGeneration(generationId));
         if (this.agentExecutionController != null) {
@@ -380,7 +397,7 @@ final class GenerationFlowController {
     ) {
         String assistantId = host.nextId();
         streamingRenderController.initRawText(assistantId);
-        messages.add(new ChatMessage(assistantId, ChatMessage.Role.ASSISTANT, "", true));
+        messages.add(chatSessionStore.withProcessingTimes(new ChatMessage(assistantId, ChatMessage.Role.ASSISTANT, "", true)));
         host.persistCurrentConversation();
         host.render();
 
@@ -433,7 +450,8 @@ final class GenerationFlowController {
         }
 
         mainThread.post(() -> {
-            if (cancellationToken != null && cancellationToken.isCancelled()) {
+            if (!chatSessionStore.isActiveGeneration(generationId)
+                    || cancellationToken != null && cancellationToken.isCancelled()) {
                 return;
             }
             int index = findMessageIndex(failedAssistantId);
@@ -443,12 +461,13 @@ final class GenerationFlowController {
             streamingRenderController.removeRawText(failedAssistantId);
 
             String retryText = host.formatRetryNotice(nextAttempt + 1, MAX_RETRIES, error.getMessage());
-            messages.add(ChatMessage.retryNotice(host.nextId(), retryText));
+            messages.add(chatSessionStore.withProcessingTimes(ChatMessage.retryNotice(host.nextId(), retryText)));
             host.persistCurrentConversation();
             host.render();
 
             mainThread.postDelayed(() -> {
-                if (cancellationToken != null && cancellationToken.isCancelled()) {
+                if (!chatSessionStore.isActiveGeneration(generationId)
+                        || cancellationToken != null && cancellationToken.isCancelled()) {
                     return;
                 }
                 retryableModelStream(generationId, selectedModel, cancellationToken,
@@ -615,7 +634,7 @@ final class GenerationFlowController {
             }
             ToolCallTextParser.Result parsedTextToolCalls = ToolCallTextParser.parse(rawResponseText);
             List<ToolCall> toolCalls = mergeToolCalls(response.getToolCalls(), parsedTextToolCalls.getToolCalls());
-            String parsedResponseText = parsedTextToolCalls.hasToolMarkup() ? parsedTextToolCalls.getText() : rawResponseText;
+            String parsedResponseText = parsedTextToolCalls.hasToolMarkup() ? parsedTextToolCalls.getText() : StreamingRenderController.visibleCapturedText(rawResponseText);
             String finalText = parsedTextToolCalls.hasToolMarkup()
                     ? parsedResponseText
                     : parsedResponseText.trim().length() == 0 ? message.getContent() : parsedResponseText;
@@ -626,6 +645,9 @@ final class GenerationFlowController {
             }
             messages.set(index, message.withContent(finalText, finalReasoning, false)
                     .withToolCalls(toolCalls, false));
+            if (StreamingRenderController.hasProcessingEndMarker(rawResponseText)) {
+                chatSessionStore.finishProcessing(System.currentTimeMillis());
+            }
             if (hasToolCalls) {
                 if (!generationController.canExecuteToolCalls(selectedModel, effectiveUsedToolCalls(usedToolCallCount), toolCalls.size())) {
                     messages.add(new ChatMessage(host.nextId(), ChatMessage.Role.ASSISTANT,
@@ -889,9 +911,11 @@ final class GenerationFlowController {
             int index = findMessageIndex(assistantId);
             if (index >= 0) {
                 ChatMessage message = messages.get(index);
-                messages.set(index, message.withContent(displayText, message.getReasoningContent(), false));
+                messages.set(index, message.withContent(displayText, message.getReasoningContent(), false)
+                        .withToolReview(message.getDiffId(), message.getReviewState(), message.getReviewMessage(), true, displayText));
             } else {
-                messages.add(new ChatMessage(host.nextId(), ChatMessage.Role.ASSISTANT, displayText, false));
+                messages.add(chatSessionStore.withProcessingTimes(new ChatMessage(host.nextId(), ChatMessage.Role.ASSISTANT, displayText, false)
+                        .withToolReview("", "", "", true, displayText)));
             }
             streamingRenderController.removeRawText(assistantId);
             finishActiveGeneration();

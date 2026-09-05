@@ -51,6 +51,10 @@ public interface ToolSettingsStore {
      */
     void setExecutionMode(String mode);
 
+    default boolean isCommandPermanentlyAllowed(String scope, cn.lineai.model.tool.ToolCall call) { return false; }
+    default void allowCommandPermanently(String scope, cn.lineai.model.tool.ToolCall call) {}
+    default void clearPermanentCommandPermissions() {}
+
     /**
      * 获取所有 MCP 工具组配置。
      */

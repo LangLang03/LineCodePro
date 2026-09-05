@@ -30,7 +30,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-public final class MemorySettingsScreenView extends LinearLayout {
+public final class MemorySettingsScreenView extends ScreenSurfaceView {
     public interface Listener {
         void onBack();
 
@@ -385,26 +385,13 @@ public final class MemorySettingsScreenView extends LinearLayout {
     private LinearLayout dialogPanel(Context context) {
         LinearLayout panel = new LinearLayout(context);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_ELEVATED, 12));
+        panel.setBackground(LineTheme.rounded(context, LineTheme.BG, 24));
         LineTheme.padding(panel, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
         return panel;
     }
 
     private void showPanel(Dialog dialog, LinearLayout panel) {
-        ScrollView scrollView = new ScrollView(getContext());
-        scrollView.setFillViewport(false);
-        scrollView.addView(panel, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        dialog.setContentView(scrollView);
-        dialog.show();
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            WindowManager.LayoutParams params = new WindowManager.LayoutParams();
-            params.copyFrom(window.getAttributes());
-            params.width = Math.min(getResources().getDisplayMetrics().widthPixels - LineTheme.dp(getContext(), 32), LineTheme.dp(getContext(), 560));
-            params.height = WindowManager.LayoutParams.WRAP_CONTENT;
-            window.setAttributes(params);
-        }
+        DialogBuilder.showInset(dialog, panel);
     }
 
     private TextView titleView(String text) {

@@ -29,6 +29,12 @@ public final class RefreshCwButtonView extends View {
     }
 
     @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        int size = LineTheme.dp(getContext(), ScreenHeaderView.ACTION_SIZE_DP);
+        setMeasuredDimension(resolveSize(size, widthMeasureSpec), resolveSize(size, heightMeasureSpec));
+    }
+
+    @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         float size = LineTheme.dp(getContext(), iconDp);

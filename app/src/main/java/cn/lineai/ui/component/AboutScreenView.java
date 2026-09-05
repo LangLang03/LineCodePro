@@ -26,7 +26,7 @@ public final class AboutScreenView extends ScreenScaffoldView {
         super(context, context.getString(R.string.screen_about_title), listener::onBack, null);
         VersionInfo versionInfo = readVersionInfo(context);
         LinearLayout content = getContent();
-        LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
+        LineTheme.padding(content, 28, 8, 28, 48);
 
         LinearLayout header = new LinearLayout(context);
         header.setOrientation(VERTICAL);

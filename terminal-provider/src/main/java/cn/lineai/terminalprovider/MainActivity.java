@@ -49,72 +49,45 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        ScrollView scrollView = new ScrollView(this);
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        int padding = (int) (getResources().getDisplayMetrics().density * 16);
-        root.setPadding(padding, padding, padding, padding);
-        scrollView.addView(root);
-
-        statusView = new TextView(this);
-        statusView.setTextSize(16);
-        statusView.setPadding(0, 0, 0, padding);
-        root.addView(statusView);
-
-        Button bindButton = new Button(this);
-        bindButton.setText("绑定本地服务");
-        bindButton.setOnClickListener(v -> bindLocalService());
-        root.addView(bindButton);
-
-        Button testButton = new Button(this);
-        testButton.setText("执行测试命令 (whoami)");
-        testButton.setOnClickListener(v -> testShell("whoami"));
-        root.addView(testButton);
-
-        Button testLsButton = new Button(this);
-        testLsButton.setText("执行测试命令 (ls /)");
-        testLsButton.setOnClickListener(v -> testShell("ls /"));
-        root.addView(testLsButton);
-
-        Button testInfoButton = new Button(this);
-        testInfoButton.setText("获取 Provider 信息");
-        testInfoButton.setOnClickListener(v -> testProviderInfo());
-        root.addView(testInfoButton);
-
-        Button clearButton = new Button(this);
-        clearButton.setText("清空日志");
-        clearButton.setOnClickListener(v -> {
-            logBuilder.setLength(0);
-            logView.setText("");
-        });
-        root.addView(clearButton);
-
-        TextView logLabel = new TextView(this);
-        logLabel.setText("日志输出:");
-        logLabel.setPadding(0, padding, 0, padding / 2);
-        root.addView(logLabel);
-
-        logView = new TextView(this);
-        logView.setTypeface(android.graphics.Typeface.MONOSPACE);
-        logView.setTextSize(13);
-        logView.setMovementMethod(new ScrollingMovementMethod());
-        logView.setBackgroundColor(0xFF1E1E1E);
-        logView.setTextColor(0xFFD4D4D4);
-        int logPadding = (int) (getResources().getDisplayMetrics().density * 8);
-        logView.setPadding(logPadding, logPadding, logPadding, logPadding);
-        LinearLayout.LayoutParams logParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-        );
-        root.addView(logView, logParams);
-
+        boolean dark = (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        TerminalTheme.apply(dark);
+        getWindow().setStatusBarColor(TerminalTheme.BG);getWindow().setNavigationBarColor(TerminalTheme.BG);
+        getWindow().getDecorView().setSystemUiVisibility(dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        ScrollView scrollView = new ScrollView(this);scrollView.setBackgroundColor(TerminalTheme.BG);scrollView.setFillViewport(true);
+        LinearLayout root = new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);
+        TerminalTheme.padding(root,28,28,28,32);scrollView.addView(root);
+        TextView title=TerminalTheme.textMedium(this,getString(R.string.app_name),26,TerminalTheme.TEXT);
+        root.addView(title);
+        statusView=TerminalTheme.text(this,"",14,TerminalTheme.TEXT_SECONDARY,android.graphics.Typeface.NORMAL);
+        TerminalTheme.padding(statusView,0,16,0,28);root.addView(statusView);
+        addAction(root,R.string.bind_service, true,this::bindLocalService);
+        addAction(root,R.string.test_identity,false,()->testShell("whoami"));
+        addAction(root,R.string.test_files,false,()->testShell("ls /"));
+        addAction(root,R.string.provider_info,false,this::testProviderInfo);
+        LinearLayout logHeader=new LinearLayout(this);logHeader.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        TerminalTheme.padding(logHeader,0,24,0,12);
+        logHeader.addView(TerminalTheme.textMedium(this,getString(R.string.logs),16,TerminalTheme.TEXT),new LinearLayout.LayoutParams(0,-2,1));
+        TextView clear=TerminalTheme.text(this,getString(R.string.clear_logs),14,TerminalTheme.TEXT_SECONDARY,android.graphics.Typeface.NORMAL);
+        clear.setMinimumHeight(TerminalTheme.dp(this,48));clear.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        clear.setOnClickListener(v->{logBuilder.setLength(0);logView.setText("");});logHeader.addView(clear);root.addView(logHeader);
+        logView=TerminalTheme.text(this,"",13,TerminalTheme.TEXT,android.graphics.Typeface.NORMAL);
+        logView.setTypeface(android.graphics.Typeface.MONOSPACE);logView.setTextIsSelectable(true);
+        logView.setLineSpacing(TerminalTheme.dp(this,6),1);logView.setBackground(TerminalTheme.rounded(this,TerminalTheme.INPUT_BG,12));
+        TerminalTheme.padding(logView,16,16,16,16);root.addView(logView,new LinearLayout.LayoutParams(-1,-2));
         setContentView(scrollView);
         updateStatus();
         appendLog("Terminal Provider 测试 APP 已启动");
         appendLog("Shell: /system/bin/sh exists=" + new File("/system/bin/sh").exists());
         appendLog("Android API: " + Build.VERSION.SDK_INT);
         appendLog("包名: " + getPackageName());
+    }
+
+    private void addAction(LinearLayout parent,int label,boolean primary,Runnable onClick) {
+        TextView button=TerminalTheme.textMedium(this,getString(label),16,primary?TerminalTheme.TEXT_ON_COLOR:TerminalTheme.TEXT);
+        button.setGravity(android.view.Gravity.CENTER_VERTICAL);button.setMinimumHeight(TerminalTheme.dp(this,52));
+        TerminalTheme.padding(button,16,14,16,14);button.setBackground(TerminalTheme.rounded(this,primary?TerminalTheme.ACCENT:TerminalTheme.INPUT_BG,12));
+        button.setOnClickListener(v->onClick.run());
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=TerminalTheme.dp(this,12);parent.addView(button,p);
     }
 
     private void bindLocalService() {

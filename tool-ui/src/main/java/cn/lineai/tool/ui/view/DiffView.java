@@ -1,134 +1,67 @@
 package cn.lineai.tool.ui;
-import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
 import android.graphics.Typeface;
 import android.view.Gravity;
+import android.view.View;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import cn.lineai.tool.ui.R;
-import java.util.ArrayList;
-import java.util.List;
+import cn.lineai.ui.theme.LineTheme;
 
 public final class DiffView extends HorizontalScrollView {
-    private static final int MAX_LINES = 50;
     private final LinearLayout content;
-
     public DiffView(Context context) {
-        super(context);
-        setHorizontalScrollBarEnabled(false);
-        setFillViewport(true);
-        content = new LinearLayout(context);
-        content.setOrientation(LinearLayout.VERTICAL);
-        addView(content, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        super(context); setFillViewport(true); setHorizontalScrollBarEnabled(true);
+        content = new LinearLayout(context); content.setOrientation(LinearLayout.VERTICAL);
+        addView(content, new LayoutParams(-2, -2));
     }
-
-    public void bind(String oldContent, String newContent) {
+    public void bind(String before, String after) { bind(DiffLines.calculate(before, after)); }
+    public void bind(DiffLines diff) {
         content.removeAllViews();
-        List<DiffLine> lines = computeDiff(oldContent == null ? "" : oldContent, newContent == null ? "" : newContent);
-        int displayCount = Math.min(MAX_LINES, lines.size());
-        for (int i = 0; i < displayCount; i++) {
-            content.addView(lineView(lines.get(i)), new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        int displayed = 0, omitted = 0;
+        boolean[] visible = new boolean[diff.lines.size()];
+        for (int i = 0; i < diff.lines.size(); i++) if (diff.lines.get(i).kind != 0) {
+            for (int j = Math.max(0, i - 3); j < Math.min(visible.length, i + 4); j++) visible[j] = true;
         }
-        if (lines.size() > MAX_LINES) {
-            TextView truncated = LineTheme.text(getContext(), getContext().getString(R.string.tool_call_diff_truncated, lines.size()),
-                    LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.ITALIC);
-            truncated.setTypeface(Typeface.MONOSPACE, Typeface.ITALIC);
-            LineTheme.padding(truncated, LineTheme.SM, LineTheme.SM, LineTheme.SM, LineTheme.SM);
-            content.addView(truncated, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        for (int i = 0; i < diff.lines.size(); i++) {
+            if (!visible[i] && diff.added + diff.removed > 0) { omitted++; continue; }
+            if (displayed >= 200) {
+                TextView more = LineTheme.text(getContext(), getContext().getString(R.string.tool_call_diff_truncated, diff.lines.size()), 12, LineTheme.TEXT_SECONDARY, Typeface.NORMAL);
+                LineTheme.padding(more, 14, 12, 14, 12); content.addView(more); break;
+            }
+            if (omitted > 0) { addGap(); omitted = 0; }
+            DiffLines.Line line = diff.lines.get(i);
+            content.addView(lineView(line), new LinearLayout.LayoutParams(-1, -2)); displayed++;
+            if (!line.terminated) {
+                TextView note = LineTheme.text(getContext(), getContext().getString(R.string.tool_call_diff_no_newline), 12, LineTheme.TEXT_SECONDARY, Typeface.NORMAL);
+                LineTheme.padding(note, 14, 4, 14, 4); content.addView(note, new LinearLayout.LayoutParams(-1, -2));
+            }
         }
+        if (omitted > 0) addGap();
     }
-
-    private LinearLayout lineView(DiffLine line) {
-        LinearLayout row = new LinearLayout(getContext());
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setMinimumWidth(getResources().getDisplayMetrics().widthPixels - LineTheme.dp(getContext(), 64));
-        if (line.type == DiffLine.ADD) {
-            row.setBackgroundColor(LineTheme.DIFF_ADD_BG);
-        } else if (line.type == DiffLine.REMOVE) {
-            row.setBackgroundColor(LineTheme.DIFF_DEL_BG);
-        }
-        LineTheme.padding(row, LineTheme.SM, 1, LineTheme.SM, 1);
-
-        row.addView(codeCell(line.oldLine > 0 ? String.valueOf(line.oldLine) : "", LineTheme.TEXT_TERTIARY, 28, Gravity.END));
-        row.addView(codeCell(line.newLine > 0 ? String.valueOf(line.newLine) : "", LineTheme.TEXT_TERTIARY, 28, Gravity.END));
-        int textColor = line.type == DiffLine.ADD ? LineTheme.DIFF_ADD_TEXT
-                : line.type == DiffLine.REMOVE ? LineTheme.DIFF_DEL_TEXT
-                : LineTheme.TEXT;
-        String prefix = line.type == DiffLine.ADD ? "+" : line.type == DiffLine.REMOVE ? "-" : " ";
-        row.addView(codeCell(prefix, textColor, 12, Gravity.START));
-        row.addView(codeCell(line.content, textColor, -1, Gravity.START));
+    private void addGap() {
+        TextView gap = LineTheme.text(getContext(), "⋯", 13, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+        LineTheme.padding(gap, 18, 4, 0, 4); content.addView(gap, new LinearLayout.LayoutParams(-1, -2));
+    }
+    private View lineView(DiffLines.Line line) {
+        LinearLayout row = new LinearLayout(getContext()); row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(LineTheme.dp(getContext(), 26));
+        int color = line.kind > 0 ? LineTheme.DIFF_ADD_TEXT : line.kind < 0 ? LineTheme.DIFF_DEL_TEXT : LineTheme.TEXT_SECONDARY;
+        if (line.kind != 0) row.setBackgroundColor(line.kind > 0 ? LineTheme.DIFF_ADD_BG : LineTheme.DIFF_DEL_BG);
+        View marker = new View(getContext());
+        marker.setBackgroundColor(line.kind == 0 ? android.graphics.Color.TRANSPARENT : line.kind > 0 ? LineTheme.SUCCESS : LineTheme.DANGER);
+        row.addView(marker, new LinearLayout.LayoutParams(LineTheme.dp(getContext(), 3), -1));
+        TextView number = cell(String.valueOf(line.number), color); number.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        LineTheme.padding(number, 2, 3, 10, 3);
+        row.addView(number, new LinearLayout.LayoutParams(LineTheme.dp(getContext(), 42), -1));
+        String text = line.text.length() > 2000 ? line.text.substring(0, 2000) + "…" : line.text;
+        TextView code = cell(text, color); LineTheme.padding(code, 4, 3, 14, 3);
+        row.addView(code, new LinearLayout.LayoutParams(-2, -2));
         return row;
     }
-
-    private TextView codeCell(String value, int color, int widthDp, int gravity) {
-        TextView view = LineTheme.text(getContext(), value, LineTheme.FONT_XS, color, Typeface.NORMAL);
-        view.setTypeface(Typeface.MONOSPACE);
-        view.setGravity(gravity);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                widthDp > 0 ? LineTheme.dp(getContext(), widthDp) : LayoutParams.WRAP_CONTENT,
-                LayoutParams.WRAP_CONTENT
-        );
-        params.rightMargin = LineTheme.dp(getContext(), widthDp > 0 ? 4 : 0);
-        view.setLayoutParams(params);
-        return view;
-    }
-
-    private List<DiffLine> computeDiff(String oldText, String newText) {
-        String[] oldLines = oldText.split("\n", -1);
-        String[] newLines = newText.split("\n", -1);
-        int m = oldLines.length;
-        int n = newLines.length;
-        int[][] dp = new int[m + 1][n + 1];
-        for (int i = 1; i <= m; i++) {
-            for (int j = 1; j <= n; j++) {
-                dp[i][j] = oldLines[i - 1].equals(newLines[j - 1])
-                        ? dp[i - 1][j - 1] + 1
-                        : Math.max(dp[i - 1][j], dp[i][j - 1]);
-            }
-        }
-
-        ArrayList<DiffLine> reversed = new ArrayList<>();
-        int i = m;
-        int j = n;
-        while (i > 0 || j > 0) {
-            if (i > 0 && j > 0 && oldLines[i - 1].equals(newLines[j - 1])) {
-                reversed.add(new DiffLine(DiffLine.CONTEXT, oldLines[i - 1], i, j));
-                i--;
-                j--;
-            } else if (j > 0 && (i == 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-                reversed.add(new DiffLine(DiffLine.ADD, newLines[j - 1], 0, j));
-                j--;
-            } else {
-                reversed.add(new DiffLine(DiffLine.REMOVE, oldLines[i - 1], i, 0));
-                i--;
-            }
-        }
-
-        ArrayList<DiffLine> lines = new ArrayList<>(reversed.size());
-        for (int k = reversed.size() - 1; k >= 0; k--) {
-            lines.add(reversed.get(k));
-        }
-        return lines;
-    }
-
-    private static final class DiffLine {
-        static final int ADD = 1;
-        static final int REMOVE = 2;
-        static final int CONTEXT = 3;
-
-        final int type;
-        final String content;
-        final int oldLine;
-        final int newLine;
-
-        DiffLine(int type, String content, int oldLine, int newLine) {
-            this.type = type;
-            this.content = content == null ? "" : content;
-            this.oldLine = oldLine;
-            this.newLine = newLine;
-        }
+    private TextView cell(String text, int color) {
+        TextView view = LineTheme.text(getContext(), text, 13, color, Typeface.NORMAL);
+        view.setTypeface(Typeface.MONOSPACE); view.setSingleLine(true); return view;
     }
 }

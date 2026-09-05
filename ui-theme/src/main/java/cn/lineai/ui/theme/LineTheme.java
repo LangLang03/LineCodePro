@@ -50,11 +50,13 @@ public final class LineTheme {
 
     public static final int FONT_XS = 11;
     public static final int FONT_SM = 13;
-    public static final int FONT_MD = 15;
+    public static final int FONT_MD = 16;
     public static final int FONT_LG = 17;
     public static final int FONT_XL = 20;
-    public static final int FONT_TITLE = 24;
-    public static final int FONT_XXL = 28;
+    public static final int FONT_TITLE = 22;
+    public static final int FONT_XXL = 26;
+
+    static { apply(ThemePalette.forMode("dark")); }
 
     private LineTheme() {
     }
@@ -125,17 +127,27 @@ public final class LineTheme {
     }
 
     public static GradientDrawable userBubble(Context context) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setColor(USER_BUBBLE);
-        float large = dp(context, 16);
-        float small = dp(context, 4);
-        drawable.setCornerRadii(new float[] {
-                large, large,
-                large, large,
-                small, small,
-                large, large
-        });
-        return drawable;
+        return rounded(context, USER_BUBBLE, 18);
+    }
+
+    public static android.graphics.drawable.Drawable pressable(Context context) {
+        android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
+        states.addState(new int[] { android.R.attr.state_pressed }, rounded(context, ACCENT_MUTED_2, 12));
+        states.addState(new int[] {}, roundedStroke(context, SURFACE_ELEVATED, 12, BORDER_LIGHT));
+        return states;
+    }
+
+    public static android.graphics.drawable.Drawable fieldBackground(Context context) {
+        android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
+        states.addState(new int[] { android.R.attr.state_focused }, roundedStroke(context, INPUT_BG, 12, TEXT_SECONDARY));
+        states.addState(new int[] {}, rounded(context, INPUT_BG, 12));
+        return states;
+    }
+
+    public static int textOn(int background) {
+        double luminance = (0.2126 * Color.red(background) + 0.7152 * Color.green(background)
+                + 0.0722 * Color.blue(background)) / 255.0;
+        return luminance > 0.55 ? Color.rgb(36, 38, 42) : Color.rgb(237, 240, 242);
     }
 
     public static void padding(View view, int left, int top, int right, int bottom) {

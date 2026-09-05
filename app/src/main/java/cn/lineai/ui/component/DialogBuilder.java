@@ -26,6 +26,17 @@ import android.view.Window;
  */
 public final class DialogBuilder {
 
+    private static View boundedContent(View content) {
+        Context context = content.getContext();
+        int maxDp = Math.round(context.getResources().getDisplayMetrics().heightPixels / context.getResources().getDisplayMetrics().density * .82f);
+        cn.lineai.ui.theme.BoundedScrollView scroll = new cn.lineai.ui.theme.BoundedScrollView(context, maxDp);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.setBackground(cn.lineai.ui.theme.LineTheme.rounded(context, cn.lineai.ui.theme.LineTheme.BG, 24));
+        scroll.setClipToOutline(true);
+        scroll.addView(content, new android.widget.ScrollView.LayoutParams(-1, -2));
+        return scroll;
+    }
+
     private DialogBuilder() {
     }
 
@@ -53,7 +64,7 @@ public final class DialogBuilder {
      * @return the same dialog instance, now visible.
      */
     public static Dialog showInset(Dialog dialog, View contentView) {
-        dialog.setContentView(contentView);
+        dialog.setContentView(boundedContent(contentView));
         dialog.setOnShowListener(d -> {
             Window window = dialog.getWindow();
             if (window != null) {
@@ -90,14 +101,17 @@ public final class DialogBuilder {
      */
     public static Dialog showBottomSheet(Dialog dialog, View contentView) {
         dialog.setCanceledOnTouchOutside(true);
-        dialog.setContentView(contentView);
+        dialog.setContentView(boundedContent(contentView));
         dialog.show();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT,
+            window.setLayout(DialogDimensions.insetDialogWidth(dialog.getContext()),
                     ViewGroup.LayoutParams.WRAP_CONTENT);
             window.setGravity(Gravity.BOTTOM);
+            android.view.WindowManager.LayoutParams attributes = window.getAttributes();
+            attributes.y = cn.lineai.ui.theme.LineTheme.dp(dialog.getContext(), 16);
+            window.setAttributes(attributes);
         }
         return dialog;
     }

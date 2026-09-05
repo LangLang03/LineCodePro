@@ -1150,7 +1150,7 @@
 
     <!-- Permission mode sheet -->
     <string name="permission_mode_auto">Auto</string>
-    <string name="permission_mode_auto_desc">Automatically run enabled tools; dangerous tools are confirmed per policy</string>
+    <string name="permission_mode_auto_desc">Automatically run enabled tools without individual confirmation</string>
     <string name="permission_mode_confirm">Confirm</string>
     <string name="permission_mode_confirm_desc">Dangerous operations require confirmation before running</string>
     <string name="permission_mode_readonly">Read-only</string>
@@ -1467,4 +1467,30 @@
     <string name="extension_online_store">Online Store</string>
     <string name="extension_skillhub_store">SkillHub Skill Store</string>
     <string name="extension_skillhub_store_desc">Browse, search and safely install community Skills</string>
+    <string name="chat_context_title">Add to conversation</string>
+    <string name="chat_context_files">Project files</string>
+    <string name="chat_context_mode">Mode · %1$s</string>
+    <string name="chat_context_workspace">Workspace</string>
+    <string name="chat_context_settings">Settings</string>
+    <string name="chat_send">Send message</string>
+    <string name="chat_stop">Stop generation</string>
+    <string name="chat_process_done">Processed</string>
+    <string name="chat_process_running">Processing</string>
+    <string name="chat_process_pending">Waiting for confirmation</string>
+    <string name="chat_tools_count">Used %1$d tools</string>
+    <string name="chat_files_changed">Edited %1$d files</string>
+    <string name="chat_review_changes">Review</string>
+    <string name="chat_approval_allow_once">Allow once</string>
+    <string name="chat_approval_allow_always">Always allow</string>
+    <string name="chat_approval_deny">Reject</string>
+    <string name="chat_approval_reason">Allow this operation in the current workspace?</string>
+    <string name="chat_approval_terminal">Terminal</string>
+    <string name="chat_approval_scope">Always allow this exact command in this workspace and execution target</string>
+    <string name="chat_permissions_clear">Revoke saved command permissions</string>
+    <string name="chat_permissions_cleared">Saved command permissions revoked</string>
+    <string name="chat_empty_title">Start here.</string>
+    <string name="chat_empty_message">Tell LineCode what you want to do.</string>
+    <string name="chat_expand">Expand</string>
+    <string name="chat_collapse">Collapse</string>
+    <string name="chat_context_more">More actions</string>
 </resources>

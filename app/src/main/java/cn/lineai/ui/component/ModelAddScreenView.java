@@ -32,7 +32,7 @@ import cn.lineai.ui.util.ModelProviderPresetStrings;
 import java.util.ArrayList;
 import java.util.List;
 
-public final class ModelAddScreenView extends LinearLayout {
+public final class ModelAddScreenView extends ScreenSurfaceView {
     public interface Listener {
         void onBack();
         void onSave(ModelConfig model);
@@ -93,14 +93,16 @@ public final class ModelAddScreenView extends LinearLayout {
         setOrientation(VERTICAL);
         setBackgroundColor(LineTheme.BG);
 
-        saveAction = LineTheme.textMedium(context, context.getString(R.string.common_save), LineTheme.FONT_MD, LineTheme.TEXT_TERTIARY);
+        saveAction = LineTheme.textMedium(context, context.getString(R.string.common_save), 13, LineTheme.TEXT_TERTIARY);
         saveAction.setGravity(Gravity.CENTER);
-        LineTheme.padding(saveAction, LineTheme.MD, LineTheme.SM, LineTheme.MD, LineTheme.SM);
+        LineTheme.padding(saveAction, 10, 8, 10, 8);
+        saveAction.setMinHeight(LineTheme.dp(context, 48));
 
-        testAction = LineTheme.textMedium(context, context.getString(R.string.screen_model_add_test_button), LineTheme.FONT_MD, LineTheme.ACCENT);
+        testAction = LineTheme.textMedium(context, context.getString(R.string.screen_model_add_test_button), 13, LineTheme.ACCENT);
         testAction.setGravity(Gravity.CENTER);
         testAction.setVisibility(local ? GONE : VISIBLE);
-        LineTheme.padding(testAction, LineTheme.MD, LineTheme.SM, LineTheme.MD, LineTheme.SM);
+        LineTheme.padding(testAction, 10, 8, 10, 8);
+        testAction.setMinHeight(LineTheme.dp(context, 48));
 
         LinearLayout headerActions = new LinearLayout(context);
         headerActions.setOrientation(HORIZONTAL);
@@ -115,47 +117,15 @@ public final class ModelAddScreenView extends LinearLayout {
         ScrollView scrollView = new ScrollView(context);
         LinearLayout content = new LinearLayout(context);
         content.setOrientation(VERTICAL);
-        LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
+        LineTheme.padding(content, 28, 8, 28, 48);
         scrollView.addView(content, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         addView(scrollView, new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
 
-        providerLabelView = ModelFormHelper.label(context, providerTitle());
+        providerLabelView = ModelFormHelper.label(context, context.getString(R.string.screen_model_add_provider_title));
         content.addView(providerLabelView, ModelFormHelper.labelParams(context, LineTheme.LG, LineTheme.SM));
         LinearLayout providerRow = new LinearLayout(context);
-        providerRow.setOrientation(HORIZONTAL);
-        for (int i = 0; i < providerLabels.length; i++) {
-            final int index = i;
-            boolean enabled = !lockedPreset || isActiveProviderIndex(index);
-            ModelFormHelper.addToggle(providerRow, providerLabels[i], isActiveProviderIndex(index), enabled, () -> {
-                if (index == 3) {
-                    Toast.makeText(context, R.string.screen_model_add_open_local_form, Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                if (this.local) {
-                    Toast.makeText(context, R.string.screen_model_add_open_custom_form, Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                if (!lockedPreset) {
-                    protocolType[0] = protocolForIndex(index);
-                    fetchedModelIds.clear();
-                    selectedModelId[0] = "";
-                    if (modelIdInput != null) {
-                        modelIdInput.setText("");
-                    }
-                    if (compressionSection != null) {
-                        compressionSection.clearFetched();
-                    }
-                    updateProviderToggles(providerRow);
-                    updateBaseUrlHint();
-                    renderModelIdInput(customIdSwitch != null && customIdSwitch.isChecked());
-                    if (compressionSection != null) {
-                        compressionSection.updateForProtocolChange();
-                    }
-                    updateQueryState();
-                    updateSaveState();
-                }
-            });
-        }
+        providerRow.setOrientation(VERTICAL);
+        updateProviderToggles(providerRow);
         content.addView(providerRow, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         content.addView(ModelFormHelper.label(context, context.getString(R.string.screen_model_add_field_name)), ModelFormHelper.labelParams(context, LineTheme.LG, LineTheme.SM));
@@ -232,6 +202,7 @@ public final class ModelAddScreenView extends LinearLayout {
                 fetchModelCatalog();
             });
 
+            int advancedStart = content.getChildCount();
             content.addView(ModelFormHelper.label(context, context.getString(R.string.screen_model_add_field_tool_call_limit)), ModelFormHelper.labelParams(context, LineTheme.LG, LineTheme.SM));
             toolCallLimitInput = ModelFormHelper.input(context, String.valueOf(editing ? editingModel.getToolCallLimit() : ModelConfig.DEFAULT_TOOL_CALL_LIMIT), context.getString(R.string.screen_model_add_hint_tool_call_limit), false, false);
             toolCallLimitInput.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED);
@@ -270,6 +241,7 @@ public final class ModelAddScreenView extends LinearLayout {
                     () -> ModelFormHelper.value(apiKeyInput)
             );
             content.addView(compressionSection, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+            DisclosureSectionView.foldTail(content, advancedStart, context.getString(R.string.sheet_title_advanced), false);
         }
 
         TextWatcher watcher = new TextWatcher() {
@@ -335,13 +307,13 @@ public final class ModelAddScreenView extends LinearLayout {
         card.setBackground(LineTheme.roundedStroke(context, LineTheme.SURFACE_LIGHT, 12, LineTheme.BORDER_LIGHT));
         LineTheme.padding(card, LineTheme.MD, LineTheme.MD, LineTheme.MD, LineTheme.MD);
         FrameLayout iconWrap = new FrameLayout(context);
-        iconWrap.setBackground(LineTheme.rounded(context, LineTheme.ACCENT_MUTED, 8));
+        iconWrap.setBackground(null);
         IconButtonView fileIcon = new IconButtonView(context, IconButtonView.FILE_UP);
         fileIcon.setIconColor(LineTheme.ACCENT);
-        fileIcon.setIconSizeDp(38, 20);
+        fileIcon.setIconSizeDp(28, 16);
         fileIcon.setClickable(false);
-        iconWrap.addView(fileIcon, new FrameLayout.LayoutParams(LineTheme.dp(context, 38), LineTheme.dp(context, 38), Gravity.CENTER));
-        card.addView(iconWrap, new LinearLayout.LayoutParams(LineTheme.dp(context, 38), LineTheme.dp(context, 38)));
+        iconWrap.addView(fileIcon, new FrameLayout.LayoutParams(LineTheme.dp(context, 28), LineTheme.dp(context, 28), Gravity.CENTER));
+        card.addView(iconWrap, new LinearLayout.LayoutParams(LineTheme.dp(context, 28), LineTheme.dp(context, 28)));
 
         LinearLayout fileText = new LinearLayout(context);
         fileText.setOrientation(VERTICAL);
@@ -590,14 +562,59 @@ public final class ModelAddScreenView extends LinearLayout {
         return ContextSizeParser.parse(ModelFormHelper.value(contextSizeInput));
     }
 
+    private String activeProviderLabel() {
+        for (int i = 0; i < providerLabels.length; i++) if (isActiveProviderIndex(i)) return providerLabels[i];
+        return providerTitle();
+    }
     private void updateProviderToggles(LinearLayout providerRow) {
-        for (int i = 0; i < providerRow.getChildCount(); i++) {
-            TextView button = (TextView) providerRow.getChildAt(i);
-            boolean active = isActiveProviderIndex(i);
-            button.setTextColor(active ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_SECONDARY);
-            button.setBackground(LineTheme.rounded(getContext(), active ? LineTheme.ACCENT : LineTheme.SURFACE_LIGHT, 12));
-            button.setAlpha(lockedPreset && !active ? 0.45f : 1f);
-        }
+        providerRow.removeAllViews();
+        TextView selected = LineTheme.text(getContext(), activeProviderLabel() + (lockedPreset ? "" : "  ›"), 16, LineTheme.TEXT, Typeface.NORMAL);
+        selected.setMinimumHeight(LineTheme.dp(getContext(), 52));
+        selected.setGravity(Gravity.CENTER_VERTICAL); LineTheme.padding(selected, 16, 12, 16, 12);
+        selected.setBackground(LineTheme.fieldBackground(getContext()));
+        providerRow.addView(selected, new LayoutParams(-1, -2));
+        if (lockedPreset) return;
+        selected.setOnClickListener(v -> {
+            android.app.Dialog dialog = DialogBuilder.create(getContext());
+            LinearLayout choices = new LinearLayout(getContext()); choices.setOrientation(VERTICAL);
+            LineTheme.padding(choices, 12, 16, 12, 16);
+            for (int i = 0; i < providerLabels.length; i++) {
+                final int index = i;
+                choices.addView(new OptionRowView(getContext(), IconButtonView.BOX, providerLabels[i], null,
+                        isActiveProviderIndex(i), () -> { dialog.dismiss(); selectProvider(index, providerRow); }));
+            }
+            DialogBuilder.showBottomSheet(dialog, choices);
+        });
+    }
+    private void selectProvider(int index, LinearLayout providerRow) {
+        Context context = getContext();
+                if (index == 3) {
+                    Toast.makeText(context, R.string.screen_model_add_open_local_form, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                if (this.local) {
+                    Toast.makeText(context, R.string.screen_model_add_open_custom_form, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                if (!lockedPreset) {
+                    protocolType[0] = protocolForIndex(index);
+                    fetchedModelIds.clear();
+                    selectedModelId[0] = "";
+                    if (modelIdInput != null) {
+                        modelIdInput.setText("");
+                    }
+                    if (compressionSection != null) {
+                        compressionSection.clearFetched();
+                    }
+                    updateProviderToggles(providerRow);
+                    updateBaseUrlHint();
+                    renderModelIdInput(customIdSwitch != null && customIdSwitch.isChecked());
+                    if (compressionSection != null) {
+                        compressionSection.updateForProtocolChange();
+                    }
+                    updateQueryState();
+                    updateSaveState();
+                }
     }
 
     private void updateBaseUrlHint() {
@@ -605,11 +622,12 @@ public final class ModelAddScreenView extends LinearLayout {
             return;
         }
         baseUrlHintView.setText(hintFor(lockedPreset ? preset : null));
+        baseUrlHintView.setVisibility(baseUrlHintView.getText().length() == 0 ? GONE : VISIBLE);
         if (!lockedPreset && baseUrlInput != null) {
             baseUrlInput.setHint(placeholderFor(protocolType[0]));
         }
         if (providerLabelView != null) {
-            providerLabelView.setText(providerTitle());
+            providerLabelView.setText(getContext().getString(R.string.screen_model_add_provider_title));
         }
         if (compressionSection != null) {
             compressionSection.updateForProtocolChange();

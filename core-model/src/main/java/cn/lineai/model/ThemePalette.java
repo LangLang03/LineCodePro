@@ -272,31 +272,31 @@ public final class ThemePalette {
 
     private static ThemePalette dark() {
         return new ThemePalette(
-                hex("#000000"), hex("#0A0A0A"), hex("#141414"), hex("#1C1C1E"),
-                hex("#30D158"), hex("#1A3A2A"), rgba(48, 209, 88, 0.10f), rgba(48, 209, 88, 0.15f),
-                hex("#FFFFFF"), hex("#8E8E93"), hex("#636366"), hex("#FFFFFF"),
-                hex("#1C1C1E"), hex("#2C2C2E"), hex("#1C1C1E"), hex("#0A84FF"), hex("#1C1C1E"),
-                hex("#F85149"), hex("#FF9F0A"), hex("#3FB950"), hex("#FF9800"),
-                rgba(0, 0, 0, 0.60f), rgba(255, 255, 255, 0.04f), rgba(255, 255, 255, 0.08f),
-                rgba(248, 81, 73, 0.15f), rgba(248, 81, 73, 0.20f), rgba(255, 152, 0, 0.10f),
-                rgba(46, 160, 67, 0.12f), rgba(248, 81, 73, 0.12f), hex("#3FB950"), hex("#F85149"));
+                hex("#171819"), hex("#242629"), hex("#292D31"), hex("#34393F"),
+                hex("#E5E9EE"), hex("#353A40"), rgba(229, 233, 238, 0.08f), rgba(229, 233, 238, 0.13f),
+                hex("#EDF0F2"), hex("#969DA5"), hex("#969DA5"), hex("#24262A"),
+                hex("#383D42"), hex("#30353A"), hex("#242629"), hex("#242629"), hex("#171819"),
+                hex("#D7A6AB"), hex("#D8B986"), hex("#ADCEB8"), hex("#969DA5"),
+                rgba(0, 0, 0, 0.45f), hex("#1D1F21"), hex("#383D42"),
+                rgba(215, 166, 171, 0.10f), rgba(215, 166, 171, 0.18f), rgba(150, 157, 165, 0.10f),
+                hex("#22322A"), hex("#35272B"), hex("#ADCEB8"), hex("#D7A6AB"));
     }
 
     private static ThemePalette light() {
         return new ThemePalette(
-                hex("#F5F5F7"), hex("#FFFFFF"), hex("#FFFFFF"), hex("#E8E8ED"),
-                hex("#30D158"), hex("#D1F7D6"), rgba(48, 209, 88, 0.10f), rgba(48, 209, 88, 0.15f),
-                hex("#1C1C1E"), hex("#636366"), hex("#AEAEB2"), hex("#FFFFFF"),
-                hex("#D1D1D6"), hex("#E5E5EA"), hex("#FFFFFF"), hex("#0A84FF"), hex("#E8E8ED"),
-                hex("#FF3B30"), hex("#FF9500"), hex("#28A745"), hex("#FF9500"),
-                rgba(0, 0, 0, 0.40f), rgba(0, 0, 0, 0.04f), rgba(0, 0, 0, 0.08f),
-                rgba(255, 59, 48, 0.10f), rgba(255, 59, 48, 0.15f), rgba(255, 149, 0, 0.10f),
-                rgba(40, 167, 69, 0.12f), rgba(255, 59, 48, 0.12f), hex("#28A745"), hex("#FF3B30"));
+                hex("#FCFCFD"), hex("#F0F1F3"), hex("#EAECF0"), hex("#E1E4E9"),
+                hex("#333B46"), hex("#E5E8EC"), rgba(51, 59, 70, 0.06f), rgba(51, 59, 70, 0.10f),
+                hex("#24262A"), hex("#6C737D"), hex("#6C737D"), hex("#FFFFFF"),
+                hex("#E1E4E8"), hex("#EAECF0"), hex("#F0F1F3"), hex("#F0F1F3"), hex("#FCFCFD"),
+                hex("#9C5058"), hex("#8D6C32"), hex("#35684D"), hex("#6C737D"),
+                rgba(22, 26, 32, 0.26f), hex("#F0F1F3"), hex("#E1E4E8"),
+                rgba(156, 80, 88, 0.08f), rgba(156, 80, 88, 0.14f), rgba(108, 115, 125, 0.08f),
+                hex("#EDF4EE"), hex("#F8EDEF"), hex("#35684D"), hex("#9C5058"));
     }
 
     private static ThemePalette coffee() {
         return new ThemePalette(
-                hex("#F4EFE6"), hex("#EEE5D8"), hex("#FBF7EF"), hex("#E7DCCA"),
+                hex("#F4EFE6"), hex("#EEE5D8"), hex("#E7DCCA"), hex("#DED0B9"),
                 hex("#D97757"), hex("#F1D4C6"), rgba(217, 119, 87, 0.12f), rgba(217, 119, 87, 0.18f),
                 hex("#2B2118"), hex("#6C5A49"), hex("#9B8976"), hex("#FFFFFF"),
                 hex("#DDD0BF"), hex("#E8DDCF"), hex("#FFFBF3"), hex("#B86F50"), hex("#EFE4D4"),
@@ -308,7 +308,7 @@ public final class ThemePalette {
 
     private static ThemePalette vscode() {
         return new ThemePalette(
-                hex("#1E1E1E"), hex("#252526"), hex("#2D2D30"), hex("#333333"),
+                hex("#1E1E1E"), hex("#252526"), hex("#333337"), hex("#414145"),
                 hex("#007ACC"), hex("#073A5A"), rgba(0, 122, 204, 0.16f), rgba(0, 122, 204, 0.24f),
                 hex("#D4D4D4"), hex("#A6A6A6"), hex("#6A6A6A"), hex("#FFFFFF"),
                 hex("#3C3C3C"), hex("#454545"), hex("#3C3C3C"), hex("#094771"), hex("#252526"),
@@ -320,7 +320,7 @@ public final class ThemePalette {
 
     private static ThemePalette githubDark() {
         return new ThemePalette(
-                hex("#0D1117"), hex("#010409"), hex("#161B22"), hex("#21262D"),
+                hex("#0D1117"), hex("#010409"), hex("#21262D"), hex("#30363D"),
                 hex("#2F81F7"), hex("#0D419D"), rgba(47, 129, 247, 0.12f), rgba(47, 129, 247, 0.20f),
                 hex("#E6EDF3"), hex("#8B949E"), hex("#6E7681"), hex("#FFFFFF"),
                 hex("#30363D"), hex("#21262D"), hex("#0D1117"), hex("#1F6FEB"), hex("#161B22"),
@@ -332,7 +332,7 @@ public final class ThemePalette {
 
     private static ThemePalette gruvbox() {
         return new ThemePalette(
-                hex("#282828"), hex("#1D2021"), hex("#32302F"), hex("#3C3836"),
+                hex("#282828"), hex("#1D2021"), hex("#3C3836"), hex("#504945"),
                 hex("#FABD2F"), hex("#665C2E"), rgba(250, 189, 47, 0.14f), rgba(250, 189, 47, 0.22f),
                 hex("#EBDBB2"), hex("#BDAE93"), hex("#928374"), hex("#282828"),
                 hex("#504945"), hex("#665C54"), hex("#1D2021"), hex("#458588"), hex("#32302F"),
@@ -344,7 +344,7 @@ public final class ThemePalette {
 
     private static ThemePalette highContrast() {
         return new ThemePalette(
-                hex("#000000"), hex("#050505"), hex("#101010"), hex("#1A1A1A"),
+                hex("#000000"), hex("#050505"), hex("#222222"), hex("#333333"),
                 hex("#64D2FF"), hex("#063B4C"), rgba(100, 210, 255, 0.16f), rgba(100, 210, 255, 0.24f),
                 hex("#FFFFFF"), hex("#C7C7CC"), hex("#8E8E93"), hex("#000000"),
                 hex("#666666"), hex("#3A3A3C"), hex("#111111"), hex("#004D80"), hex("#101010"),

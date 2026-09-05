@@ -39,17 +39,38 @@ final class ToolConfirmationController {
         void executeAcceptedPendingTool(PendingToolExecution pending);
 
         String currentConversationId();
+        default String executionPermissionScope() { return ""; }
+        default boolean isPermanentlyAllowed(String scope, ToolCall call) { return false; }
+        default void rememberPermanentAllowance(String scope, ToolCall call) {}
+
     }
 
     private final Callback callback;
     private final Set<String> sessionAutoConfirmedTools = new HashSet<>();
     private final HashMap<String, PendingAgentToolReview> pendingAgentToolReviews = new HashMap<>();
-    private final HashMap<String, PendingAgentToolRequest> pendingAgentToolRequests = new HashMap<>();
+    private final java.util.LinkedHashMap<String, PendingAgentToolRequest> pendingAgentToolRequests = new java.util.LinkedHashMap<>();
     private String sessionAutoConfirmedConversationId = "";
     private PendingToolExecution pendingToolExecution;
+    private String pendingExecutionScope = "";
 
     ToolConfirmationController(Callback callback) {
         this.callback = callback;
+    }
+
+    cn.lineai.model.ToolApproval pendingToolApproval() {
+        if (pendingToolExecution != null && callback.isActiveGeneration(pendingToolExecution.getGenerationId())) {
+            ToolCall call = pendingToolExecution.getToolCall();
+            if (call != null) return new cn.lineai.model.ToolApproval(call.getId(), call,
+                    SHELL_EXECUTE_TOOL.equals(call.getName()) && !pendingExecutionScope.isEmpty());
+        }
+        synchronized (pendingAgentToolRequests) {
+            for (java.util.Map.Entry<String, PendingAgentToolRequest> entry : pendingAgentToolRequests.entrySet()) {
+                ToolCall call = entry.getValue().call;
+                return new cn.lineai.model.ToolApproval(entry.getKey(), call,
+                        SHELL_EXECUTE_TOOL.equals(call.getName()) && !callback.executionPermissionScope().isEmpty());
+            }
+        }
+        return null;
     }
 
     void handleToolReview(String state) {
@@ -71,10 +92,12 @@ final class ToolConfirmationController {
         if (pending == null) {
             return false;
         }
-        pending.resolve(state);
-        if (isSessionAutoReview(state, pending.toolCall())) {
-            rememberSessionAutoConfirmation(pending.toolCall());
+        if (!pending.scope.equals(callback.executionPermissionScope())) state = "rejected";
+        if ("permanent".equals(state) && SHELL_EXECUTE_TOOL.equals(pending.toolCall().getName())) {
+            callback.rememberPermanentAllowance(pending.scope, pending.toolCall());
         }
+        if (isSessionAutoReview(state, pending.toolCall())) rememberSessionAutoConfirmation(pending.toolCall());
+        pending.resolve(state);
         return true;
     }
 
@@ -86,9 +109,13 @@ final class ToolConfirmationController {
         if (displayToolCallId == null || displayToolCallId.length() == 0) {
             return "accepted";
         }
-        PendingAgentToolReview pending = new PendingAgentToolReview(call);
+        PendingAgentToolReview pending;
         synchronized (pendingAgentToolReviews) {
-            pendingAgentToolReviews.put(displayToolCallId, pending);
+            pending = pendingAgentToolReviews.get(displayToolCallId);
+            if (pending == null) {
+                pending = new PendingAgentToolReview(call, callback.executionPermissionScope());
+                pendingAgentToolReviews.put(displayToolCallId, pending);
+            }
         }
         try {
             while (true) {
@@ -139,6 +166,7 @@ final class ToolConfirmationController {
 
     void setPendingToolExecution(PendingToolExecution pending) {
         this.pendingToolExecution = pending;
+        this.pendingExecutionScope = callback.executionPermissionScope();
     }
 
     PendingToolExecution getPendingToolExecution() {
@@ -146,6 +174,11 @@ final class ToolConfirmationController {
     }
 
     void putPendingAgentToolRequest(String toolCallId, PendingAgentToolRequest request) {
+        synchronized (pendingAgentToolReviews) {
+            if (!pendingAgentToolReviews.containsKey(toolCallId)) {
+                pendingAgentToolReviews.put(toolCallId, new PendingAgentToolReview(request.call, callback.executionPermissionScope()));
+            }
+        }
         synchronized (pendingAgentToolRequests) {
             pendingAgentToolRequests.put(toolCallId, request);
         }
@@ -182,6 +215,7 @@ final class ToolConfirmationController {
         if (call == null) {
             return false;
         }
+        if (callback.isPermanentlyAllowed(callback.executionPermissionScope(), call)) return true;
         synchronized (sessionAutoConfirmedTools) {
             syncSessionAutoToolConfirmationsLocked();
             return sessionAutoConfirmedTools.contains(call.getName());
@@ -206,6 +240,7 @@ final class ToolConfirmationController {
             pendingToolExecution = null;
             return;
         }
+        if (!pendingExecutionScope.equals(callback.executionPermissionScope())) state = "rejected";
         boolean sessionAutoAccepted = isSessionAutoReview(state, pending.getToolCall());
         String normalizedState = "rejected".equals(state) ? "rejected" : "accepted";
         pendingToolExecution = null;
@@ -231,6 +266,9 @@ final class ToolConfirmationController {
                     pending.getCancellationToken()
             );
             return;
+        }
+        if ("permanent".equals(state) && SHELL_EXECUTE_TOOL.equals(pending.getToolCall().getName())) {
+            callback.rememberPermanentAllowance(pendingExecutionScope, pending.getToolCall());
         }
         if (sessionAutoAccepted) {
             rememberSessionAutoConfirmation(pending.getToolCall());
@@ -295,10 +333,13 @@ final class ToolConfirmationController {
     static final class PendingAgentToolReview {
         private final CountDownLatch latch = new CountDownLatch(1);
         private final ToolCall toolCall;
+        private final String scope;
         private String state = "accepted";
 
-        PendingAgentToolReview(ToolCall toolCall) {
+        PendingAgentToolReview(ToolCall toolCall) { this(toolCall, ""); }
+        PendingAgentToolReview(ToolCall toolCall, String scope) {
             this.toolCall = toolCall;
+            this.scope = scope;
         }
 
         boolean await(long timeoutMs) throws InterruptedException {

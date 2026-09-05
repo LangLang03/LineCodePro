@@ -11,6 +11,8 @@ class GenerationFlowHost implements GenerationFlowController.Host {
         this.coordinator = coordinator;
     }
 
+    @Override public String executionPermissionScope() { return coordinator.executionPermissionScope(); }
+
     @Override
     public String nextId() {
         return coordinator.nextId();

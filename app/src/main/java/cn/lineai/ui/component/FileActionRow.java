@@ -55,7 +55,9 @@ public final class FileActionRow {
                 listener.onOptionSelected(id);
             }
         });
-        LineTheme.padding(row, 0, 14, 0, 14);
+        LineTheme.padding(row, 0, 16, 0, 16);
+        row.setMinimumHeight(LineTheme.dp(context, 52));
+        row.setBackground(LineTheme.pressable(context));
 
         LinearLayout labels = new LinearLayout(context);
         labels.setOrientation(LinearLayout.VERTICAL);
@@ -73,7 +75,7 @@ public final class FileActionRow {
             TextView desc = LineTheme.text(context, description, LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
             desc.setSingleLine(false);
             LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            descParams.topMargin = LineTheme.dp(context, 2);
+            descParams.topMargin = LineTheme.dp(context, 6);
             labels.addView(desc, descParams);
         }
         return row;

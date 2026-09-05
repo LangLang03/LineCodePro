@@ -47,6 +47,8 @@ public final class ChatMessage {
     private final String responseInputItemJson;
     private final List<InputAttachment> attachments;
     private final String modelSwitchNotification;
+    private final long processingStartedAt;
+    private final long processingFinishedAt;
 
     public ChatMessage(String id, Role role, String content, boolean streaming) {
         this(id, role, content, "", streaming, false, false);
@@ -161,6 +163,21 @@ public final class ChatMessage {
             List<InputAttachment> attachments,
             String modelSwitchNotification
     ) {
+        this(id, role, content, reasoningContent, streaming, hidden, excludeFromContext,
+                toolCalls, toolResults, toolCallId, toolName, error, diffId, reviewState, reviewMessage,
+                compactStatus, responseInputItemJson, attachments, modelSwitchNotification, 0, 0);
+    }
+
+    public ChatMessage(
+            String id, Role role, String content, String reasoningContent,
+            boolean streaming, boolean hidden, boolean excludeFromContext,
+            List<ToolCall> toolCalls, List<ToolResult> toolResults,
+            String toolCallId, String toolName, boolean error,
+            String diffId, String reviewState, String reviewMessage,
+            String compactStatus, String responseInputItemJson,
+            List<InputAttachment> attachments, String modelSwitchNotification,
+            long processingStartedAt, long processingFinishedAt
+    ) {
         this.id = id;
         this.role = role == null ? Role.USER : role;
         this.content = Strings.nullToEmpty(content);
@@ -182,6 +199,8 @@ public final class ChatMessage {
                 ? Collections.emptyList()
                 : Collections.unmodifiableList(new ArrayList<>(attachments));
         this.modelSwitchNotification = Strings.nullToEmpty(modelSwitchNotification);
+        this.processingStartedAt = Math.max(0, processingStartedAt);
+        this.processingFinishedAt = processingFinishedAt > 0 ? Math.max(this.processingStartedAt, processingFinishedAt) : 0;
     }
 
     public String getId() {
@@ -288,6 +307,19 @@ public final class ChatMessage {
         return modelSwitchNotification.length() > 0;
     }
 
+    public boolean isRetryNotice() {
+        return "retry".equals(reviewState);
+    }
+
+    public long getProcessingStartedAt() { return processingStartedAt; }
+    public long getProcessingFinishedAt() { return processingFinishedAt; }
+
+    public ChatMessage withProcessingTimes(long startedAt, long finishedAt) {
+        return new ChatMessage(id, role, content, reasoningContent, streaming, hidden,
+                excludeFromContext, toolCalls, toolResults, toolCallId, toolName, error, diffId, reviewState, reviewMessage,
+                compactStatus, responseInputItemJson, attachments, modelSwitchNotification, startedAt, finishedAt);
+    }
+
     public String getProtocolRole() {
         return role.getProtocolName();
     }
@@ -295,19 +327,19 @@ public final class ChatMessage {
     public ChatMessage withContent(String nextContent, String nextReasoningContent, boolean nextStreaming) {
         return new ChatMessage(id, role, nextContent, nextReasoningContent, nextStreaming, hidden,
                 excludeFromContext, toolCalls, toolResults, toolCallId, toolName, error, diffId, reviewState, reviewMessage,
-                compactStatus, responseInputItemJson, attachments, modelSwitchNotification);
+                compactStatus, responseInputItemJson, attachments, modelSwitchNotification, processingStartedAt, processingFinishedAt);
     }
 
     public ChatMessage withToolCalls(List<ToolCall> nextToolCalls, boolean nextHidden) {
         return new ChatMessage(id, role, content, reasoningContent, streaming, nextHidden,
                 excludeFromContext, nextToolCalls, toolResults, toolCallId, toolName, error, diffId, reviewState, reviewMessage,
-                compactStatus, responseInputItemJson, attachments, modelSwitchNotification);
+                compactStatus, responseInputItemJson, attachments, modelSwitchNotification, processingStartedAt, processingFinishedAt);
     }
 
     public ChatMessage withToolResults(List<ToolResult> nextToolResults) {
         return new ChatMessage(id, role, content, reasoningContent, streaming, hidden,
                 excludeFromContext, toolCalls, nextToolResults, toolCallId, toolName, error, diffId, reviewState, reviewMessage,
-                compactStatus, responseInputItemJson, attachments, modelSwitchNotification);
+                compactStatus, responseInputItemJson, attachments, modelSwitchNotification, processingStartedAt, processingFinishedAt);
     }
 
     public ChatMessage withToolReview(String nextDiffId, String nextReviewState, String nextReviewMessage) {
@@ -323,25 +355,25 @@ public final class ChatMessage {
     ) {
         return new ChatMessage(id, role, nextContent, reasoningContent, streaming, hidden,
                 excludeFromContext, toolCalls, toolResults, toolCallId, toolName, nextError,
-                nextDiffId, nextReviewState, nextReviewMessage, compactStatus, responseInputItemJson, attachments, modelSwitchNotification);
+                nextDiffId, nextReviewState, nextReviewMessage, compactStatus, responseInputItemJson, attachments, modelSwitchNotification, processingStartedAt, processingFinishedAt);
     }
 
     public ChatMessage withExcludeFromContext(boolean nextExcludeFromContext) {
         return new ChatMessage(id, role, content, reasoningContent, streaming, hidden,
                 nextExcludeFromContext, toolCalls, toolResults, toolCallId, toolName, error,
-                diffId, reviewState, reviewMessage, compactStatus, responseInputItemJson, attachments, modelSwitchNotification);
+                diffId, reviewState, reviewMessage, compactStatus, responseInputItemJson, attachments, modelSwitchNotification, processingStartedAt, processingFinishedAt);
     }
 
     public ChatMessage withCompactStatus(String nextCompactStatus, boolean nextStreaming) {
         return new ChatMessage(id, role, content, reasoningContent, nextStreaming, hidden,
                 excludeFromContext, toolCalls, toolResults, toolCallId, toolName, error,
-                diffId, reviewState, reviewMessage, nextCompactStatus, responseInputItemJson, attachments);
+                diffId, reviewState, reviewMessage, nextCompactStatus, responseInputItemJson, attachments, modelSwitchNotification, processingStartedAt, processingFinishedAt);
     }
 
     public ChatMessage withResponseInputItemJson(String nextResponseInputItemJson) {
         return new ChatMessage(id, role, content, reasoningContent, streaming, hidden,
                 excludeFromContext, toolCalls, toolResults, toolCallId, toolName, error,
-                diffId, reviewState, reviewMessage, compactStatus, nextResponseInputItemJson, attachments);
+                diffId, reviewState, reviewMessage, compactStatus, nextResponseInputItemJson, attachments, modelSwitchNotification, processingStartedAt, processingFinishedAt);
     }
 
     public static ChatMessage toolResult(String id, String content, String toolCallId, String toolName, boolean error) {
@@ -377,9 +409,9 @@ public final class ChatMessage {
     }
 
     public static ChatMessage retryNotice(String id, String content) {
-        return new ChatMessage(id, Role.ASSISTANT, "", "", false, false, true,
-                Collections.emptyList(), Collections.emptyList(), "", "", false,
-                "", "", "", "", "", Collections.emptyList(), content);
+        return new ChatMessage(id, Role.ASSISTANT, content, "", false, false, true,
+                Collections.emptyList(), Collections.emptyList(), "", "", true,
+                "", "retry", "");
     }
 
     private String normalizeCompactStatus(String value) {

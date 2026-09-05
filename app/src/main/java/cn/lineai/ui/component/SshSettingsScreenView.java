@@ -39,7 +39,7 @@ public final class SshSettingsScreenView extends ScreenScaffoldView {
         SshConfig config = listener.onLoadConfig();
 
         LinearLayout content = getContent();
-        LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
+        LineTheme.padding(content, 28, 8, 28, 48);
 
         LinearLayout intro = card(context);
         intro.addView(title(context, context.getString(R.string.screen_ssh_section_server)));
@@ -66,10 +66,12 @@ public final class SshSettingsScreenView extends ScreenScaffoldView {
         form.addView(portField, formParams(context));
         form.addView(usernameField, formParams(context));
         form.addView(passwordField, formParams(context));
-        form.addView(privateKeyField, formParams(context));
-        form.addView(passphraseField, formParams(context));
+        DisclosureSectionView keys = new DisclosureSectionView(context, context.getString(R.string.screen_ssh_field_private_key), !config.getPrivateKey().isEmpty());
+        keys.getBody().addView(privateKeyField, formParams(context));
+        keys.getBody().addView(passphraseField, formParams(context));
+        form.addView(keys, formParams(context));
 
-        LinearLayout actions = new LinearLayout(context);
+        LinearLayout actions = new AdaptiveActionsView(context);
         actions.setOrientation(HORIZONTAL);
         LinearLayout saveButton = button(context, context.getString(R.string.screen_ssh_save), IconButtonView.SAVE, false, v -> {
             listener.onSaveConfig(readConfig());
@@ -195,8 +197,8 @@ public final class SshSettingsScreenView extends ScreenScaffoldView {
     private LinearLayout card(Context context) {
         LinearLayout card = new LinearLayout(context);
         card.setOrientation(VERTICAL);
-        card.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_ELEVATED, 12));
-        LineTheme.padding(card, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
+        card.setBackground(null);
+        LineTheme.padding(card, 0, 16, 0, 24);
         return card;
     }
 
@@ -212,7 +214,7 @@ public final class SshSettingsScreenView extends ScreenScaffoldView {
 
     private LinearLayout.LayoutParams formParams(Context context) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        params.topMargin = LineTheme.dp(context, LineTheme.MD);
+        params.topMargin = LineTheme.dp(context, 24);
         return params;
     }
 

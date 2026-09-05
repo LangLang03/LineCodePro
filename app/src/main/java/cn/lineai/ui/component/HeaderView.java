@@ -1,133 +1,86 @@
 package cn.lineai.ui.component;
-import cn.lineai.ui.theme.IconButtonView;
-import cn.lineai.ui.theme.LineTheme;
 
 import android.content.Context;
-import android.graphics.Canvas;
-import android.graphics.Paint;
-import android.graphics.Typeface;
+import android.text.TextUtils;
 import android.view.Gravity;
-import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import cn.lineai.R;
 import cn.lineai.model.ChatUiState;
+import cn.lineai.ui.theme.IconButtonView;
+import cn.lineai.ui.theme.LineTheme;
 
+/** Conversation navigation and the current workspace selector. */
 public final class HeaderView extends LinearLayout {
     public interface Listener {
         void onMenuClick();
-
         void onProjectClick();
-
         void onPermissionClick();
-
         void onNewConversationClick();
-
         void onMoreClick();
     }
-
-    private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final TextView projectText;
     private Listener listener;
+    private final LinearLayout brand;
+    private final TextView projectText;
 
     public HeaderView(Context context) {
         super(context);
         setOrientation(HORIZONTAL);
         setGravity(Gravity.CENTER_VERTICAL);
         setBackgroundColor(LineTheme.BG);
-        setWillNotDraw(false);
-        LineTheme.padding(this, LineTheme.MD, LineTheme.MD, LineTheme.MD, LineTheme.MD);
-        setMinimumHeight(LineTheme.dp(context, 58));
-
-        IconButtonView menu = icon(context, IconButtonView.MENU, LineTheme.TEXT, 20);
+        setMinimumHeight(LineTheme.dp(context, 56));
+        LineTheme.padding(this, 4, 2, 8, 2);
+        brand = new LinearLayout(context);
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        brand.setMinimumHeight(LineTheme.dp(context, 48));
+        brand.setFocusable(true);
+        brand.setOnClickListener(v -> { if (listener != null) listener.onProjectClick(); });
+        IconButtonView menu = new IconButtonView(context, IconButtonView.MENU);
+        menu.setIconColor(LineTheme.TEXT_SECONDARY);
+        menu.setIconSizeDp(40, 19);
         menu.setContentDescription(context.getString(R.string.header_menu_desc));
-        menu.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onMenuClick();
-            }
-        });
-        addView(menu);
-
-        LinearLayout projectButton = new LinearLayout(context);
-        projectButton.setOrientation(HORIZONTAL);
-        projectButton.setGravity(Gravity.CENTER_VERTICAL);
-        projectButton.setClickable(true);
-        projectButton.setFocusable(true);
-        projectButton.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onProjectClick();
-            }
-        });
-        LinearLayout.LayoutParams projectParams = new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
-        projectParams.leftMargin = LineTheme.dp(context, 4);
-        projectParams.rightMargin = LineTheme.dp(context, 6);
-        addView(projectButton, projectParams);
-
-        View dot = new View(context);
-        dot.setBackground(LineTheme.rounded(context, LineTheme.ACCENT, 4));
-        LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 7), LineTheme.dp(context, 7));
-        projectButton.addView(dot, dotParams);
-
-        projectText = LineTheme.textMedium(context, context.getString(R.string.header_project_default), LineTheme.FONT_MD, LineTheme.TEXT);
+        menu.setOnClickListener(v -> { if (listener != null) listener.onMenuClick(); });
+        addView(menu, new LayoutParams(LineTheme.dp(context, 40), LineTheme.dp(context, 48)));
+        projectText = LineTheme.textMedium(context, context.getString(R.string.header_project_default), 16, LineTheme.TEXT);
         projectText.setSingleLine(true);
-        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
-        labelParams.leftMargin = LineTheme.dp(context, 6);
-        projectButton.addView(projectText, labelParams);
-
-        IconButtonView chevron = icon(context, IconButtonView.CHEVRON_DOWN, LineTheme.TEXT_SECONDARY, 14);
-        chevron.setIconSizeDp(20, 14);
-        projectButton.addView(chevron, new LinearLayout.LayoutParams(LineTheme.dp(context, 20), LineTheme.dp(context, 20)));
-
-        IconButtonView shield = icon(context, IconButtonView.SHIELD, LineTheme.TEXT_SECONDARY, 18);
-        shield.setContentDescription(context.getString(R.string.header_permission_desc));
-        shield.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onPermissionClick();
-            }
-        });
-        addView(shield);
-
-        IconButtonView plus = icon(context, IconButtonView.PLUS, LineTheme.TEXT_SECONDARY, 20);
-        plus.setContentDescription(context.getString(R.string.header_new_conversation_desc));
-        plus.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onNewConversationClick();
-            }
-        });
-        addView(plus);
-
-        IconButtonView more = icon(context, IconButtonView.MORE, LineTheme.TEXT_SECONDARY, 18);
-        more.setContentDescription(context.getString(R.string.header_more_desc));
-        more.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onMoreClick();
-            }
-        });
-        addView(more);
+        projectText.setEllipsize(TextUtils.TruncateAt.END);
+        LayoutParams titleParams = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        brand.addView(projectText, titleParams);
+        IconButtonView chevron = new IconButtonView(context, IconButtonView.CHEVRON_DOWN);
+        chevron.setIconSizeDp(24, 14);
+        chevron.setIconColor(LineTheme.TEXT_SECONDARY);
+        chevron.setClickable(false);
+        chevron.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        brand.addView(chevron, new LayoutParams(LineTheme.dp(context, 24), LineTheme.dp(context, 32)));
+        addView(brand, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
+        IconButtonView permissions = new IconButtonView(context, IconButtonView.SHIELD);
+        permissions.setIconSizeDp(40, 19);
+        permissions.setIconColor(LineTheme.TEXT_SECONDARY);
+        permissions.setContentDescription(context.getString(R.string.header_permission_desc));
+        permissions.setOnClickListener(v -> { if (listener != null) listener.onPermissionClick(); });
+        addView(permissions, new LayoutParams(LineTheme.dp(context, 40), LineTheme.dp(context, 48)));
+        IconButtonView create = new IconButtonView(context, IconButtonView.PLUS);
+        create.setIconSizeDp(40, 19);
+        create.setIconColor(LineTheme.TEXT_SECONDARY);
+        create.setContentDescription(context.getString(R.string.header_new_conversation_desc));
+        create.setOnClickListener(v -> { if (listener != null) listener.onNewConversationClick(); });
+        addView(create, new LayoutParams(LineTheme.dp(context, 40), LineTheme.dp(context, 48)));
+        IconButtonView more = new IconButtonView(context, IconButtonView.MORE);
+        more.setIconSizeDp(40, 19);
+        more.setIconColor(LineTheme.TEXT_SECONDARY);
+        more.setContentDescription(context.getString(R.string.chat_context_more));
+        more.setOnClickListener(v -> { if (listener != null) listener.onMoreClick(); });
+        addView(more, new LayoutParams(LineTheme.dp(context, 40), LineTheme.dp(context, 48)));
     }
-
-    public void setListener(Listener listener) {
-        this.listener = listener;
+    public void setListener(Listener listener) { this.listener = listener; }
+    @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight);
+        projectText.setMaxWidth(Math.max(0, width - getPaddingLeft() - getPaddingRight() - LineTheme.dp(getContext(), 184)));
     }
-
     public void render(ChatUiState state) {
-        projectText.setText(state.getProjectLabel());
-    }
-
-    @Override
-    protected void onDraw(Canvas canvas) {
-        super.onDraw(canvas);
-        borderPaint.setColor(LineTheme.BORDER);
-        borderPaint.setStrokeWidth(1f);
-        canvas.drawLine(0, getHeight() - 1, getWidth(), getHeight() - 1, borderPaint);
-    }
-
-    private IconButtonView icon(Context context, int type, int color, int iconDp) {
-        IconButtonView view = new IconButtonView(context, type);
-        view.setIconColor(color);
-        view.setIconSizeDp(34, iconDp);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LineTheme.dp(context, 34), LineTheme.dp(context, 34));
-        view.setLayoutParams(params);
-        return view;
+        String label = state.getProjectLabel();
+        if (label == null || label.isEmpty()) label = getContext().getString(R.string.header_project_default);
+        projectText.setText(label);
+        brand.setContentDescription(label);
     }
 }

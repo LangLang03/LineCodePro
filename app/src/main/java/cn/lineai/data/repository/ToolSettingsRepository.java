@@ -45,6 +45,7 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
 
     private final ResourceProvider resourceProvider;
     private final SettingsRepository settingsRepository;
+    private final CommandPermissionRepository commandPermissions;
     private final WebSearchConfigRepository webSearchConfigRepository;
     private final PhoneControlRepository phoneControlRepository;
     private ToolRegistry toolRegistry;
@@ -55,6 +56,7 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
     public ToolSettingsRepository(ResourceProvider resourceProvider, SettingsRepository settingsRepository, WebSearchConfigRepository webSearchConfigRepository, PhoneControlRepository phoneControlRepository, ToolCategoryResolver categoryResolver) {
         this.resourceProvider = resourceProvider;
         this.settingsRepository = settingsRepository;
+        this.commandPermissions = new CommandPermissionRepository(settingsRepository);
         this.webSearchConfigRepository = webSearchConfigRepository;
         this.phoneControlRepository = phoneControlRepository;
         toolCategoryResolver = categoryResolver;
@@ -118,6 +120,14 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
                 MODE_ALL, "memory"));
         return configs;
     }
+
+    @Override public boolean isCommandPermanentlyAllowed(String scope, cn.lineai.model.tool.ToolCall call) {
+        return commandPermissions.isAllowed(scope, call);
+    }
+    @Override public void allowCommandPermanently(String scope, cn.lineai.model.tool.ToolCall call) {
+        commandPermissions.allow(scope, call);
+    }
+    @Override public void clearPermanentCommandPermissions() { commandPermissions.clear(); }
 
     public void setToolRegistry(ToolRegistry toolRegistry) {
         this.toolRegistry = toolRegistry;

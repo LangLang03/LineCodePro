@@ -200,6 +200,7 @@ public final class SkillRepository extends BaseRepository {
                 enabledAgents.add(agent);
             }
         }
+        enabledAgents.sort(java.util.Comparator.comparing(ExtensionAgentConfig::getId));
         if (!enabledAgents.isEmpty()) {
             hasContent = true;
             builder.append("\n### 自定义 Agent\n");
@@ -222,6 +223,7 @@ public final class SkillRepository extends BaseRepository {
                 enabledMcps.add(mcp);
             }
         }
+        enabledMcps.sort(java.util.Comparator.comparing(ExtensionMcpConfig::getId));
         if (!enabledMcps.isEmpty()) {
             hasContent = true;
             builder.append("\n### 自定义 HTTP MCP\n");
@@ -237,6 +239,7 @@ public final class SkillRepository extends BaseRepository {
                 enabledSkills.add(skill);
             }
         }
+        enabledSkills.sort(java.util.Comparator.comparing(SkillRecord::getId));
         if (!enabledSkills.isEmpty()) {
             hasContent = true;
             builder.append("\n### 已安装 Skills\n");
@@ -264,6 +267,7 @@ public final class SkillRepository extends BaseRepository {
                 names.add(tool.getName());
             }
         }
+        java.util.Collections.sort(names);
         return join(names, ", ", "未启用 tools");
     }
 

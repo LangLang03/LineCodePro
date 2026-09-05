@@ -51,17 +51,20 @@ public final class AttachmentPickerSheetView extends FrameLayout {
         backdrop.setOnClickListener(v -> close());
         addView(backdrop, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
-        panel = new LinearLayout(context);
+        panel = new InsetSheetLayout(context);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackground(LineTheme.roundedTop(context, LineTheme.SURFACE_ELEVATED, 16));
+        panel.setClipToOutline(true);
+        panel.setBackground(LineTheme.roundedStroke(context, LineTheme.BG, 24, LineTheme.BORDER_LIGHT));
         FrameLayout.LayoutParams panelParams = new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(context, 560));
-        panelParams.gravity = Gravity.BOTTOM;
+        panelParams.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        panelParams.leftMargin = panelParams.rightMargin = LineTheme.dp(context, 16);
+        panelParams.bottomMargin = LineTheme.dp(context, 16);
         addView(panel, panelParams);
 
         LinearLayout header = new LinearLayout(context);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        LineTheme.padding(header, LineTheme.LG, LineTheme.MD, LineTheme.LG, LineTheme.MD);
+        LineTheme.padding(header, 20, 20, 20, 16);
         panel.addView(header, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         LinearLayout titles = new LinearLayout(context);
@@ -80,10 +83,10 @@ public final class AttachmentPickerSheetView extends FrameLayout {
 
         IconButtonView close = new IconButtonView(context, IconButtonView.CLOSE);
         close.setIconColor(LineTheme.TEXT_SECONDARY);
-        close.setIconSizeDp(36, 18);
-        close.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_LIGHT, 18));
+        close.setIconSizeDp(48, 18);
+
         close.setOnClickListener(v -> close());
-        LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 36), LineTheme.dp(context, 36));
+        LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 48), LineTheme.dp(context, 48));
         closeParams.leftMargin = LineTheme.dp(context, LineTheme.MD);
         header.addView(close, closeParams);
 
@@ -94,6 +97,15 @@ public final class AttachmentPickerSheetView extends FrameLayout {
         body = new LinearLayout(context);
         body.setOrientation(LinearLayout.VERTICAL);
         panel.addView(body, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
+    }
+
+    @Override protected void onMeasure(int width, int height) {
+        int available = Math.max(1, MeasureSpec.getSize(height)-LineTheme.dp(getContext(),64));
+        ((InsetSheetLayout)panel).setAvailableHeight(available);
+        android.view.ViewGroup.LayoutParams params = panel.getLayoutParams();
+        int target = Math.min(LineTheme.dp(getContext(),640),available);
+        if (params.height != target) { params.height = target; panel.setLayoutParams(params); }
+        super.onMeasure(width,height);
     }
 
     public void setListener(Listener listener) {
@@ -225,6 +237,7 @@ public final class AttachmentPickerSheetView extends FrameLayout {
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(LineTheme.dp(context, 52));
         row.setClickable(true);
         row.setOnClickListener(v -> {
             if (listener == null) {

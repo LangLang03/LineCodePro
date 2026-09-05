@@ -1151,7 +1151,7 @@
 
     <!-- Permission mode sheet -->
     <string name="permission_mode_auto">自动</string>
-    <string name="permission_mode_auto_desc">自动执行已启用工具，危险工具按策略确认</string>
+    <string name="permission_mode_auto_desc">自动执行已启用工具，无需逐次确认</string>
     <string name="permission_mode_confirm">确认</string>
     <string name="permission_mode_confirm_desc">危险操作需要确认后执行</string>
     <string name="permission_mode_readonly">只读</string>
@@ -1468,4 +1468,30 @@
     <string name="extension_online_store">在线商店</string>
     <string name="extension_skillhub_store">SkillHub Skill 商店</string>
     <string name="extension_skillhub_store_desc">浏览、搜索并安全安装社区 Skill</string>
+    <string name="chat_context_title">添加到对话</string>
+    <string name="chat_context_files">项目文件</string>
+    <string name="chat_context_mode">模式 · %1$s</string>
+    <string name="chat_context_workspace">工作区</string>
+    <string name="chat_context_settings">设置</string>
+    <string name="chat_send">发送消息</string>
+    <string name="chat_stop">停止生成</string>
+    <string name="chat_process_done">已处理</string>
+    <string name="chat_process_running">正在处理</string>
+    <string name="chat_process_pending">等待确认</string>
+    <string name="chat_tools_count">使用了 %1$d 个工具</string>
+    <string name="chat_files_changed">已编辑 %1$d 个文件</string>
+    <string name="chat_review_changes">审阅</string>
+    <string name="chat_approval_allow_once">允许一次</string>
+    <string name="chat_approval_allow_always">永久允许</string>
+    <string name="chat_approval_deny">拒绝</string>
+    <string name="chat_approval_reason">允许在当前工作区执行这次操作吗？</string>
+    <string name="chat_approval_terminal">终端</string>
+    <string name="chat_approval_scope">永久允许当前工作区及执行目标中的这条完整命令</string>
+    <string name="chat_permissions_clear">撤销已保存的命令许可</string>
+    <string name="chat_permissions_cleared">已撤销保存的命令许可</string>
+    <string name="chat_empty_title">从这里，开始。</string>
+    <string name="chat_empty_message">把想做的事，交给 LineCode。</string>
+    <string name="chat_expand">展开</string>
+    <string name="chat_collapse">收起</string>
+    <string name="chat_context_more">更多操作</string>
 </resources>

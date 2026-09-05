@@ -22,6 +22,8 @@ public final class PermissionModeController {
         String getPermissionMode();
 
         void setPermissionMode(String mode);
+
+        default void clearPermanentCommandPermissions() {}
     }
 
     interface ChatModeStore {
@@ -38,6 +40,8 @@ public final class PermissionModeController {
         ToolSettingsPermissionStore(ToolSettingsStore repository) {
             this.repository = repository;
         }
+
+        @Override public void clearPermanentCommandPermissions() { repository.clearPermanentCommandPermissions(); }
 
         @Override
         public String getPermissionMode() {
@@ -109,7 +113,7 @@ public final class PermissionModeController {
         options.add(new SheetOption(
                 ToolSettingsRepository.PERMISSION_AUTO,
                 localizedString(R.string.permission_mode_auto, "自动"),
-                localizedString(R.string.permission_mode_auto_desc, "自动执行已启用工具，危险工具按策略确认"),
+                localizedString(R.string.permission_mode_auto_desc, "自动执行已启用工具，无需逐次确认"),
                 ToolSettingsRepository.PERMISSION_AUTO.equals(permissionMode)
         ));
         options.add(new SheetOption(
@@ -132,6 +136,7 @@ public final class PermissionModeController {
                         : host.storagePermissionMessage(),
                 host.hasExternalStorageAccess()
         ));
+        options.add(new SheetOption("commands:revoke", localizedString(R.string.chat_permissions_clear, "撤销已保存的命令许可"), "", false));
         host.showPermissionSheet(options);
     }
 
@@ -149,6 +154,11 @@ public final class PermissionModeController {
     }
 
     public boolean applyPermissionModeOption(String id) {
+        if ("commands:revoke".equals(id)) {
+            permissionStore.clearPermanentCommandPermissions();
+            if (context != null) android.widget.Toast.makeText(context, R.string.chat_permissions_cleared, android.widget.Toast.LENGTH_SHORT).show();
+            return true;
+        }
         if (!isPermissionModeOption(id)) {
             return false;
         }

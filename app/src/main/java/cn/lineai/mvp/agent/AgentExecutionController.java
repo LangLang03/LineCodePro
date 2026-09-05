@@ -32,7 +32,6 @@ import cn.lineai.tool.ToolInfo;
 import cn.lineai.tool.ToolRegistry;
 import cn.lineai.tool.builtin.AgentTool;
 import cn.lineai.tool.builtin.AgentPipelineTool;
-import cn.lineai.tool.builtin.FileDeleteTool;
 import cn.lineai.tool.builtin.FileEditTool;
 import cn.lineai.tool.builtin.FileToolPathPolicy;
 import cn.lineai.tool.builtin.FileWriteTool;
@@ -989,7 +988,7 @@ public final class AgentExecutionController {
                 && tool.needsConfirmation()
                 && !toolReviewAwaiter.isAutoConfirmed(call)
                 && toolSettingsRepository.canExecuteTool(tool.getName(), tool.getCategory()).isAllowed()
-                && (FileDeleteTool.NAME.equals(tool.getName()) || toolSettingsRepository.needsConfirmation(tool.getName()));
+                && toolSettingsRepository.needsConfirmation(tool.getName());
     }
 
     public String agentRolePrompt(String type) {

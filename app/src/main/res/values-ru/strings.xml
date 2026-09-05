@@ -1148,7 +1148,7 @@
 
     <!-- Permission mode sheet -->
     <string name="permission_mode_auto">Авто</string>
-    <string name="permission_mode_auto_desc">Автоматически выполнять включённые инструменты; опасные инструменты подтверждаются по политике</string>
+    <string name="permission_mode_auto_desc">Автоматически выполнять включённые инструменты без отдельного подтверждения</string>
     <string name="permission_mode_confirm">Подтверждение</string>
     <string name="permission_mode_confirm_desc">Опасные операции требуют подтверждения перед выполнением</string>
     <string name="permission_mode_readonly">Только чтение</string>
@@ -1465,4 +1465,30 @@
     <string name="extension_online_store">Онлайн магазин</string>
     <string name="extension_skillhub_store">Магазин Skills SkillHub</string>
     <string name="extension_skillhub_store_desc">Просматривайте, ищите и безопасно устанавливайте community Skills</string>
+    <string name="chat_context_title">Добавить в диалог</string>
+    <string name="chat_context_files">Файлы проекта</string>
+    <string name="chat_context_mode">Режим · %1$s</string>
+    <string name="chat_context_workspace">Рабочая область</string>
+    <string name="chat_context_settings">Настройки</string>
+    <string name="chat_send">Отправить сообщение</string>
+    <string name="chat_stop">Остановить генерацию</string>
+    <string name="chat_process_done">Обработано</string>
+    <string name="chat_process_running">Обработка</string>
+    <string name="chat_process_pending">Ожидание подтверждения</string>
+    <string name="chat_tools_count">Инструментов использовано: %1$d</string>
+    <string name="chat_files_changed">Файлов изменено: %1$d</string>
+    <string name="chat_review_changes">Просмотр</string>
+    <string name="chat_approval_allow_once">Один раз</string>
+    <string name="chat_approval_allow_always">Всегда</string>
+    <string name="chat_approval_deny">Отклонить</string>
+    <string name="chat_approval_reason">Разрешить эту операцию в текущей рабочей области?</string>
+    <string name="chat_approval_terminal">Терминал</string>
+    <string name="chat_approval_scope">Всегда разрешать эту точную команду в текущей рабочей области и среде выполнения</string>
+    <string name="chat_permissions_clear">Отозвать сохранённые разрешения команд</string>
+    <string name="chat_permissions_cleared">Сохранённые разрешения команд отозваны</string>
+    <string name="chat_empty_title">Начните здесь.</string>
+    <string name="chat_empty_message">Расскажите LineCode, что вы хотите сделать.</string>
+    <string name="chat_expand">Развернуть</string>
+    <string name="chat_collapse">Свернуть</string>
+    <string name="chat_context_more">Другие действия</string>
 </resources>

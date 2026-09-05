@@ -27,7 +27,7 @@ public final class ModelAddOptionsScreenView extends ScreenScaffoldView {
     public ModelAddOptionsScreenView(Context context, Listener listener) {
         super(context, context.getString(R.string.screen_model_add_options_title), listener::onBack, null);
         LinearLayout content = getContent();
-        LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
+        LineTheme.padding(content, 16, 8, 16, 48);
 
         addLargeCard(content, IconButtonView.SLIDERS_HORIZONTAL, context.getString(R.string.screen_model_add_options_custom),
                 context.getString(R.string.screen_model_add_options_custom_desc), listener::onCustom);
@@ -57,89 +57,19 @@ public final class ModelAddOptionsScreenView extends ScreenScaffoldView {
     }
 
     private void addLargeCard(LinearLayout content, int iconType, String title, String desc, Runnable onClick) {
-        Context context = content.getContext();
-        LinearLayout card = new LinearLayout(context);
-        card.setOrientation(HORIZONTAL);
-        card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setMinimumHeight(LineTheme.dp(context, 92));
-        card.setBackground(LineTheme.roundedStroke(context, LineTheme.SURFACE_ELEVATED, 12, LineTheme.BORDER_LIGHT));
-        card.setClickable(true);
-        card.setOnClickListener(v -> onClick.run());
-        LineTheme.padding(card, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
-
-        FrameLayout largeIcon = new FrameLayout(context);
-        largeIcon.setBackground(LineTheme.rounded(context, LineTheme.ACCENT_MUTED, 8));
-        IconButtonView icon = new IconButtonView(context, iconType);
-        icon.setIconColor(LineTheme.ACCENT);
-        icon.setIconSizeDp(44, 22);
-        icon.setClickable(false);
-        largeIcon.addView(icon, new FrameLayout.LayoutParams(LineTheme.dp(context, 44), LineTheme.dp(context, 44), Gravity.CENTER));
-        card.addView(largeIcon, new LinearLayout.LayoutParams(LineTheme.dp(context, 44), LineTheme.dp(context, 44)));
-
-        LinearLayout text = new LinearLayout(context);
-        text.setOrientation(VERTICAL);
-        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
-        textParams.leftMargin = LineTheme.dp(context, LineTheme.MD);
-        textParams.rightMargin = LineTheme.dp(context, LineTheme.MD);
-        card.addView(text, textParams);
-        text.addView(LineTheme.text(context, title, LineTheme.FONT_MD, LineTheme.TEXT, Typeface.BOLD), new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        TextView descView = LineTheme.text(context, desc, LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
-        descView.setLineSpacing(LineTheme.dp(context, 3), 1f);
-        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        descParams.topMargin = LineTheme.dp(context, LineTheme.XS);
-        text.addView(descView, descParams);
-
-        IconButtonView chevron = new IconButtonView(context, IconButtonView.CHEVRON_RIGHT);
-        chevron.setIconColor(LineTheme.TEXT_TERTIARY);
-        chevron.setIconSizeDp(19, 17);
-        chevron.setClickable(false);
-        card.addView(chevron, new LinearLayout.LayoutParams(LineTheme.dp(context, 19), LineTheme.dp(context, 19)));
-
-        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        cardParams.bottomMargin = LineTheme.dp(context, LineTheme.SM);
-        content.addView(card, cardParams);
+        content.addView(new ActionRowView(getContext(), iconType, title, desc, false, true, onClick), cardParams());
+    }
+    private void addProvider(LinearLayout content, ModelProviderPreset preset, Listener listener) {
+        content.addView(new ActionRowView(getContext(), IconButtonView.BOX,
+                ModelProviderPresetStrings.getLabel(getContext(), preset.getId()),
+                ModelProviderPresetStrings.getDesc(getContext(), preset.getId()), false, true,
+                () -> listener.onProvider(preset.getId())), cardParams());
     }
 
-    private void addProvider(LinearLayout content, ModelProviderPreset preset, Listener listener) {
-        Context context = content.getContext();
-        String name = ModelProviderPresetStrings.getLabel(context, preset.getId());
-        LinearLayout row = new LinearLayout(context);
-        row.setOrientation(HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setBackground(LineTheme.roundedStroke(context, LineTheme.SURFACE_ELEVATED, 12, LineTheme.BORDER_LIGHT));
-        row.setClickable(true);
-        row.setOnClickListener(v -> listener.onProvider(preset.getId()));
-        LineTheme.padding(row, LineTheme.MD, LineTheme.MD, LineTheme.MD, LineTheme.MD);
-
-        TextView initial = LineTheme.text(context, name.substring(0, 1), LineTheme.FONT_MD, LineTheme.ACCENT, Typeface.BOLD);
-        initial.setGravity(Gravity.CENTER);
-        initial.setBackground(LineTheme.rounded(context, LineTheme.ACCENT_MUTED, 8));
-        row.addView(initial, new LinearLayout.LayoutParams(LineTheme.dp(context, 38), LineTheme.dp(context, 38)));
-
-        LinearLayout text = new LinearLayout(context);
-        text.setOrientation(VERTICAL);
-        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
-        textParams.leftMargin = LineTheme.dp(context, LineTheme.MD);
-        textParams.rightMargin = LineTheme.dp(context, LineTheme.MD);
-        row.addView(text, textParams);
-        TextView title = LineTheme.text(context, name, LineTheme.FONT_MD, LineTheme.TEXT, Typeface.BOLD);
-        title.setSingleLine(true);
-        text.addView(title, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        TextView sub = LineTheme.text(context, ModelProviderPresetStrings.getDesc(context, preset.getId()) + " · " + protocolLabel(preset), LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
-        sub.setSingleLine(true);
-        LinearLayout.LayoutParams subParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        subParams.topMargin = LineTheme.dp(context, 3);
-        text.addView(sub, subParams);
-
-        IconButtonView chevron = new IconButtonView(context, IconButtonView.CHEVRON_RIGHT);
-        chevron.setIconColor(LineTheme.TEXT_TERTIARY);
-        chevron.setIconSizeDp(18, 16);
-        chevron.setClickable(false);
-        row.addView(chevron, new LinearLayout.LayoutParams(LineTheme.dp(context, 18), LineTheme.dp(context, 18)));
-
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-        params.bottomMargin = LineTheme.dp(context, LineTheme.SM);
-        content.addView(row, params);
+    private LayoutParams cardParams() {
+        LayoutParams params = new LayoutParams(-1, -2);
+        params.bottomMargin = LineTheme.dp(getContext(), 8);
+        return params;
     }
 
     private String protocolLabel(ModelProviderPreset preset) {

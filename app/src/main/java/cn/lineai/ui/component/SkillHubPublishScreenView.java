@@ -51,7 +51,7 @@ public final class SkillHubPublishScreenView extends ScreenScaffoldView {
         }
 
         LinearLayout content = getContent();
-        LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
+        LineTheme.padding(content, 28, 8, 28, 48);
         addNotice(content);
         selected = fieldButton(content);
         slug = field(content, context.getString(cn.lineai.R.string.skillhub_slug_label),

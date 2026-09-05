@@ -35,7 +35,7 @@ public final class ModelPickerDialog {
 
         LinearLayout panel = new LinearLayout(context);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackground(LineTheme.roundedTop(context, LineTheme.SURFACE_ELEVATED, 16));
+        panel.setBackground(LineTheme.rounded(context, LineTheme.BG, 24));
 
         View handle = new View(context);
         handle.setBackground(LineTheme.rounded(context, LineTheme.TEXT_TERTIARY, 2));
@@ -53,25 +53,24 @@ public final class ModelPickerDialog {
         divider.setBackgroundColor(LineTheme.BORDER_LIGHT);
         panel.addView(divider, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
 
-        ScrollView scroll = new ScrollView(context);
+        ScrollView scroll = new cn.lineai.ui.theme.BoundedScrollView(context, 420);
         LinearLayout list = new LinearLayout(context);
         list.setOrientation(LinearLayout.VERTICAL);
         scroll.addView(list, new ScrollView.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        int maxHeight = LineTheme.dp(context, 420);
-        panel.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, maxHeight));
+        panel.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
         for (String id : modelIds) {
             addRow(list, dialog, id, id.equals(selectedId), false, listener);
         }
         addRow(list, dialog, context.getString(R.string.screen_model_add_custom_id_picker), false, true, listener);
-        panel.addView(new View(context), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LineTheme.dp(context, 34)));
+        panel.setPadding(0, 0, 0, LineTheme.dp(context, 12));
 
         dialog.setContentView(panel);
         dialog.show();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
-            window.setLayout(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            window.setLayout(DialogDimensions.insetDialogWidth(context), LinearLayout.LayoutParams.WRAP_CONTENT);
             window.setGravity(Gravity.BOTTOM);
         }
     }
