@@ -69,7 +69,7 @@ Status values are `started`, `pending`, and `excluded`.
 | Termux / Terminal Provider | pending | Android-only; absent from Windows navigation |
 | Output / security / theme | pending | Preview, browser policy, path warning, nine palette modes and custom editor |
 | Data / storage / memory / logs | pending | Import/export, redaction, stats, CRUD, diagnostics |
-| Keep-alive | pending | Android-only settings and RAII generation lease; no Windows route |
+| Keep-alive | started | Android-only settings, persisted foreground service/Wake Lock and RAII generation lease; no Windows row |
 | Extensions | pending | Agent, MCP, Skills, LineCode packages, install/edit/enable/delete flows |
 | Skill Hub | pending | Search, sort, pagination, session, detail tabs, reviews, install and publish |
 | Tutorial / about / licenses | pending | Async tutorial load, version links and license content |

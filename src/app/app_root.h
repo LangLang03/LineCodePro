@@ -4,6 +4,6 @@
 
 namespace linecode::app {
 
-huxerui::View AppRoot();
+[[huxerui::composable]] huxerui::View AppRoot();
 
 } // namespace linecode::app

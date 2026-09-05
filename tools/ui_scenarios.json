@@ -1,0 +1,99 @@
+{
+  "settle_seconds": 1.0,
+  "launch_settle_seconds": 0.8,
+  "locale": "zh-CN",
+  "pixel_masks": [
+    [0, 0, 180, 90]
+  ],
+  "setup": [
+    {"type": "sleep", "seconds": 1.0},
+    {"type": "tap_text", "value": "同意", "optional": true},
+    {"type": "sleep", "seconds": 1.0}
+  ],
+  "scenarios": [
+    {
+      "name": "home",
+      "actions": [
+        {"type": "expect_activity", "value": "cn.lineai.MainActivity"}
+      ]
+    },
+    {
+      "name": "drawer_chats",
+      "actions": [
+        {"type": "tap", "x": 55, "y": 205},
+        {"type": "sleep", "seconds": 0.4},
+        {"type": "expect_text", "value": "对话历史"}
+      ]
+    },
+    {
+      "name": "drawer_files",
+      "actions": [
+        {"type": "tap", "x": 55, "y": 205},
+        {"type": "sleep", "seconds": 0.3},
+        {"type": "tap", "x": 685, "y": 280},
+        {"type": "sleep", "seconds": 0.4},
+        {"type": "expect_text", "value": "文件"}
+      ]
+    },
+    {
+      "name": "more_sheet",
+      "actions": [
+        {"type": "tap", "x": 55, "y": 205},
+        {"type": "sleep", "seconds": 0.3},
+        {"type": "keyevent", "key": "BACK"},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.4},
+        {"type": "expect_text", "value": "设置"}
+      ]
+    },
+    {
+      "name": "permission_sheet",
+      "actions": [
+        {"type": "tap", "x": 795, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "expect_text", "value": "权限"}
+      ]
+    },
+    {
+      "name": "composer_context_sheet",
+      "actions": [
+        {"type": "tap", "x": 112, "y": 2150},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "expect_text", "value": "选择本地文件"}
+      ]
+    },
+    {
+      "name": "settings",
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "expect_text", "value": "模型管理"},
+        {"type": "swipe", "x1": 540, "y1": 2100, "x2": 540, "y2": 450, "duration_ms": 700},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "expect_text", "value": "后台保活", "targets": ["candidate"]},
+        {"type": "expect_no_text", "value": "无障碍", "targets": ["candidate"]}
+      ]
+    },
+    {
+      "name": "keep_alive",
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "swipe", "x1": 540, "y1": 2100, "x2": 540, "y2": 450, "duration_ms": 700},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "后台保活"},
+        {"type": "sleep", "seconds": 0.6},
+        {"type": "expect_text", "value": "保活设置"},
+        {"type": "expect_text", "value": "Wake Lock"},
+        {"type": "expect_text", "value": "前台服务通知"},
+        {"type": "expect_text", "value": "假音乐播放"},
+        {"type": "expect_text", "value": "忽略电池优化"}
+      ]
+    }
+  ]
+}

@@ -36,9 +36,6 @@ constexpr Color kXmlFile = Color::Rgb(255, 159, 10);
 
 consteval float HeaderTopPadding() {
   if constexpr (CurrentHostPlatform() == HostPlatform::android) {
-    // DrawerLayout already consumes the Android status-bar safe area. The
-    // legacy 40dp inset was measured from the physical screen top, leaving 4dp
-    // inside that safe area.
     return 4.0F;
   }
   return 40.0F;
@@ -483,13 +480,17 @@ View FileBody(const DrawerModel &model, const DrawerActions &actions) {
 DrawerStyle LegacyDrawerStyle() {
   return DrawerStyle{
       .background = colors::background,
-      .scrim = Color::Rgb(0, 0, 0, 165.0F / 255.0F),
+      .scrim = Color::Rgb(22, 26, 32, 0.26F),
       .shadow = Shadow{.color = Color::Transparent()},
       .preferred_width = kDrawerWidth,
       .minimum_width = 240.0F,
       .minimum_content_width = kDrawerWidth,
       .modal_content_reveal = kDrawerReveal,
-      .edge_drag_width = 24.0F,
+      // Keep the drag recognizer clear of the legacy menu icon's 24dp centre.
+      // HuxerUI gives the edge drag priority inside this strip, so matching the
+      // framework default here would consume taps at the icon centre on
+      // Android.
+      .edge_drag_width = 16.0F,
       .corner_radius = 0.0F,
       .motion =
           DrawerMotion{
@@ -515,7 +516,7 @@ View Drawer(State<bool> drawer_open, State<std::size_t> selected_tab,
   }
       .With(Frame{.min_width = 240.0F, .max_width = kDrawerWidth},
             CrossAlign(CrossAxisAlignment::Stretch),
-            Background(colors::background));
+            Background(colors::background), Offset(Point{0.0F, -16.0F}));
 }
 
 } // namespace linecode::presentation

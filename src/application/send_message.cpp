@@ -10,18 +10,21 @@ namespace linecode::application {
 namespace {
 
 bool IsBlank(std::string_view text) {
-  return std::ranges::all_of(text, [](unsigned char character) { return std::isspace(character) != 0; });
+  return std::ranges::all_of(text, [](unsigned char character) {
+    return std::isspace(character) != 0;
+  });
 }
 
 } // namespace
 
-std::expected<domain::ChatMessage, SendMessageError> SendMessage::Execute(std::string text) {
+std::expected<domain::ChatMessage, SendMessageError>
+SendMessage::Execute(std::string text) {
   if (text.empty() || IsBlank(text)) {
     return std::unexpected(SendMessageError::empty);
   }
 
   domain::ChatMessage message{
-      .id = next_id_++,
+      .id = store_.AllocateMessageId(),
       .role = domain::MessageRole::user,
       .content = std::move(text),
   };

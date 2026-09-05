@@ -36,6 +36,18 @@ huxerui_add_app(linecodepro
             "cn.lineai"
 )
 
+huxerui_use_library(linecodepro
+        TARGET HuxerUI::SQLite
+        URL "https://github.com/HuxerUI/Lib-SQLite.git"
+        COMMIT "0b316df41cbd88b212e6aeead326196e3db6c96a"
+)
+
+huxerui_use_library(linecodepro
+        TARGET HuxerUI::WebView
+        URL "https://github.com/HuxerUI/Lib-WebView.git"
+        COMMIT "028abfc5c939829fb94f0855ac3bce77ed7ceb8d"
+)
+
 if (NOT HUXERUI_LIBRARY_GRAPH_ONLY)
     target_include_directories(linecodepro PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_compile_features(linecodepro PRIVATE cxx_std_23)

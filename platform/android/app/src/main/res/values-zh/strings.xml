@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notification_keep_alive_title">LineCode</string>
+    <string name="keep_alive_notification_title">编码任务保活</string>
+    <string name="notification_keep_alive_text">正在编码</string>
+    <string name="notification_keep_alive_ticker">LineCode</string>
+</resources>

@@ -1,48 +1,164 @@
 #include "presentation/main_screen.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <expected>
+#include <iterator>
 #include <memory>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 #include <huxerui/huxerui.h>
 
 #include "application/chat_session.h"
+#include "application/ports/project_workspace_store.h"
 #include "domain/app_state.h"
 #include "presentation/components/chat_screen.h"
 #include "presentation/components/drawer.h"
 #include "presentation/line_theme.h"
 #include "presentation/platform_features.h"
 #include "presentation/screens/settings_screen.h"
+#if defined(__ANDROID__)
+#include "presentation/screens/keep_alive_screen.h"
+#endif
 
 namespace linecode::presentation {
+namespace {
+
+using WorkspaceResult =
+    std::expected<domain::ProjectWorkspace, application::ProjectWorkspaceError>;
+
+DrawerFileNode ToDrawerNode(const domain::ProjectFileNode &node) {
+  std::vector<DrawerFileNode> children;
+  children.reserve(node.children.size());
+  std::ranges::transform(node.children, std::back_inserter(children),
+                         ToDrawerNode);
+  return DrawerFileNode{
+      .name = node.name,
+      .path = node.path,
+      .directory = node.directory,
+      .expanded = node.expanded,
+      .children = std::move(children),
+  };
+}
+
+bool ToggleDirectory(DrawerFileNode &node, std::string_view path) {
+  if (node.path == path && node.directory) {
+    node.expanded = !node.expanded;
+    return true;
+  }
+  return std::ranges::any_of(node.children, [path](DrawerFileNode &child) {
+    return ToggleDirectory(child, path);
+  });
+}
+
+#if defined(__ANDROID__)
+[[huxerui::composable]] huxerui::View PlatformKeepAliveDestination() {
+  return KeepAliveSettingsScreen();
+}
+#else
+[[huxerui::composable]] huxerui::View PlatformKeepAliveDestination() {
+  return SettingsScreen();
+}
+#endif
+
+huxerui::Task<void>
+LoadWorkspace(std::shared_ptr<application::ProjectWorkspaceStore> store,
+              huxerui::State<DrawerModel> model) {
+  WorkspaceResult loaded = co_await store->Load();
+  if (!loaded) {
+    co_return;
+  }
+  DrawerModel next = model.Get();
+  next.project_label = loaded->label;
+  next.project_path = loaded->path;
+  next.file_tree = ToDrawerNode(loaded->root);
+  model = std::move(next);
+}
 
 [[huxerui::composable]]
-huxerui::View MainScreen(std::shared_ptr<application::ChatSession> initial_session) {
+huxerui::View
+HomeScreen(std::shared_ptr<application::ChatSession> initial_session,
+           std::shared_ptr<application::ProjectWorkspaceStore> project_store) {
   using namespace huxerui;
 
-  auto navigation_path = UseState(NavigationPath<domain::AppRoute>{});
   auto drawer_open = UseState(false);
   auto selected_drawer_tab = UseState(std::size_t{0});
   auto draft = UseState(TextEditingValue::FromText(""));
   auto revision = UseState(std::size_t{0});
   auto session = UseState(std::move(initial_session));
+  auto drawer_model = UseState(DrawerModel{});
+  const auto tasks = UseTaskScope();
 
-  auto root = [drawer_open, selected_drawer_tab, draft, revision, session]() mutable -> View {
-    View centered_chat = Stack {
-      ChatScreen(drawer_open, draft, session.Get(), revision).With(Frame{.max_width = 792.0F}),
-    }.With(
-        Align(HorizontalAlignment::Center, VerticalAlignment::Stretch),
-        Background(colors::background)
-    );
+  Lifecycle([tasks, project_store, drawer_model] {
+    tasks.Launch([project_store, drawer_model]() -> Task<void> {
+      co_await LoadWorkspace(project_store, drawer_model);
+    });
+  });
 
-    return DrawerLayout(
-        std::move(centered_chat),
-        StartDrawer(Drawer(drawer_open, selected_drawer_tab))
-            .Open(drawer_open)
-            .OnOpenChanged([drawer_open](bool open) {
-              drawer_open = open;
-            })
-    );
+  const DrawerActions drawer_actions{
+      .on_new_conversation =
+          [session, revision] {
+            session.Get()->Clear();
+            revision += 1;
+          },
+      .on_file_node_selected =
+          [drawer_model](DrawerFileTarget target) {
+            if (!target.directory || !drawer_model->file_tree) {
+              return;
+            }
+            DrawerModel next = drawer_model.Get();
+            if (ToggleDirectory(*next.file_tree, target.path)) {
+              drawer_model = std::move(next);
+            }
+          },
+      .on_file_tree_activated =
+          [tasks, project_store, drawer_model] {
+            if (!drawer_model->file_tree) {
+              tasks.Launch([project_store, drawer_model]() -> Task<void> {
+                co_await LoadWorkspace(project_store, drawer_model);
+              });
+            }
+          },
+      .on_file_tree_refresh =
+          [tasks, project_store, drawer_model] {
+            tasks.Launch([project_store, drawer_model]() -> Task<void> {
+              co_await LoadWorkspace(project_store, drawer_model);
+            });
+          },
+  };
+
+  View centered_chat =
+      Stack{
+          ChatScreen([drawer_open] { drawer_open = true; }, draft,
+                     session.Get(), revision, drawer_model)
+              .With(Frame{.max_width = 792.0F}),
+      }
+          .With(Align(HorizontalAlignment::Center, VerticalAlignment::Stretch),
+                Background(colors::background), SafeAreaPadding{});
+
+  return DrawerLayout(
+      centered_chat,
+      StartDrawer(Drawer(drawer_open, selected_drawer_tab, drawer_model.Get(),
+                         drawer_actions))
+          .Open(drawer_open.Get())
+          .OnOpenChanged([drawer_open](bool open) { drawer_open = open; }));
+}
+
+} // namespace
+
+[[huxerui::composable]]
+huxerui::View
+MainScreen(std::shared_ptr<application::ChatSession> initial_session,
+           std::shared_ptr<application::ProjectWorkspaceStore> project_store) {
+  using namespace huxerui;
+
+  auto navigation_path = UseState(NavigationPath<domain::AppRoute>{});
+
+  auto root = [initial_session = std::move(initial_session),
+               project_store = std::move(project_store)]() -> View {
+    return HomeScreen(initial_session, project_store);
   };
 
   auto destination = [](domain::AppRoute route) -> View {
@@ -50,18 +166,13 @@ huxerui::View MainScreen(std::shared_ptr<application::ChatSession> initial_sessi
       return SettingsScreen();
     }
     if (route == domain::AppRoute::keep_alive) {
-      if constexpr (!FeatureAvailable<PlatformFeature::keep_alive>) {
-        return SettingsScreen();
-      }
+      return PlatformKeepAliveDestination();
     }
     return PendingScreen(route);
   };
 
-  return NavigationStack(
-      std::move(root),
-      navigation_path,
-      std::move(destination)
-  );
+  return NavigationStack(std::move(root), navigation_path,
+                         std::move(destination));
 }
 
 } // namespace linecode::presentation

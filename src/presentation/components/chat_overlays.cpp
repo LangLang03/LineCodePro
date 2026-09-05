@@ -11,6 +11,7 @@
 #include <huxerui/huxerui.h>
 
 #include "presentation/line_theme.h"
+#include "presentation/platform_features.h"
 
 namespace linecode::presentation {
 namespace {
@@ -24,6 +25,9 @@ constexpr float kSheetBottomInset = 0.0F;
 constexpr float kSheetHostMaximumWidth =
     kSheetMaximumWidth + (kSheetHorizontalInset * 2.0F);
 constexpr float kMinimumRowHeight = 52.0F;
+constexpr float kAttachmentPanelHeight = 640.0F;
+constexpr float kAttachmentTreeIndent = 18.0F;
+constexpr std::size_t kMaximumAttachmentTreeDepth = 24;
 
 class InsetSheetFrame final : public Layout<InsetSheetFrame> {
 public:
@@ -129,7 +133,7 @@ View DescribedMenuRow(const MenuItem<Action> &item,
         SelectAction(callbacks, action);
       })
       .With(Frame{.min_height = kMinimumRowHeight},
-            Padding(EdgeInsets::Symmetric(16.0F, 14.0F)),
+            Padding(EdgeInsets::Symmetric(16.0F, 15.0F)),
             CrossAlign(CrossAxisAlignment::Center),
             Background(item.selected ? colors::accent_muted
                                      : Color::Transparent()),
@@ -157,7 +161,10 @@ View EmptyOverlay() {
 
 View InsetSheet(View panel) {
   return InsetSheetFrame{std::move(panel)}.With(
-      Frame{.max_width = kSheetHostMaximumWidth});
+      Frame{.max_width = kSheetHostMaximumWidth},
+      Offset(Point{0.0F, CurrentHostPlatform() == HostPlatform::android
+                             ? 32.0F
+                             : 0.0F}));
 }
 
 View StandardSheet(StringVariant title, std::vector<View> rows) {
@@ -179,7 +186,7 @@ View StandardSheet(StringVariant title, std::vector<View> rows) {
                       colors::text})
                   .With(Padding(EdgeInsets{.top = 12.0F,
                                            .right = 24.0F,
-                                           .bottom = 20.0F,
+                                           .bottom = 8.0F,
                                            .left = 24.0F})),
               Stack{}.With(Frame{.height = 1.0F},
                            Background(colors::border_light)),
@@ -193,8 +200,142 @@ View StandardSheet(StringVariant title, std::vector<View> rows) {
                 CrossAlign(CrossAxisAlignment::Stretch),
                 Background(colors::background),
                 Border{.color = colors::border_light, .width = 1.0F},
-                CornerRadius(CornerRadii::Top(kSheetRadius)), ClipChildren());
+                CornerRadius(kSheetRadius), ClipChildren());
   return InsetSheet(std::move(panel));
+}
+
+bool ContainsPath(const std::vector<std::string> &paths,
+                  std::string_view path) {
+  return std::ranges::find(paths, path) != paths.end();
+}
+
+View AttachmentInlineIcon(ImageResource icon, Color tint, float size) {
+  return Stack{
+      Image(std::move(icon))
+          .Tint(tint)
+          .With(Frame{.width = size, .height = size}),
+  }
+      .With(Frame{.width = size, .height = size},
+            Align(HorizontalAlignment::Center, VerticalAlignment::Center));
+}
+
+View AttachmentStatus(StringVariant message) {
+  return Stack{
+      Text(std::move(message))
+          .Style(TextStyle{Font::System(13.0F), colors::secondary}),
+  }
+      .With(Padding(20.0F), Grow(),
+            Align(HorizontalAlignment::Center, VerticalAlignment::Center));
+}
+
+View AttachmentFileSelection(bool selected) {
+  return Stack{
+      Image(selected ? app::images::check : app::images::plus)
+          .Tint(selected ? colors::text_on_color : colors::secondary)
+          .With(Frame{.width = 14.0F, .height = 14.0F}),
+  }
+      .With(Frame{.width = 26.0F, .height = 26.0F},
+            Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+            Background(selected ? colors::accent : colors::surface_light),
+            CornerRadius(13.0F));
+}
+
+void AppendAttachmentRows(std::vector<View> &rows,
+                          const ChatAttachmentNode &node, std::size_t depth,
+                          bool root, const ChatAttachmentPickerState &state,
+                          const ChatAttachmentPickerCallbacks &callbacks) {
+  const bool expanded =
+      node.directory && ContainsPath(state.expanded_directories, node.path);
+  const bool selected =
+      !node.directory && ContainsPath(state.selected_paths, node.path);
+  const float left =
+      12.0F + static_cast<float>(std::min(depth, kMaximumAttachmentTreeDepth)) *
+                  kAttachmentTreeIndent;
+
+  std::vector<View> content;
+  if (node.directory) {
+    content.emplace_back(AttachmentInlineIcon(
+        expanded ? app::images::chevron_down : app::images::chevron_right,
+        colors::tertiary, 16.0F));
+  } else {
+    content.emplace_back(Spacer().With(Frame{.width = 16.0F, .height = 16.0F}));
+  }
+  content.emplace_back(
+      AttachmentInlineIcon(
+          node.directory
+              ? (expanded ? app::images::folder_open : app::images::folder)
+              : app::images::file,
+          node.directory ? colors::accent : colors::secondary, 17.0F)
+          .With(Padding(EdgeInsets{.left = 8.0F})));
+
+  std::vector<View> labels;
+  labels.emplace_back(
+      Text(node.name)
+          .Style(TextStyle{Font::System(16.0F).WithWeight(
+                               root ? FontWeight::Bold : FontWeight::Regular),
+                           root ? colors::text : colors::secondary})
+          .With(Frame{.max_height = 22.0F}, ClipChildren()));
+  if (root) {
+    labels.emplace_back(
+        Text(node.path)
+            .Style(TextStyle{Font::System(11.0F), colors::tertiary})
+            .With(Frame{.max_height = 16.0F}, Padding(EdgeInsets{.top = 2.0F}),
+                  ClipChildren()));
+  }
+  content.emplace_back(Column(std::move(labels))
+                           .With(Padding(EdgeInsets{.left = 8.0F}), Grow()));
+  if (!node.directory) {
+    content.emplace_back(AttachmentFileSelection(selected).With(
+        Padding(EdgeInsets{.left = 8.0F})));
+  }
+
+  auto row =
+      Row(std::move(content))
+          .With(Frame{.min_height = kMinimumRowHeight},
+                Padding(EdgeInsets{
+                    .top = 8.0F, .right = 12.0F, .bottom = 8.0F, .left = left}),
+                CrossAlign(CrossAxisAlignment::Center), Focusable(),
+                PointerCursor(PointerCursorKind::Hand));
+  if (node.directory) {
+    row = std::move(row).OnClick(
+        [callback = callbacks.on_directory_toggled, path = node.path] {
+          if (callback) {
+            std::invoke(callback, path);
+          }
+        });
+  } else {
+    row = std::move(row).OnClick(
+        [callback = callbacks.on_file_toggled,
+         file = ChatAttachmentFile{
+             .path = node.path, .name = node.name, .source = "local"}] {
+          if (callback) {
+            std::invoke(callback, file);
+          }
+        });
+  }
+  rows.emplace_back(std::move(row).Key(node.path));
+
+  if (!expanded) {
+    return;
+  }
+  if (node.children.empty()) {
+    const float empty_left =
+        12.0F +
+        static_cast<float>(std::min(depth + 1, kMaximumAttachmentTreeDepth)) *
+            kAttachmentTreeIndent;
+    rows.emplace_back(
+        Text(app::strings::sheet_status_empty_dir)
+            .Style(TextStyle{Font::System(11.0F), colors::tertiary})
+            .With(Padding(EdgeInsets{.top = 8.0F,
+                                     .right = 12.0F,
+                                     .bottom = 8.0F,
+                                     .left = empty_left}))
+            .Key(node.path + "/__empty"));
+    return;
+  }
+  for (const auto &child : node.children) {
+    AppendAttachmentRows(rows, child, depth + 1, false, state, callbacks);
+  }
 }
 
 } // namespace
@@ -333,6 +474,88 @@ View ChatPermissionMenu(const ChatPermissionMenuState &state,
   auto rows = BuildAvailableRows(items, callbacks,
                                  DescribedMenuRow<ChatPermissionAction>);
   return StandardSheet(app::strings::sheet_title_permissions, std::move(rows));
+}
+
+View ChatAttachmentPicker(const ChatAttachmentPickerState &state,
+                          ChatAttachmentPickerCallbacks callbacks) {
+  if (!state.visible) {
+    return EmptyOverlay();
+  }
+
+  View body;
+  if (state.loading) {
+    body = AttachmentStatus(
+        state.message.empty()
+            ? StringVariant(app::strings::sheet_status_reading_files)
+            : StringVariant(state.message));
+  } else if (!state.tree.has_value()) {
+    body = AttachmentStatus(
+        state.message.empty()
+            ? StringVariant(app::strings::sheet_status_no_files)
+            : StringVariant(state.message));
+  } else {
+    std::vector<View> rows;
+    AppendAttachmentRows(rows, *state.tree, 0, true, state, callbacks);
+    body = ScrollView(Column(std::move(rows))
+                          .With(Padding(EdgeInsets{.top = 8.0F,
+                                                   .right = 8.0F,
+                                                   .bottom = 16.0F,
+                                                   .left = 8.0F}),
+                                CrossAlign(CrossAxisAlignment::Stretch)))
+               .ScrollAxis(Axis::Vertical)
+               .With(Grow(), ScrollBar());
+  }
+
+  View close =
+      Stack{
+          Image(app::images::x)
+              .Tint(colors::secondary)
+              .With(Frame{.width = 18.0F, .height = 18.0F}),
+      }
+          .OnClick([callback = callbacks.on_dismiss_request] {
+            if (callback) {
+              std::invoke(callback);
+            }
+          })
+          .With(Frame{.width = 48.0F, .height = 48.0F},
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+                Semantics{.role = SemanticRole::Button,
+                          .label = app::strings::common_close},
+                Focusable(), PointerCursor(PointerCursorKind::Hand));
+
+  View panel =
+      Column{
+          Row{
+              Column{
+                  Text(app::strings::attachment_picker_title_local)
+                      .Style(TextStyle{
+                          Font::System(17.0F).WithWeight(FontWeight::Bold),
+                          colors::text}),
+                  Text::Format(app::strings::sheet_attachment_selected_count,
+                               state.selected_paths.size())
+                      .Style(TextStyle{Font::System(11.0F), colors::tertiary})
+                      .With(Padding(EdgeInsets{.top = 3.0F})),
+              }
+                  .With(Grow()),
+              std::move(close).With(Padding(EdgeInsets{.left = 12.0F})),
+          }
+              .With(Padding(EdgeInsets{.top = 20.0F,
+                                       .right = 20.0F,
+                                       .bottom = 16.0F,
+                                       .left = 20.0F}),
+                    CrossAlign(CrossAxisAlignment::Center)),
+          Stack{}.With(Frame{.height = 1.0F}, Background(colors::border_light)),
+          std::move(body),
+      }
+          .With(Frame{.height = kAttachmentPanelHeight,
+                      .max_width = kSheetMaximumWidth,
+                      .min_height = 360.0F,
+                      .max_height = kAttachmentPanelHeight},
+                CrossAlign(CrossAxisAlignment::Stretch),
+                Background(colors::background),
+                Border{.color = colors::border_light, .width = 1.0F},
+                CornerRadius(kSheetRadius), ClipChildren());
+  return InsetSheet(std::move(panel));
 }
 
 } // namespace linecode::presentation

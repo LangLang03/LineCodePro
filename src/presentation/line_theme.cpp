@@ -5,7 +5,7 @@
 
 namespace linecode::presentation {
 
-huxerui::ThemeSpec LineCoffeeTheme() {
+huxerui::ThemeSpec LineLightTheme() {
   huxerui::ThemeSpec theme = huxerui::FlatLightThemeSpec();
   theme.colors.primary = colors::accent;
   theme.colors.on_primary = colors::text_on_color;
@@ -25,7 +25,7 @@ huxerui::ThemeSpec LineCoffeeTheme() {
   theme.colors.on_surface_variant = colors::secondary;
   theme.colors.outline = colors::border;
   theme.colors.error = colors::danger;
-  theme.colors.scrim = huxerui::Color::Rgb(43, 33, 24, 0.38F);
+  theme.colors.scrim = huxerui::Color::Rgb(22, 26, 32, 0.26F);
 
   theme.typography.body_large = 16.0F;
   theme.typography.body_medium = 13.0F;
@@ -42,8 +42,8 @@ huxerui::ThemeSpec LineCoffeeTheme() {
   return theme;
 }
 
-huxerui::ThemeDefinition LineCoffeeThemeDefinition() {
-  const auto theme = LineCoffeeTheme();
+huxerui::ThemeDefinition LineLightThemeDefinition() {
+  const auto theme = LineLightTheme();
   auto definition = huxerui::FlatThemeDefinition(theme);
   auto text_field = huxerui::detail::DefaultTextFieldStyle(theme);
   text_field.variant = huxerui::TextFieldVariant::Standard;
@@ -72,10 +72,10 @@ huxerui::ThemeDefinition LineCoffeeThemeDefinition() {
   definition.Set(std::move(navigation));
 
   auto bottom_sheet = huxerui::BottomSheetStyle::Default();
-  bottom_sheet.scrim = huxerui::Color::Rgb(0, 0, 0, 165.0F / 255.0F);
+  bottom_sheet.scrim = huxerui::Color::Rgb(22, 26, 32, 0.26F);
   bottom_sheet.background = huxerui::Color::Transparent();
   bottom_sheet.shadow = huxerui::Shadow{.color = huxerui::Color::Transparent()};
-  bottom_sheet.corner_radii = huxerui::CornerRadii::Top(24.0F);
+  bottom_sheet.corner_radii = huxerui::CornerRadii(24.0F);
   bottom_sheet.drag_handle = huxerui::Color::Transparent();
   // The legacy panel is capped at 560dp and sits inside 16dp side insets.
   bottom_sheet.maximum_width = 592.0F;

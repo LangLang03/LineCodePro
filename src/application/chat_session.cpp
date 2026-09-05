@@ -12,15 +12,15 @@ std::span<const domain::ChatMessage> ChatSession::Messages() const noexcept {
   return store_->Messages();
 }
 
-std::expected<domain::ChatMessage, SendMessageError> ChatSession::Send(std::string text) {
+std::expected<domain::ChatMessage, SendMessageError>
+ChatSession::Send(std::string text) {
   return send_message_.Execute(std::move(text));
 }
 
-void ChatSession::Clear() noexcept {
-  store_->Clear();
-}
+void ChatSession::Clear() { store_->Clear(); }
 
-ConversationStore& ChatSession::RequireStore(const std::unique_ptr<ConversationStore>& store) {
+ConversationStore &
+ChatSession::RequireStore(const std::unique_ptr<ConversationStore> &store) {
   if (!store) {
     throw std::invalid_argument("ChatSession requires a conversation store");
   }

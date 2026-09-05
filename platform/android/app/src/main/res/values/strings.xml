@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notification_keep_alive_title">LineCode</string>
+    <string name="keep_alive_notification_title">Coding task keep-alive</string>
+    <string name="notification_keep_alive_text">Coding in progress</string>
+    <string name="notification_keep_alive_ticker">LineCode</string>
+</resources>

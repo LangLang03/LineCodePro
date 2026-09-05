@@ -3,10 +3,13 @@
 #include <algorithm>
 #include <cctype>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <ranges>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 #include <app_resources.h>
 #include <huxerui/huxerui.h>
@@ -60,6 +63,39 @@ bool HasVisibleText(const std::string &text) {
       text, [](unsigned char value) { return std::isspace(value) == 0; });
 }
 
+ChatAttachmentNode ToAttachmentNode(const DrawerFileNode &node) {
+  std::vector<ChatAttachmentNode> children;
+  children.reserve(node.children.size());
+  std::ranges::transform(node.children, std::back_inserter(children),
+                         ToAttachmentNode);
+  return ChatAttachmentNode{
+      .name = node.name,
+      .path = node.path,
+      .directory = node.directory,
+      .expanded = node.expanded,
+      .children = std::move(children),
+  };
+}
+
+void CollectExpandedDirectories(const ChatAttachmentNode &node,
+                                std::vector<std::string> &paths) {
+  if (node.directory && node.expanded) {
+    paths.emplace_back(node.path);
+  }
+  for (const auto &child : node.children) {
+    CollectExpandedDirectories(child, paths);
+  }
+}
+
+void TogglePath(std::vector<std::string> &paths, std::string_view path) {
+  const auto found = std::ranges::find(paths, path);
+  if (found == paths.end()) {
+    paths.emplace_back(path);
+  } else {
+    paths.erase(found);
+  }
+}
+
 class ControlledBottomSheet final {
 public:
   ControlledBottomSheet(BottomSheetHandle handle, State<bool> visible,
@@ -99,7 +135,7 @@ private:
   State<std::optional<LayerId>> layer_;
 };
 
-View Header(State<bool> drawer_open,
+View Header(std::function<void()> open_drawer,
             const std::shared_ptr<application::ChatSession> &session,
             State<std::size_t> revision, std::function<void()> show_permissions,
             std::function<void()> show_more) {
@@ -109,8 +145,7 @@ View Header(State<bool> drawer_open,
   };
 
   return Row{
-      HeaderAction(app::images::menu, 19.0F,
-                   [drawer_open] { drawer_open = true; }),
+      HeaderAction(app::images::menu, 19.0F, std::move(open_drawer)),
       Row{
           Text(app::strings::header_project_default)
               .Style(ChatTextStyle(16.0F, FontWeight::Medium)),
@@ -163,9 +198,10 @@ View EmptyConversation(
       }
           .With(Padding(EdgeInsets{.top = 28.0F})),
   }
-      .With(CrossAlign(CrossAxisAlignment::Start), Grow(),
-            Padding(EdgeInsets{
-                .top = 96.0F, .right = 28.0F, .bottom = 64.0F, .left = 28.0F}));
+      .With(
+          CrossAlign(CrossAxisAlignment::Start), Grow(),
+          Padding(EdgeInsets{
+              .top = 104.0F, .right = 28.0F, .bottom = 64.0F, .left = 28.0F}));
 }
 
 View MessageBubble(const domain::ChatMessage &message) {
@@ -210,7 +246,7 @@ View Conversation(
 View Composer(State<TextEditingValue> draft,
               const std::shared_ptr<application::ChatSession> &session,
               State<std::size_t> revision,
-              std::function<void()> show_context_menu) {
+              std::function<void()> show_attachment_picker) {
   auto send = [draft, session, revision] {
     auto result = session->Send(draft->text);
     if (result.has_value()) {
@@ -225,9 +261,9 @@ View Composer(State<TextEditingValue> draft,
       Row{
           ComposerAction(app::images::plus, colors::secondary,
                          Color::Transparent(), true,
-                         std::move(show_context_menu)),
+                         std::move(show_attachment_picker)),
           TextField(draft)
-              .Placeholder(app::strings::composer_hint_default)
+              .Placeholder(app::strings::composer_hint_no_model)
               .Variant(TextFieldVariant::Standard)
               .LineLimits(TextFieldLineLimits::MultiLine(1, 3))
               .VerticalAlign(TextVerticalAlign::Center)
@@ -253,30 +289,30 @@ View Composer(State<TextEditingValue> draft,
 } // namespace
 
 [[huxerui::composable]] View
-ChatScreen(State<bool> drawer_open, State<TextEditingValue> draft,
+ChatScreen(std::function<void()> open_drawer, State<TextEditingValue> draft,
            const std::shared_ptr<application::ChatSession> &session,
-           State<std::size_t> revision) {
+           State<std::size_t> revision, State<DrawerModel> workspace) {
   const auto navigation = UseNavigation<domain::AppRoute>();
   const auto bottom_sheets = UseBottomSheet();
-  auto context_visible = UseState(false);
+  auto attachment_visible = UseState(false);
   auto more_visible = UseState(false);
   auto permission_visible = UseState(false);
-  auto context_layer = UseState(std::optional<LayerId>{});
+  auto attachment_layer = UseState(std::optional<LayerId>{});
   auto more_layer = UseState(std::optional<LayerId>{});
   auto permission_layer = UseState(std::optional<LayerId>{});
   auto permission_mode = UseState(ChatPermissionMode::confirm);
   auto external_storage_granted = UseState(false);
   auto has_saved_command_permissions = UseState(false);
+  auto selected_attachment_paths = UseState(std::vector<std::string>{});
+  auto expanded_attachment_directories = UseState(std::vector<std::string>{});
 
-  const ControlledBottomSheet context_sheet(bottom_sheets, context_visible,
-                                            context_layer);
+  const ControlledBottomSheet attachment_sheet(
+      bottom_sheets, attachment_visible, attachment_layer);
   const ControlledBottomSheet more_sheet(bottom_sheets, more_visible,
                                          more_layer);
   const ControlledBottomSheet permission_sheet(
       bottom_sheets, permission_visible, permission_layer);
 
-  const auto model_label = UseString(app::strings::chat_context_model_default);
-  const auto mode_label = UseString(app::strings::chat_mode_chat);
   const auto storage_permission_description =
       UseString(app::strings::permission_mode_storage_required);
 
@@ -359,52 +395,57 @@ ChatScreen(State<bool> drawer_open, State<TextEditingValue> draft,
     });
   };
 
-  auto show_context = [context_sheet, navigation, show_permission, show_more,
-                       model_label, mode_label] {
-    context_sheet.Show(
-        [navigation, show_permission, show_more, model_label,
-         mode_label](bool visible, std::function<void()> dismiss) {
-          return ChatContextMenu(
-              ChatContextMenuState{
+  auto show_attachments = [attachment_sheet, workspace,
+                           selected_attachment_paths,
+                           expanded_attachment_directories] {
+    std::optional<ChatAttachmentNode> initial_tree;
+    if (workspace->file_tree.has_value()) {
+      initial_tree = ToAttachmentNode(*workspace->file_tree);
+      std::vector<std::string> expanded;
+      CollectExpandedDirectories(*initial_tree, expanded);
+      expanded_attachment_directories = std::move(expanded);
+    }
+
+    attachment_sheet.Show(
+        [workspace, selected_attachment_paths, expanded_attachment_directories](
+            bool visible, std::function<void()> dismiss) {
+          std::optional<ChatAttachmentNode> tree;
+          if (workspace->file_tree.has_value()) {
+            tree = ToAttachmentNode(*workspace->file_tree);
+          }
+          return ChatAttachmentPicker(
+              ChatAttachmentPickerState{
                   .visible = visible,
-                  .model_label = model_label,
-                  .mode_label = mode_label,
+                  .tree = std::move(tree),
+                  .selected_paths = selected_attachment_paths.Get(),
+                  .expanded_directories = expanded_attachment_directories.Get(),
+                  .loading = !workspace->file_tree.has_value(),
               },
-              ChatOverlayCallbacks<ChatContextAction>{
+              ChatAttachmentPickerCallbacks{
                   .on_dismiss_request = std::move(dismiss),
-                  .on_action =
-                      [navigation, show_permission,
-                       show_more](ChatContextAction action) {
-                        switch (action) {
-                        case ChatContextAction::model:
-                          navigation.Push(domain::AppRoute::models);
-                          break;
-                        case ChatContextAction::permissions:
-                          std::invoke(show_permission);
-                          break;
-                        case ChatContextAction::settings:
-                          navigation.Push(domain::AppRoute::settings);
-                          break;
-                        case ChatContextAction::more:
-                          std::invoke(show_more);
-                          break;
-                        case ChatContextAction::files:
-                        case ChatContextAction::image:
-                        case ChatContextAction::mode:
-                        case ChatContextAction::workspace:
-                          // These typed actions are ready for their
-                          // application-service ports.
-                          break;
-                        }
+                  .on_directory_toggled =
+                      [expanded_attachment_directories](std::string path) {
+                        expanded_attachment_directories.Update(
+                            [&path](std::vector<std::string> &paths) {
+                              TogglePath(paths, path);
+                            });
+                      },
+                  .on_file_toggled =
+                      [selected_attachment_paths](ChatAttachmentFile file) {
+                        selected_attachment_paths.Update(
+                            [&file](std::vector<std::string> &paths) {
+                              TogglePath(paths, file.path);
+                            });
                       },
               });
         });
   };
 
   return Column{
-      Header(drawer_open, session, revision, show_permission, show_more),
+      Header(std::move(open_drawer), session, revision, show_permission,
+             show_more),
       Conversation(session, revision.Get(), navigation),
-      Composer(draft, session, revision, show_context),
+      Composer(draft, session, revision, show_attachments),
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::background));

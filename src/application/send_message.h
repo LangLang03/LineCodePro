@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstdint>
 #include <expected>
 #include <string>
 
@@ -14,13 +13,13 @@ enum class SendMessageError : std::uint8_t {
 
 class SendMessage final {
 public:
-  explicit SendMessage(ConversationStore& store) noexcept : store_(store) {}
+  explicit SendMessage(ConversationStore &store) noexcept : store_(store) {}
 
-  [[nodiscard]] std::expected<domain::ChatMessage, SendMessageError> Execute(std::string text);
+  [[nodiscard]] std::expected<domain::ChatMessage, SendMessageError>
+  Execute(std::string text);
 
 private:
-  ConversationStore& store_;
-  std::uint64_t next_id_{1};
+  ConversationStore &store_;
 };
 
 } // namespace linecode::application

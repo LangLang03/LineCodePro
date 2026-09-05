@@ -14,11 +14,13 @@ public:
   explicit ChatSession(std::unique_ptr<ConversationStore> store);
 
   [[nodiscard]] std::span<const domain::ChatMessage> Messages() const noexcept;
-  [[nodiscard]] std::expected<domain::ChatMessage, SendMessageError> Send(std::string text);
-  void Clear() noexcept;
+  [[nodiscard]] std::expected<domain::ChatMessage, SendMessageError>
+  Send(std::string text);
+  void Clear();
 
 private:
-  static ConversationStore& RequireStore(const std::unique_ptr<ConversationStore>& store);
+  static ConversationStore &
+  RequireStore(const std::unique_ptr<ConversationStore> &store);
 
   std::unique_ptr<ConversationStore> store_;
   SendMessage send_message_;
