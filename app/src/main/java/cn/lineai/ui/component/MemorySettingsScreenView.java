@@ -11,7 +11,6 @@ import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
-import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -30,7 +29,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-public final class MemorySettingsScreenView extends ScreenSurfaceView {
+public final class MemorySettingsScreenView extends LinearLayout {
     public interface Listener {
         void onBack();
 
@@ -385,7 +384,7 @@ public final class MemorySettingsScreenView extends ScreenSurfaceView {
     private LinearLayout dialogPanel(Context context) {
         LinearLayout panel = new LinearLayout(context);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackground(LineTheme.rounded(context, LineTheme.BG, 24));
+        panel.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_ELEVATED, 12));
         LineTheme.padding(panel, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
         return panel;
     }

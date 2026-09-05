@@ -40,17 +40,15 @@ public final class SwitchRowView extends LinearLayout {
         labels.addView(title, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         if (desc != null && desc.length() > 0) {
-            TextView description = LineTheme.text(context, desc, 14, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+            TextView description = LineTheme.text(context, desc, LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
             LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-            descParams.topMargin = LineTheme.dp(context, 6);
+            descParams.topMargin = LineTheme.dp(context, 2);
             labels.addView(description, descParams);
         }
 
         Switch toggle = new Switch(context);
         toggle.setChecked(value);
         toggle.setContentDescription(label);
-        toggle.setMinimumHeight(LineTheme.dp(context, 48));
-        setBackground(LineTheme.pressable(context));
         tintSwitch(toggle, listener);
         addView(toggle, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
         setOnClickListener(v -> toggle.setChecked(!toggle.isChecked()));
