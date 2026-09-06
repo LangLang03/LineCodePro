@@ -51,8 +51,10 @@ public:
   virtual ~ErrorLogPlatformActions() = default;
 
   virtual bool CopyText(std::string_view text) = 0;
-  virtual bool OpenText(std::string_view title, std::string_view text,
-                        std::string_view chooser_title) = 0;
+  // Own strings across the asynchronous temporary-file write. Implementations
+  // resume on the Runtime UI thread before presenting platform UI.
+  [[nodiscard]] virtual huxerui::Task<bool>
+  OpenText(std::string title, std::string text, std::string chooser_title) = 0;
 };
 
 } // namespace linecode::application

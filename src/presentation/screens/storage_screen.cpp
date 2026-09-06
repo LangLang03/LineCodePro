@@ -83,7 +83,8 @@ View Summary(const StorageViewState &state) {
           .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
           .With(Padding(EdgeInsets{.top = 4.0F})),
   }
-      .With(Padding(16.0F), CrossAlign(CrossAxisAlignment::Stretch),
+      .With(Frame{.height = 101.33F}, Padding(16.0F),
+            CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::elevated), CornerRadius(12.0F));
 }
 
@@ -118,7 +119,7 @@ View StorageRow(ImageResource icon, StringResource title,
               .With(Padding(EdgeInsets{.top = 2.0F})),
       }.With(CrossAlign(CrossAxisAlignment::End)),
   }
-      .With(Frame{.min_height = 62.0F}, Spacing(12.0F), Padding(12.0F),
+      .With(Frame{.min_height = 64.75F}, Spacing(12.0F), Padding(12.0F),
             CrossAlign(CrossAxisAlignment::Center),
             Background(colors::elevated), CornerRadius(12.0F));
 }
@@ -153,7 +154,7 @@ Task<void> LoadStats(
   std::vector<View> content;
   content.reserve(10);
   content.push_back(Summary(state.Get()));
-  content.push_back(Stack{}.With(Frame{.height = 12.0F}));
+  content.push_back(Stack{}.With(Frame{.height = 11.625F}));
   content.push_back(StorageRow(
       app::images::git_compare, app::strings::screen_storage_row_diff_cache,
       app::strings::screen_storage_desc_diff, state->stats.diff_cache,

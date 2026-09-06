@@ -96,7 +96,8 @@ View SwitchRow(ImageResource icon, StringResource title,
   }
       .OnClick(
           [checked, changed = std::move(row_changed)] { changed(!checked); })
-      .With(Spacing(12.0F), Padding(EdgeInsets::All(16.0F)),
+      .With(Frame{.min_height = 72.4F}, Spacing(12.0F),
+            Padding(EdgeInsets::All(16.0F)),
             CrossAlign(CrossAxisAlignment::Center), Focusable(),
             PointerCursor(PointerCursorKind::Hand));
 }
@@ -117,7 +118,7 @@ View BrowserOptionRow(ImageResource icon, StringResource title,
           .With(Spacing(2.0F), Grow()),
   }
       .OnClick(std::move(select))
-      .With(Frame{.min_height = 56.0F}, Spacing(12.0F),
+      .With(Frame{.min_height = 64.75F}, Spacing(12.0F),
             Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
             CrossAlign(CrossAxisAlignment::Center),
             Background(selected ? colors::accent_muted : Color::Transparent()),
@@ -126,7 +127,7 @@ View BrowserOptionRow(ImageResource icon, StringResource title,
 
 View MarkdownTableRow(StringResource left, StringResource right, bool header,
                       Color background, bool link = false) {
-  const auto style = Label(header ? 13.0F : 12.0F,
+  const auto style = Label(13.0F,
                            header ? FontWeight::Bold : FontWeight::Regular,
                            link ? colors::accent
                                 : header ? colors::text : colors::secondary);
@@ -134,11 +135,12 @@ View MarkdownTableRow(StringResource left, StringResource right, bool header,
   if (link)
     right_style.decoration = TextDecoration::Underline;
   return Row{
-      Text(left).Style(style).With(Grow(), Padding(10.0F)),
+      Text(left).Style(style).With(
+          Grow(), Padding(10.0F), Border(colors::border_light, 0.5F)),
       Text(right).Style(right_style).With(
           Grow(), Padding(10.0F), Border(colors::border_light, 0.5F)),
   }
-      .With(Background(background));
+      .With(Frame{.height = 40.0F}, Background(background));
 }
 
 View CodeSample(bool wraps) {
@@ -190,22 +192,21 @@ View MarkdownPreview(bool code_wrap_enabled) {
   return Column{
       Text(app::strings::screen_output_preview_heading)
           .Style(Label(20.0F, FontWeight::Medium))
-          .With(Padding(EdgeInsets{.top = 8.0F, .bottom = 20.0F})),
+          .With(Padding(EdgeInsets{.top = 9.2F, .bottom = 21.6F})),
       Column{
           MarkdownListItem(app::strings::screen_output_preview_bullet_style),
           MarkdownListItem(app::strings::screen_output_preview_bullet_wrap),
       }
-          .With(Padding(EdgeInsets{.top = 1.0F, .bottom = 7.0F}),
+          .With(Spacing(1.6F),
+                Padding(EdgeInsets{.top = 1.0F, .bottom = 7.0F}),
                 CrossAlign(CrossAxisAlignment::Stretch)),
       Column{
           MarkdownTableRow(app::strings::screen_output_preview_table_type,
                            app::strings::screen_output_preview_table_status,
                            true, colors::surface_light),
-          Divider(),
           MarkdownTableRow(app::strings::screen_output_preview_table_table,
                            app::strings::screen_output_preview_table_enabled,
                            false, colors::surface),
-          Divider(),
           MarkdownTableRow(app::strings::screen_output_preview_table_link,
                            app::strings::screen_output_preview_link_label,
                            false, colors::code, true),

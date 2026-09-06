@@ -30,5 +30,10 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="coding_workspace_background_task" />
         </service>
+        <provider
+            android:name=".platform.ErrorLogViewProvider"
+            android:authorities="${applicationId}.errorlogs"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

@@ -88,8 +88,11 @@ View Section(StringResource title, std::vector<View> rows) {
   }
   return Column{
       Text(title).Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
-          .With(Padding(EdgeInsets{.top = 20.0F, .right = 16.0F,
-                                   .bottom = 12.0F, .left = 16.0F})),
+          .With(Frame{.height = 47.625F},
+                Padding(EdgeInsets{.top = 20.0F,
+                                   .right = 16.0F,
+                                   .bottom = 12.0F,
+                                   .left = 16.0F})),
       LegacySettingsCardFrame{Column(std::move(children))
           .With(CornerRadius(12.0F), Background(colors::elevated),
                 CrossAlign(CrossAxisAlignment::Stretch))},

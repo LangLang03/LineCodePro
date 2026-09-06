@@ -61,7 +61,8 @@ ErrorLogService::Open(std::string_view entry_id, std::string_view title,
     co_return std::unexpected(content.error());
   }
   const std::string safe = RedactErrorLogText(*content);
-  if (!platform_actions_->OpenText(title, safe, chooser_title)) {
+  if (!co_await platform_actions_->OpenText(std::string(title), safe,
+                                            std::string(chooser_title))) {
     co_return PlatformFailure("platform rejected error log text");
   }
   co_return ErrorLogResult<void>{};

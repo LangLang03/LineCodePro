@@ -8,6 +8,7 @@ namespace {
 
 void TestEntryIdentityPolicy() {
   using linecode::application::IsValidErrorLogEntryId;
+  using linecode::application::SafeTemporaryErrorLogFileName;
   assert(IsValidErrorLogEntryId("20260906-http-123.log"));
   assert(IsValidErrorLogEntryId("a.log"));
   assert(!IsValidErrorLogEntryId(".log"));
@@ -17,6 +18,22 @@ void TestEntryIdentityPolicy() {
   assert(!IsValidErrorLogEntryId("nested\\error.log"));
   assert(!IsValidErrorLogEntryId(std::string("bad\0.log", 8)));
   assert(!IsValidErrorLogEntryId(std::string(256, 'a') + ".log"));
+  assert(SafeTemporaryErrorLogFileName("20260906-http.log") ==
+         "20260906-http.log");
+  assert(SafeTemporaryErrorLogFileName("../../token: secret") ==
+         "_.._token__secret.log");
+  assert(SafeTemporaryErrorLogFileName("日志") == "______.log");
+  assert(SafeTemporaryErrorLogFileName("") == "linecode-error.log");
+  assert(SafeTemporaryErrorLogFileName(std::string(200, 'a')).size() == 100U);
+  const std::string nul_title("line\0code", 9);
+  for (const std::string &title :
+       {std::string("../secret"), std::string("a/b"), std::string("a\\b"),
+        std::string(".hidden"), nul_title}) {
+    const std::string safe = SafeTemporaryErrorLogFileName(title);
+    assert(IsValidErrorLogEntryId(safe));
+    assert(safe.find('/') == std::string::npos);
+    assert(safe.find('\\') == std::string::npos);
+  }
 }
 
 void TestSecretRedaction() {

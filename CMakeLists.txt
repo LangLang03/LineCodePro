@@ -49,8 +49,13 @@ huxerui_use_library(linecodepro
 )
 
 if (NOT HUXERUI_LIBRARY_GRAPH_ONLY)
+    find_package(ZLIB REQUIRED)
     target_include_directories(linecodepro PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_link_libraries(linecodepro PRIVATE ZLIB::ZLIB)
     target_compile_features(linecodepro PRIVATE cxx_std_23)
+    if (WIN32)
+        target_link_libraries(linecodepro PRIVATE shell32)
+    endif ()
     set_target_properties(linecodepro PROPERTIES
             CXX_STANDARD 23
             CXX_STANDARD_REQUIRED ON
