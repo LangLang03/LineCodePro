@@ -48,6 +48,22 @@ DrawerFileNode ToDrawerNode(const domain::ProjectFileNode &node) {
   };
 }
 
+std::vector<DrawerConversation>
+ToDrawerConversations(const application::ChatSession &session) {
+  std::vector<DrawerConversation> conversations;
+  conversations.reserve(session.Conversations().size());
+  std::ranges::transform(
+      session.Conversations(), std::back_inserter(conversations),
+      [](const application::ConversationSummary &summary) {
+        return DrawerConversation{
+            .id = summary.id,
+            .title = summary.title,
+            .updated_at_millis = summary.updated_at_millis,
+        };
+      });
+  return conversations;
+}
+
 bool ToggleDirectory(DrawerFileNode &node, std::string_view path) {
   if (node.path == path && node.directory) {
     node.expanded = !node.expanded;
@@ -105,7 +121,17 @@ HomeScreen(std::shared_ptr<application::ChatSession> initial_session,
   const DrawerActions drawer_actions{
       .on_new_conversation =
           [session, revision] {
-            session.Get()->Clear();
+            session.Get()->StartNewConversation();
+            revision += 1;
+          },
+      .on_conversation_selected =
+          [session, revision](std::string_view id) {
+            session.Get()->SelectConversation(id);
+            revision += 1;
+          },
+      .on_conversation_deleted =
+          [session, revision](std::string_view id) {
+            session.Get()->DeleteConversation(id);
             revision += 1;
           },
       .on_file_node_selected =
@@ -134,6 +160,11 @@ HomeScreen(std::shared_ptr<application::ChatSession> initial_session,
           },
   };
 
+  DrawerModel visible_drawer = drawer_model.Get();
+  visible_drawer.conversations = ToDrawerConversations(*session.Get());
+  visible_drawer.selected_conversation_id =
+      std::string{session.Get()->CurrentConversationId()};
+
   View centered_chat =
       Stack{
           ChatScreen([drawer_open] { drawer_open = true; }, draft,
@@ -145,7 +176,7 @@ HomeScreen(std::shared_ptr<application::ChatSession> initial_session,
 
   return DrawerLayout(
       centered_chat,
-      StartDrawer(Drawer(drawer_open, selected_drawer_tab, drawer_model.Get(),
+      StartDrawer(Drawer(drawer_open, selected_drawer_tab, visible_drawer,
                          drawer_actions))
           .Open(drawer_open.Get())
           .OnOpenChanged([drawer_open](bool open) { drawer_open = open; }));

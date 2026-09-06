@@ -97,3 +97,67 @@ endif ()
 
 add_test(NAME legacy_conversation_schema_tests
         COMMAND legacy_conversation_schema_tests)
+
+add_executable(settings_store_schema_tests
+        settings_store_schema_tests.cpp
+)
+target_include_directories(settings_store_schema_tests PRIVATE ../src)
+target_compile_features(settings_store_schema_tests PRIVATE cxx_std_23)
+target_link_libraries(settings_store_schema_tests PRIVATE SQLite3::SQLite3)
+set_target_properties(settings_store_schema_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(settings_store_schema_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(settings_store_schema_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+add_test(NAME settings_store_schema_tests
+        COMMAND settings_store_schema_tests)
+
+add_executable(sse_decoder_tests
+        sse_decoder_tests.cpp
+        ../src/infrastructure/sse_decoder.cpp
+)
+target_include_directories(sse_decoder_tests PRIVATE ../src)
+target_compile_features(sse_decoder_tests PRIVATE cxx_std_23)
+set_target_properties(sse_decoder_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(sse_decoder_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(sse_decoder_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+add_test(NAME sse_decoder_tests COMMAND sse_decoder_tests)
+
+add_executable(model_store_selection_tests
+        model_store_selection_tests.cpp
+)
+target_include_directories(model_store_selection_tests PRIVATE ../src)
+target_compile_features(model_store_selection_tests PRIVATE cxx_std_23)
+target_link_libraries(model_store_selection_tests PRIVATE SQLite3::SQLite3)
+set_target_properties(model_store_selection_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(model_store_selection_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(model_store_selection_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+add_test(NAME model_store_selection_tests
+        COMMAND model_store_selection_tests)

@@ -34,6 +34,13 @@ public:
   [[nodiscard]] std::uint64_t AllocateMessageId() noexcept override;
   void Append(domain::ChatMessage message) override;
   void Clear() override;
+  [[nodiscard]] std::span<const application::ConversationSummary>
+  Conversations() const noexcept override;
+  [[nodiscard]] std::string_view
+  CurrentConversationId() const noexcept override;
+  void StartNewConversation() override;
+  void SelectConversation(std::string_view id) override;
+  void DeleteConversation(std::string_view id) override;
 
   [[nodiscard]] std::string LastPersistenceError() const;
 
@@ -43,7 +50,7 @@ private:
   [[nodiscard]] static huxerui::Task<void>
   FlushAsync(std::shared_ptr<State> state);
   [[nodiscard]] static huxerui::Task<huxerui::sqlite::Result<void>>
-  PersistPendingAsync(std::shared_ptr<State> state);
+  ProcessNextAsync(std::shared_ptr<State> state);
 
   std::shared_ptr<State> state_;
 };

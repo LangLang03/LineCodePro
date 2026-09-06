@@ -181,40 +181,46 @@ EnsureCompatibleSchemaAsync(const Database &database) {
       [](Transaction &transaction) { return ExecuteSchema(transaction); });
 }
 
-huxerui::Task<Result<std::string>>
-FindOrCreateCurrentConversationAsync(const Database &database) {
-  auto current = co_await database.QueryAsync<std::string>(
-      "SELECT id FROM conversations WHERE current <> 0 "
-      "ORDER BY updated_at DESC LIMIT 1",
-      [](const RowView &row) { return row.Get<std::string>(0); });
-  if (!current) {
-    co_return current.Error();
-  }
-  if (!current->empty()) {
-    co_return std::move(current->front());
-  }
+std::string NewConversationId() {
+  const auto now = std::chrono::duration_cast<std::chrono::microseconds>(
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count();
+  return "linecodepro-conversation:" + std::to_string(now);
+}
 
-  const auto timestamp = NowMilliseconds();
-  std::string id = "linecodepro-conversation:" + std::to_string(timestamp);
-  auto inserted = co_await database.ExecuteAsync(
-      "INSERT INTO conversations "
-      "(id, title, project_id, created_at, updated_at, current, raw_json) "
-      "VALUES (?, ?, NULL, ?, ?, 1, NULL)",
-      id, std::string{"New conversation"}, timestamp, timestamp);
-  if (!inserted) {
-    co_return inserted.Error();
+Result<application::ConversationSummary>
+DecodeConversationSummary(const RowView &row) {
+  auto id = row.Get<std::string>(0);
+  if (!id) {
+    return id.Error();
   }
-  co_return id;
+  auto title = row.Get<std::string>(1);
+  if (!title) {
+    return title.Error();
+  }
+  auto updated_at = row.Get<std::int64_t>(2);
+  if (!updated_at) {
+    return updated_at.Error();
+  }
+  return application::ConversationSummary{
+      .id = std::move(*id),
+      .title = std::move(*title),
+      .updated_at_millis = *updated_at,
+  };
 }
 
 } // namespace
 
 struct SqliteConversationStore::State final {
   enum class Phase : std::uint8_t { waiting, hydrating, ready, failed };
-  enum class Operation : std::uint8_t { append, clear };
+  enum class Operation : std::uint8_t { append, clear, select, erase };
 
   struct Event final {
     Operation operation{Operation::append};
+    std::string conversation_id;
+    std::string conversation_title{"New conversation"};
+    std::int64_t conversation_created_at{};
+    std::uint64_t selection_generation{};
     domain::ChatMessage message;
     std::int64_t local_order{-1};
     std::int64_t timestamp{NowMilliseconds()};
@@ -241,10 +247,13 @@ struct SqliteConversationStore::State final {
   Phase phase{Phase::waiting};
   std::optional<Database> database;
   std::string conversation_id;
+  std::int64_t conversation_created_at{};
+  std::vector<application::ConversationSummary> conversations;
   std::vector<domain::ChatMessage> messages;
   std::vector<Event> pending;
   std::int64_t next_local_order{};
   std::uint64_t next_message_id{};
+  application::ConversationSelectionBarrier selection_barrier;
   bool flush_running{};
   std::string last_error;
 };
@@ -288,25 +297,49 @@ SqliteConversationStore::InitializeAsync(huxerui::File database_file) {
     co_return schema.Error();
   }
 
-  auto conversation = co_await FindOrCreateCurrentConversationAsync(*opened);
-  if (!conversation) {
-    state_->Fail(conversation.Error());
-    co_return conversation.Error();
+  auto summaries =
+      co_await opened->QueryAsync<application::ConversationSummary>(
+          std::string{legacy_schema::list_visible_conversations},
+          DecodeConversationSummary);
+  if (!summaries) {
+    state_->Fail(summaries.Error());
+    co_return summaries.Error();
   }
 
-  auto stored = co_await opened->QueryAsync<StoredMessage>(
-      "SELECT id, local_order, role, content FROM messages "
-      "WHERE conversation_id = ? AND hidden = 0 ORDER BY local_order",
-      DecodeStoredMessage, *conversation);
-  if (!stored) {
-    state_->Fail(stored.Error());
-    co_return stored.Error();
+  auto current = co_await opened->QueryAsync<std::pair<std::string, std::int64_t>>(
+      std::string{legacy_schema::find_resume_conversation},
+      [](const RowView &row) -> Result<std::pair<std::string, std::int64_t>> {
+        auto id = row.Get<std::string>(0);
+        if (!id) {
+          return id.Error();
+        }
+        auto created_at = row.Get<std::int64_t>(1);
+        if (!created_at) {
+          return created_at.Error();
+        }
+        return std::pair{std::move(*id), *created_at};
+      });
+  if (!current) {
+    state_->Fail(current.Error());
+    co_return current.Error();
+  }
+
+  std::vector<StoredMessage> stored;
+  if (!current->empty()) {
+    auto loaded = co_await opened->QueryAsync<StoredMessage>(
+        std::string{legacy_schema::load_visible_messages},
+        DecodeStoredMessage, current->front().first);
+    if (!loaded) {
+      state_->Fail(loaded.Error());
+      co_return loaded.Error();
+    }
+    stored = std::move(*loaded);
   }
 
   std::vector<domain::ChatMessage> hydrated;
-  hydrated.reserve(stored->size() + state_->pending.size());
+  hydrated.reserve(stored.size());
   std::int64_t next_order = 0;
-  for (const auto &row : *stored) {
+  for (const auto &row : stored) {
     if (row.local_order < 0) {
       continue;
     }
@@ -324,19 +357,28 @@ SqliteConversationStore::InitializeAsync(huxerui::File database_file) {
     next_order = std::max(next_order, row.local_order + 1);
   }
 
-  for (auto &event : state_->pending) {
-    if (event.operation == State::Operation::clear) {
-      hydrated.clear();
-      next_order = 0;
-      continue;
+  const bool has_local_state = !state_->pending.empty() ||
+                               !state_->conversation_id.empty() ||
+                               !state_->messages.empty();
+  if (!has_local_state) {
+    state_->messages = std::move(hydrated);
+    state_->next_local_order = next_order;
+    if (!current->empty()) {
+      state_->conversation_id = std::move(current->front().first);
+      state_->conversation_created_at = current->front().second;
     }
-    event.local_order = next_order++;
-    hydrated.push_back(event.message);
   }
 
-  state_->messages = std::move(hydrated);
-  state_->next_local_order = next_order;
-  state_->conversation_id = std::move(*conversation);
+  for (auto &summary : *summaries) {
+    const auto duplicate = std::ranges::find(
+        state_->conversations, summary.id,
+        &application::ConversationSummary::id);
+    if (duplicate == state_->conversations.end()) {
+      state_->conversations.push_back(std::move(summary));
+    }
+  }
+  std::ranges::sort(state_->conversations, std::greater{},
+                    &application::ConversationSummary::updated_at_millis);
   state_->database = std::move(*opened);
   state_->phase = State::Phase::ready;
   state_->last_error.clear();
@@ -358,26 +400,128 @@ std::uint64_t SqliteConversationStore::AllocateMessageId() noexcept {
 }
 
 void SqliteConversationStore::Append(domain::ChatMessage message) {
+  if (state_->conversation_id.empty()) {
+    state_->conversation_id = NewConversationId();
+    state_->conversation_created_at = NowMilliseconds();
+    state_->next_local_order = 0;
+  }
   if (message.id >= state_->next_message_id &&
       message.id != std::numeric_limits<std::uint64_t>::max()) {
     state_->next_message_id = message.id + 1U;
   }
   state_->messages.push_back(message);
   State::Event event{.operation = State::Operation::append,
+                     .conversation_id = state_->conversation_id,
+                     .conversation_created_at =
+                         state_->conversation_created_at,
+                     .selection_generation =
+                         state_->selection_barrier.Generation(),
                      .message = std::move(message)};
-  if (state_->phase == State::Phase::ready) {
+  if (state_->selection_barrier.DefersAppendTo(state_->conversation_id)) {
+    event.local_order = -1;
+  } else {
     event.local_order = state_->next_local_order++;
   }
+  const auto summary = std::ranges::find(
+      state_->conversations, state_->conversation_id,
+      &application::ConversationSummary::id);
+  if (summary == state_->conversations.end()) {
+    state_->conversations.insert(
+        state_->conversations.begin(),
+        application::ConversationSummary{
+            .id = state_->conversation_id,
+            .title = event.conversation_title,
+            .updated_at_millis = event.timestamp,
+        });
+  } else {
+    summary->updated_at_millis = event.timestamp;
+    std::ranges::rotate(state_->conversations.begin(), summary,
+                        std::next(summary));
+  }
   state_->pending.push_back(std::move(event));
+  state_->NotifyChanged();
   ScheduleFlush(state_);
 }
 
 void SqliteConversationStore::Clear() {
   state_->messages.clear();
-  if (state_->phase == State::Phase::ready) {
+  state_->next_local_order = 0;
+  if (!state_->conversation_id.empty()) {
+    state_->pending.push_back(State::Event{
+        .operation = State::Operation::clear,
+        .conversation_id = state_->conversation_id,
+    });
+  }
+  state_->NotifyChanged();
+  ScheduleFlush(state_);
+}
+
+std::span<const application::ConversationSummary>
+SqliteConversationStore::Conversations() const noexcept {
+  return state_->conversations;
+}
+
+std::string_view
+SqliteConversationStore::CurrentConversationId() const noexcept {
+  return state_->conversation_id;
+}
+
+void SqliteConversationStore::StartNewConversation() {
+  state_->selection_barrier.Invalidate();
+  state_->messages.clear();
+  state_->conversation_id = NewConversationId();
+  state_->conversation_created_at = NowMilliseconds();
+  state_->next_local_order = 0;
+  state_->NotifyChanged();
+}
+
+void SqliteConversationStore::SelectConversation(std::string_view id) {
+  if (id.empty() || id == state_->conversation_id ||
+      std::ranges::find(state_->conversations, id,
+                        &application::ConversationSummary::id) ==
+          state_->conversations.end()) {
+    return;
+  }
+  const auto generation = state_->selection_barrier.Begin(std::string{id});
+  state_->messages.clear();
+  state_->conversation_id = std::string{id};
+  state_->conversation_created_at = 0;
+  state_->next_local_order = 0;
+  state_->pending.push_back(State::Event{
+      .operation = State::Operation::select,
+      .conversation_id = std::string{id},
+      .selection_generation = generation,
+  });
+  state_->NotifyChanged();
+  ScheduleFlush(state_);
+}
+
+void SqliteConversationStore::DeleteConversation(std::string_view id) {
+  if (id.empty()) {
+    return;
+  }
+  const std::string owned_id{id};
+  const auto summary = std::ranges::find(
+      state_->conversations, owned_id,
+      &application::ConversationSummary::id);
+  if (summary == state_->conversations.end()) {
+    return;
+  }
+  if (owned_id == state_->conversation_id) {
+    state_->selection_barrier.Invalidate();
+  }
+  state_->conversations.erase(summary);
+  if (owned_id == state_->conversation_id) {
+    state_->messages.clear();
+    state_->conversation_id.clear();
+    state_->conversation_created_at = 0;
     state_->next_local_order = 0;
   }
-  state_->pending.push_back(State::Event{.operation = State::Operation::clear});
+  state_->pending.push_back(State::Event{
+      .operation = State::Operation::erase,
+      .conversation_id = owned_id,
+  });
+  state_->NotifyChanged();
   ScheduleFlush(state_);
 }
 
@@ -403,61 +547,248 @@ void SqliteConversationStore::ScheduleFlush(
 }
 
 huxerui::Task<Result<void>>
-SqliteConversationStore::PersistPendingAsync(std::shared_ptr<State> state) {
+SqliteConversationStore::ProcessNextAsync(std::shared_ptr<State> state) {
   if (!state->database || state->pending.empty()) {
     co_return Result<void>{};
   }
 
-  auto batch = std::move(state->pending);
-  state->pending.clear();
-  const auto conversation_id = state->conversation_id;
-  const auto result = co_await state->database->TransactionAsync(
-      [batch, conversation_id](Transaction &transaction) -> Result<void> {
-        for (const auto &event : batch) {
-          Result<huxerui::sqlite::ExecuteResult> executed =
-              event.operation == State::Operation::clear
-                  ? transaction.Execute(
-                        "DELETE FROM messages WHERE conversation_id = ?",
-                        conversation_id)
-                  : transaction.Execute("INSERT INTO messages "
-                                        "(id, conversation_id, local_order, "
-                                        "role, content, reasoning_content, "
-                                        "timestamp, streaming, hidden, "
-                                        "exclude_from_context, tool_call_id, "
-                                        "tool_name, is_error, raw_json) "
-                                        "VALUES (?, ?, ?, ?, ?, NULL, ?, 0, 0, "
-                                        "0, NULL, NULL, 0, NULL)",
-                                        std::string{kOwnedMessagePrefix} +
-                                            std::to_string(event.message.id),
-                                        conversation_id, event.local_order,
-                                        RoleName(event.message.role),
-                                        event.message.content, event.timestamp);
-          if (!executed) {
-            return executed.Error();
+  const State::Event event = state->pending.front();
+  Result<void> result;
+
+  if (event.operation == State::Operation::append) {
+    result = co_await state->database->TransactionAsync(
+        [event](Transaction &transaction) -> Result<void> {
+          std::int64_t local_order = event.local_order;
+          if (local_order < 0) {
+            auto orders = transaction.Query<std::int64_t>(
+                "SELECT COALESCE(MAX(local_order) + 1, 0) FROM messages "
+                "WHERE conversation_id = ?",
+                [](const RowView &row) { return row.Get<std::int64_t>(0); },
+                event.conversation_id);
+            if (!orders) {
+              return orders.Error();
+            }
+            if (orders->size() != 1) {
+              return Error{ErrorCode::Decode,
+                           "message order query returned no value",
+                           "append conversation message"};
+            }
+            local_order = orders->front();
           }
+          auto unset_current = transaction.Execute(
+              "UPDATE conversations SET current = 0 "
+              "WHERE current <> 0 AND id <> ?",
+              event.conversation_id);
+          if (!unset_current) {
+            return unset_current.Error();
+          }
+          auto conversation = transaction.Execute(
+              "INSERT INTO conversations "
+              "(id, title, project_id, created_at, updated_at, current, "
+              "raw_json) VALUES (?, ?, NULL, ?, ?, 1, NULL) "
+              "ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at, "
+              "current = 1",
+              event.conversation_id, event.conversation_title,
+              event.conversation_created_at, event.timestamp);
+          if (!conversation) {
+            return conversation.Error();
+          }
+          const std::string message_id =
+              std::string{kOwnedMessagePrefix} +
+              std::to_string(event.message.id);
+          auto message = transaction.Execute(
+              "INSERT INTO messages "
+              "(id, conversation_id, local_order, role, content, "
+              "reasoning_content, timestamp, streaming, hidden, "
+              "exclude_from_context, tool_call_id, tool_name, is_error, "
+              "raw_json) VALUES (?, ?, ?, ?, '', NULL, ?, 0, 0, 0, NULL, "
+              "NULL, 0, NULL) "
+              "ON CONFLICT(id) DO UPDATE SET "
+              "conversation_id = excluded.conversation_id, "
+              "local_order = excluded.local_order, role = excluded.role, "
+              "content = '', timestamp = excluded.timestamp",
+              message_id, event.conversation_id, local_order,
+              RoleName(event.message.role), event.timestamp);
+          if (!message) {
+            return message.Error();
+          }
+          auto old_chunks = transaction.Execute(
+              "DELETE FROM message_text_chunks "
+              "WHERE message_id = ? AND field_name = 'content'",
+              message_id);
+          if (!old_chunks) {
+            return old_chunks.Error();
+          }
+          const auto chunks =
+              legacy_schema::SplitMessageText(event.message.content);
+          for (std::size_t index = 0; index < chunks.size(); ++index) {
+            auto chunk = transaction.Execute(
+                "INSERT INTO message_text_chunks "
+                "(message_id, field_name, chunk_order, content) "
+                "VALUES (?, 'content', ?, ?)",
+                message_id, static_cast<std::int64_t>(index),
+                std::string{chunks[index]});
+            if (!chunk) {
+              return chunk.Error();
+            }
+          }
+          return {};
+        });
+  } else if (event.operation == State::Operation::clear) {
+    const auto cleared = co_await state->database->ExecuteAsync(
+        "DELETE FROM messages WHERE conversation_id = ?",
+        event.conversation_id);
+    result = cleared ? Result<void>{} : Result<void>{cleared.Error()};
+  } else if (event.operation == State::Operation::erase) {
+    result = co_await state->database->TransactionAsync(
+        [id = event.conversation_id](Transaction &transaction)
+            -> Result<void> {
+          auto index_tables = transaction.Query<std::string>(
+              "SELECT name FROM sqlite_master WHERE type = 'table' "
+              "AND name IN ('conversation_index', "
+              "'conversation_index_fts')",
+              [](const RowView &row) { return row.Get<std::string>(0); });
+          if (!index_tables) {
+            return index_tables.Error();
+          }
+          const auto has_table = [&index_tables](std::string_view name) {
+            return std::ranges::find(*index_tables, name) !=
+                   index_tables->end();
+          };
+          if (has_table("conversation_index")) {
+            auto removed = transaction.Execute(
+                "DELETE FROM conversation_index WHERE conversation_id = ?",
+                id);
+            if (!removed) {
+              return removed.Error();
+            }
+          }
+          if (has_table("conversation_index_fts")) {
+            auto removed = transaction.Execute(
+                "DELETE FROM conversation_index_fts "
+                "WHERE conversation_id = ?",
+                id);
+            static_cast<void>(removed);
+          }
+          auto erased = transaction.Execute(
+              "DELETE FROM conversations WHERE id = ?", id);
+          return erased ? Result<void>{} : Result<void>{erased.Error()};
+        });
+    if (result && state->conversation_id == event.conversation_id) {
+      state->messages.clear();
+      state->conversation_id.clear();
+      state->conversation_created_at = 0;
+      state->next_local_order = 0;
+      state->NotifyChanged();
+    }
+  } else {
+    if (!state->selection_barrier.Matches(event.selection_generation,
+                                          event.conversation_id) ||
+        std::ranges::find(state->conversations, event.conversation_id,
+                          &application::ConversationSummary::id) ==
+            state->conversations.end()) {
+      state->selection_barrier.Settle(event.selection_generation);
+      state->pending.erase(state->pending.begin());
+      co_return Result<void>{};
+    }
+    auto metadata =
+        co_await state->database->QueryAsync<std::int64_t>(
+            "SELECT created_at FROM conversations WHERE id = ? LIMIT 1",
+            [](const RowView &row) { return row.Get<std::int64_t>(0); },
+            event.conversation_id);
+    if (!metadata) {
+      result = metadata.Error();
+    } else if (metadata->empty()) {
+      result = Error{ErrorCode::NotFound, "conversation no longer exists",
+                     "select conversation"};
+    } else {
+      auto stored = co_await state->database->QueryAsync<StoredMessage>(
+          std::string{legacy_schema::load_visible_messages},
+          DecodeStoredMessage, event.conversation_id);
+      if (!stored) {
+        result = stored.Error();
+      } else if (!state->selection_barrier.Matches(
+                     event.selection_generation, event.conversation_id)) {
+        result = Result<void>{};
+      } else {
+        auto selected = co_await state->database->TransactionAsync(
+            [id = event.conversation_id](Transaction &transaction)
+                -> Result<void> {
+              auto reset = transaction.Execute(
+                  "UPDATE conversations SET current = 0 WHERE current <> 0");
+              if (!reset) {
+                return reset.Error();
+              }
+              auto set = transaction.Execute(
+                  "UPDATE conversations SET current = 1 WHERE id = ?", id);
+              return set ? Result<void>{} : Result<void>{set.Error()};
+            });
+        if (!selected) {
+          result = selected.Error();
+        } else if (state->selection_barrier.Matches(
+                       event.selection_generation, event.conversation_id)) {
+          std::vector<domain::ChatMessage> loaded;
+          loaded.reserve(stored->size());
+          std::int64_t next_order = 0;
+          for (const auto &row : *stored) {
+            if (row.local_order < 0) {
+              continue;
+            }
+            const auto fallback_id =
+                static_cast<std::uint64_t>(row.local_order) + 1U;
+            loaded.push_back(domain::ChatMessage{
+                .id = ParseOwnedMessageId(row.id).value_or(fallback_id),
+                .role = ParseRole(row.role),
+                .content = row.content,
+            });
+            next_order = std::max(next_order, row.local_order + 1);
+          }
+          for (auto pending = std::next(state->pending.begin());
+               pending != state->pending.end(); ++pending) {
+            if (pending->operation != State::Operation::append ||
+                pending->conversation_id != event.conversation_id ||
+                pending->selection_generation != event.selection_generation) {
+              continue;
+            }
+            if (pending->local_order < 0) {
+              pending->local_order = next_order++;
+            } else {
+              next_order = std::max(next_order, pending->local_order + 1);
+            }
+            loaded.push_back(pending->message);
+          }
+          state->messages = std::move(loaded);
+          state->conversation_id = event.conversation_id;
+          state->conversation_created_at = metadata->front();
+          state->next_local_order = next_order;
+          state->selection_barrier.Settle(event.selection_generation);
+          state->next_message_id = InitialMessageId();
+          for (const auto &message : state->messages) {
+            if (message.id >= state->next_message_id &&
+                message.id != std::numeric_limits<std::uint64_t>::max()) {
+              state->next_message_id = message.id + 1U;
+            }
+          }
+          state->NotifyChanged();
+          result = Result<void>{};
+        } else {
+          result = Result<void>{};
         }
-        auto touched = transaction.Execute(
-            "UPDATE conversations SET updated_at = ? WHERE id = ?",
-            NowMilliseconds(), conversation_id);
-        if (!touched) {
-          return touched.Error();
-        }
-        return {};
-      });
+      }
+    }
+  }
 
   if (!result) {
-    batch.insert(batch.end(), std::make_move_iterator(state->pending.begin()),
-                 std::make_move_iterator(state->pending.end()));
-    state->pending = std::move(batch);
     co_return result.Error();
   }
+  state->pending.erase(state->pending.begin());
   co_return Result<void>{};
 }
 
 huxerui::Task<void>
 SqliteConversationStore::FlushAsync(std::shared_ptr<State> state) {
   while (!state->pending.empty()) {
-    auto persisted = co_await PersistPendingAsync(state);
+    auto persisted = co_await ProcessNextAsync(state);
     if (!persisted) {
       state->Fail(persisted.Error());
       state->flush_running = false;

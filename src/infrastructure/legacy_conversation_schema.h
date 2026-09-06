@@ -1,7 +1,11 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace linecode::infrastructure::legacy_schema {
 
@@ -9,6 +13,72 @@ namespace linecode::infrastructure::legacy_schema {
 // Keep these declarations compatible with LineCodeSchema.java; other bounded
 // stores own the remaining legacy tables.
 inline constexpr int user_version = 4;
+inline constexpr std::size_t message_text_chunk_bytes = 64U * 1024U;
+
+inline std::vector<std::string_view>
+SplitMessageText(std::string_view content) {
+  std::vector<std::string_view> chunks;
+  for (std::size_t start = 0; start < content.size();) {
+    std::size_t end = std::min(start + message_text_chunk_bytes, content.size());
+    if (end < content.size()) {
+      while (end > start &&
+             (static_cast<unsigned char>(content[end]) & 0xC0U) == 0x80U) {
+        --end;
+      }
+    }
+    if (end == start) {
+      end = std::min(start + message_text_chunk_bytes, content.size());
+    }
+    chunks.emplace_back(content.substr(start, end - start));
+    start = end;
+  }
+  return chunks;
+}
+
+// Legacy v4 stores message text in ordered chunks and leaves the compatibility
+// column empty. A non-empty chunk stream is authoritative; older unchunked
+// rows fall back to messages.content.
+inline constexpr std::string_view load_visible_messages = R"sql(
+SELECT m.id, m.local_order, m.role,
+       COALESCE(
+         NULLIF((
+           SELECT group_concat(ordered_chunk.content, '')
+           FROM (
+             SELECT content
+             FROM message_text_chunks
+             WHERE message_id = m.id AND field_name = 'content'
+             ORDER BY chunk_order
+           ) AS ordered_chunk
+         ), ''),
+         m.content,
+         ''
+       )
+FROM messages AS m
+WHERE m.conversation_id = ? AND m.hidden = 0
+ORDER BY m.local_order
+)sql";
+
+inline constexpr std::string_view list_visible_conversations = R"sql(
+SELECT id, title, updated_at FROM conversations
+WHERE EXISTS (
+  SELECT 1 FROM messages
+  WHERE conversation_id = conversations.id AND hidden = 0
+  AND role NOT IN ('system', 'tool')
+)
+ORDER BY updated_at DESC
+)sql";
+
+inline constexpr std::string_view find_resume_conversation = R"sql(
+SELECT c.id, c.created_at FROM conversations AS c
+WHERE EXISTS (
+  SELECT 1 FROM messages AS m
+  WHERE m.conversation_id = c.id AND m.hidden = 0
+  AND m.role NOT IN ('system', 'tool')
+)
+ORDER BY CASE WHEN c.current = 1 THEN 0 ELSE 1 END,
+         c.updated_at DESC
+LIMIT 1
+)sql";
 
 inline constexpr std::string_view create_conversations = R"sql(
 CREATE TABLE IF NOT EXISTS conversations (

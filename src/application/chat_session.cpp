@@ -19,6 +19,29 @@ ChatSession::Send(std::string text) {
 
 void ChatSession::Clear() { store_->Clear(); }
 
+std::span<const ConversationSummary>
+ChatSession::Conversations() const noexcept {
+  return store_->Conversations();
+}
+
+std::string_view ChatSession::CurrentConversationId() const noexcept {
+  return store_->CurrentConversationId();
+}
+
+void ChatSession::StartNewConversation() { store_->StartNewConversation(); }
+
+void ChatSession::SelectConversation(std::string_view id) {
+  if (!id.empty()) {
+    store_->SelectConversation(id);
+  }
+}
+
+void ChatSession::DeleteConversation(std::string_view id) {
+  if (!id.empty()) {
+    store_->DeleteConversation(id);
+  }
+}
+
 ConversationStore &
 ChatSession::RequireStore(const std::unique_ptr<ConversationStore> &store) {
   if (!store) {

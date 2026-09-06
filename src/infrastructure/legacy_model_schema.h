@@ -25,4 +25,30 @@ CREATE TABLE IF NOT EXISTS model_configs (
 )
 )sql";
 
+inline constexpr std::string_view clear_selection = R"sql(
+UPDATE model_configs SET selected = 0
+)sql";
+
+inline constexpr std::string_view select_id = R"sql(
+UPDATE model_configs SET selected = 1, updated_at = ? WHERE id = ?
+)sql";
+
+inline constexpr std::string_view selected_id = R"sql(
+SELECT id
+FROM model_configs
+WHERE selected = 1
+ORDER BY updated_at DESC
+LIMIT 1
+)sql";
+
+// This fallback deliberately mirrors the legacy Java repository. In
+// particular, non-standard INTEGER selected values retain SQLite's numeric
+// DESC ordering instead of being normalized to booleans.
+inline constexpr std::string_view fallback_model_id = R"sql(
+SELECT id
+FROM model_configs
+ORDER BY selected DESC, updated_at DESC
+LIMIT 1
+)sql";
+
 } // namespace linecode::infrastructure::legacy_model_schema

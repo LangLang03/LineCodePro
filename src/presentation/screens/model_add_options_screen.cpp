@@ -41,7 +41,8 @@ View Header(const ModelAddOptionsActions &actions) {
       Stack{Text(app::strings::model_add_options_title)
                 .Style(Label(17.0F, FontWeight::Bold))}
           .With(Grow(),
-                Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+                Offset(Point{0.0F, 0.76F})),
       Spacer().With(Frame{.width = 36.0F, .height = 36.0F}),
   }
       .With(Frame{.min_height = 60.0F},
@@ -51,6 +52,7 @@ View Header(const ModelAddOptionsActions &actions) {
 
 View OptionCard(ImageResource icon, StringVariant title, StringVariant detail,
                 std::function<void()> action) {
+  constexpr float vertical_padding = 15.8F;
   return Row{
       Stack{Glyph(std::move(icon), 22.0F, colors::accent)}.With(
           Frame{.width = 44.0F, .height = 44.0F},
@@ -62,15 +64,18 @@ View OptionCard(ImageResource icon, StringVariant title, StringVariant detail,
               .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
               .With(Padding(EdgeInsets{.top = 4.0F})),
       }
-          .With(Grow()),
+          .With(Grow(), Offset(Point{0.38F, -1.9F})),
       Glyph(app::images::chevron_right, 17.0F, colors::tertiary),
   }
       .OnClick([action = std::move(action)] {
         if (action)
           std::invoke(action);
       })
-      .With(Frame{.min_height = 93.0F}, Spacing(12.0F),
-            Padding(EdgeInsets::All(16.0F)),
+      .With(Frame{.min_height = 92.6F}, Spacing(12.0F),
+            Padding(EdgeInsets{.top = vertical_padding,
+                               .right = 16.0F,
+                               .bottom = vertical_padding,
+                               .left = 16.0F}),
             CrossAlign(CrossAxisAlignment::Center),
             Background(colors::elevated),
             Border{.color = colors::border_light, .width = 1.0F},
@@ -155,6 +160,8 @@ View PresetRow(domain::ModelProviderPreset preset,
                const ModelAddOptionsActions &actions) {
   const PresetCopy copy = PresetText(preset.id);
   const StringResource protocol = ProtocolText(preset.protocol);
+  const bool wrapped_title = preset.id == "mimo-token-plan";
+  const float vertical_padding = wrapped_title ? 12.0F : 11.0F;
   const TextStyle subtitle =
       Label(11.0F, FontWeight::Regular, colors::tertiary);
   return Row{
@@ -169,17 +176,20 @@ View PresetRow(domain::ModelProviderPreset preset,
               Text(" · ").Style(subtitle), Text(protocol).Style(subtitle)}
               .With(Padding(EdgeInsets{.top = 3.0F})),
       }
-          .With(Grow()),
+          .With(Grow(),
+                Offset(Point{0.38F, wrapped_title ? 1.14F : -0.76F})),
       Glyph(app::images::chevron_right, 17.0F, colors::tertiary),
   }
       .OnClick([callback = actions.on_preset, preset] {
         if (callback)
           std::invoke(callback, preset);
       })
-      .With(Frame{.min_height = preset.id == "mimo-token-plan" ? 66.0F
-                                                               : 61.35F},
+      .With(Frame{.min_height = wrapped_title ? 65.7F : 61.35F},
             Spacing(12.0F),
-            Padding(EdgeInsets::All(12.0F)),
+            Padding(EdgeInsets{.top = vertical_padding,
+                               .right = 12.0F,
+                               .bottom = vertical_padding,
+                               .left = 12.0F}),
             CrossAlign(CrossAxisAlignment::Center),
             Background(colors::elevated),
             Border{.color = colors::border_light, .width = 1.0F},
@@ -196,30 +206,31 @@ ModelAddOptionsScreen(ModelAddOptionsActions actions) {
   content.push_back(OptionCard(
       app::images::sliders_horizontal, app::strings::model_add_custom,
       app::strings::model_add_custom_desc, actions.on_custom));
-  content.push_back(Spacer().With(Frame{.height = 8.0F}));
+  content.push_back(Spacer().With(Frame{.height = 8.4F}));
   content.push_back(
       OptionCard(app::images::file_up, app::strings::model_add_local,
                  app::strings::model_add_local_desc, actions.on_local));
-  content.push_back(Spacer().With(Frame{.height = 8.0F}));
+  content.push_back(Spacer().With(Frame{.height = 8.4F}));
   content.push_back(Row{
       Glyph(app::images::boxes, 16.0F, colors::tertiary),
       Text(app::strings::model_add_presets)
           .Style(Label(13.0F, FontWeight::Bold, colors::tertiary)),
   }
                         .With(Spacing(8.0F),
-                              Padding(EdgeInsets{.top = 20.75F,
+                              Padding(EdgeInsets{.top = 20.35F,
                                                  .bottom = 8.35F}),
+                              Offset(Point{0.0F, 0.38F}),
                               CrossAlign(CrossAxisAlignment::Center)));
   for (const auto preset : domain::ModelProviderPresets()) {
     content.push_back(PresetRow(preset, actions));
-    content.push_back(Spacer().With(Frame{.height = 7.6F}));
+    content.push_back(Spacer().With(Frame{.height = 8.45F}));
   }
 
   return Column{
       Header(actions),
       Divider(),
       ScrollView(Column(std::move(content))
-                     .With(Padding(EdgeInsets{.top = 15.6F,
+                     .With(Padding(EdgeInsets{.top = 16.35F,
                                               .right = 16.0F,
                                               .bottom = 100.0F,
                                               .left = 16.0F}),

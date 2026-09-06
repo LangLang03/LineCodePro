@@ -11,6 +11,8 @@ the legacy app. Internal code structure is intentionally new.
   Control chat mode, `phone_*` tools, prompt text, tool cards, preview samples or settings. Legacy `control` preferences
   must normalize to `agent`; historical `phone_*` calls must render as inert generic records.
 - Keep background keep-alive on Android only. Windows must not register its service, route or settings row.
+- The open-source licenses page is dependency-driven rather than a legacy-content clone. List only libraries that the
+  C++ application actually uses, and add an entry when a dependency is introduced; stale legacy entries are excluded.
 - Hide Termux integration, Terminal Provider and Android storage-permission UI on Windows. Keep ordinary SSH.
 - Do not invent WorkManager, alarms, boot receivers or OEM keep-alive integrations; the legacy app has none.
 - Framework-provided control semantics are not the removed Phone Control/AccessibilityService product feature.
@@ -72,7 +74,8 @@ Status values are `started`, `pending`, and `excluded`.
 | Keep-alive | started | Android-only settings, persisted foreground service/Wake Lock and RAII generation lease; no Windows row |
 | Extensions | pending | Agent, MCP, Skills, LineCode packages, install/edit/enable/delete flows |
 | Skill Hub | pending | Search, sort, pagination, session, detail tabs, reviews, install and publish |
-| Tutorial / about / licenses | pending | Async tutorial load, version links and license content |
+| Tutorial / about | pending | Async tutorial load and version links |
+| Open-source licenses | started | Current dependency inventory and navigation; legacy list/content parity is excluded |
 | Built-in browser | pending | JavaScript default-off and browser-history-first Back |
 | Tool cards / approval / diff | pending | Dedicated renderers, streaming output, approval modes, persistent review/revert |
 | Sharing | pending | Text, Markdown, PDF, clipboard/system share and multi-select export |

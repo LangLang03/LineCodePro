@@ -161,20 +161,20 @@ SqliteModelStore::Save(domain::ModelConfig model) {
   auto saved = co_await database->TransactionAsync([model, timestamp](
                                                        Transaction &transaction)
                                                        -> Result<void> {
-    auto selection = transaction.Query<std::int64_t>(
-        "SELECT CASE WHEN EXISTS(SELECT 1 FROM model_configs WHERE selected = "
-        "1) "
-        "THEN 1 ELSE 0 END",
-        [](const RowView &row) { return row.Get<std::int64_t>(0); });
+    auto selection = transaction.Query<std::string>(
+        std::string{legacy_model_schema::selected_id},
+        [](const RowView &row) { return row.Get<std::string>(0); });
     if (!selection)
       return selection.Error();
-    auto current = transaction.Query<std::int64_t>(
-        "SELECT selected FROM model_configs WHERE id = ? LIMIT 1",
-        [](const RowView &row) { return row.Get<std::int64_t>(0); }, model.id);
-    if (!current)
-      return current.Error();
-    const bool selected = (!selection->empty() && selection->front() == 0) ||
-                          (!current->empty() && current->front() == 1);
+    if (selection->empty()) {
+      selection = transaction.Query<std::string>(
+          std::string{legacy_model_schema::fallback_model_id},
+          [](const RowView &row) { return row.Get<std::string>(0); });
+      if (!selection)
+        return selection.Error();
+    }
+    const bool selected =
+        !selection->empty() && selection->front() == model.id;
     auto inserted = transaction.Execute(
         "INSERT INTO model_configs "
         "(id, name, protocol_type, provider_label, base_url, api_key, "
@@ -244,12 +244,13 @@ SqliteModelStore::Select(std::string id) {
                                                           Transaction
                                                               &transaction)
                                                           -> Result<void> {
-    auto cleared = transaction.Execute("UPDATE model_configs SET selected = 0");
+    auto cleared = transaction.Execute(
+        std::string{legacy_model_schema::clear_selection});
     if (!cleared)
       return cleared.Error();
     if (!id.empty()) {
       auto marked = transaction.Execute(
-          "UPDATE model_configs SET selected = 1, updated_at = ? WHERE id = ?",
+          std::string{legacy_model_schema::select_id},
           timestamp, id);
       if (!marked)
         return marked.Error();
@@ -267,8 +268,14 @@ SqliteModelStore::SelectedId() {
   if (!database)
     co_return std::unexpected(database.error());
   auto rows = co_await database->QueryAsync<std::string>(
-      "SELECT id FROM model_configs ORDER BY selected DESC, updated_at DESC "
-      "LIMIT 1",
+      std::string{legacy_model_schema::selected_id},
+      [](const RowView &row) { return row.Get<std::string>(0); });
+  if (!rows)
+    co_return std::unexpected(StoreError(rows.Error()));
+  if (!rows->empty())
+    co_return std::move(rows->front());
+  rows = co_await database->QueryAsync<std::string>(
+      std::string{legacy_model_schema::fallback_model_id},
       [](const RowView &row) { return row.Get<std::string>(0); });
   if (!rows)
     co_return std::unexpected(StoreError(rows.Error()));

@@ -17,6 +17,12 @@ public:
   [[nodiscard]] std::expected<domain::ChatMessage, SendMessageError>
   Send(std::string text);
   void Clear();
+  [[nodiscard]] std::span<const ConversationSummary>
+  Conversations() const noexcept;
+  [[nodiscard]] std::string_view CurrentConversationId() const noexcept;
+  void StartNewConversation();
+  void SelectConversation(std::string_view id);
+  void DeleteConversation(std::string_view id);
 
 private:
   static ConversationStore &

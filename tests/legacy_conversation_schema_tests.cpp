@@ -83,6 +83,33 @@ public:
     return values;
   }
 
+  [[nodiscard]] std::vector<std::string>
+  TextColumn(std::string_view sql, std::string_view parameter,
+             int column) const {
+    sqlite3_stmt *statement = nullptr;
+    const std::string owned{sql};
+    if (sqlite3_prepare_v2(handle_, owned.c_str(), -1, &statement, nullptr) !=
+        SQLITE_OK) {
+      throw std::runtime_error(sqlite3_errmsg(handle_));
+    }
+    if (sqlite3_bind_text(statement, 1, parameter.data(),
+                          static_cast<int>(parameter.size()),
+                          SQLITE_TRANSIENT) != SQLITE_OK) {
+      const std::string message = sqlite3_errmsg(handle_);
+      sqlite3_finalize(statement);
+      throw std::runtime_error(message);
+    }
+    std::vector<std::string> values;
+    for (int step = sqlite3_step(statement); step == SQLITE_ROW;
+         step = sqlite3_step(statement)) {
+      const auto *text = sqlite3_column_text(statement, column);
+      values.emplace_back(
+          text == nullptr ? "" : reinterpret_cast<const char *>(text));
+    }
+    sqlite3_finalize(statement);
+    return values;
+  }
+
 private:
   sqlite3 *handle_{};
 };
@@ -220,11 +247,97 @@ void NewerSchemaIsRejectedWithoutPartialWrites() {
              "name = 'conversations'") == 0);
 }
 
+void ChunkedMessageContentIsAuthoritativeWithColumnFallback() {
+  Database database;
+  ApplySchema(database);
+  database.Execute(
+      "INSERT INTO conversations "
+      "(id, title, created_at, updated_at, current) "
+      "VALUES ('conversation-1', 'chunks', 10, 20, 1)");
+  database.Execute(
+      "INSERT INTO messages "
+      "(id, conversation_id, local_order, role, content, timestamp) VALUES "
+      "('chunk-only', 'conversation-1', 0, 'user', '', 30),"
+      "('fallback', 'conversation-1', 1, 'assistant', 'legacy body', 31),"
+      "('chunk-wins', 'conversation-1', 2, 'assistant', 'stale body', 32)");
+  database.Execute(
+      "INSERT INTO message_text_chunks "
+      "(message_id, field_name, chunk_order, content) VALUES "
+      "('chunk-only', 'content', 1, 'world'),"
+      "('chunk-only', 'content', 0, 'hello '),"
+      "('chunk-wins', 'content', 0, 'fresh body')");
+
+  const auto bodies = database.TextColumn(
+      linecode::infrastructure::legacy_schema::load_visible_messages,
+      "conversation-1", 3);
+  assert((bodies == std::vector<std::string>{"hello world", "legacy body",
+                                             "fresh body"}));
+}
+
+void LongUtf8ContentSplitsWithoutBreakingCodePoints() {
+  using linecode::infrastructure::legacy_schema::message_text_chunk_bytes;
+  using linecode::infrastructure::legacy_schema::SplitMessageText;
+
+  std::string body(message_text_chunk_bytes - 1, 'a');
+  body += "界";
+  body += std::string(message_text_chunk_bytes, 'b');
+  const auto chunks = SplitMessageText(body);
+  assert(chunks.size() == 3);
+  assert(chunks[0].size() == message_text_chunk_bytes - 1);
+  assert(chunks[1].starts_with("界"));
+  std::string reassembled;
+  for (const auto chunk : chunks) {
+    assert(chunk.size() <= message_text_chunk_bytes);
+    reassembled.append(chunk);
+  }
+  assert(reassembled == body);
+}
+
+void DrawerListsOnlyVisibleConversationsAndResumesLatestVisible() {
+  Database database;
+  ApplySchema(database);
+  database.Execute(
+      "INSERT INTO conversations "
+      "(id, title, created_at, updated_at, current) VALUES "
+      "('empty-current', 'empty', 1, 500, 1),"
+      "('hidden', 'hidden', 2, 400, 0),"
+      "('tool-only', 'tool', 3, 300, 0),"
+      "('visible-old', 'old', 4, 100, 0),"
+      "('visible-new', 'new', 5, 200, 0),"
+      "('visible-current-two', 'two', 6, 150, 2)");
+  database.Execute(
+      "INSERT INTO messages "
+      "(id, conversation_id, local_order, role, content, timestamp, hidden) "
+      "VALUES "
+      "('hidden-message', 'hidden', 0, 'user', 'hidden', 10, 1),"
+      "('tool-message', 'tool-only', 0, 'tool', 'tool', 11, 0),"
+      "('old-message', 'visible-old', 0, 'user', 'old', 12, 0),"
+      "('new-message', 'visible-new', 0, 'assistant', 'new', 13, 0),"
+      "('two-message', 'visible-current-two', 0, 'user', 'two', 14, 0)");
+
+  const auto visible = database.TextColumn(
+      linecode::infrastructure::legacy_schema::list_visible_conversations, 1);
+  assert((visible == std::vector<std::string>{"new", "two", "old"}));
+  const auto fallback = database.TextColumn(
+      linecode::infrastructure::legacy_schema::find_resume_conversation);
+  assert((fallback == std::vector<std::string>{"visible-new"}));
+
+  database.Execute(
+      "UPDATE conversations SET current = CASE "
+      "WHEN id = 'visible-old' THEN 1 ELSE 0 END");
+  const auto explicit_current = database.TextColumn(
+      linecode::infrastructure::legacy_schema::find_resume_conversation);
+  assert((explicit_current == std::vector<std::string>{"visible-old"}));
+}
+
 } // namespace
 
 int main() {
   FreshDatabaseGetsLegacyV4CoreSchema();
   ExistingLegacyRowsSurviveIdempotentMigration();
   NewerSchemaIsRejectedWithoutPartialWrites();
+  ChunkedMessageContentIsAuthoritativeWithColumnFallback();
+  LongUtf8ContentSplitsWithoutBreakingCodePoints();
+  DrawerListsOnlyVisibleConversationsAndResumesLatestVisible();
   return 0;
 }
