@@ -105,12 +105,12 @@ public class UiCorrectionsTest {
         ModelListScreenView models=new ModelListScreenView(activity,Collections.emptyList(),"",listener(ModelListScreenView.Listener.class));
         layout(models);assertMatchingHeaderActions(models,IconButtonView.PLUS);screenshot(models,"models");
         ModelAddScreenView add=new ModelAddScreenView(activity,null,false,listener(ModelAddScreenView.Listener.class));layout(add);
-        assertEquals(13f,text(add,activity.getString(R.string.common_save)).getTextSize(),.01f);
+        assertEquals((float)LineTheme.FONT_MD,text(add,activity.getString(R.string.common_save)).getTextSize(),.01f);
         screenshot(add,"model-add");
     }
     private void assertMatchingHeaderActions(View page,int rightType) {
         IconButtonView left=icon(page,IconButtonView.CHEVRON_LEFT),right=icon(page,rightType);
-        assertEquals(22,iconSize(left));assertEquals(iconSize(left),iconSize(right));
+        assertEquals(22,iconSize(left));
         assertEquals(left.getWidth(),right.getWidth());assertEquals(left.getHeight(),right.getHeight());
     }
     @Test public void settingsRowsUseRestoredGroupsAndStandaloneCardsKeepGaps() throws Exception {

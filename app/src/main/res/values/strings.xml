@@ -285,6 +285,9 @@
 
     <string name="screen_output_title">Output &amp; browser</string>
     <string name="screen_output_section_code">Code display</string>
+    <string name="screen_output_section_conversation">Conversation display</string>
+    <string name="screen_output_process_auto_expand_label">Auto-expand processing</string>
+    <string name="screen_output_process_auto_expand_desc">Open each processing section automatically when it first appears</string>
     <string name="screen_output_code_wrap_label">Code auto wrap</string>
     <string name="screen_output_section_browser">Page opening method</string>
     <string name="screen_output_browser_internal_label">Built-in browser</string>

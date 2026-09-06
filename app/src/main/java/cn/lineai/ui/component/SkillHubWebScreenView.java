@@ -23,7 +23,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-public final class SkillHubWebScreenView extends ScreenSurfaceView {
+public final class SkillHubWebScreenView extends LinearLayout {
     private static final String SITE_ROOT = "https://skillhub.cn";
     private static final Set<String> ALLOWED_HOSTS = new HashSet<>(Arrays.asList(
             "skillhub.cn",

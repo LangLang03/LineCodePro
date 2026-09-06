@@ -7,6 +7,7 @@ import cn.lineai.ai.ModelClient;
 import cn.lineai.ai.ModelCompletionException;
 import cn.lineai.ai.ModelCompletionResponse;
 import cn.lineai.ai.ModelRequestOptions;
+import cn.lineai.ai.ReasoningCompatibility;
 import cn.lineai.ai.message.AssistantModelMessage;
 import cn.lineai.ai.message.ModelMessage;
 import cn.lineai.ai.message.SystemModelMessage;
@@ -275,7 +276,7 @@ public final class ContextCompactionService {
                         request,
                         null,
                         cancellationToken,
-                        new ModelRequestOptions(AiBehaviorSettings.REASONING_OFF, false, new ArrayList<ToolInfo>())
+                        compactionRequestOptions(selectedModel)
                 ),
                 cancellationToken
         );
@@ -299,7 +300,7 @@ public final class ContextCompactionService {
                         request,
                         null,
                         cancellationToken,
-                        new ModelRequestOptions(AiBehaviorSettings.REASONING_OFF, false, new ArrayList<cn.lineai.tool.ToolInfo>())
+                        compactionRequestOptions(selectedModel.withModelId(selectedModel.getEffectiveCompressionModelId()))
                 ),
                 cancellationToken
         );
@@ -335,6 +336,11 @@ public final class ContextCompactionService {
                 sleepQuietly(COMPACT_RETRY_DELAY_MS * attempt);
             }
         }
+    }
+
+    static ModelRequestOptions compactionRequestOptions(ModelConfig model) {
+        return ReasoningCompatibility.adapt(model,
+                new ModelRequestOptions(AiBehaviorSettings.REASONING_OFF, false, new ArrayList<ToolInfo>()));
     }
 
     private String compactResponsesItemWithRetry(

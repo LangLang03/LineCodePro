@@ -300,10 +300,26 @@ public final class OpenAiCompatibleProtocolTest {
         );
 
         assertTrue("enabled".equals(body.getJSONObject("thinking").getString("type")));
+        assertEquals("high", body.getString("reasoning_effort"));
         assertTrue(body.has("clear_thinking"));
         assertFalse(body.getBoolean("clear_thinking"));
         assertFalse(new KimiReasoningStrategy().matches(baseUrl, modelId));
         assertTrue(new MoonshotReasoningStrategy().matches(baseUrl, modelId));
+    }
+
+    @Test
+    public void glmOffIsAdaptedToEnabledLowReasoning() throws Exception {
+        ModelConfig config = ModelConfig.builder(
+                "glm-5.2", "GLM-5.2", ModelProtocolType.OPENAI_COMPATIBLE, "Zhipu",
+                "https://open.bigmodel.cn/api/paas/v4", "sk-test", "glm-5.2").build();
+
+        JSONObject body = new OpenAiCompatibleProtocol().reasoningRequestBodyForTest(
+                config,
+                new ModelRequestOptions(AiBehaviorSettings.REASONING_OFF, false)
+        );
+
+        assertEquals("enabled", body.getJSONObject("thinking").getString("type"));
+        assertEquals("low", body.getString("reasoning_effort"));
     }
 
     @Test

@@ -735,16 +735,6 @@ final class GenerationFlowController {
         toolMessageController.addOrReplaceToolResults(batch.getCompletedResults());
         int executedCount = usedToolCallCount + batch.getCompletedResults().size();
         if (batch.getPendingCall() != null) {
-            ToolResult pendingResult = ToolResult.withReview(
-                    batch.getPendingCall().getId(),
-                    batch.getPendingCall().getName(),
-                    "",
-                    false,
-                    "",
-                    "pending",
-                    ""
-            );
-            addOrReplaceToolResult(pendingResult);
             toolConfirmationController.setPendingToolExecution(new PendingToolExecution(
                     generationId,
                     selectedModel,

@@ -46,6 +46,9 @@ public final class ToolCallReadView extends BaseToolCallView implements ToolCall
     @Override public void setToolReviewListener(ToolReviewListener listener) {}
     @Override public void bind(ToolCall call, ToolResult result) {
         String name = call == null ? "" : call.getName();
+        ToolInfoResolver resolver = ToolInfoResolverProvider.getDefault();
+        int actionIcon = resolver == null ? 0 : resolver.getActionIcon(name);
+        icon.setIconType(actionIcon == 0 ? IconButtonView.FILE : actionIcon);
         String path = ToolCallUtils.displayInputLabel(getContext(), name, ToolCallUtils.parseInput(call), projectPath);
         int status = result == null || "running".equals(result.getReviewState()) ? R.string.tool_call_status_running
                 : result.isError() ? R.string.tool_call_status_failed : R.string.tool_call_read_done;

@@ -17,7 +17,7 @@ public final class SkillHubCenterScreenView extends ScreenScaffoldView {
     public SkillHubCenterScreenView(Context context, Listener listener) {
         super(context, context.getString(cn.lineai.R.string.skillhub_center_title), listener::onBack, null);
         LinearLayout content = getContent();
-        LineTheme.padding(content, 28, 8, 28, 48);
+        LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
 
         TextView notice = LineTheme.text(context,
                 context.getString(cn.lineai.R.string.skillhub_center_notice),

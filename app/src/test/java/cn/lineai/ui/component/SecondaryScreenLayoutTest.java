@@ -78,7 +78,7 @@ public class SecondaryScreenLayoutTest {
             try {
                 View view=screen(name);layout(view,320,720);
                 assertTrue(view.getMeasuredHeight()>0);
-                if(Arrays.asList("Settings","Extensions","ModelAdd","SshSettings","MCPSettings","ThemeSettings","SkillStore","TerminalProviderDetail","MemorySettings","Tutorial").contains(name)) {
+                if(Arrays.asList("Settings","Extensions","ModelAdd","SshSettings","MCPSettings","OutputSettings","ThemeSettings","SkillStore","TerminalProviderDetail","MemorySettings","Tutorial").contains(name)) {
                     layout(view,390,844);screenshot(view,"light-390-"+name);
                 }
             } catch(Throwable error) {
@@ -93,22 +93,20 @@ public class SecondaryScreenLayoutTest {
         TextView models=text(view,activity.getString(cn.lineai.R.string.settings_row_models_title));
         clickable(models).performClick();assertTrue(events.contains("onItem"));
         ScreenHeaderView header=find(view,ScreenHeaderView.class);
-        ((ViewGroup)header.getChildAt(0)).getChildAt(0).performClick();assertTrue(events.contains("onBack"));
+        header.getChildAt(0).performClick();assertTrue(events.contains("onBack"));
     }
-    @Test public void foldingFormRetainsDraftAndSaveCallback() throws Exception {
+    @Test public void classicSshFormRetainsDraftAndSaveCallback() throws Exception {
         SshSettingsScreenView view=new SshSettingsScreenView(activity,listener(SshSettingsScreenView.Listener.class));
-        DisclosureSectionView section=find(view,DisclosureSectionView.class);
-        assertEquals(View.GONE,section.getBody().getVisibility());
-        section.getChildAt(0).performClick();
-        EditText key=find(section,EditText.class); key.setText("draft-private-key");
-        section.getChildAt(0).performClick();section.getChildAt(0).performClick();
+        assertNull(find(view,DisclosureSectionView.class));
+        FormTextFieldView keyField=(FormTextFieldView)text(view,activity.getString(cn.lineai.R.string.screen_ssh_field_private_key)).getParent();
+        EditText key=keyField.getInput(); key.setText("draft-private-key");
         assertEquals("draft-private-key",key.getText().toString());
         clickable(text(view,activity.getString(cn.lineai.R.string.screen_ssh_save))).performClick();
         assertTrue(events.contains("onSaveConfig"));
     }
     @Test public void darkPagesAndTabletReadingWidth() throws Exception {
         LineTheme.apply(ThemePalette.forMode("dark"));
-        View view=screen("Extensions");layout(view,1100,800);assertEquals(154,view.getPaddingLeft());
+        View view=screen("Extensions");layout(view,1100,800);assertEquals(0,view.getPaddingLeft());
         layout(view,390,844);screenshot(view,"dark-390-Extensions");
         view=screen("Settings");layout(view,390,844);screenshot(view,"dark-390-Settings");
     }
@@ -125,15 +123,12 @@ public class SecondaryScreenLayoutTest {
         panel.animate().cancel();panel.setTranslationY(0);sheet.getChildAt(0).animate().cancel();sheet.getChildAt(0).setAlpha(1);
         screenshot(sheet,"large-font-320-Sheet");
     }
-    @Test public void protocolPickerSwitchesWithoutLosingNameDraft() throws Exception {
+    @Test public void classicProtocolTabsSwitchWithoutLosingNameDraft() throws Exception {
         ModelAddScreenView view=new ModelAddScreenView(activity,null,false,listener(ModelAddScreenView.Listener.class));
         activity.setContentView(view);layout(view,390,844);
         EditText name=find(view,EditText.class);name.setText("My model");
-        text(view,"OpenAI  ›").performClick();
-        android.app.Dialog dialog=org.robolectric.shadows.ShadowDialog.getLatestDialog();
-        assertTrue(dialog.isShowing());
-        clickable(text(dialog.getWindow().getDecorView(),"Anthropic")).performClick();
-        assertFalse(dialog.isShowing());assertNotNull(text(view,"Anthropic  ›"));assertEquals("My model",name.getText().toString());
+        clickable(text(view,"Anthropic")).performClick();
+        assertEquals("My model",name.getText().toString());
     }
     @Test public void modelRowsDispatchSelectionAndKeepManagement() throws Exception {
         ModelConfig model=ModelConfig.builder("one","工作模型",ModelProtocolType.OPENAI_COMPATIBLE,"Custom","https://example.invalid/v1","","example-model").build();
@@ -162,7 +157,14 @@ public class SecondaryScreenLayoutTest {
         cn.lineai.model.tool.ToolResult result=cn.lineai.model.tool.ToolResult.of("generic","mcp_example","RESULT CONTENT",false);
         cn.lineai.tool.ui.ToolCallGenericView generic=new cn.lineai.tool.ui.ToolCallGenericView(activity,"MCP");
         generic.setExpansionState(state,"generic");generic.bind(call,result);assertNull(text(generic,"RESULT CONTENT"));
-        generic.getChildAt(0).performClick();assertNotNull(text(generic,"RESULT CONTENT"));
+        View genericHeader=generic.getChildAt(0);assertNull(genericHeader.getBackground());
+        assertEquals(48,genericHeader.getMinimumHeight());
+        genericHeader.performClick();assertNotNull(text(generic,"RESULT CONTENT"));
+        cn.lineai.ui.theme.BoundedScrollView genericDetail=find(generic,cn.lineai.ui.theme.BoundedScrollView.class);
+        assertNotNull(genericDetail);assertNotNull(genericDetail.getBackground());
+        activity.setContentView(generic);layout(generic,390,240);screenshot(generic,"native-light-390-mcp-card");
+        cn.lineai.tool.ui.ToolCallGenericView localGeneric=new cn.lineai.tool.ui.ToolCallGenericView(activity,"MCP");
+        localGeneric.bind(call,result);localGeneric.getChildAt(0).performClick();assertNotNull(text(localGeneric,"RESULT CONTENT"));
         cn.lineai.tool.ui.ToolCallGenericView rebound=new cn.lineai.tool.ui.ToolCallGenericView(activity,"MCP");
         rebound.setExpansionState(state,"generic");rebound.bind(call,result);assertNotNull(text(rebound,"RESULT CONTENT"));
         cn.lineai.tool.ui.ToolCallAgentView agent=new cn.lineai.tool.ui.ToolCallAgentView(activity);agent.bind(call,result);
@@ -218,10 +220,10 @@ public class SecondaryScreenLayoutTest {
         layout(view, 390, 844);
         ScreenHeaderView header = find(view, ScreenHeaderView.class);
         View refresh = find(view, RefreshCwButtonView.class);
-        View back = ((ViewGroup) header.getChildAt(0)).getChildAt(0);
+        View back = header.getChildAt(0);
         assertEquals(back.getWidth(), refresh.getWidth());
         assertEquals(back.getHeight(), refresh.getHeight());
-        assertEquals(48, refresh.getWidth());
+        assertEquals(ScreenHeaderView.ACTION_SIZE_DP, refresh.getWidth());
         assertTrue(header.getHeight() < 130);
         assertTrue(view.getScrollView().getHeight() > 600);
         assertTrue(text(view, activity.getString(cn.lineai.R.string.screen_storage_row_home)).getHeight() > 0);
@@ -245,13 +247,14 @@ public class SecondaryScreenLayoutTest {
         screenshot(tools, "execution-without-ids");
     }
 
-    @Test public void skillStoreTitleIsBesideBackAndContentUsesNarrowGutters() throws Exception {
+    @Test public void skillStoreUsesClassicCenteredHeaderAndGutters() throws Exception {
         SkillStoreScreenView view = (SkillStoreScreenView) screen("SkillStore");
         layout(view, 390, 844);
         ScreenHeaderView header = find(view, ScreenHeaderView.class);
-        View back = ((ViewGroup) header.getChildAt(0)).getChildAt(0);
+        View back = header.getChildAt(0);
         TextView title = text(header, activity.getString(cn.lineai.R.string.skillhub_title_store));
-        assertSame(back.getParent(), title.getParent());
+        assertSame(header, back.getParent());
+        assertSame(header, title.getParent());
         assertEquals(back.getRight(), title.getLeft());
         assertEquals(16, view.getContent().getPaddingLeft());
         assertEquals(16, view.getContent().getPaddingRight());

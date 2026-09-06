@@ -74,6 +74,8 @@ public final class SettingsManagementController {
 
         void setCodeWrapEnabled(boolean enabled);
 
+        void setProcessAutoExpandEnabled(boolean enabled);
+
         void setBrowserMode(String mode);
 
         void setBrowserJavaScriptEnabled(boolean enabled);
@@ -230,6 +232,11 @@ public final class SettingsManagementController {
         @Override
         public void setCodeWrapEnabled(boolean enabled) {
             outputSettingsRepository.setCodeWrapEnabled(enabled);
+        }
+
+        @Override
+        public void setProcessAutoExpandEnabled(boolean enabled) {
+            outputSettingsRepository.setProcessAutoExpandEnabled(enabled);
         }
 
         @Override
@@ -424,6 +431,11 @@ public final class SettingsManagementController {
 
     public void setCodeWrapEnabled(boolean enabled) {
         settingsStore.setCodeWrapEnabled(enabled);
+        host.render();
+    }
+
+    public void setProcessAutoExpandEnabled(boolean enabled) {
+        settingsStore.setProcessAutoExpandEnabled(enabled);
         host.render();
     }
 

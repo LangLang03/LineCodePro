@@ -73,7 +73,7 @@ public final class PromptTemplatesScreenView extends ScreenScaffoldView {
         return builder.toString();
     }
 
-    private static final class PromptTemplateEditorView extends ScreenSurfaceView {
+    private static final class PromptTemplateEditorView extends LinearLayout {
         private final PromptTemplateItem item;
         private final TextView statusView;
         private final EditText input;
@@ -119,7 +119,7 @@ public final class PromptTemplatesScreenView extends ScreenScaffoldView {
             inputParams.topMargin = LineTheme.dp(context, LineTheme.MD);
             addView(input, inputParams);
 
-            LinearLayout actions = new AdaptiveActionsView(context);
+            LinearLayout actions = new LinearLayout(context);
             actions.setOrientation(HORIZONTAL);
             actions.setGravity(Gravity.CENTER_VERTICAL);
             LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(context, 34));

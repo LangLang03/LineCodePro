@@ -356,6 +356,11 @@ public final class ScreenFactories {
                 }
 
                 @Override
+                public void onProcessAutoExpandChanged(boolean enabled) {
+                    controller.onProcessAutoExpandChanged(enabled);
+                }
+
+                @Override
                 public void onBrowserModeChanged(String mode) {
                     controller.onBrowserModeChanged(mode);
                 }

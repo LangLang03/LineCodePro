@@ -30,7 +30,7 @@ public final class UserMessageView extends LinearLayout {
         super(context);
         setOrientation(VERTICAL);
         setGravity(Gravity.END);
-        LineTheme.padding(this, 28, 16, 28, 32);
+        LineTheme.padding(this, 16, 16, 16, 32);
         defaultPaddingLeft = getPaddingLeft();
         defaultPaddingTop = getPaddingTop();
         defaultPaddingRight = getPaddingRight();

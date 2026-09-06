@@ -27,6 +27,16 @@ public final class SettingsManagementControllerTest {
     }
 
     @Test
+    public void processAutoExpandChangePersistsAndRenders() {
+        Fixture fixture = new Fixture();
+
+        fixture.controller.setProcessAutoExpandEnabled(true);
+
+        Assert.assertTrue(fixture.store.processAutoExpandEnabled);
+        Assert.assertTrue(fixture.host.rendered);
+    }
+
+    @Test
     public void toneChangeDoesNotForceRender() {
         Fixture fixture = new Fixture();
 
@@ -112,6 +122,7 @@ public final class SettingsManagementControllerTest {
     private static final class FakeSettingsStore implements SettingsManagementController.SettingsStore {
         private String toneMode = AiBehaviorSettings.TONE_CODING;
         private boolean thinkingScrollEnabled = true;
+        private boolean processAutoExpandEnabled;
         private String themeMode = ThemePalette.MODE_DARK;
         private String executionMode = "local";
         private String mcpGroupId = "";
@@ -209,6 +220,11 @@ public final class SettingsManagementControllerTest {
 
         @Override
         public void setCodeWrapEnabled(boolean enabled) {
+        }
+
+        @Override
+        public void setProcessAutoExpandEnabled(boolean enabled) {
+            processAutoExpandEnabled = enabled;
         }
 
         @Override

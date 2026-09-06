@@ -5,6 +5,9 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import cn.lineai.model.ChatMessage;
+import cn.lineai.model.AiBehaviorSettings;
+import cn.lineai.model.ModelConfig;
+import cn.lineai.model.ModelProtocolType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -91,6 +94,16 @@ public final class ContextCompactionServiceTest {
 
         assertEquals(1, selected.size());
         assertEquals("real", selected.get(0).getId());
+    }
+
+    @Test
+    public void glmCompactionUsesCompatibleLowReasoningInsteadOfOff() {
+        ModelConfig glm = ModelConfig.builder(
+                "glm", "GLM", ModelProtocolType.OPENAI_COMPATIBLE, "Zhipu",
+                "https://open.bigmodel.cn/api/paas/v4", "key", "glm-5.2").build();
+
+        assertEquals(AiBehaviorSettings.REASONING_LOW,
+                ContextCompactionService.compactionRequestOptions(glm).getReasoningEffort());
     }
 
     private static String repeat(String value, int count) {

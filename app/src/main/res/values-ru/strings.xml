@@ -285,6 +285,9 @@
 
     <string name="screen_output_title">Вывод и браузер</string>
     <string name="screen_output_section_code">Отображение кода</string>
+    <string name="screen_output_section_conversation">Отображение диалога</string>
+    <string name="screen_output_process_auto_expand_label">Автоматически раскрывать обработку</string>
+    <string name="screen_output_process_auto_expand_desc">Автоматически открывать каждый раздел обработки при первом появлении</string>
     <string name="screen_output_code_wrap_label">Автоперенос кода</string>
     <string name="screen_output_section_browser">Способ открытия страниц</string>
     <string name="screen_output_browser_internal_label">Встроенный браузер</string>

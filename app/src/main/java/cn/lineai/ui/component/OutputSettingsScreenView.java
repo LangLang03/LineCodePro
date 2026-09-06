@@ -14,6 +14,8 @@ public final class OutputSettingsScreenView extends ScreenScaffoldView {
 
         void onCodeWrapChanged(boolean enabled);
 
+        void onProcessAutoExpandChanged(boolean enabled);
+
         void onBrowserModeChanged(String mode);
 
         void onBrowserJavaScriptChanged(boolean enabled);
@@ -40,6 +42,14 @@ public final class OutputSettingsScreenView extends ScreenScaffoldView {
         browserMode = safeSettings.getBrowserMode();
         boolean browserJavaScriptEnabled = safeSettings.isBrowserJavaScriptEnabled();
         LinearLayout content = getContent();
+
+        SettingsSectionView conversation = new SettingsSectionView(context, context.getString(R.string.screen_output_section_conversation));
+        conversation.addRow(new SwitchRowView(context, IconButtonView.EXPAND,
+                context.getString(R.string.screen_output_process_auto_expand_label),
+                context.getString(R.string.screen_output_process_auto_expand_desc),
+                safeSettings.isProcessAutoExpandEnabled(),
+                (buttonView, isChecked) -> listener.onProcessAutoExpandChanged(isChecked)), false);
+        content.addView(conversation, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         previewView = new MarkdownView(context);
         previewView.setCodeWrapEnabled(codeWrapEnabled);

@@ -117,6 +117,12 @@ public final class AssistantTurnView extends LinearLayout {
     public void bind(ConversationTimeline.Row row, Map<String, Boolean> disclosure, String projectPath,
                      ToolReviewListener reviewer, MarkdownLinkHandler links, MessageActionListener actions,
                      boolean codeWrap, boolean generating) {
+        bind(row, disclosure, projectPath, reviewer, links, actions, codeWrap, generating, false);
+    }
+
+    public void bind(ConversationTimeline.Row row, Map<String, Boolean> disclosure, String projectPath,
+                     ToolReviewListener reviewer, MarkdownLinkHandler links, MessageActionListener actions,
+                     boolean codeWrap, boolean generating, boolean processAutoExpand) {
         String nextIdentity = row.first.getId();
         if (!identity.equals(nextIdentity)) {
             process.removeAllViews(); blocks.clear(); files.removeAllViews(); fileViews.clear();
@@ -126,6 +132,10 @@ public final class AssistantTurnView extends LinearLayout {
         this.reviewer = reviewer; this.links = links; this.codeWrap = codeWrap;
         this.generating = generating;
         hasTools = row.isTurn;
+        String processKey = identity + ":process";
+        if (hasTools && processAutoExpand && !disclosure.containsKey(processKey)) {
+            disclosure.put(processKey, true);
+        }
         setProcessVisibility(hasTools);
         updateProcessLabel();
         if (row.answer != null) {

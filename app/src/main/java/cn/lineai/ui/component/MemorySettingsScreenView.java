@@ -11,6 +11,7 @@ import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
+import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -390,7 +391,20 @@ public final class MemorySettingsScreenView extends LinearLayout {
     }
 
     private void showPanel(Dialog dialog, LinearLayout panel) {
-        DialogBuilder.showInset(dialog, panel);
+        ScrollView scrollView = new ScrollView(getContext());
+        scrollView.setFillViewport(false);
+        scrollView.addView(panel, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        dialog.setContentView(scrollView);
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            WindowManager.LayoutParams params = new WindowManager.LayoutParams();
+            params.copyFrom(window.getAttributes());
+            params.width = Math.min(getResources().getDisplayMetrics().widthPixels - LineTheme.dp(getContext(), 32), LineTheme.dp(getContext(), 560));
+            params.height = WindowManager.LayoutParams.WRAP_CONTENT;
+            window.setAttributes(params);
+        }
     }
 
     private TextView titleView(String text) {

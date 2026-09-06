@@ -22,6 +22,7 @@ public class ToolConfirmationControllerTest {
         assertNotNull(controller.pendingToolApproval());
         controller.handleToolReview("accepted");
         assertEquals(1, host.executed); assertTrue(host.grants.isEmpty()); assertNull(controller.pendingToolApproval());
+        assertEquals(0, host.addedResults); assertEquals(0, host.persisted); assertEquals(1, host.rendered);
     }
     @Test public void permanentGrantIsSavedBeforeExecution() {
         Host host = new Host(); ToolConfirmationController controller = new ToolConfirmationController(host);
@@ -67,11 +68,11 @@ public class ToolConfirmationControllerTest {
     }
     private static final class Host implements ToolConfirmationController.Callback {
         String scope = "ssh:host:/project"; boolean active = true; boolean grantedAtExecution;
-        int executed, continued; ToolResult result; final Set<String> grants = new HashSet<>();
+        int executed, continued, addedResults, persisted, rendered; ToolResult result; final Set<String> grants = new HashSet<>();
         public boolean isActiveGeneration(int generation) { return active; }
-        public void addOrReplaceToolResult(ToolResult result) { this.result = result; }
-        public void persistCurrentConversation() {}
-        public void render() {}
+        public void addOrReplaceToolResult(ToolResult result) { this.result = result; addedResults++; }
+        public void persistCurrentConversation() { persisted++; }
+        public void render() { rendered++; }
         public void continueToolExecution(int id, ModelConfig model, List<ToolCall> calls, int count, String path, ModelCancellationToken token) { continued++; }
         public void executeAcceptedPendingTool(PendingToolExecution pending) { executed++; grantedAtExecution = isPermanentlyAllowed(scope, pending.getToolCall()); }
         public String currentConversationId() { return "conversation"; }

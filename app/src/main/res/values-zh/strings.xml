@@ -285,6 +285,9 @@
 
     <string name="screen_output_title">输出与浏览</string>
     <string name="screen_output_section_code">代码显示</string>
+    <string name="screen_output_section_conversation">对话显示</string>
+    <string name="screen_output_process_auto_expand_label">自动展开处理</string>
+    <string name="screen_output_process_auto_expand_desc">处理区域首次出现时自动展开</string>
     <string name="screen_output_code_wrap_label">代码自动换行</string>
     <string name="screen_output_section_browser">网页打开方式</string>
     <string name="screen_output_browser_internal_label">内置浏览器</string>

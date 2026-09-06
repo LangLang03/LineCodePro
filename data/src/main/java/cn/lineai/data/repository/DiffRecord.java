@@ -8,6 +8,8 @@ public final class DiffRecord {
     private final boolean oldExists;
     private final long timestamp;
     private final boolean reverted;
+    private final String reviewState;
+    private final String reviewMessage;
 
     public DiffRecord(
             String id,
@@ -18,6 +20,20 @@ public final class DiffRecord {
             long timestamp,
             boolean reverted
     ) {
+        this(id, filePath, oldContent, newContent, oldExists, timestamp, reverted, "", "");
+    }
+
+    public DiffRecord(
+            String id,
+            String filePath,
+            String oldContent,
+            String newContent,
+            boolean oldExists,
+            long timestamp,
+            boolean reverted,
+            String reviewState,
+            String reviewMessage
+    ) {
         this.id = id == null ? "" : id;
         this.filePath = filePath == null ? "" : filePath;
         this.oldContent = oldContent == null ? "" : oldContent;
@@ -25,6 +41,8 @@ public final class DiffRecord {
         this.oldExists = oldExists;
         this.timestamp = timestamp;
         this.reverted = reverted;
+        this.reviewState = reviewState == null ? "" : reviewState;
+        this.reviewMessage = reviewMessage == null ? "" : reviewMessage;
     }
 
     public String getId() {
@@ -53,5 +71,13 @@ public final class DiffRecord {
 
     public boolean isReverted() {
         return reverted;
+    }
+
+    public String getReviewState() {
+        return reviewState;
+    }
+
+    public String getReviewMessage() {
+        return reviewMessage;
     }
 }

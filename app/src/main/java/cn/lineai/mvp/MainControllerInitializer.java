@@ -325,11 +325,6 @@ final class MainControllerInitializer {
                     }
 
                     @Override
-                    public void persistCurrentConversation() {
-                        coordinator.persistCurrentConversation();
-                    }
-
-                    @Override
                     public void render() {
                         coordinator.render();
                     }

@@ -16,6 +16,7 @@ public final class ChatUiState {
     private final boolean hasConfiguredModel;
     private final boolean thinkingScrollEnabled;
     private final boolean thinkingAutoExpandEnabled;
+    private final boolean processAutoExpandEnabled;
     private final boolean codeWrapEnabled;
     private final String browserMode;
     private final String enterKeyBehavior;
@@ -110,6 +111,19 @@ public final class ChatUiState {
             String chatMode, String conversationId, List<ChatMessage> messages,
             String selectedModelId, List<ModelConfig> availableModels, ToolApproval toolApproval
     ) {
+        this(projectLabel, projectPath, modelLabel, contextLabel, contextPercent, streaming, hasConfiguredModel,
+                thinkingScrollEnabled, thinkingAutoExpandEnabled, false, codeWrapEnabled, browserMode,
+                enterKeyBehavior, chatMode, conversationId, messages, selectedModelId, availableModels, toolApproval);
+    }
+
+    public ChatUiState(
+            String projectLabel, String projectPath, String modelLabel, String contextLabel,
+            int contextPercent, boolean streaming, boolean hasConfiguredModel,
+            boolean thinkingScrollEnabled, boolean thinkingAutoExpandEnabled,
+            boolean processAutoExpandEnabled, boolean codeWrapEnabled, String browserMode, String enterKeyBehavior,
+            String chatMode, String conversationId, List<ChatMessage> messages,
+            String selectedModelId, List<ModelConfig> availableModels, ToolApproval toolApproval
+    ) {
         this.toolApproval = toolApproval;
         this.projectLabel = projectLabel;
         this.projectPath = projectPath == null ? "" : projectPath;
@@ -121,6 +135,7 @@ public final class ChatUiState {
         this.hasConfiguredModel = hasConfiguredModel;
         this.thinkingScrollEnabled = thinkingScrollEnabled;
         this.thinkingAutoExpandEnabled = thinkingAutoExpandEnabled;
+        this.processAutoExpandEnabled = processAutoExpandEnabled;
         this.codeWrapEnabled = codeWrapEnabled;
         this.browserMode = OutputSettings.normalizeBrowserMode(browserMode);
         this.enterKeyBehavior = InputSettings.normalizeEnterKeyBehavior(enterKeyBehavior);
@@ -137,8 +152,15 @@ public final class ChatUiState {
     public ToolApproval getToolApproval() { return toolApproval; }
     public ChatUiState withToolApproval(ToolApproval approval) {
         return new ChatUiState(projectLabel, projectPath, modelLabel, contextLabel, contextPercent, streaming,
-                hasConfiguredModel, thinkingScrollEnabled, thinkingAutoExpandEnabled, codeWrapEnabled, browserMode,
+                hasConfiguredModel, thinkingScrollEnabled, thinkingAutoExpandEnabled, processAutoExpandEnabled,
+                codeWrapEnabled, browserMode,
                 enterKeyBehavior, chatMode, conversationId, messages, selectedModelId, availableModels, approval);
+    }
+    public ChatUiState withDisplayMessages(List<ChatMessage> displayMessages) {
+        return new ChatUiState(projectLabel, projectPath, modelLabel, contextLabel, contextPercent, streaming,
+                hasConfiguredModel, thinkingScrollEnabled, thinkingAutoExpandEnabled, processAutoExpandEnabled,
+                codeWrapEnabled, browserMode, enterKeyBehavior, chatMode, conversationId, displayMessages,
+                selectedModelId, availableModels, toolApproval);
     }
     public String getProjectLabel() { return projectLabel; }
     public String getProjectPath() { return projectPath; }
@@ -151,6 +173,7 @@ public final class ChatUiState {
     public boolean hasConfiguredModel() { return hasConfiguredModel; }
     public boolean isThinkingScrollEnabled() { return thinkingScrollEnabled; }
     public boolean isThinkingAutoExpandEnabled() { return thinkingAutoExpandEnabled; }
+    public boolean isProcessAutoExpandEnabled() { return processAutoExpandEnabled; }
     public boolean isCodeWrapEnabled() { return codeWrapEnabled; }
     public String getBrowserMode() { return browserMode; }
     public String getEnterKeyBehavior() { return enterKeyBehavior; }

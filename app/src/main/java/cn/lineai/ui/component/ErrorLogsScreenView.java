@@ -68,6 +68,7 @@ public final class ErrorLogsScreenView extends ScreenScaffoldView {
     private static IconButtonView clearButton(Context context) {
         IconButtonView button = new IconButtonView(context, IconButtonView.TRASH_2);
         button.setIconColor(LineTheme.DANGER);
+        button.setIconSizeDp(36, 20);
         return button;
     }
 }

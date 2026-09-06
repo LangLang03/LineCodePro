@@ -72,7 +72,7 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         this.sessionClient = new SkillHubSessionClient(new ContextResourceProvider(context));
         this.iconLoader = new SkillIconLoader(context);
         body = getContent();
-        LineTheme.padding(body, 28, 8, 28, 48);
+        LineTheme.padding(body, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
         progress = new ProgressBar(context);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
@@ -107,8 +107,9 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
     private void addHero(SkillHubModels.Detail value) {
         LinearLayout hero = new LinearLayout(getContext());
         hero.setOrientation(VERTICAL);
-        hero.setBackground(null);
-        LineTheme.padding(hero, 0, 8, 0, 24);
+        hero.setBackground(LineTheme.roundedStroke(
+                getContext(), LineTheme.SURFACE_ELEVATED, 14, LineTheme.BORDER));
+        LineTheme.padding(hero, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
 
         LinearLayout top = new LinearLayout(getContext());
         top.setOrientation(HORIZONTAL);
@@ -187,7 +188,7 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
     }
 
     private void addActions(SkillHubModels.Detail value) {
-        LinearLayout actions = new AdaptiveActionsView(getContext());
+        LinearLayout actions = new LinearLayout(getContext());
         actions.setOrientation(HORIZONTAL);
         actions.setGravity(Gravity.CENTER_VERTICAL);
         actions.addView(actionButton(IconButtonView.COPY, getString(R.string.skillhub_copy_prompt),
@@ -619,7 +620,7 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         inputParams.topMargin = LineTheme.dp(getContext(), LineTheme.MD);
         panel.addView(input, inputParams);
 
-        LinearLayout actions = new AdaptiveActionsView(getContext());
+        LinearLayout actions = new LinearLayout(getContext());
         actions.setOrientation(HORIZONTAL);
         TextView cancel = dialogButton(getString(R.string.skillhub_cancel), false);
         TextView submit = dialogButton(getString(R.string.skillhub_submit_comment), true);
@@ -695,7 +696,7 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         contentParams.topMargin = LineTheme.dp(getContext(), LineTheme.XS);
         card.addView(content, contentParams);
 
-        LinearLayout actions = new AdaptiveActionsView(getContext());
+        LinearLayout actions = new LinearLayout(getContext());
         actions.setOrientation(HORIZONTAL);
         TextView like = commentAction(
                 (comment.isLiked() ? getString(R.string.skillhub_unlike)
@@ -1110,7 +1111,7 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
         packageIcon.setIconSizeDp(42, 22);
         packageIcon.setClickable(false);
         packageIcon.setFocusable(false);
-        packageIcon.setBackground(null);
+        packageIcon.setBackground(LineTheme.rounded(getContext(), LineTheme.ACCENT_MUTED, 10));
         heading.addView(packageIcon, new LinearLayout.LayoutParams(
                 LineTheme.dp(getContext(), 42), LineTheme.dp(getContext(), 42)));
         LinearLayout titleCopy = new LinearLayout(getContext());
@@ -1208,7 +1209,7 @@ public final class SkillStoreDetailScreenView extends ScreenScaffoldView {
             panel.addView(warningCard, warningParams);
         }
 
-        LinearLayout actions = new AdaptiveActionsView(getContext());
+        LinearLayout actions = new LinearLayout(getContext());
         actions.setOrientation(HORIZONTAL);
         TextView cancel = dialogButton(getString(R.string.skillhub_cancel), false);
         TextView install = dialogButton(getString(R.string.common_install), true);

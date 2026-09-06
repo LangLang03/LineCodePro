@@ -350,7 +350,7 @@ public final class AgentExtensionEditScreenView extends ScreenScaffoldView {
         Context context = content.getContext();
         LinearLayout group = new LinearLayout(context);
         group.setOrientation(LinearLayout.VERTICAL);
-        group.setBackground(null);
+        group.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_ELEVATED, 12));
         LineTheme.padding(group, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
         group.addView(first, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams secondParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
@@ -424,7 +424,7 @@ public final class AgentExtensionEditScreenView extends ScreenScaffoldView {
         }
     }
 
-    private static final class GenerateButtonView extends ScreenSurfaceView {
+    private static final class GenerateButtonView extends LinearLayout {
         private final ProgressBar progressBar;
         private final IconButtonView icon;
         private final TextView label;

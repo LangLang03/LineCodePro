@@ -16,8 +16,12 @@ public final class MoonshotReasoningStrategy implements ReasoningRequestStrategy
         JSONObject thinking = new JSONObject().put("type", context.isEnabled() ? "enabled" : "disabled");
         String base = context.getBaseUrl();
         String model = context.getModelId();
+        boolean glm = base.contains("bigmodel") || base.contains("zhipu") || model.contains("glm");
         body.put("thinking", thinking);
-        if (context.isPreserveReasoning() && (base.contains("bigmodel") || base.contains("zhipu") || model.contains("glm"))) {
+        if (glm) {
+            body.put("reasoning_effort", context.getEffort());
+        }
+        if (context.isPreserveReasoning() && glm) {
             body.put("clear_thinking", false);
         }
     }
