@@ -126,6 +126,25 @@
       ]
     },
     {
+      "name": "model_add_custom",
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "模型管理"},
+        {"type": "sleep", "seconds": 0.7},
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.7},
+        {"type": "tap_text", "value": "自定义模型"},
+        {"type": "sleep", "seconds": 0.7},
+        {"type": "expect_text", "value": "协议"},
+        {"type": "expect_text", "value": "Base URL"},
+        {"type": "expect_text", "value": "API Key"},
+        {"type": "expect_text", "value": "模型 ID"}
+      ]
+    },
+    {
       "name": "theme",
       "actions": [
         {"type": "tap", "x": 1005, "y": 205},
@@ -158,6 +177,7 @@
     },
     {
       "name": "licenses",
+      "compare_pixels": false,
       "actions": [
         {"type": "tap", "x": 1005, "y": 205},
         {"type": "sleep", "seconds": 0.5},
@@ -169,7 +189,10 @@
         {"type": "sleep", "seconds": 0.6},
         {"type": "tap_text", "value": "开源许可列表"},
         {"type": "sleep", "seconds": 0.6},
-        {"type": "expect_text", "value": "开源许可"}
+        {"type": "expect_text", "value": "开源许可"},
+        {"type": "expect_text", "value": "HuxerUI", "targets": ["candidate"]},
+        {"type": "expect_text", "value": "HuxerUI SQLite", "targets": ["candidate"]},
+        {"type": "expect_text", "value": "HuxerUI WebView", "targets": ["candidate"]}
       ]
     }
   ]

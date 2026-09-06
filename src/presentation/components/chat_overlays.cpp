@@ -77,6 +77,7 @@ template <typename Action> struct MenuItem final {
   std::optional<StringVariant> description;
   bool available;
   bool selected = false;
+  float bottom_padding_extra = 0.0F;
 };
 
 template <typename Action>
@@ -133,7 +134,10 @@ View DescribedMenuRow(const MenuItem<Action> &item,
         SelectAction(callbacks, action);
       })
       .With(Frame{.min_height = kMinimumRowHeight},
-            Padding(EdgeInsets::Symmetric(16.0F, 15.0F)),
+            Padding(EdgeInsets{.top = 14.75F,
+                               .right = 16.0F,
+                               .bottom = 14.75F + item.bottom_padding_extra,
+                               .left = 16.0F}),
             CrossAlign(CrossAxisAlignment::Center),
             Background(item.selected ? colors::accent_muted
                                      : Color::Transparent()),
@@ -186,7 +190,7 @@ View StandardSheet(StringVariant title, std::vector<View> rows) {
                       colors::text})
                   .With(Padding(EdgeInsets{.top = 12.0F,
                                            .right = 24.0F,
-                                           .bottom = 8.0F,
+                                           .bottom = 20.0F,
                                            .left = 24.0F})),
               Stack{}.With(Frame{.height = 1.0F},
                            Background(colors::border_light)),
@@ -261,12 +265,12 @@ void AppendAttachmentRows(std::vector<View> &rows,
     content.emplace_back(Spacer().With(Frame{.width = 16.0F, .height = 16.0F}));
   }
   content.emplace_back(
-      AttachmentInlineIcon(
-          node.directory
-              ? (expanded ? app::images::folder_open : app::images::folder)
-              : app::images::file,
-          node.directory ? colors::accent : colors::secondary, 17.0F)
-          .With(Padding(EdgeInsets{.left = 8.0F})));
+      Spacer().With(Frame{.width = 8.0F}));
+  content.emplace_back(AttachmentInlineIcon(
+      node.directory
+          ? (expanded ? app::images::folder_open : app::images::folder)
+          : app::images::file,
+      node.directory ? colors::accent : colors::secondary, 17.0F));
 
   std::vector<View> labels;
   labels.emplace_back(
@@ -282,8 +286,8 @@ void AppendAttachmentRows(std::vector<View> &rows,
             .With(Frame{.max_height = 16.0F}, Padding(EdgeInsets{.top = 2.0F}),
                   ClipChildren()));
   }
-  content.emplace_back(Column(std::move(labels))
-                           .With(Padding(EdgeInsets{.left = 8.0F}), Grow()));
+  content.emplace_back(Spacer().With(Frame{.width = 8.0F}));
+  content.emplace_back(Column(std::move(labels)).With(Grow()));
   if (!node.directory) {
     content.emplace_back(AttachmentFileSelection(selected).With(
         Padding(EdgeInsets{.left = 8.0F})));
@@ -464,7 +468,8 @@ View ChatPermissionMenu(const ChatPermissionMenuState &state,
       MenuItem<ChatPermissionAction>{
           ChatPermissionAction::manage_all_files,
           app::strings::permission_mode_manage_all_files, storage_description,
-          state.manage_all_files_available, state.external_storage_granted},
+          state.manage_all_files_available, state.external_storage_granted,
+          4.2F},
       MenuItem<ChatPermissionAction>{
           ChatPermissionAction::revoke_saved_commands,
           app::strings::chat_permissions_clear, std::nullopt, true},

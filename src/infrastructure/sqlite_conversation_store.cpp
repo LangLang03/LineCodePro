@@ -104,53 +104,81 @@ Result<StoredMessage> DecodeStoredMessage(const RowView &row) {
                        std::move(*content)};
 }
 
-Result<void> ExecuteSchema(Transaction &transaction, std::int64_t version) {
-  if (version != 0 && version != legacy_schema::user_version) {
+Result<std::int64_t> ReadUserVersion(Transaction &transaction) {
+  auto versions = transaction.Query<std::int64_t>(
+      "PRAGMA user_version",
+      [](const RowView &row) { return row.Get<std::int64_t>(0); });
+  if (!versions) {
+    return versions.Error();
+  }
+  if (versions->size() != 1) {
+    return Error{ErrorCode::Decode, "PRAGMA user_version returned no value",
+                 "read PRAGMA user_version"};
+  }
+  return versions->front();
+}
+
+Result<bool> ColumnExists(Transaction &transaction, std::string_view table,
+                          std::string_view expected_column) {
+  auto columns = transaction.Query<std::string>(
+      "PRAGMA table_info(" + std::string{table} + ")",
+      [](const RowView &row) { return row.Get<std::string>(1); });
+  if (!columns) {
+    return columns.Error();
+  }
+  return std::ranges::find(*columns, expected_column) != columns->end();
+}
+
+Result<void> ExecuteSchema(Transaction &transaction) {
+  auto version = ReadUserVersion(transaction);
+  if (!version) {
+    return version.Error();
+  }
+  if (*version < 0 || *version > legacy_schema::user_version) {
     return Error{
         ErrorCode::SchemaMismatch,
-        "linecode.db must be an empty database or legacy schema version 4",
+        "linecode.db uses a schema newer than supported legacy version 4",
         "validate PRAGMA user_version"};
   }
 
-  for (const std::string_view statement : {
-           legacy_schema::create_conversations,
-           legacy_schema::create_messages,
-           legacy_schema::create_conversations_updated_index,
-           legacy_schema::create_messages_order_index,
-       }) {
+  for (const std::string_view statement : legacy_schema::table_statements) {
     auto executed = transaction.Execute(std::string{statement});
     if (!executed) {
       return executed.Error();
     }
   }
 
-  if (version == 0) {
-    auto versioned = transaction.Execute("PRAGMA user_version = 4");
-    if (!versioned) {
-      return versioned.Error();
+  for (const auto &required : legacy_schema::required_columns) {
+    auto exists = ColumnExists(transaction, required.table, required.name);
+    if (!exists) {
+      return exists.Error();
     }
+    if (!*exists) {
+      auto added = transaction.Execute(std::string{required.add_statement});
+      if (!added) {
+        return added.Error();
+      }
+    }
+  }
+
+  for (const std::string_view statement : legacy_schema::index_statements) {
+    auto executed = transaction.Execute(std::string{statement});
+    if (!executed) {
+      return executed.Error();
+    }
+  }
+
+  auto versioned = transaction.Execute("PRAGMA user_version = 4");
+  if (!versioned) {
+    return versioned.Error();
   }
   return {};
 }
 
 huxerui::Task<Result<void>>
 EnsureCompatibleSchemaAsync(const Database &database) {
-  auto versions = co_await database.QueryAsync<std::int64_t>(
-      "PRAGMA user_version",
-      [](const RowView &row) { return row.Get<std::int64_t>(0); });
-  if (!versions) {
-    co_return versions.Error();
-  }
-  if (versions->size() != 1) {
-    co_return Error{ErrorCode::Decode, "PRAGMA user_version returned no value",
-                    "read PRAGMA user_version"};
-  }
-
-  const auto version = versions->front();
   co_return co_await database.TransactionAsync(
-      [version](Transaction &transaction) {
-        return ExecuteSchema(transaction, version);
-      });
+      [](Transaction &transaction) { return ExecuteSchema(transaction); });
 }
 
 huxerui::Task<Result<std::string>>
@@ -246,6 +274,12 @@ SqliteConversationStore::InitializeAsync(huxerui::File database_file) {
   if (!opened) {
     state_->Fail(opened.Error());
     co_return opened.Error();
+  }
+
+  auto foreign_keys = co_await opened->ExecuteAsync("PRAGMA foreign_keys = ON");
+  if (!foreign_keys) {
+    state_->Fail(foreign_keys.Error());
+    co_return foreign_keys.Error();
   }
 
   auto schema = co_await EnsureCompatibleSchemaAsync(*opened);

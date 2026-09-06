@@ -72,6 +72,10 @@ std::string PresetLabel(std::string_view id) {
   return std::string{id};
 }
 
+bool IsLocal(const ModelDraft &draft) noexcept {
+  return draft.local || draft.protocol == domain::ModelProtocol::local_gguf;
+}
+
 } // namespace
 
 ModelDraft
@@ -113,21 +117,18 @@ ModelDraft ModelFormService::Edit(const domain::ModelConfig &model) {
 
 std::expected<domain::ModelConfig, ModelValidationError>
 ModelFormService::Build(const ModelDraft &draft) {
-  if (draft.local) {
-    return std::unexpected(
-        ModelValidationError{ModelValidationCode::local_backend_unavailable});
-  }
+  const bool local = IsLocal(draft);
   const auto model_id = Trim(draft.model_id);
   auto name = Trim(draft.name);
   if (name.empty()) {
     name = model_id;
   }
-  if (name.empty() || model_id.empty()) {
+  if (name.empty() || (!local && model_id.empty())) {
     return std::unexpected(
         ModelValidationError{ModelValidationCode::missing_name_or_model_id});
   }
   const auto api_key = Trim(draft.api_key);
-  if (api_key.empty()) {
+  if (!local && api_key.empty()) {
     return std::unexpected(
         ModelValidationError{ModelValidationCode::missing_api_key});
   }
@@ -146,9 +147,9 @@ ModelFormService::Build(const ModelDraft &draft) {
   domain::ModelConfig model{
       .id = draft.id,
       .name = std::move(name),
-      .protocol = draft.protocol,
+      .protocol = local ? domain::ModelProtocol::local_gguf : draft.protocol,
       .provider_label = Trim(draft.provider_label),
-      .base_url = EffectiveBaseUrl(draft),
+      .base_url = local ? std::string{} : EffectiveBaseUrl(draft),
       .api_key = api_key,
       .model_id = model_id,
       .tool_call_limit = *tool_limit,
@@ -163,7 +164,7 @@ ModelFormService::Build(const ModelDraft &draft) {
 
 std::expected<domain::ModelConfig, ModelValidationError>
 ModelFormService::BuildForProbe(const ModelDraft &draft) {
-  if (draft.local) {
+  if (IsLocal(draft)) {
     return std::unexpected(
         ModelValidationError{ModelValidationCode::local_backend_unavailable});
   }
@@ -205,7 +206,7 @@ bool ModelFormService::CanSave(const ModelDraft &draft) {
 }
 
 bool ModelFormService::CanQuery(const ModelDraft &draft) {
-  return !draft.local && !EffectiveBaseUrl(draft).empty() &&
+  return !IsLocal(draft) && !EffectiveBaseUrl(draft).empty() &&
          !Trim(draft.api_key).empty();
 }
 
@@ -245,6 +246,9 @@ std::string ModelFormService::FormatContextSize(int tokens) {
 }
 
 std::string ModelFormService::EffectiveBaseUrl(const ModelDraft &draft) {
+  if (IsLocal(draft)) {
+    return {};
+  }
   const auto explicit_url = Trim(draft.base_url);
   if (!explicit_url.empty()) {
     return explicit_url;

@@ -19,6 +19,16 @@ using namespace huxerui;
 constexpr std::string_view kProjectUrl =
     "https://github.com/LangLang03/LineCodePro";
 
+// Android TextView includes different single-line font extents than HuxerUI's
+// shaped text. These local spacings preserve the legacy About screen's painted
+// gaps without changing the shared typography or theme.
+constexpr float kNameTopSpacing = 8.5F;
+constexpr float kVersionTopSpacing = 1.0F;
+constexpr float kHeaderBottomSpacing = 18.75F;
+constexpr float kGroupTitleTopSpacing = 17.0F;
+constexpr float kRowTextSpacing = 12.25F;
+constexpr float kFooterTopSpacing = 18.5F;
+
 TextStyle Label(float size, FontWeight weight = FontWeight::Regular,
                 Color color = colors::text) {
   return TextStyle{Font::System(size).WithWeight(weight), color};
@@ -82,7 +92,7 @@ View AboutRow(ImageResource icon, StringResource label, StringVariant value,
                        .With(Frame{.width = 20.0F, .height = 20.0F})
                  : Spacer().With(Frame{.width = 0.0F, .height = 0.0F}),
       }
-          .With(Frame{.min_height = 68.0F}, Spacing(12.0F),
+          .With(Frame{.min_height = 68.0F}, Spacing(kRowTextSpacing),
                 Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
                 CrossAlign(CrossAxisAlignment::Center),
                 Background(colors::elevated), CornerRadius(12.0F),
@@ -100,7 +110,11 @@ void AppendGroupTitle(std::vector<View> &content, StringResource title) {
       Text(title)
           .Style(Label(13.0F, FontWeight::Regular, colors::tertiary))
           .With(Padding(EdgeInsets{
-              .top = 16.0F, .right = 0.0F, .bottom = 8.0F, .left = 4.0F})));
+              .top = kGroupTitleTopSpacing,
+              .right = 0.0F,
+              .bottom = 8.0F,
+              .left = 4.0F,
+          })));
 }
 
 void AppendRow(std::vector<View> &content, View row) {
@@ -125,13 +139,18 @@ void AppendRow(std::vector<View> &content, View row) {
                 Background(colors::accent_muted), CornerRadius(44.0F)),
       Text(app_info.app_name)
           .Style(Label(20.0F, FontWeight::Bold))
-          .With(Padding(EdgeInsets{.top = 12.0F})),
+          .With(Padding(EdgeInsets{.top = kNameTopSpacing})),
       Text(UseString(app::strings::screen_about_apk_label) + " " +
            VersionValue(app_info))
           .Style(Label(16.0F, FontWeight::Regular, colors::secondary))
-          .With(Padding(EdgeInsets{.top = 4.0F})),
+          .With(Padding(EdgeInsets{.top = kVersionTopSpacing})),
   }
-                        .With(Padding(EdgeInsets::Symmetric(0.0F, 20.0F)),
+                        .With(Padding(EdgeInsets{
+                                  .top = 20.0F,
+                                  .right = 0.0F,
+                                  .bottom = kHeaderBottomSpacing,
+                                  .left = 0.0F,
+                              }),
                               CrossAlign(CrossAxisAlignment::Center)));
 
   AppendGroupTitle(content, app::strings::screen_about_section_version);
@@ -164,7 +183,7 @@ void AppendRow(std::vector<View> &content, View row) {
       Text(app::strings::screen_about_copyright)
           .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
           .Align(TextAlign::Center)
-          .With(Padding(EdgeInsets{.top = 20.0F})));
+          .With(Padding(EdgeInsets{.top = kFooterTopSpacing})));
 
   return Column{
       Header(app::strings::screen_about_title, navigation),
@@ -176,7 +195,7 @@ void AppendRow(std::vector<View> &content, View row) {
                                               .left = 16.0F}),
                            CrossAlign(CrossAxisAlignment::Stretch)))
           .ScrollAxis(Axis::Vertical)
-          .With(Grow(), ScrollBar()),
+          .With(Grow()),
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::background), SafeAreaPadding{});

@@ -13,6 +13,7 @@
 #include "application/ports/keep_alive.h"
 #include "domain/app_state.h"
 #include "presentation/components/legacy_screen_header_layout.h"
+#include "presentation/components/legacy_settings_card_frame.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -66,8 +67,7 @@ View SwitchRow(ImageResource icon, StringResource title,
   }
       .OnClick(
           [checked, changed = std::move(row_changed)] { changed(!checked); })
-      .With(Frame{.min_height = 68.0F}, Spacing(12.0F),
-            Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
+      .With(Spacing(12.0F), Padding(EdgeInsets::All(16.0F)),
             CrossAlign(CrossAxisAlignment::Center), Focusable(),
             PointerCursor(PointerCursorKind::Hand));
 }
@@ -77,17 +77,18 @@ View Section(StringResource title, std::vector<View> rows) {
   for (std::size_t index = 0; index < rows.size(); ++index) {
     children.push_back(std::move(rows[index]));
     if (index + 1 < rows.size())
-      children.push_back(Divider().With(Padding(EdgeInsets{.left = 48.0F})));
+      children.push_back(Divider());
   }
   return Column{
       Text(title)
           .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
           .With(Padding(EdgeInsets{
               .top = 20.0F, .right = 16.0F, .bottom = 12.0F, .left = 16.0F})),
-      Column{Column(std::move(children))
-                 .With(CornerRadius(12.0F), Background(colors::elevated),
-                       CrossAlign(CrossAxisAlignment::Stretch))}
-          .With(Padding(EdgeInsets::Symmetric(16.0F, 0.0F))),
+      LegacySettingsCardFrame{
+          Column(std::move(children))
+              .With(CornerRadius(12.0F), Background(colors::elevated),
+                    CrossAlign(CrossAxisAlignment::Stretch)),
+      },
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch));
 }
@@ -173,7 +174,7 @@ View Section(StringResource title, std::vector<View> rows) {
                      .With(CrossAlign(CrossAxisAlignment::Stretch),
                            Background(colors::background)))
           .ScrollAxis(Axis::Vertical)
-          .With(Grow(), ScrollBar())}
+          .With(Grow())}
       .With(CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::background), SafeAreaPadding{});
 }

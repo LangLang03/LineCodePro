@@ -174,7 +174,7 @@ View OptionRow(const OptionMeta &option, ThemeMode selected,
       .OnClick([mode = option.mode, state, service] {
         state = service->SelectMode(mode);
       })
-      .With(Frame{.min_height = 56.0F}, Spacing(16.0F),
+      .With(Frame{.min_height = 56.0F}, Spacing(12.0F),
             Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
             CrossAlign(CrossAxisAlignment::Center),
             Background(active ? colors::accent_muted : Color::Transparent()),
@@ -563,7 +563,7 @@ ThemeSettingsScreen(std::shared_ptr<application::ThemeSettingsService> service,
               .With(CrossAlign(CrossAxisAlignment::Stretch),
                     Background(colors::background)))
           .ScrollAxis(Axis::Vertical)
-          .With(Grow(), ScrollBar()),
+          .With(Grow()),
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::background), SafeAreaPadding{});

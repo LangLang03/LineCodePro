@@ -96,15 +96,50 @@ int main() {
   assert(normalized.has_value());
   assert(!normalized->compression_model_enabled);
 
-  const auto local = ModelFormService::New(std::nullopt, true);
+  auto local = ModelFormService::New(std::nullopt, true);
   assert(local.context_size == "4096");
+  assert(local.protocol == ModelProtocol::local_gguf);
+  assert(ModelFormService::EffectiveBaseUrl(local).empty());
+  assert(!ModelFormService::CanQuery(local));
+
+  local.name = "Qwen local";
   const auto local_result = ModelFormService::Build(local);
-  assert(!local_result.has_value());
-  assert(local_result.error().code ==
+  assert(local_result.has_value());
+  assert(local_result->name == "Qwen local");
+  assert(local_result->model_id.empty());
+  assert(local_result->base_url.empty());
+  assert(local_result->api_key.empty());
+  assert(local_result->protocol == ModelProtocol::local_gguf);
+  assert(local_result->context_size == 4096);
+  assert(ModelFormService::CanSave(local));
+
+  auto local_route_draft = local;
+  local_route_draft.protocol = ModelProtocol::openai_compatible;
+  const auto normalized_local = ModelFormService::Build(local_route_draft);
+  assert(normalized_local.has_value());
+  assert(normalized_local->protocol == ModelProtocol::local_gguf);
+
+  const auto local_probe = ModelFormService::BuildForProbe(local);
+  assert(!local_probe.has_value());
+  assert(local_probe.error().code ==
          ModelValidationCode::local_backend_unavailable);
 
-  const auto edited =
-      ModelFormService::Edit(*ModelFormService::Build(ValidDraft()));
+  local.name = " ";
+  const auto unnamed_local = ModelFormService::Build(local);
+  assert(!unnamed_local.has_value());
+  assert(unnamed_local.error().code ==
+         ModelValidationCode::missing_name_or_model_id);
+
+  auto stored = *ModelFormService::Build(ValidDraft());
+  stored.id = "stable-model-id";
+  auto edited = ModelFormService::Edit(stored);
   assert(edited.name == "Test");
   assert(edited.model_id == "test-model");
+  edited.name = "Updated";
+  edited.model_id = "updated-model";
+  const auto updated = ModelFormService::Build(edited);
+  assert(updated.has_value());
+  assert(updated->id == "stable-model-id");
+  assert(updated->name == "Updated");
+  assert(updated->model_id == "updated-model");
 }

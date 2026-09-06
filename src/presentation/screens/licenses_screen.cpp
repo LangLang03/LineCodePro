@@ -96,7 +96,7 @@ void AppendLicense(std::vector<View> &content, View card) {
                                               .left = 12.0F}),
                            CrossAlign(CrossAxisAlignment::Stretch)))
           .ScrollAxis(Axis::Vertical)
-          .With(Grow(), ScrollBar()),
+          .With(Grow()),
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::background), SafeAreaPadding{});

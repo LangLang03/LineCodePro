@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -102,7 +103,7 @@ Task<void> DeleteMarked(const std::shared_ptr<application::ModelStore> &store,
 }
 
 View SheetPanel(StringVariant title, std::vector<View> rows) {
-  rows.push_back(Spacer().With(Frame{.height = 16.0F}));
+  rows.push_back(Spacer().With(Frame{.height = 12.0F}));
   return Column{
       Row{Spacer(),
           Stack{}.With(Frame{.width = 36.0F, .height = 4.0F},
@@ -112,28 +113,33 @@ View SheetPanel(StringVariant title, std::vector<View> rows) {
       Text(std::move(title))
           .Style(Label(17.0F, FontWeight::Bold))
           .With(Padding(EdgeInsets{
-              .top = 12.0F, .right = 24.0F, .bottom = 8.0F, .left = 24.0F})),
+              .right = 24.0F, .bottom = 12.0F, .left = 24.0F})),
       Divider(),
       Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch)),
   }
-      .With(Frame{.max_width = 560.0F}, Background(colors::background),
-            Border{.color = colors::border_light, .width = 1.0F},
-            CornerRadius(24.0F), ClipChildren(),
+      .With(Frame{.max_width = 560.0F}, Background(colors::elevated),
+            CornerRadius(CornerRadii::Top(16.0F)), ClipChildren(),
             CrossAlign(CrossAxisAlignment::Stretch));
 }
 
-View SheetRow(ImageResource icon, StringVariant text, Color tint,
+View SheetRow(StringVariant text, std::optional<StringVariant> description,
+              Color tint,
               std::function<void()> action) {
-  return Row{
-      Glyph(std::move(icon), 20.0F, tint),
-      Text(std::move(text)).Style(Label(15.0F, FontWeight::Medium, tint))}
+  std::vector<View> labels;
+  labels.push_back(Text(std::move(text)).Style(Label(16.0F, FontWeight::Regular,
+                                                       tint)));
+  if (description.has_value()) {
+    labels.push_back(Text(std::move(*description))
+                         .Style(Label(11.0F, FontWeight::Regular,
+                                      colors::tertiary)));
+  }
+  return Column(std::move(labels))
       .OnClick([action = std::move(action)] {
         if (action)
           std::invoke(action);
       })
-      .With(Frame{.min_height = 52.0F}, Spacing(12.0F),
-            Padding(EdgeInsets::Symmetric(24.0F, 14.0F)),
-            CrossAlign(CrossAxisAlignment::Center), Focusable(),
+      .With(Frame{.min_height = 52.0F}, Spacing(2.0F),
+            Padding(EdgeInsets::Symmetric(16.0F, 14.0F)), Focusable(),
             PointerCursor(PointerCursorKind::Hand));
 }
 
@@ -142,8 +148,11 @@ void ToggleMarked(State<ModelListState> state, std::string id) {
   const auto found = std::ranges::find(next.marked, id);
   if (found == next.marked.end())
     next.marked.push_back(std::move(id));
-  else
+  else {
     next.marked.erase(found);
+    if (next.marked.empty())
+      next.multi_select = false;
+  }
   state = std::move(next);
 }
 
@@ -184,15 +193,18 @@ View ModelCard(const domain::ModelConfig &model, State<ModelListState> state,
   auto show_actions = [sheets, state, model, actions](const LongPressEvent &) {
     sheets.Show([state, model, actions](BottomSheetContext sheet) {
       std::vector<View> rows;
-      rows.push_back(SheetRow(app::images::sliders_horizontal,
-                              app::strings::model_list_modify, colors::text,
+      rows.push_back(SheetRow(app::strings::model_list_modify,
+                              StringVariant{
+                                  app::strings::model_list_modify_desc},
+                              colors::text,
                               [sheet, callback = actions.on_edit, model] {
                                 sheet.Dismiss();
                                 if (callback)
                                   std::invoke(callback, model);
                               }));
-      rows.push_back(SheetRow(app::images::check,
-                              app::strings::model_list_multiselect,
+      rows.push_back(SheetRow(app::strings::model_list_multiselect,
+                              StringVariant{
+                                  app::strings::model_list_multiselect_desc},
                               colors::text, [sheet, state, id = model.id] {
                                 auto next = state.Get();
                                 next.multi_select = true;
@@ -206,15 +218,13 @@ View ModelCard(const domain::ModelConfig &model, State<ModelListState> state,
   };
 
   return Row{
+      Text(model.provider_label)
+          .Style(Label(11.0F, FontWeight::Bold, colors::text_on_color))
+          .With(Padding(EdgeInsets::Symmetric(8.0F, 4.0F)),
+                Background(ProtocolColor(model.protocol)),
+                CornerRadius(8.0F)),
       Column{
-          Text(model.provider_label)
-              .Style(Label(11.0F, FontWeight::Bold, colors::text_on_color))
-              .With(Padding(EdgeInsets::Symmetric(8.0F, 3.0F)),
-                    Background(ProtocolColor(model.protocol)),
-                    CornerRadius(6.0F)),
-          Text(model.name)
-              .Style(Label(16.0F, FontWeight::Medium))
-              .With(Padding(EdgeInsets{.top = 8.0F})),
+          Text(model.name).Style(Label(16.0F, FontWeight::Medium)),
           Text(model.model_id)
               .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
               .With(Padding(EdgeInsets{.top = 2.0F})),
@@ -227,8 +237,11 @@ View ModelCard(const domain::ModelConfig &model, State<ModelListState> state,
       .On<LongPressEvents::Started>(std::move(show_actions))
       .With(Spacing(12.0F), Padding(EdgeInsets::All(12.0F)),
             CrossAlign(CrossAxisAlignment::Center),
-            Background(colors::elevated),
-            Border{.color = colors::border, .width = 1.0F}, CornerRadius(12.0F),
+            Background(marked ? colors::accent_muted : colors::background),
+            Border{.color = current || marked ? colors::accent
+                                              : Color::Transparent(),
+                   .width = 1.0F},
+            CornerRadius(12.0F),
             Focusable(), PointerCursor(PointerCursorKind::Hand));
 }
 
@@ -256,18 +269,27 @@ ModelListScreen(std::shared_ptr<application::ModelStore> store,
     sheets.Show([state, tasks, store](BottomSheetContext sheet) {
       std::vector<View> rows;
       rows.push_back(
-          Text(app::strings::model_list_delete_detail)
+          Text::Format(app::strings::model_list_delete_message,
+                       state->marked.size())
               .Style(Label(12.0F, FontWeight::Regular, colors::tertiary))
-              .With(Padding(EdgeInsets::Symmetric(24.0F, 10.0F))));
-      rows.push_back(SheetRow(app::images::trash_2,
-                              app::strings::model_list_delete, colors::danger,
+              .With(Padding(EdgeInsets{.right = 24.0F,
+                                       .bottom = 12.0F,
+                                       .left = 24.0F})));
+      rows.push_back(SheetRow(app::strings::common_cancel, std::nullopt,
+                              colors::text,
+                              [sheet] { sheet.Dismiss(); }));
+      rows.push_back(SheetRow(app::strings::model_list_delete,
+                              StringVariant{
+                                  app::strings::model_list_delete_warning},
+                              colors::danger,
                               [sheet, state, tasks, store] {
                                 sheet.Dismiss();
                                 tasks.Launch([store, state]() -> Task<void> {
                                   co_await DeleteMarked(store, state);
                                 });
                               }));
-      return SheetPanel(app::strings::model_list_delete, std::move(rows));
+      return SheetPanel(app::strings::model_list_delete_title,
+                        std::move(rows));
     });
   };
 
@@ -297,7 +319,7 @@ ModelListScreen(std::shared_ptr<application::ModelStore> store,
       LegacyScreenHeaderLayout{
           Stack{Glyph(state->multi_select ? app::images::x
                                           : app::images::chevron_left,
-                      22.0F, colors::text)}
+                      20.0F, colors::text)}
               .OnClick([state, callback = actions.on_back] {
                 if (state->multi_select) {
                   auto next = state.Get();
@@ -316,10 +338,11 @@ ModelListScreen(std::shared_ptr<application::ModelStore> store,
               Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
           Stack{Glyph(state->multi_select ? app::images::trash_2
                                           : app::images::plus,
-                      22.0F,
+                      20.0F,
                       state->multi_select && state->marked.empty()
                           ? colors::tertiary
-                          : colors::text)}
+                          : state->multi_select ? colors::danger
+                                                : colors::text)}
               .OnClick(std::move(header_action))
               .With(
                   Frame{.width = 36.0F, .height = 36.0F},
@@ -337,7 +360,7 @@ ModelListScreen(std::shared_ptr<application::ModelStore> store,
                                               .left = 16.0F}),
                            CrossAlign(CrossAxisAlignment::Stretch)))
           .ScrollAxis(Axis::Vertical)
-          .With(Grow(), ScrollBar()),
+          .With(Grow()),
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::background), SafeAreaPadding{});

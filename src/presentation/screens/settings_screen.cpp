@@ -24,6 +24,34 @@ struct SettingsItem final {
   ImageResource icon;
 };
 
+enum class SettingsRowKind : std::uint8_t {
+  grouped,
+  tutorial,
+};
+
+struct SettingsRowMetrics final {
+  float minimum_height;
+  float icon_corner_radius;
+  float chevron_size;
+};
+
+constexpr SettingsRowMetrics MetricsFor(SettingsRowKind kind) noexcept {
+  if (kind == SettingsRowKind::tutorial) {
+    return {
+        .minimum_height = 68.0F,
+        .icon_corner_radius = 8.0F,
+        .chevron_size = 17.0F,
+    };
+  }
+  return {
+      // The legacy grouped rows measure to 170 px at 420 dpi. Keeping the
+      // logical minimum explicit avoids HuxerUI font metrics making them 68dp.
+      .minimum_height = 64.75F,
+      .icon_corner_radius = 18.0F,
+      .chevron_size = 16.0F,
+  };
+}
+
 TextStyle LabelStyle(float size, FontWeight weight = FontWeight::Regular,
                      Color color = colors::text) {
   return TextStyle{Font::System(size).WithWeight(weight), color};
@@ -35,13 +63,13 @@ View Glyph(ImageResource icon, float size, Color tint) {
       .With(Frame{.width = size, .height = size});
 }
 
-View IconDisc(ImageResource icon) {
+View IconTile(ImageResource icon, float corner_radius) {
   return Stack{
       Glyph(std::move(icon), 20.0F, colors::accent),
   }
       .With(Frame{.width = 36.0F, .height = 36.0F},
             Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-            Background(colors::accent_muted), CornerRadius(18.0F));
+            Background(colors::accent_muted), CornerRadius(corner_radius));
 }
 
 View ScreenHeader(
@@ -67,20 +95,25 @@ View ScreenHeader(
 
 View SettingsRow(
     SettingsItem item,
-    const RouteNavigationController<domain::AppRoute> &navigation) {
+    const RouteNavigationController<domain::AppRoute> &navigation,
+    SettingsRowKind kind = SettingsRowKind::grouped) {
+  const SettingsRowMetrics metrics = MetricsFor(kind);
   return Row{
-      IconDisc(item.icon),
+      IconTile(item.icon, metrics.icon_corner_radius),
       Column{
           Text(item.title).Style(LabelStyle(16.0F, FontWeight::Medium)),
           Text(item.description)
               .Style(LabelStyle(11.0F, FontWeight::Regular, colors::tertiary)),
       }
           .With(Spacing(2.0F), Grow()),
-      Glyph(app::images::chevron_right, 17.0F, colors::tertiary)
-          .With(Frame{.width = 20.0F, .height = 20.0F}),
+      Stack{
+          Glyph(app::images::chevron_right, metrics.chevron_size,
+                colors::tertiary),
+      }.With(Frame{.width = 20.0F, .height = 20.0F},
+             Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
   }
       .OnClick([navigation, next = item.route] { navigation.Push(next); })
-      .With(Frame{.min_height = 68.0F}, Spacing(12.0F),
+      .With(Frame{.min_height = metrics.minimum_height}, Spacing(12.0F),
             Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
             CrossAlign(CrossAxisAlignment::Center), Focusable(),
             PointerCursor(PointerCursorKind::Hand));
@@ -171,7 +204,7 @@ StringResource RouteTitle(domain::AppRoute route) {
           app::strings::settings_row_tutorial_desc,
           app::images::sparkles,
       },
-      navigation));
+      navigation, SettingsRowKind::tutorial));
   AppendSection(
       content, app::strings::screen_settings_section_ai,
       {
@@ -252,7 +285,7 @@ StringResource RouteTitle(domain::AppRoute route) {
                      .With(CrossAlign(CrossAxisAlignment::Stretch),
                            Background(colors::background)))
           .ScrollAxis(Axis::Vertical)
-          .With(Grow(), ScrollBar()),
+          .With(Grow()),
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::background), SafeAreaPadding{});

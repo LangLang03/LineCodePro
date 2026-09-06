@@ -26,6 +26,7 @@ using namespace huxerui;
 
 constexpr float kDrawerWidth = 360.0F;
 constexpr float kDrawerReveal = 48.0F;
+constexpr float kDrawerTopCompensation = 16.0F;
 constexpr float kHeaderActionSize = 32.0F;
 constexpr float kTabIconSize = 14.0F;
 constexpr float kTreeIndent = 16.0F;
@@ -39,13 +40,6 @@ consteval float HeaderTopPadding() {
     return 4.0F;
   }
   return 40.0F;
-}
-
-consteval float HeaderHeight() {
-  if constexpr (CurrentHostPlatform() == HostPlatform::android) {
-    return 52.0F;
-  }
-  return 88.0F;
 }
 
 TextStyle DrawerTextStyle(float size, FontWeight weight = FontWeight::Regular,
@@ -139,15 +133,50 @@ View Header(bool files_active, const DrawerActions &actions) {
   }
 
   return Row(std::move(children))
-      .With(Frame{.height = HeaderHeight()},
-            Padding(EdgeInsets{
+      .With(Padding(EdgeInsets{
                 .top = HeaderTopPadding(),
                 .right = 16.0F,
-                .bottom = files_active ? 16.0F : 24.0F,
+                .bottom = 24.0F,
                 .left = 24.0F,
             }),
             Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center));
 }
+
+// StartDrawer keeps its child inside the system-bar-safe viewport. The legacy
+// sidebar, however, is MATCH_PARENT and its weighted body continues underneath
+// the navigation bar. Measure the actual drawer column against that full
+// vertical extent while retaining the already calibrated 16dp top placement.
+class LegacyDrawerViewport final : public Layout<LegacyDrawerViewport> {
+public:
+  using Layout::Layout;
+
+  static LayoutResult Measure(LayoutContext &context, ViewNode &node,
+                              Constraints constraints) {
+    LayoutResult result;
+    if (node.ChildCount() == 0) {
+      return result.SetSize(constraints.Constrain({0.0F, 0.0F}));
+    }
+
+    Constraints drawer_constraints = constraints;
+    if (constraints.HasBoundedHeight()) {
+      const float bottom_safe_area =
+          std::max(0.0F, context.SafeAreaInsets().bottom);
+      const float drawer_height =
+          constraints.max_height + kDrawerTopCompensation + bottom_safe_area;
+      drawer_constraints.min_height = drawer_height;
+      drawer_constraints.max_height = drawer_height;
+    }
+
+    ViewNode &drawer = node.ChildAt(0);
+    const Size drawer_size = context.Measure(drawer, drawer_constraints);
+    const Size viewport_size =
+        constraints.Constrain({drawer_size.width, constraints.HasBoundedHeight()
+                                                      ? constraints.max_height
+                                                      : drawer_size.height});
+    return result.Place(drawer, {0.0F, -kDrawerTopCompensation})
+        .SetSize(viewport_size);
+  }
+};
 
 View DrawerTabButton(ImageResource image, StringResource label, bool active,
                      std::function<void()> action) {
@@ -190,9 +219,8 @@ View DrawerTabs(State<std::size_t> selected_tab, const DrawerActions &actions) {
                 }
               }),
       }
-          .With(Padding(2.0F), Spacing(0.0F), Background(colors::surface),
-                CornerRadius(8.0F), CrossAlign(CrossAxisAlignment::Stretch),
-                Grow());
+          .With(Padding(2.0F), Spacing(0.0F),
+                CrossAlign(CrossAxisAlignment::Stretch), Grow());
   return Row{std::move(tabs)}.With(
       Padding(EdgeInsets{.right = 16.0F, .bottom = 12.0F, .left = 16.0F}));
 }
@@ -380,10 +408,11 @@ View FileRow(const DrawerFileNode &node, std::size_t depth, bool root,
   std::vector<View> content;
   content.emplace_back(InlineIcon(FileImage(presentation),
                                   FileColor(node, presentation), icon_size));
-  content.emplace_back(Text(node.name)
-                           .Style(DrawerTextStyle(13.0F))
-                           .With(Frame{.max_height = 18.0F}, ClipChildren(),
-                                 Grow(), Padding(EdgeInsets{.left = 8.0F})));
+  content.emplace_back(Spacer().With(Frame{.width = 8.0F}));
+  content.emplace_back(
+      Text(node.name)
+          .Style(DrawerTextStyle(13.0F))
+          .With(Frame{.max_height = 18.0F}, ClipChildren(), Grow()));
   if (root) {
     content.emplace_back(
         ActionIcon(app::images::plus, colors::tertiary, 22.0F, 14.0F,
@@ -508,15 +537,16 @@ View Drawer(State<bool> drawer_open, State<std::size_t> selected_tab,
             const DrawerModel &model, const DrawerActions &actions) {
   const bool files_active = std::min(selected_tab.Get(), std::size_t{1}) ==
                             static_cast<std::size_t>(DrawerTab::files);
-  return Column{
-      Header(files_active, actions),
-      DrawerTabs(selected_tab, actions),
-      files_active ? FileBody(model, actions)
-                   : ConversationBody(drawer_open, model, actions),
-  }
-      .With(Frame{.min_width = 240.0F, .max_width = kDrawerWidth},
-            CrossAlign(CrossAxisAlignment::Stretch),
-            Background(colors::background), Offset(Point{0.0F, -16.0F}));
+  return LegacyDrawerViewport(
+      Column{
+          Header(files_active, actions),
+          DrawerTabs(selected_tab, actions),
+          files_active ? FileBody(model, actions)
+                       : ConversationBody(drawer_open, model, actions),
+      }
+          .With(Frame{.min_width = 240.0F, .max_width = kDrawerWidth},
+                CrossAlign(CrossAxisAlignment::Stretch),
+                Background(colors::background)));
 }
 
 } // namespace linecode::presentation

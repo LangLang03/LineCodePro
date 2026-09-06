@@ -73,3 +73,27 @@ else ()
 endif ()
 
 add_test(NAME linecodepro_theme_tests COMMAND linecodepro_theme_tests)
+
+find_package(SQLite3 REQUIRED)
+
+add_executable(legacy_conversation_schema_tests
+        legacy_conversation_schema_tests.cpp
+)
+target_include_directories(legacy_conversation_schema_tests PRIVATE ../src)
+target_compile_features(legacy_conversation_schema_tests PRIVATE cxx_std_23)
+target_link_libraries(legacy_conversation_schema_tests PRIVATE SQLite3::SQLite3)
+set_target_properties(legacy_conversation_schema_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(legacy_conversation_schema_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(legacy_conversation_schema_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+add_test(NAME legacy_conversation_schema_tests
+        COMMAND legacy_conversation_schema_tests)

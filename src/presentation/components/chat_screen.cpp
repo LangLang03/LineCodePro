@@ -190,13 +190,13 @@ View EmptyConversation(
               .OnClick(
                   [navigation] { navigation.Push(domain::AppRoute::models); })
               .With(
-                  Frame{.height = 48.0F},
-                  Padding(EdgeInsets::Symmetric(16.0F, 0.0F)),
+                  Frame{.height = 48.2F},
+                  Padding(EdgeInsets::Symmetric(16.2F, 0.0F)),
                   Align(HorizontalAlignment::Center, VerticalAlignment::Center),
                   Background(colors::accent), CornerRadius(22.0F), Focusable(),
                   PointerCursor(PointerCursorKind::Hand)),
       }
-          .With(Padding(EdgeInsets{.top = 28.0F})),
+          .With(Padding(EdgeInsets{.top = 40.0F})),
   }
       .With(
           CrossAlign(CrossAxisAlignment::Start), Grow(),

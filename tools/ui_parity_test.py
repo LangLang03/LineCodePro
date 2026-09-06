@@ -30,6 +30,7 @@ class Config:
     baseline_apk: Path
     candidate_apk: Path
     scenario_file: Path
+    scenario_names: tuple[str, ...] = ()
 
 
 class TestFailure(RuntimeError):
@@ -93,10 +94,34 @@ def launch(config: Config, package: str) -> None:
 def dump_ui(config: Config) -> tuple[str, str]:
     adb(config, "shell", "uiautomator", "dump", "/sdcard/linecode-window.xml", check=False)
     xml = str(adb(config, "shell", "cat", "/sdcard/linecode-window.xml", check=False))
-    activity = str(
-        adb(config, "shell", "dumpsys", "activity", "activities", check=False)
-    )
+    activity = activity_dump(config)
     return xml, activity
+
+
+def activity_dump(config: Config) -> str:
+    return str(adb(config, "shell", "dumpsys", "activity", "activities", check=False))
+
+
+def foreground_package(activities: str) -> str | None:
+    """Return the package owning Android's resumed activity, when available."""
+    for line in activities.splitlines():
+        if "topResumedActivity=" not in line and "mResumedActivity:" not in line:
+            continue
+        match = re.search(r"\bu\d+\s+([A-Za-z0-9_.]+)/[A-Za-z0-9_.$]+", line)
+        if match:
+            return match.group(1)
+    return None
+
+
+def verify_foreground(config: Config, package: str) -> list[str]:
+    activities = activity_dump(config)
+    actual = foreground_package(activities)
+    if actual == package:
+        return []
+    return [
+        "app left foreground after launch/action"
+        f" (expected {package!r}, resumed {actual!r}); possible crash"
+    ]
 
 
 def screencap(config: Config, destination: Path) -> None:
@@ -222,9 +247,15 @@ def run_suite(
         if scenario.get("relaunch", True):
             launch(config, package)
             time.sleep(float(suite.get("launch_settle_seconds", 0.8)))
-        failures: list[str] = []
+        failures = verify_foreground(config, package)
         for action in scenario.get("actions", []):
+            if failures and "possible crash" in failures[-1]:
+                break
             failures.extend(execute_action(config, action, label))
+            foreground_failures = verify_foreground(config, package)
+            if foreground_failures:
+                failures.extend(foreground_failures)
+                break
         time.sleep(float(scenario.get("settle_seconds", suite.get("settle_seconds", 1.0))))
         screenshot = label_dir / f"{name}.png"
         screencap(config, screenshot)
@@ -294,6 +325,13 @@ def parse_args() -> Config:
     parser.add_argument("--candidate-package", default="cn.lineai")
     parser.add_argument("--activity", default="cn.lineai.MainActivity")
     parser.add_argument("--adb", default=shutil.which("adb") or "adb")
+    parser.add_argument(
+        "--only",
+        nargs="+",
+        default=(),
+        metavar="SCENARIO",
+        help="run only the named scenario(s)",
+    )
     args = parser.parse_args()
     return Config(
         adb=args.adb,
@@ -305,12 +343,24 @@ def parse_args() -> Config:
         baseline_apk=args.baseline_apk.resolve(),
         candidate_apk=args.candidate_apk.resolve(),
         scenario_file=args.scenarios.resolve(),
+        scenario_names=tuple(args.only),
     )
 
 
 def main() -> int:
     config = parse_args()
     suite = json.loads(config.scenario_file.read_text(encoding="utf-8"))
+    if config.scenario_names:
+        requested = set(config.scenario_names)
+        available = {str(scenario["name"]) for scenario in suite["scenarios"]}
+        missing = requested - available
+        if missing:
+            raise TestFailure(f"unknown scenario(s): {', '.join(sorted(missing))}")
+        suite["scenarios"] = [
+            scenario
+            for scenario in suite["scenarios"]
+            if str(scenario["name"]) in requested
+        ]
     config.output.mkdir(parents=True, exist_ok=True)
     wait_for_device(config)
     stabilize_device(config)
@@ -325,12 +375,19 @@ def main() -> int:
     comparisons: dict[str, Any] = {}
     for scenario in suite["scenarios"]:
         name = str(scenario["name"])
-        comparisons[name] = compare_images(
-            config.output / "baseline" / f"{name}.png",
-            config.output / "candidate" / f"{name}.png",
-            config.output / f"{name}.diff.png",
-            masks + scenario.get("pixel_masks", []),
-        )
+        if scenario.get("compare_pixels", True):
+            comparisons[name] = compare_images(
+                config.output / "baseline" / f"{name}.png",
+                config.output / "candidate" / f"{name}.png",
+                config.output / f"{name}.diff.png",
+                masks + scenario.get("pixel_masks", []),
+            )
+        else:
+            comparisons[name] = {
+                "passed": None,
+                "skipped": True,
+                "reason": "pixel comparison disabled for this scenario",
+            }
 
     report = {"baseline": baseline, "candidate": candidate, "pixel_comparisons": comparisons}
     report_path = config.output / "report.json"
@@ -341,7 +398,9 @@ def main() -> int:
         for group in (baseline, candidate)
         for result in group.values()
     )
-    pixel_failures = sum(not comparison["passed"] for comparison in comparisons.values())
+    pixel_failures = sum(
+        comparison["passed"] is False for comparison in comparisons.values()
+    )
     print(f"functional failures: {functional_failures}; non-identical screenshots: {pixel_failures}")
     return 1 if functional_failures or pixel_failures else 0
 

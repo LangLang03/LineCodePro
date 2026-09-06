@@ -69,11 +69,12 @@ View OptionCard(ImageResource icon, StringVariant title, StringVariant detail,
         if (action)
           std::invoke(action);
       })
-      .With(Frame{.min_height = 92.0F}, Spacing(12.0F),
+      .With(Frame{.min_height = 93.0F}, Spacing(12.0F),
             Padding(EdgeInsets::All(16.0F)),
             CrossAlign(CrossAxisAlignment::Center),
             Background(colors::elevated),
-            Border{.color = colors::border, .width = 1.0F}, CornerRadius(12.0F),
+            Border{.color = colors::border_light, .width = 1.0F},
+            CornerRadius(12.0F),
             Focusable(), PointerCursor(PointerCursorKind::Hand));
 }
 
@@ -163,9 +164,10 @@ View PresetRow(domain::ModelProviderPreset preset,
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
                 Background(colors::accent_muted), CornerRadius(8.0F)),
       Column{
-          Text(copy.label).Style(Label(15.0F, FontWeight::Bold)),
+          Text(copy.label).Style(Label(16.0F, FontWeight::Bold)),
           Row{Text(copy.description).Style(subtitle),
-              Text(" · ").Style(subtitle), Text(protocol).Style(subtitle)},
+              Text(" · ").Style(subtitle), Text(protocol).Style(subtitle)}
+              .With(Padding(EdgeInsets{.top = 3.0F})),
       }
           .With(Grow()),
       Glyph(app::images::chevron_right, 17.0F, colors::tertiary),
@@ -174,11 +176,14 @@ View PresetRow(domain::ModelProviderPreset preset,
         if (callback)
           std::invoke(callback, preset);
       })
-      .With(Frame{.min_height = 64.0F}, Spacing(12.0F),
+      .With(Frame{.min_height = preset.id == "mimo-token-plan" ? 66.0F
+                                                               : 61.35F},
+            Spacing(12.0F),
             Padding(EdgeInsets::All(12.0F)),
             CrossAlign(CrossAxisAlignment::Center),
             Background(colors::elevated),
-            Border{.color = colors::border, .width = 1.0F}, CornerRadius(12.0F),
+            Border{.color = colors::border_light, .width = 1.0F},
+            CornerRadius(12.0F),
             Focusable(), PointerCursor(PointerCursorKind::Hand));
 }
 
@@ -195,30 +200,32 @@ ModelAddOptionsScreen(ModelAddOptionsActions actions) {
   content.push_back(
       OptionCard(app::images::file_up, app::strings::model_add_local,
                  app::strings::model_add_local_desc, actions.on_local));
+  content.push_back(Spacer().With(Frame{.height = 8.0F}));
   content.push_back(Row{
       Glyph(app::images::boxes, 16.0F, colors::tertiary),
       Text(app::strings::model_add_presets)
           .Style(Label(13.0F, FontWeight::Bold, colors::tertiary)),
   }
                         .With(Spacing(8.0F),
-                              Padding(EdgeInsets{.top = 20.0F, .bottom = 8.0F}),
+                              Padding(EdgeInsets{.top = 20.75F,
+                                                 .bottom = 8.35F}),
                               CrossAlign(CrossAxisAlignment::Center)));
   for (const auto preset : domain::ModelProviderPresets()) {
     content.push_back(PresetRow(preset, actions));
-    content.push_back(Spacer().With(Frame{.height = 8.0F}));
+    content.push_back(Spacer().With(Frame{.height = 7.6F}));
   }
 
   return Column{
       Header(actions),
       Divider(),
       ScrollView(Column(std::move(content))
-                     .With(Padding(EdgeInsets{.top = 16.0F,
+                     .With(Padding(EdgeInsets{.top = 15.6F,
                                               .right = 16.0F,
                                               .bottom = 100.0F,
                                               .left = 16.0F}),
                            CrossAlign(CrossAxisAlignment::Stretch)))
           .ScrollAxis(Axis::Vertical)
-          .With(Grow(), ScrollBar()),
+          .With(Grow()),
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::background), SafeAreaPadding{});
