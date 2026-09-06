@@ -145,6 +145,80 @@
       ]
     },
     {
+      "name": "model_add_local",
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "模型管理"},
+        {"type": "sleep", "seconds": 0.7},
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.7},
+        {"type": "tap_text", "value": "加载本地模型"},
+        {"type": "sleep", "seconds": 0.7},
+        {"type": "expect_text", "value": "自动"},
+        {"type": "expect_text", "value": "CPU"},
+        {"type": "expect_text", "value": "NPU"}
+      ]
+    },
+    {
+      "name": "llm_settings",
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "AI 行为"},
+        {"type": "sleep", "seconds": 0.7},
+        {"type": "expect_text", "value": "思考深度"},
+        {"type": "expect_text", "value": "学习模式"},
+        {"type": "expect_text", "value": "启用软压缩"}
+      ]
+    },
+    {
+      "name": "input_settings",
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "输入设置"},
+        {"type": "sleep", "seconds": 0.7},
+        {"type": "expect_text", "value": "回车键逻辑"},
+        {"type": "expect_text", "value": "发送"}
+      ]
+    },
+    {
+      "name": "output_settings",
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "输出与浏览"},
+        {"type": "sleep", "seconds": 0.7},
+        {"type": "expect_text", "value": "自动展开处理"},
+        {"type": "expect_text", "value": "代码自动换行"},
+        {"type": "expect_text", "value": "内置浏览器"}
+      ]
+    },
+    {
+      "name": "security_settings",
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "swipe", "x1": 540, "y1": 2100, "x2": 540, "y2": 450, "duration_ms": 700},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "HTTP 限制与内置浏览器脚本执行"},
+        {"type": "sleep", "seconds": 0.7},
+        {"type": "expect_text", "value": "HTTP 限制"},
+        {"type": "expect_text", "value": "路径保护"}
+      ]
+    },
+    {
       "name": "theme",
       "actions": [
         {"type": "tap", "x": 1005, "y": 205},
@@ -192,7 +266,8 @@
         {"type": "expect_text", "value": "开源许可"},
         {"type": "expect_text", "value": "HuxerUI", "targets": ["candidate"]},
         {"type": "expect_text", "value": "HuxerUI SQLite", "targets": ["candidate"]},
-        {"type": "expect_text", "value": "HuxerUI WebView", "targets": ["candidate"]}
+        {"type": "expect_text", "value": "HuxerUI WebView", "targets": ["candidate"]},
+        {"type": "expect_text", "value": "Lucide Icons", "targets": ["candidate"]}
       ]
     }
   ]

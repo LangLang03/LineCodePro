@@ -6,6 +6,7 @@
 #include "infrastructure/android_keep_alive.h"
 #endif
 #if defined(__ANDROID__) || defined(_WIN32)
+#include "infrastructure/error_log_platform.h"
 #include "infrastructure/external_link.h"
 #endif
 
@@ -24,9 +25,11 @@ const Application application{
 #if defined(__ANDROID__)
         .root_hooks = {linecode::infrastructure::InstallAndroidKeepAlive,
                        linecode::infrastructure::InstallExternalLink,
+                       linecode::infrastructure::InstallErrorLogPlatformActions,
                        huxerui::InstallWebView},
 #elif defined(_WIN32)
         .root_hooks = {linecode::infrastructure::InstallExternalLink,
+                       linecode::infrastructure::InstallErrorLogPlatformActions,
                        huxerui::InstallWebView},
 #endif
     },

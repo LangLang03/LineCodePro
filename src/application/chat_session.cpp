@@ -17,6 +17,16 @@ ChatSession::Send(std::string text) {
   return send_message_.Execute(std::move(text));
 }
 
+domain::ChatMessage ChatSession::AppendAssistant(std::string text) {
+  domain::ChatMessage message{
+      .id = store_->AllocateMessageId(),
+      .role = domain::MessageRole::assistant,
+      .content = std::move(text),
+  };
+  store_->Append(message);
+  return message;
+}
+
 void ChatSession::Clear() { store_->Clear(); }
 
 std::span<const ConversationSummary>

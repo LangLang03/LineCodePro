@@ -148,7 +148,7 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation) {
                 .Style(Label(17.0F, FontWeight::Bold))}
           .With(Grow(),
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
-      Spacer().With(Frame{.width = 36.0F, .height = 36.0F}),
+      Stack{}.With(Frame{.width = 36.0F, .height = 36.0F}),
   }
       .With(Frame{.min_height = 60.0F},
             Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
@@ -208,15 +208,15 @@ View ThemeModes(State<application::ThemeSettingsState> state,
 
 View PaletteChips(const ThemePalette &palette) {
   return Row{
-      Spacer().With(Frame{.width = 18.0F, .height = 18.0F},
-                    Background(UiColor(palette[ThemeColorRole::background])),
-                    CornerRadius(9.0F), Border{colors::border_light, 1.0F}),
-      Spacer().With(Frame{.width = 18.0F, .height = 18.0F},
-                    Background(UiColor(palette[ThemeColorRole::ai_bubble])),
-                    CornerRadius(9.0F), Border{colors::border_light, 1.0F}),
-      Spacer().With(Frame{.width = 18.0F, .height = 18.0F},
-                    Background(UiColor(palette[ThemeColorRole::accent])),
-                    CornerRadius(9.0F), Border{colors::border_light, 1.0F}),
+      Stack{}.With(Frame{.width = 18.0F, .height = 18.0F},
+                   Background(UiColor(palette[ThemeColorRole::background])),
+                   CornerRadius(9.0F), Border{colors::border_light, 1.0F}),
+      Stack{}.With(Frame{.width = 18.0F, .height = 18.0F},
+                   Background(UiColor(palette[ThemeColorRole::ai_bubble])),
+                   CornerRadius(9.0F), Border{colors::border_light, 1.0F}),
+      Stack{}.With(Frame{.width = 18.0F, .height = 18.0F},
+                   Background(UiColor(palette[ThemeColorRole::accent])),
+                   CornerRadius(9.0F), Border{colors::border_light, 1.0F}),
   }
       .With(Spacing(-4.0F));
 }
@@ -364,7 +364,7 @@ View SwatchPanel(
       const auto index = row * 7 + column;
       if (index >= kSwatches.size()) {
         swatches.push_back(
-            Spacer().With(Frame{.width = 34.0F, .height = 34.0F}));
+            Stack{}.With(Frame{.width = 34.0F, .height = 34.0F}));
         continue;
       }
       const std::string value(kSwatches[index]);
@@ -415,8 +415,8 @@ View EditorRow(
   const auto preview = valid ? UiColor(*domain::ParseHexColor(draft->at(index)))
                              : colors::surface_light;
   return Row{
-      Spacer().With(Frame{.width = 30.0F, .height = 30.0F}, Background(preview),
-                    CornerRadius(15.0F), Border{colors::border_light, 1.0F}),
+      Stack{}.With(Frame{.width = 30.0F, .height = 30.0F}, Background(preview),
+                   CornerRadius(15.0F), Border{colors::border_light, 1.0F}),
       Column{
           Text(field.title).Style(Label(16.0F, FontWeight::Medium)),
           Text(valid ? StringVariant(field.description)
@@ -558,7 +558,7 @@ ThemeSettingsScreen(std::shared_ptr<application::ThemeSettingsService> service,
                   .With(Spacing(12.0F),
                         Padding(EdgeInsets::Symmetric(16.0F, 0.0F)),
                         CrossAlign(CrossAxisAlignment::Stretch)),
-              Spacer().With(Frame{.height = 100.0F}),
+              Stack{}.With(Frame{.width = 1.0F, .height = 100.0F}),
           }
               .With(CrossAlign(CrossAxisAlignment::Stretch),
                     Background(colors::background)))

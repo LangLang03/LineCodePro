@@ -60,7 +60,7 @@ View Header(StringResource title,
       Stack{Text(title).Style(Label(17.0F, FontWeight::Bold))}.With(
           Grow(),
           Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
-      Spacer().With(Frame{.width = 36.0F, .height = 36.0F}),
+      Stack{}.With(Frame{.width = 36.0F, .height = 36.0F}),
   }
       .With(Frame{.min_height = 60.0F},
             Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
@@ -90,7 +90,7 @@ View AboutRow(ImageResource icon, StringResource label, StringVariant value,
               .With(Grow()),
           action ? Glyph(app::images::chevron_right, 17.0F, colors::tertiary)
                        .With(Frame{.width = 20.0F, .height = 20.0F})
-                 : Spacer().With(Frame{.width = 0.0F, .height = 0.0F}),
+                 : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F}),
       }
           .With(Frame{.min_height = 68.0F}, Spacing(kRowTextSpacing),
                 Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
@@ -119,7 +119,7 @@ void AppendGroupTitle(std::vector<View> &content, StringResource title) {
 
 void AppendRow(std::vector<View> &content, View row) {
   content.push_back(row);
-  content.push_back(Spacer().With(Frame{.height = 8.0F}));
+  content.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 8.0F}));
 }
 
 } // namespace

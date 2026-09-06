@@ -3,16 +3,26 @@
 #include <cstddef>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include <huxerui/huxerui.h>
+#include <huxerui/http.h>
 
 #include "app/bootstrap.h"
+#include "application/behavior_settings_repository.h"
+#include "application/error_log_service.h"
+#include "application/output_settings.h"
+#include "application/prompt_template_repository.h"
 #include "application/theme_settings.h"
 #if defined(__ANDROID__)
 #include "application/ports/keep_alive.h"
 #endif
-#include "infrastructure/fixed_model_catalog.h"
+#include "infrastructure/hux_completion_gateway.h"
+#include "infrastructure/hux_error_log_store.h"
+#include "infrastructure/hux_model_catalog_gateway.h"
+#include "infrastructure/hux_storage_stats_repository.h"
 #include "infrastructure/sqlite_model_store.h"
+#include "infrastructure/sqlite_settings_store.h"
 #include "infrastructure/theme_file_settings_store.h"
 #include "presentation/components/drawer.h"
 #include "presentation/line_theme.h"
@@ -43,11 +53,13 @@ bool IsDark(const huxerui::Color &color) {
   auto keep_alive = huxerui::UseService<application::KeepAliveService>();
   huxerui::Lifecycle(
       [keep_alive] { keep_alive->RefreshPreferences([](auto) {}); });
-  return huxerui::Spacer().With(huxerui::Frame{.width = 0.0F, .height = 0.0F});
+  return huxerui::Stack{}.With(
+      huxerui::Frame{.width = 0.0F, .height = 0.0F});
 }
 #else
 huxerui::View PlatformServicesHost() {
-  return huxerui::Spacer().With(huxerui::Frame{.width = 0.0F, .height = 0.0F});
+  return huxerui::Stack{}.With(
+      huxerui::Frame{.width = 0.0F, .height = 0.0F});
 }
 #endif
 
@@ -55,6 +67,9 @@ huxerui::View PlatformServicesHost() {
 
 [[huxerui::composable]] huxerui::View AppRoot() {
   auto file_system = huxerui::UseService<huxerui::FileSystem>();
+  auto http = huxerui::UseService<huxerui::HttpClient>();
+  auto error_log_platform =
+      huxerui::UseService<application::ErrorLogPlatformActions>();
   const bool host_is_dark = IsDark(huxerui::UseTheme().colors.background);
   auto system_theme =
       huxerui::UseState(std::make_shared<HostSystemThemeSource>(host_is_dark));
@@ -71,13 +86,44 @@ huxerui::View PlatformServicesHost() {
   auto persistence_revision = huxerui::UseState(std::size_t{0});
   auto chat = huxerui::UseState(std::make_shared<ChatSessionBootstrap>(
       tasks, [persistence_revision] { persistence_revision += 1; }));
-  const auto database_file =
-      file_system->Directories().data_directory.Child("linecode.db");
+  const auto data_directory = file_system->Directories().data_directory;
+  const auto database_file = data_directory.Child("linecode.db");
   auto model_store = huxerui::UseState(std::shared_ptr<application::ModelStore>{
       std::make_shared<infrastructure::SqliteModelStore>(database_file)});
   auto model_catalog =
       huxerui::UseState(std::shared_ptr<application::ModelCatalogGateway>{
-          std::make_shared<infrastructure::FixedModelCatalog>()});
+          std::make_shared<infrastructure::HuxModelCatalogGateway>(http)});
+  auto settings_store =
+      huxerui::UseState(std::shared_ptr<application::AsyncSettingsStore>{
+          std::make_shared<infrastructure::SQLiteSettingsStore>(database_file)});
+  auto ai_behavior_settings = huxerui::UseState(
+      std::make_shared<application::AiBehaviorSettingsRepository>(
+          settings_store.Get()));
+  auto input_settings = huxerui::UseState(
+      std::make_shared<application::InputSettingsRepository>(
+          settings_store.Get()));
+  auto prompt_templates = huxerui::UseState(
+      std::make_shared<application::PromptTemplateRepository>(
+          settings_store.Get()));
+  auto output_settings_service =
+      huxerui::UseState(std::shared_ptr<application::OutputSettingsService>{
+          std::make_shared<application::PersistedOutputSettings>(
+              settings_store.Get())});
+  auto completion_gateway =
+      huxerui::UseState(std::shared_ptr<application::CompletionGateway>{
+          std::make_shared<infrastructure::HuxCompletionGateway>(http)});
+  auto storage_stats =
+      huxerui::UseState(std::shared_ptr<application::StorageStatsRepository>{
+          std::make_shared<infrastructure::HuxStorageStatsRepository>(
+              database_file,
+              std::vector<huxerui::File>{data_directory.Child("settings")},
+              data_directory.Child(".linecode").Child("home"))});
+  auto error_logs =
+      huxerui::UseState(std::shared_ptr<application::ErrorLogService>{
+          std::make_shared<application::ErrorLogService>(
+              std::make_shared<infrastructure::HuxErrorLogStore>(
+                  data_directory),
+              error_log_platform)});
   huxerui::Lifecycle([tasks, chat = chat.Get(), database_file] {
     tasks.Launch(
         [chat, database_file] { return chat->InitializeAsync(database_file); });
@@ -98,10 +144,22 @@ huxerui::View PlatformServicesHost() {
   auto main_content = huxerui::Scope(
       [initial_session = chat.Get()->Session(), project_store,
        model_store = model_store.Get(), model_catalog = model_catalog.Get(),
-       theme_service = theme_service.Get(), theme_settings] {
+       ai_behavior_settings = ai_behavior_settings.Get(),
+       input_settings = input_settings.Get(),
+       prompt_templates = prompt_templates.Get(),
+       output_settings_service = output_settings_service.Get(),
+       completion_gateway = completion_gateway.Get(),
+       theme_service = theme_service.Get(), theme_settings,
+       storage_stats = storage_stats.Get(),
+       error_logs = error_logs.Get()] {
         return presentation::MainScreen(initial_session, project_store,
                                         model_store, model_catalog,
-                                        theme_service, theme_settings);
+                                        ai_behavior_settings, input_settings,
+                                        prompt_templates,
+                                        completion_gateway,
+                                        output_settings_service,
+                                        theme_service, theme_settings,
+                                        storage_stats, error_logs);
       });
   return huxerui::Stack{
       huxerui::ProvideEnvironment(

@@ -9,6 +9,7 @@ namespace linecode::application {
 
 enum class SendMessageError : std::uint8_t {
   empty,
+  generation_in_progress,
 };
 
 class SendMessage final {

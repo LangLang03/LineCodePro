@@ -91,9 +91,12 @@ The fixture supports `GET /health`, `GET /v1/models`, OpenAI Chat Completions an
 Responses in both JSON and SSE modes. It also has a deterministic Anthropic Messages
 compatibility route for testing that model option.
 
-This fixture only supplies the server side of those protocols. Its tests do not
-claim that the C++ app's real network transport or AI functionality has been wired
-up; that must be verified separately on the device.
+The fixture tests alone cover only the server contract. The product uses
+`HuxCompletionGateway` and `HuxModelCatalogGateway`, both backed by HuxerUI's real
+`HttpClient`; keep a separate device run in the release gate. A catalog run must
+show only `linecode-test-model` from `GET /v1/models` (never the removed hard-coded
+`test-model` / `gpt-4o-mini` values), and a chat run must persist the fixed reply
+after a force-stop/cold restart.
 
 ## Native checks
 

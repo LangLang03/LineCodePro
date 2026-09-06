@@ -86,7 +86,7 @@ View ScreenHeader(
       Stack{Text(title).Style(LabelStyle(17.0F, FontWeight::Bold))}.With(
           Grow(),
           Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
-      Spacer().With(Frame{.width = 36.0F, .height = 36.0F}),
+      Stack{}.With(Frame{.width = 36.0F, .height = 36.0F}),
   }
       .With(Frame{.min_height = 60.0F},
             Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
@@ -155,6 +155,8 @@ StringResource RouteTitle(domain::AppRoute route) {
     return app::strings::settings_row_models_title;
   case domain::AppRoute::llm:
     return app::strings::settings_row_llm_title;
+  case domain::AppRoute::prompt_templates:
+    return app::strings::screen_prompt_templates_title;
   case domain::AppRoute::mcp:
     return app::strings::settings_row_mcp_title;
   case domain::AppRoute::tool_settings:
@@ -167,6 +169,8 @@ StringResource RouteTitle(domain::AppRoute route) {
     return app::strings::settings_row_theme_title;
   case domain::AppRoute::output:
     return app::strings::settings_row_output_title;
+  case domain::AppRoute::tool_call_preview:
+    return app::strings::screen_toolcall_preview_title;
   case domain::AppRoute::security:
     return app::strings::settings_row_security_title;
   case domain::AppRoute::storage:
@@ -276,7 +280,7 @@ StringResource RouteTitle(domain::AppRoute route) {
            app::strings::settings_row_about_desc, app::images::cpu},
       },
       navigation);
-  content.push_back(Spacer().With(Frame{.height = 100.0F}));
+  content.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 100.0F}));
 
   return Column{
       ScreenHeader(app::strings::screen_settings_title, navigation),

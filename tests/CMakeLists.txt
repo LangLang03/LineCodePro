@@ -120,6 +120,26 @@ endif ()
 add_test(NAME settings_store_schema_tests
         COMMAND settings_store_schema_tests)
 
+add_executable(behavior_settings_tests
+        behavior_settings_tests.cpp
+        ../src/domain/prompt_template.cpp
+)
+target_include_directories(behavior_settings_tests PRIVATE ../src)
+target_compile_features(behavior_settings_tests PRIVATE cxx_std_23)
+set_target_properties(behavior_settings_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(behavior_settings_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(behavior_settings_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+add_test(NAME behavior_settings_tests COMMAND behavior_settings_tests)
+
 add_executable(sse_decoder_tests
         sse_decoder_tests.cpp
         ../src/infrastructure/sse_decoder.cpp
@@ -161,3 +181,108 @@ endif ()
 
 add_test(NAME model_store_selection_tests
         COMMAND model_store_selection_tests)
+
+add_executable(completion_pipeline_tests
+        completion_pipeline_tests.cpp
+        ../src/application/chat_session.cpp
+        ../src/application/generation_controller.cpp
+        ../src/application/send_message.cpp
+        ../src/infrastructure/in_memory_conversation_store.cpp
+        ../src/infrastructure/model_url_policy.cpp
+        ../src/infrastructure/openai_chat_codec.cpp
+)
+target_include_directories(completion_pipeline_tests PRIVATE ../src)
+target_compile_features(completion_pipeline_tests PRIVATE cxx_std_23)
+set_target_properties(completion_pipeline_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(completion_pipeline_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(completion_pipeline_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+add_test(NAME completion_pipeline_tests COMMAND completion_pipeline_tests)
+
+add_executable(output_settings_tests
+        output_settings_tests.cpp
+)
+target_include_directories(output_settings_tests PRIVATE ../src)
+target_compile_features(output_settings_tests PRIVATE cxx_std_23)
+set_target_properties(output_settings_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(output_settings_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(output_settings_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+add_test(NAME output_settings_tests COMMAND output_settings_tests)
+
+add_executable(model_catalog_codec_tests
+        model_catalog_codec_tests.cpp
+        ../src/infrastructure/model_catalog_codec.cpp
+)
+target_include_directories(model_catalog_codec_tests PRIVATE ../src)
+target_compile_features(model_catalog_codec_tests PRIVATE cxx_std_23)
+set_target_properties(model_catalog_codec_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(model_catalog_codec_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(model_catalog_codec_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+add_test(NAME model_catalog_codec_tests COMMAND model_catalog_codec_tests)
+
+add_executable(error_log_tests
+        error_log_tests.cpp
+        ../src/application/error_log_policy.cpp
+        ../src/application/error_log_redactor.cpp
+)
+target_include_directories(error_log_tests PRIVATE ../src)
+target_compile_features(error_log_tests PRIVATE cxx_std_23)
+set_target_properties(error_log_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(error_log_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(error_log_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+add_test(NAME error_log_tests COMMAND error_log_tests)
+
+add_executable(storage_stats_tests
+        storage_stats_tests.cpp
+        ../src/application/storage_stats.cpp
+)
+target_include_directories(storage_stats_tests PRIVATE ../src)
+target_compile_features(storage_stats_tests PRIVATE cxx_std_23)
+set_target_properties(storage_stats_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(storage_stats_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(storage_stats_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+add_test(NAME storage_stats_tests COMMAND storage_stats_tests)

@@ -65,11 +65,11 @@ Status values are `started`, `pending`, and `excluded`.
 | Composer | started | Full editing value, attachments, image, quote, queued sends, slash menu, model/mode menus |
 | Settings home | started | Exact grouped rows; platform filtering before construction |
 | Phone Control / Control mode | excluded | Complete removal across UI, tools, services, persistence and prompts |
-| Models and model editors | pending | Providers, protocols, catalog query, GGUF, acceleration, compression, validation |
-| LLM / prompt / input settings | pending | Reasoning, tone, templates, compaction and Enter behavior |
+| Models and model editors | started | Providers, protocols, catalog query, GGUF, acceleration, compression, validation |
+| LLM / prompt / input settings | started | Reasoning, tone, templates, compaction and Enter behavior |
 | MCP / tool / SSH settings | pending | Targets, permissions, web/image tools, SSH testing |
 | Termux / Terminal Provider | pending | Android-only; absent from Windows navigation |
-| Output / security / theme | pending | Preview, browser policy, path warning, nine palette modes and custom editor |
+| Output / security / theme | started | Preview, browser policy, path warning, nine palette modes and custom editor |
 | Data / storage / memory / logs | pending | Import/export, redaction, stats, CRUD, diagnostics |
 | Keep-alive | started | Android-only settings, persisted foreground service/Wake Lock and RAII generation lease; no Windows row |
 | Extensions | pending | Agent, MCP, Skills, LineCode packages, install/edit/enable/delete flows |

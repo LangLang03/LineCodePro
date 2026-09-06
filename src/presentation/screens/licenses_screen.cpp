@@ -38,7 +38,7 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation) {
                 .Style(Label(17.0F, FontWeight::Bold))}
           .With(Grow(),
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
-      Spacer().With(Frame{.width = 36.0F, .height = 36.0F}),
+      Stack{}.With(Frame{.width = 36.0F, .height = 36.0F}),
   }
       .With(Frame{.min_height = 60.0F},
             Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
@@ -58,33 +58,24 @@ View LicenseCard(StringResource name, StringResource metadata,
             Background(colors::elevated), CornerRadius(12.0F));
 }
 
-void AppendLicense(std::vector<View> &content, View card) {
-  content.push_back(card);
-  content.push_back(Spacer().With(Frame{.height = 8.0F}));
-}
-
 } // namespace
 
 [[huxerui::composable]] View LicensesScreen() {
   const auto navigation = UseNavigation<domain::AppRoute>();
   std::vector<View> content;
-  content.reserve(9);
-  AppendLicense(content,
-                LicenseCard(app::strings::screen_licenses_huxerui,
-                            app::strings::screen_licenses_huxerui_meta,
-                            app::strings::screen_licenses_huxerui_desc));
-  AppendLicense(content,
-                LicenseCard(app::strings::screen_licenses_sqlite,
-                            app::strings::screen_licenses_sqlite_meta,
-                            app::strings::screen_licenses_sqlite_desc));
-  AppendLicense(content,
-                LicenseCard(app::strings::screen_licenses_webview,
-                            app::strings::screen_licenses_webview_meta,
-                            app::strings::screen_licenses_webview_desc));
-  AppendLicense(content,
-                LicenseCard(app::strings::screen_licenses_lucide,
-                            app::strings::screen_licenses_lucide_meta,
-                            app::strings::screen_licenses_lucide_desc));
+  content.reserve(4);
+  content.push_back(LicenseCard(app::strings::screen_licenses_huxerui,
+                                app::strings::screen_licenses_huxerui_meta,
+                                app::strings::screen_licenses_huxerui_desc));
+  content.push_back(LicenseCard(app::strings::screen_licenses_sqlite,
+                                app::strings::screen_licenses_sqlite_meta,
+                                app::strings::screen_licenses_sqlite_desc));
+  content.push_back(LicenseCard(app::strings::screen_licenses_webview,
+                                app::strings::screen_licenses_webview_meta,
+                                app::strings::screen_licenses_webview_desc));
+  content.push_back(LicenseCard(app::strings::screen_licenses_lucide,
+                                app::strings::screen_licenses_lucide_meta,
+                                app::strings::screen_licenses_lucide_desc));
 
   return Column{
       Header(navigation),
@@ -94,6 +85,7 @@ void AppendLicense(std::vector<View> &content, View card) {
                                               .right = 12.0F,
                                               .bottom = 100.0F,
                                               .left = 12.0F}),
+                           Spacing(8.0F),
                            CrossAlign(CrossAxisAlignment::Stretch)))
           .ScrollAxis(Axis::Vertical)
           .With(Grow()),

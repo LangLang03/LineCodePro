@@ -15,6 +15,8 @@
 #include <huxerui/huxerui.h>
 
 #include "application/chat_session.h"
+#include "application/generation_controller.h"
+#include "application/ports/model_store.h"
 #include "presentation/components/chat_overlays.h"
 #include "presentation/line_theme.h"
 #include "presentation/platform_features.h"
@@ -137,9 +139,13 @@ private:
 
 View Header(std::function<void()> open_drawer,
             const std::shared_ptr<application::ChatSession> &session,
-            State<std::size_t> revision, std::function<void()> show_permissions,
+            const std::shared_ptr<application::GenerationController> &generation,
+            State<TaskHandle> active_generation, State<std::size_t> revision,
+            std::function<void()> show_permissions,
             std::function<void()> show_more) {
-  auto reset_conversation = [session, revision] {
+  auto reset_conversation = [session, generation, active_generation, revision] {
+    active_generation.Get().Cancel();
+    generation->Reset();
     session->Clear();
     revision += 1;
   };
@@ -206,20 +212,32 @@ View EmptyConversation(
 
 View MessageBubble(const domain::ChatMessage &message) {
   const bool user = message.role == domain::MessageRole::user;
+  const auto bubble_color = static_cast<Color>(colors::user_bubble);
+  const float luminance = bubble_color.red * 0.2126F +
+                          bubble_color.green * 0.7152F +
+                          bubble_color.blue * 0.0722F;
+  const Color user_text =
+      luminance > 0.55F ? static_cast<Color>(colors::text)
+                        : Color::Rgb(237, 240, 242);
   View bubble =
       Text(message.content)
-          .With(FontSize(13.0F),
-                Foreground(user ? colors::text_on_color : colors::text),
-                Padding(EdgeInsets::Symmetric(14.0F, 10.0F)),
+          .With(FontSize(16.0F),
+                Foreground(user ? user_text : static_cast<Color>(colors::text)),
+                Padding(EdgeInsets::Symmetric(15.0F, 10.0F)),
                 Background(user ? colors::user_bubble : colors::ai_bubble),
-                CornerRadius(18.0F), Frame{.max_width = 620.0F});
+                CornerRadius(18.0F), Frame{.max_width = 684.0F});
 
   if (user) {
     return Row{Spacer(), bubble}.With(
-        Padding(EdgeInsets::Symmetric(16.0F, 6.0F)));
+        Padding(EdgeInsets{.top = 16.0F,
+                           .right = 16.0F,
+                           .bottom = 32.0F,
+                           .left = 16.0F}));
   }
   return Row{bubble, Spacer()}.With(
-      Padding(EdgeInsets::Symmetric(16.0F, 6.0F)));
+      Padding(EdgeInsets{.right = 16.0F,
+                         .bottom = 28.0F,
+                         .left = 16.0F}));
 }
 
 View Conversation(
@@ -245,17 +263,102 @@ View Conversation(
 
 View Composer(State<TextEditingValue> draft,
               const std::shared_ptr<application::ChatSession> &session,
+              const std::shared_ptr<application::GenerationController>
+                  &generation,
+              const std::shared_ptr<application::ModelStore> &model_store,
+              const std::shared_ptr<application::CompletionGateway>
+                  &completion_gateway,
+              std::optional<bool> has_selected_model,
+              TaskScope tasks, State<TaskHandle> active_generation,
               State<std::size_t> revision,
               std::function<void()> show_attachment_picker) {
-  auto send = [draft, session, revision] {
-    auto result = session->Send(draft->text);
-    if (result.has_value()) {
-      draft = TextEditingValue::FromText("");
+  auto send = [draft, generation, model_store, completion_gateway, tasks,
+               active_generation, revision] {
+    if (generation->State().phase == application::GenerationPhase::running) {
+      active_generation.Get().Cancel();
+      generation->Cancel();
       revision += 1;
+      return;
     }
+    auto work = generation->Begin(draft->text);
+    if (!work.has_value()) {
+      return;
+    }
+    draft = TextEditingValue::FromText("");
+    revision += 1;
+    active_generation.Get().Cancel();
+    const auto handle = tasks.Launch(
+        [generation, model_store, completion_gateway, work = std::move(*work),
+         revision]() mutable -> Task<void> {
+          const auto selected_id = co_await model_store->SelectedId();
+          if (!generation->IsCurrent(work.generation_id)) {
+            co_return;
+          }
+          if (!selected_id.has_value()) {
+            static_cast<void>(generation->Fail(
+                work.generation_id,
+                application::CompletionError{
+                    .code = application::CompletionErrorCode::invalid_configuration,
+                    .message = selected_id.error().message}));
+            revision += 1;
+            co_return;
+          }
+          if (selected_id->empty()) {
+            static_cast<void>(generation->Fail(
+                work.generation_id,
+                application::CompletionError{
+                    .code = application::CompletionErrorCode::invalid_configuration,
+                    .message = "Please add and select a model first"}));
+            revision += 1;
+            co_return;
+          }
+          auto selected_model = co_await model_store->Find(*selected_id);
+          if (!generation->IsCurrent(work.generation_id)) {
+            co_return;
+          }
+          if (!selected_model.has_value()) {
+            static_cast<void>(generation->Fail(
+                work.generation_id,
+                application::CompletionError{
+                    .code = application::CompletionErrorCode::invalid_configuration,
+                    .message = selected_model.error().message}));
+            revision += 1;
+            co_return;
+          }
+          if (!selected_model->has_value()) {
+            static_cast<void>(generation->Fail(
+                work.generation_id,
+                application::CompletionError{
+                    .code = application::CompletionErrorCode::invalid_configuration,
+                    .message = "The selected model no longer exists"}));
+            revision += 1;
+            co_return;
+          }
+          auto response = co_await completion_gateway->Complete(
+              application::CompletionRequest{
+                  .model = std::move(**selected_model),
+                  .messages = std::move(work.messages),
+                  .stream = true,
+              },
+              {});
+          if (!generation->IsCurrent(work.generation_id)) {
+            co_return;
+          }
+          if (response.has_value()) {
+            static_cast<void>(generation->Complete(work.generation_id,
+                                                   std::move(*response)));
+          } else {
+            static_cast<void>(generation->Fail(work.generation_id,
+                                               std::move(response.error())));
+          }
+          revision += 1;
+        });
+    active_generation = handle;
   };
 
-  const bool can_send = HasVisibleText(draft->text);
+  const bool generating =
+      generation->State().phase == application::GenerationPhase::running;
+  const bool can_send = generating || HasVisibleText(draft->text);
 
   return Column{
       Row{
@@ -263,7 +366,9 @@ View Composer(State<TextEditingValue> draft,
                          Color::Transparent(), true,
                          std::move(show_attachment_picker)),
           TextField(draft)
-              .Placeholder(app::strings::composer_hint_no_model)
+              .Placeholder(has_selected_model.value_or(true)
+                               ? app::strings::composer_hint_default
+                               : app::strings::composer_hint_no_model)
               .Variant(TextFieldVariant::Standard)
               .LineLimits(TextFieldLineLimits::MultiLine(1, 3))
               .VerticalAlign(TextVerticalAlign::Center)
@@ -271,7 +376,7 @@ View Composer(State<TextEditingValue> draft,
                   [draft](const TextEditingValue &value) { draft = value; })
               .OnSubmitted(send)
               .With(Frame{.min_height = 44.0F}, Grow()),
-          ComposerAction(app::images::arrow_up,
+          ComposerAction(generating ? app::images::x : app::images::arrow_up,
                          can_send ? colors::text_on_color : colors::secondary,
                          can_send ? colors::accent : Color::Transparent(),
                          can_send, send),
@@ -289,12 +394,32 @@ View Composer(State<TextEditingValue> draft,
             Background(colors::background));
 }
 
+View GenerationError(
+    const application::GenerationController &generation,
+    std::size_t revision) {
+  static_cast<void>(revision);
+  if (generation.State().phase != application::GenerationPhase::failed ||
+      generation.State().error.empty()) {
+    return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
+  }
+  return Text(generation.State().error)
+      .Style(ChatTextStyle(12.0F, FontWeight::Regular, colors::danger))
+      .With(Padding(EdgeInsets{
+          .top = 4.0F, .right = 20.0F, .bottom = 0.0F, .left = 20.0F}));
+}
+
 } // namespace
 
 [[huxerui::composable]] View
 ChatScreen(std::function<void()> open_drawer, State<TextEditingValue> draft,
            const std::shared_ptr<application::ChatSession> &session,
-           State<std::size_t> revision, State<DrawerModel> workspace) {
+           const std::shared_ptr<application::GenerationController> &generation,
+           const std::shared_ptr<application::ModelStore> &model_store,
+           const std::shared_ptr<application::CompletionGateway>
+               &completion_gateway,
+           std::optional<bool> has_selected_model,
+           State<TaskHandle> active_generation, State<std::size_t> revision,
+           State<DrawerModel> workspace) {
   const auto navigation = UseNavigation<domain::AppRoute>();
   const auto bottom_sheets = UseBottomSheet();
   auto attachment_visible = UseState(false);
@@ -308,6 +433,7 @@ ChatScreen(std::function<void()> open_drawer, State<TextEditingValue> draft,
   auto has_saved_command_permissions = UseState(false);
   auto selected_attachment_paths = UseState(std::vector<std::string>{});
   auto expanded_attachment_directories = UseState(std::vector<std::string>{});
+  const auto tasks = UseTaskScope();
 
   const ControlledBottomSheet attachment_sheet(
       bottom_sheets, attachment_visible, attachment_layer);
@@ -366,15 +492,18 @@ ChatScreen(std::function<void()> open_drawer, State<TextEditingValue> draft,
     });
   };
 
-  auto show_more = [more_sheet, navigation, session, revision] {
+  auto show_more = [more_sheet, navigation, session, generation,
+                    active_generation, revision] {
     more_sheet.Show([navigation, session,
+                     generation, active_generation,
                      revision](bool visible, std::function<void()> dismiss) {
       return ChatMoreMenu(
           ChatMoreMenuState{.visible = visible},
           ChatOverlayCallbacks<ChatMoreAction>{
               .on_dismiss_request = std::move(dismiss),
               .on_action =
-                  [navigation, session, revision](ChatMoreAction action) {
+                  [navigation, session, generation, active_generation,
+                   revision](ChatMoreAction action) {
                     switch (action) {
                     case ChatMoreAction::tutorial:
                       navigation.Push(domain::AppRoute::tutorial);
@@ -383,6 +512,8 @@ ChatScreen(std::function<void()> open_drawer, State<TextEditingValue> draft,
                       navigation.Push(domain::AppRoute::settings);
                       break;
                     case ChatMoreAction::clear_chat:
+                      active_generation.Get().Cancel();
+                      generation->Reset();
                       session->Clear();
                       revision += 1;
                       break;
@@ -445,10 +576,13 @@ ChatScreen(std::function<void()> open_drawer, State<TextEditingValue> draft,
   };
 
   return Column{
-      Header(std::move(open_drawer), session, revision, show_permission,
-             show_more),
+      Header(std::move(open_drawer), session, generation, active_generation,
+             revision, show_permission, show_more),
       Conversation(session, revision.Get(), navigation),
-      Composer(draft, session, revision, show_attachments),
+      GenerationError(*generation, revision.Get()),
+      Composer(draft, session, generation, model_store, completion_gateway,
+               has_selected_model, tasks, active_generation, revision,
+               show_attachments),
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::background));

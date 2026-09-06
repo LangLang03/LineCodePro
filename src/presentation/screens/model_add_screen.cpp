@@ -144,12 +144,17 @@ View HeaderAction(StringVariant label, bool enabled,
   return Text(std::move(label))
       .Style(Label(16.0F, FontWeight::Medium,
                    enabled ? colors::accent : colors::tertiary))
+      .Align(TextAlign::Center)
+      .VerticalAlign(TextVerticalAlign::Center)
       .OnClick([enabled, action = std::move(action)] {
         if (enabled && action) {
           std::invoke(action);
         }
       })
-      .With(Frame{.min_width = 42.0F, .min_height = 36.0F},
+      // Android TextView's 16sp line box plus 8dp vertical padding paints at
+      // roughly 39dp on the parity device. Keep that measured action height so
+      // the title and both header actions share the legacy vertical center.
+      .With(Frame{.min_width = 42.0F, .min_height = 39.0F},
             Align(HorizontalAlignment::Center, VerticalAlignment::Center),
             Enabled{enabled}, Opacity(enabled ? 1.0F : 0.45F), Focusable(),
             PointerCursor(enabled ? PointerCursorKind::Hand
@@ -355,7 +360,7 @@ View PickerRow(BottomSheetContext sheet, StringVariant label, bool selected,
           .With(Grow()),
       selected ? Glyph(app::images::check, 16.0F, colors::accent)
                      .With(Frame{.width = 18.0F, .height = 18.0F})
-               : Spacer().With(Frame{.width = 0.0F, .height = 0.0F}),
+               : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F}),
   }
       .OnClick([sheet, choose = std::move(choose)] {
         sheet.Dismiss();
@@ -389,7 +394,7 @@ void ShowModelPicker(const BottomSheetHandle &sheets,
         sheet, app::strings::model_form_custom_model_picker, false, true,
         [state, target] { SelectCatalogItem(state, target, {}, true); }));
 
-    return Column{
+    View panel = Column{
         Row{Spacer(),
             Stack{}.With(Frame{.width = 36.0F, .height = 4.0F},
                          Background(colors::tertiary), CornerRadius(2.0F)),
@@ -405,11 +410,19 @@ void ShowModelPicker(const BottomSheetHandle &sheets,
                        .With(CrossAlign(CrossAxisAlignment::Stretch)))
             .ScrollAxis(Axis::Vertical)
             .With(Frame{.max_height = 420.0F}, ScrollBar()),
-        Spacer().With(Frame{.height = 12.0F}),
+        Stack{}.With(Frame{.width = 1.0F, .height = 12.0F}),
     }
         .With(Frame{.max_width = 560.0F}, Background(colors::elevated),
               CornerRadius(CornerRadii::Top(16.0F)), ClipChildren(),
               CrossAlign(CrossAxisAlignment::Stretch));
+
+    // ModelPickerDialog leaves the legacy 16dp horizontal dialog inset. The
+    // presentation host itself is intentionally transparent, so apply that
+    // inset outside the painted panel and retain the 560dp expanded-width cap.
+    return Row{std::move(panel).With(Grow())}.With(
+        Padding(EdgeInsets::Symmetric(16.0F, 0.0F)),
+        MainAlign(MainAxisAlignment::Center),
+        CrossAlign(CrossAxisAlignment::Stretch));
   });
 }
 
@@ -552,6 +565,7 @@ View LocalForm(State<ModelFormState> state, ToastHandle toast) {
             .Style(Label(16.0F, FontWeight::Bold,
                          selected ? colors::text_on_color : colors::secondary))
             .Align(TextAlign::Center)
+            .VerticalAlign(TextVerticalAlign::Center)
             .OnClick([state, index] {
               auto next = state.Get();
               next.acceleration = static_cast<int>(index);
@@ -675,7 +689,10 @@ ModelAddScreen(ModelAddScreenOptions options,
   form.push_back(SectionLabel(
       state->protocol_locked
           ? StringVariant::Format(app::strings::model_form_provider_named,
-                                  state->provider_label)
+                                  state->local
+                                      ? UseString(
+                                            app::strings::model_protocol_local)
+                                      : state->provider_label)
           : StringVariant{app::strings::model_form_provider}));
   form.push_back(ProtocolSelector(state));
 
@@ -813,7 +830,7 @@ ModelAddScreen(ModelAddScreenOptions options,
                                   VerticalAlignment::Center)),
           Row{
               state->local
-                  ? Spacer().With(Frame{.width = 0.0F, .height = 36.0F})
+                  ? Stack{}.With(Frame{.width = 0.0F, .height = 36.0F})
                   : HeaderAction(app::strings::model_form_test, !state->busy,
                                  std::move(test)),
               HeaderAction(app::strings::model_form_save, can_save,

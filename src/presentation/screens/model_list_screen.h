@@ -13,6 +13,7 @@ struct ModelListActions final {
   std::function<void()> on_back;
   std::function<void()> on_add;
   std::function<void(domain::ModelConfig)> on_edit;
+  std::function<void(bool)> on_selection_availability_changed;
 };
 
 [[huxerui::composable]] huxerui::View

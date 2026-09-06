@@ -16,6 +16,7 @@ public:
   [[nodiscard]] std::span<const domain::ChatMessage> Messages() const noexcept;
   [[nodiscard]] std::expected<domain::ChatMessage, SendMessageError>
   Send(std::string text);
+  [[nodiscard]] domain::ChatMessage AppendAssistant(std::string text);
   void Clear();
   [[nodiscard]] std::span<const ConversationSummary>
   Conversations() const noexcept;

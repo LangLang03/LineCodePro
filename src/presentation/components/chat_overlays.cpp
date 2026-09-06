@@ -160,7 +160,7 @@ BuildAvailableRows(const std::array<MenuItem<Action>, Size> &items,
 }
 
 View EmptyOverlay() {
-  return Spacer().With(Frame{.width = 0.0F, .height = 0.0F});
+  return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
 }
 
 View InsetSheet(View panel) {
@@ -172,7 +172,7 @@ View InsetSheet(View panel) {
 }
 
 View StandardSheet(StringVariant title, std::vector<View> rows) {
-  rows.emplace_back(Spacer().With(Frame{.height = 16.0F}));
+  rows.emplace_back(Stack{}.With(Frame{.width = 1.0F, .height = 16.0F}));
   View panel =
       Column{
           Column{
@@ -262,10 +262,9 @@ void AppendAttachmentRows(std::vector<View> &rows,
         expanded ? app::images::chevron_down : app::images::chevron_right,
         colors::tertiary, 16.0F));
   } else {
-    content.emplace_back(Spacer().With(Frame{.width = 16.0F, .height = 16.0F}));
+    content.emplace_back(Stack{}.With(Frame{.width = 16.0F, .height = 16.0F}));
   }
-  content.emplace_back(
-      Spacer().With(Frame{.width = 8.0F}));
+  content.emplace_back(Stack{}.With(Frame{.width = 8.0F, .height = 1.0F}));
   content.emplace_back(AttachmentInlineIcon(
       node.directory
           ? (expanded ? app::images::folder_open : app::images::folder)
@@ -286,7 +285,7 @@ void AppendAttachmentRows(std::vector<View> &rows,
             .With(Frame{.max_height = 16.0F}, Padding(EdgeInsets{.top = 2.0F}),
                   ClipChildren()));
   }
-  content.emplace_back(Spacer().With(Frame{.width = 8.0F}));
+  content.emplace_back(Stack{}.With(Frame{.width = 8.0F, .height = 1.0F}));
   content.emplace_back(Column(std::move(labels)).With(Grow()));
   if (!node.directory) {
     content.emplace_back(AttachmentFileSelection(selected).With(

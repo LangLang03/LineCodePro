@@ -416,7 +416,9 @@ View FileRow(const DrawerFileNode &node, std::size_t depth, bool root,
   std::vector<View> content;
   content.emplace_back(InlineIcon(FileImage(presentation),
                                   FileColor(node, presentation), icon_size));
-  content.emplace_back(Spacer().With(Frame{.width = 8.0F}));
+  // Spacer owns Grow(1) by default.  The legacy tree uses a fixed 8 dp icon
+  // margin, so a Spacer here pushes leaf names across the whole row.
+  content.emplace_back(Stack{}.With(Frame{.width = 8.0F, .height = 1.0F}));
   content.emplace_back(
       Text(node.name)
           .Style(DrawerTextStyle(13.0F))

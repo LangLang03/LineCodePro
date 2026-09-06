@@ -57,7 +57,8 @@ Color ProtocolColor(domain::ModelProtocol protocol) {
 }
 
 Task<void> Reload(const std::shared_ptr<application::ModelStore> &store,
-                  State<ModelListState> state) {
+                  State<ModelListState> state,
+                  std::function<void(bool)> selection_changed) {
   auto loaded = co_await store->List();
   auto selected = co_await store->SelectedId();
   ModelListState next = state.Get();
@@ -68,13 +69,17 @@ Task<void> Reload(const std::shared_ptr<application::ModelStore> &store,
     next.models = std::move(*loaded);
     next.error.clear();
   }
-  if (selected)
+  if (selected) {
     next.selected_id = std::move(*selected);
+    if (selection_changed)
+      std::invoke(selection_changed, !next.selected_id.empty());
+  }
   state = std::move(next);
 }
 
 Task<void> SelectModel(const std::shared_ptr<application::ModelStore> &store,
-                       State<ModelListState> state, std::string id) {
+                       State<ModelListState> state, std::string id,
+                       std::function<void(bool)> selection_changed) {
   auto result = co_await store->Select(id);
   if (!result) {
     auto next = state.Get();
@@ -82,11 +87,12 @@ Task<void> SelectModel(const std::shared_ptr<application::ModelStore> &store,
     state = std::move(next);
     co_return;
   }
-  co_await Reload(store, state);
+  co_await Reload(store, state, std::move(selection_changed));
 }
 
 Task<void> DeleteMarked(const std::shared_ptr<application::ModelStore> &store,
-                        State<ModelListState> state) {
+                        State<ModelListState> state,
+                        std::function<void(bool)> selection_changed) {
   auto ids = state->marked;
   auto result = co_await store->Delete(std::move(ids));
   if (!result) {
@@ -99,11 +105,11 @@ Task<void> DeleteMarked(const std::shared_ptr<application::ModelStore> &store,
   next.marked.clear();
   next.multi_select = false;
   state = std::move(next);
-  co_await Reload(store, state);
+  co_await Reload(store, state, std::move(selection_changed));
 }
 
 View SheetPanel(StringVariant title, std::vector<View> rows) {
-  rows.push_back(Spacer().With(Frame{.height = 12.0F}));
+  rows.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 12.0F}));
   return Column{
       Row{Spacer(),
           Stack{}.With(Frame{.width = 36.0F, .height = 4.0F},
@@ -167,7 +173,7 @@ View ModelCard(const domain::ModelConfig &model, State<ModelListState> state,
     trailing.push_back(
         Stack{
             marked ? Glyph(app::images::check, 14.0F, colors::text_on_color)
-                   : Spacer().With(Frame{.width = 0.0F, .height = 0.0F}),
+                   : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F}),
         }
             .With(Frame{.width = 22.0F, .height = 22.0F},
                   Align(HorizontalAlignment::Center, VerticalAlignment::Center),
@@ -181,12 +187,16 @@ View ModelCard(const domain::ModelConfig &model, State<ModelListState> state,
                                     CornerRadius(4.0F)));
   }
 
-  auto activate = [state, store, tasks, id = model.id] {
+  auto activate = [state, store, tasks, id = model.id,
+                   selection_changed =
+                       actions.on_selection_availability_changed] {
     if (state->multi_select) {
       ToggleMarked(state, id);
     } else {
-      tasks.Launch([store, state, id]() -> Task<void> {
-        co_await SelectModel(store, state, id);
+      tasks.Launch([store, state, id,
+                    selection_changed = std::move(selection_changed)]() mutable
+                       -> Task<void> {
+        co_await SelectModel(store, state, id, std::move(selection_changed));
       });
     }
   };
@@ -253,9 +263,12 @@ ModelListScreen(std::shared_ptr<application::ModelStore> store,
   auto state = UseState(ModelListState{});
   const auto tasks = UseTaskScope();
   const auto sheets = UseBottomSheet();
-  Lifecycle([tasks, store, state] {
+  Lifecycle([tasks, store, state, actions] {
     tasks.Launch(
-        [store, state]() -> Task<void> { co_await Reload(store, state); });
+        [store, state, actions]() -> Task<void> {
+          co_await Reload(store, state,
+                          actions.on_selection_availability_changed);
+        });
   });
 
   auto header_action = [state, actions, sheets, tasks, store] {
@@ -266,7 +279,7 @@ ModelListScreen(std::shared_ptr<application::ModelStore> store,
     }
     if (state->marked.empty())
       return;
-    sheets.Show([state, tasks, store](BottomSheetContext sheet) {
+    sheets.Show([state, tasks, store, actions](BottomSheetContext sheet) {
       std::vector<View> rows;
       rows.push_back(
           Text::Format(app::strings::model_list_delete_message,
@@ -282,10 +295,12 @@ ModelListScreen(std::shared_ptr<application::ModelStore> store,
                               StringVariant{
                                   app::strings::model_list_delete_warning},
                               colors::danger,
-                              [sheet, state, tasks, store] {
+                              [sheet, state, tasks, store, actions] {
                                 sheet.Dismiss();
-                                tasks.Launch([store, state]() -> Task<void> {
-                                  co_await DeleteMarked(store, state);
+                                tasks.Launch([store, state, actions]() -> Task<void> {
+                                  co_await DeleteMarked(
+                                      store, state,
+                                      actions.on_selection_availability_changed);
                                 });
                               }));
       return SheetPanel(app::strings::model_list_delete_title,
@@ -307,7 +322,7 @@ ModelListScreen(std::shared_ptr<application::ModelStore> store,
   for (const auto &model : state->models) {
     cards.push_back(
         ModelCard(model, state, store, tasks, sheets, actions).Key(model.id));
-    cards.push_back(Spacer().With(Frame{.height = 8.0F}));
+    cards.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 8.0F}));
   }
 
   StringVariant title = app::strings::model_list_title;

@@ -43,7 +43,7 @@ View Header(const ModelAddOptionsActions &actions) {
           .With(Grow(),
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
                 Offset(Point{0.0F, 0.76F})),
-      Spacer().With(Frame{.width = 36.0F, .height = 36.0F}),
+      Stack{}.With(Frame{.width = 36.0F, .height = 36.0F}),
   }
       .With(Frame{.min_height = 60.0F},
             Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
@@ -206,11 +206,11 @@ ModelAddOptionsScreen(ModelAddOptionsActions actions) {
   content.push_back(OptionCard(
       app::images::sliders_horizontal, app::strings::model_add_custom,
       app::strings::model_add_custom_desc, actions.on_custom));
-  content.push_back(Spacer().With(Frame{.height = 8.4F}));
+  content.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 8.4F}));
   content.push_back(
       OptionCard(app::images::file_up, app::strings::model_add_local,
                  app::strings::model_add_local_desc, actions.on_local));
-  content.push_back(Spacer().With(Frame{.height = 8.4F}));
+  content.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 8.4F}));
   content.push_back(Row{
       Glyph(app::images::boxes, 16.0F, colors::tertiary),
       Text(app::strings::model_add_presets)
@@ -223,7 +223,7 @@ ModelAddOptionsScreen(ModelAddOptionsActions actions) {
                               CrossAlign(CrossAxisAlignment::Center)));
   for (const auto preset : domain::ModelProviderPresets()) {
     content.push_back(PresetRow(preset, actions));
-    content.push_back(Spacer().With(Frame{.height = 8.45F}));
+    content.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 8.45F}));
   }
 
   return Column{

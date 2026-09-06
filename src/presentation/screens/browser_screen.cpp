@@ -140,7 +140,7 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation) {
                 .Style(Label(17.0F, FontWeight::Bold))}
           .With(Grow(),
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
-      Spacer().With(Frame{.width = 36.0F, .height = 36.0F}),
+      Stack{}.With(Frame{.width = 36.0F, .height = 36.0F}),
   }
       .With(Frame{.min_height = 60.0F},
             Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
