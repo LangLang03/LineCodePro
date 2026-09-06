@@ -136,7 +136,10 @@ View Header(bool files_active, const DrawerActions &actions) {
       .With(Padding(EdgeInsets{
                 .top = HeaderTopPadding(),
                 .right = 16.0F,
-                .bottom = 24.0F,
+                // The legacy text-only title row is 3 physical pixels taller
+                // than HuxerUI's font-driven intrinsic row at 420 dpi.  The
+                // file header is already governed by its 32dp refresh well.
+                .bottom = files_active ? 24.0F : 25.14F,
                 .left = 24.0F,
             }),
             Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center));
@@ -179,7 +182,7 @@ public:
 };
 
 View DrawerTabButton(ImageResource image, StringResource label, bool active,
-                     std::function<void()> action) {
+                     float height, std::function<void()> action) {
   const Color tint = active ? colors::accent : colors::tertiary;
   return Row{
       InlineIcon(std::move(image), tint, kTabIconSize),
@@ -188,9 +191,9 @@ View DrawerTabButton(ImageResource image, StringResource label, bool active,
               13.0F, active ? FontWeight::Medium : FontWeight::Regular, tint))
           .VerticalAlign(TextVerticalAlign::Center)
           .With(Frame{.height = 18.0F}),
-  }
+      }
       .OnClick(std::move(action))
-      .With(Frame{.height = 34.0F}, Padding(EdgeInsets::Symmetric(0.0F, 8.0F)),
+      .With(Frame{.height = height}, Padding(EdgeInsets::Symmetric(0.0F, 8.0F)),
             Spacing(4.0F), MainAlign(MainAxisAlignment::Center),
             CrossAlign(CrossAxisAlignment::Center),
             Background(active ? colors::elevated : Color::Transparent()),
@@ -200,17 +203,20 @@ View DrawerTabButton(ImageResource image, StringResource label, bool active,
 
 View DrawerTabs(State<std::size_t> selected_tab, const DrawerActions &actions) {
   const std::size_t active = std::min(selected_tab.Get(), std::size_t{1});
+  const bool files_active = active == static_cast<std::size_t>(DrawerTab::files);
+  const float button_height = files_active ? 34.76F : 35.14F;
   View tabs =
       Row{
           DrawerTabButton(app::images::message_square,
                           app::strings::drawer_tab_conversations, active == 0,
+                          button_height,
                           [selected_tab] {
                             selected_tab = static_cast<std::size_t>(
                                 DrawerTab::conversations);
                           }),
           DrawerTabButton(
               app::images::folder_open, app::strings::drawer_tab_files,
-              active == 1,
+              active == 1, button_height,
               [selected_tab, callback = actions.on_file_tree_activated] {
                 if (selected_tab.Get() !=
                     static_cast<std::size_t>(DrawerTab::files)) {
@@ -222,7 +228,9 @@ View DrawerTabs(State<std::size_t> selected_tab, const DrawerActions &actions) {
           .With(Padding(2.0F), Spacing(0.0F),
                 CrossAlign(CrossAxisAlignment::Stretch), Grow());
   return Row{std::move(tabs)}.With(
-      Padding(EdgeInsets{.right = 16.0F, .bottom = 12.0F, .left = 16.0F}));
+      Padding(EdgeInsets{.right = 16.0F,
+                         .bottom = files_active ? 12.0F : 11.62F,
+                         .left = 16.0F}));
 }
 
 View NewConversationButton(State<bool> drawer_open,
@@ -237,7 +245,7 @@ View NewConversationButton(State<bool> drawer_open,
             InvokeIfPresent(callback);
             drawer_open = false;
           })
-          .With(Frame{.height = 52.0F},
+          .With(Frame{.height = 52.62F},
                 Padding(EdgeInsets::Symmetric(16.0F, 12.0F)), Spacing(8.0F),
                 CrossAlign(CrossAxisAlignment::Center),
                 Background(colors::input), CornerRadius(14.0F),

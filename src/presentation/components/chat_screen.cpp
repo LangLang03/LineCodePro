@@ -276,7 +276,10 @@ View Composer(State<TextEditingValue> draft,
                          can_send ? colors::accent : Color::Transparent(),
                          can_send, send),
       }
-          .With(Frame{.min_height = 56.0F},
+          // Match the legacy 148px composer body at the 420dpi reference
+          // density.  A 56dp minimum rasterizes two pixels short here and
+          // makes both the editor text and circular actions look low.
+          .With(Frame{.min_height = 56.76F},
                 Padding(EdgeInsets::Symmetric(8.0F, 6.0F)),
                 CrossAlign(CrossAxisAlignment::End), Background(colors::input),
                 CornerRadius(20.0F)),
