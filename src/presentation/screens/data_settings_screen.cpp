@@ -78,8 +78,15 @@ View ActionRow(ImageResource icon, StringResource title,
 
 Task<void> ExportArchive(
     const std::shared_ptr<application::DataArchiveService> &service,
-    const std::shared_ptr<FilePicker> &picker, ToastHandle toast,
-    std::string failure_prefix) {
+    const std::shared_ptr<FilePicker> &picker, DataSettingsCallbacks callbacks,
+    ToastHandle toast, std::string failure_prefix) {
+  if (callbacks.persist_before_export) {
+    auto persisted = co_await callbacks.persist_before_export();
+    if (!persisted) {
+      toast.Show(failure_prefix + persisted.error());
+      co_return;
+    }
+  }
   auto prepared = co_await service->PrepareExport();
   if (!prepared) {
     toast.Show(failure_prefix + prepared.error().message);
@@ -111,7 +118,11 @@ Task<void> ImportArchive(
     co_return;
   }
   if (callbacks.after_import) {
-    callbacks.after_import();
+    auto reloaded = co_await callbacks.after_import();
+    if (!reloaded) {
+      toast.Show(failure_prefix + reloaded.error());
+      co_return;
+    }
   }
   toast.Show(application::ImportSuccessMessage(*imported));
 }
@@ -137,11 +148,8 @@ Task<void> ImportArchive(
       toast.Show(picker_unavailable);
       return;
     }
-    if (callbacks.persist_before_export) {
-      callbacks.persist_before_export();
-    }
-    tasks.Launch([service, picker, toast, export_failure] {
-      return ExportArchive(service, picker, toast, export_failure);
+    tasks.Launch([service, picker, callbacks, toast, export_failure] {
+      return ExportArchive(service, picker, callbacks, toast, export_failure);
     });
   };
   auto import_action = [service, picker, callbacks, dialogs, toast, tasks,

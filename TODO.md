@@ -1,6 +1,6 @@
 # LineCode C++ 迁移清单
 
-最后更新：2026-09-06，分支 `hui-cpp`。
+最后更新：2026-09-10，分支 `hui-cpp`。
 
 本文件是剩余工作清单，不是完成声明。只有同时通过功能、数据安全、旧版/新版同机截图和真机交互验证的项目，才可以勾选为完成。
 
@@ -21,7 +21,7 @@
 
 ## 当前可复现验证基线
 
-- [x] 原生测试：13/13 通过。
+- [x] 原生测试：15/15 通过；已包含归档安全与教程 Markdown 测试。
 - [x] Android Release：arm64-v8a、x86_64、Lint、签名打包通过。
 - [x] 假 AI 服务脚本与协议测试已可固定回复，相关测试 10/10 通过。
 - [x] 设置重点页面 v27：4/4 页面均成功导航，无功能回放失败。
@@ -68,26 +68,24 @@ python3 tools/ui_parity_test.py \
 
 以下路由目前仍会落入 `PendingScreen`，不能视为已迁移：
 
-- [ ] `tutorial`
 - [ ] `mcp`
 - [ ] `tool_settings`
 - [ ] `extensions`
 - [ ] `memory`
-- [ ] `data`
 
-`data` 已有可编译的页面、ZIP、JSON 和 SQLite 归档基础代码，但尚未接入 `AppRoot/MainScreen`，也尚未通过归档兼容与破坏性导入测试。
+`tutorial` 和 `data` 已接入 `NavigationStack`，不再落入 `PendingScreen`；两页仍须完成旧版同机像素测试。`data` 尚未通过旧版互导、跨数据库/工作区原子回滚和破坏性导入真机测试。
 
 ## 数据管理与 `.linecode`
 
-- [ ] 在 `AppRoot` 构造 `SqliteArchiveDatabase` 和 `HuxDataArchiveService`，通过接口注入页面。
-- [ ] 将 `AppRoute::data` 接到 `DataSettingsScreen`。
-- [ ] 导出前持久化当前会话；导入确认后先停止生成和 Android 保活；成功后才重载应用状态。
-- [ ] 严格校验 `manifest.json`：`format=linecode`、版本、容器、数据库标志和 roots。
+- [x] 在 `AppRoot` 构造 `SqliteArchiveDatabase` 和 `HuxDataArchiveService`，通过接口注入页面。
+- [x] 将 `AppRoute::data` 接到 `DataSettingsScreen`。
+- [x] 导出前持久化当前会话；导入确认后先停止当前生成；成功后重载会话、模型选择和工作区状态。Android 保活租约释放仍需真机验证。
+- [x] 严格校验 `manifest.json`：`format=linecode`、版本、容器、数据库标志和 roots。
 - [ ] 完整支持旧版 `async-storage.json` 与 `conversations/*.json` 兼容归档；当前 async-storage-only 导入仍明确不支持。
 - [ ] 导入必须先完整校验并暂存，再执行覆盖；数据库与工作区恢复要具备原子性或可验证回滚，任何失败不得留下半导入状态。
 - [ ] REPLACE 模式正确清理 `home/project/skills`，同时支持旧 `.linecode/{root}` 路径。
-- [ ] 拒绝 zip-slip、绝对路径、重复条目、CRC 错误、越界 conversation 文件、缺失 tables 和更高 schema 版本。
-- [ ] 为压缩包总大小、解压后大小、条目数、单文件大小和递归深度设置明确上限。
+- [x] 拒绝 zip-slip、绝对路径、重复条目、CRC/元数据不一致、缺失 tables 和更高 schema 版本；旧版 conversation fixture 与递归深度仍需补测。
+- [x] 为容器/解压后总大小、条目数和单文件大小设置上限；工作区递归深度仍需明确上限和测试。
 - [ ] 导出脱敏模型 `api_key`、SSH/Web Search secret、敏感 setting key、MCP headers/raw JSON secrets，并增加反向测试证明秘密不在归档中。
 - [ ] 增加 ZIP codec、JSON typed cell、SQLite 事务、导入失败不破坏原数据、旧版 fixture、文件选择取消和确认框状态测试。
 - [ ] 用旧版和新版实际互导 `.linecode`，逐项核对会话、模型、设置和工作区文件。
@@ -95,12 +93,12 @@ python3 tools/ui_parity_test.py \
 
 ## 教程
 
-- [ ] 迁移并净化 `tutorial_simple.md` 与 `tutorial_pro.md`，删除控制模式、手机控制和无障碍相关段落，再连续重编号。
-- [ ] 实现 C++23 Markdown 文档模型与解析器，覆盖当前教程使用的标题、段落、粗斜体、行内代码、代码块、嵌套列表、引用、分隔线、GFM 表格和裸 URL。
-- [ ] 实现模式选择卡、横向章节 chips 和章节跳转；简单模式默认且页面内状态不持久化。
+- [x] 迁移并净化 `tutorial_simple.md` 与 `tutorial_pro.md`，删除控制模式、手机控制和无障碍相关段落，再连续重编号。
+- [x] 实现 C++23 Markdown 文档模型与解析器，覆盖当前教程使用的标题、段落、粗斜体、行内代码、代码块、嵌套列表、引用、分隔线和 GFM 表格；裸 URL 与边界语法仍需增加专项 fixture。
+- [x] 实现模式选择卡、横向章节 chips 和章节跳转；简单模式默认且页面内状态不持久化。
 - [ ] 复刻旧版 Markdown 几何：标题 28/24/20sp、正文 16sp、代码 13sp、表格 13sp，以及原边距/圆角/颜色。
 - [ ] HuxerUI 目前只公开即时 `ScrollTo/ScrollToItem`；先保证跳转位置准确，再验证是否可在公开 API 内复刻旧版平滑动画。
-- [ ] 增加解析、章节映射、代码围栏伪标题、链接和“无障碍关键词不存在”测试。
+- [ ] 已增加解析、章节映射、代码围栏伪标题和“禁用关键词不存在”测试；仍需补链接点击、裸 URL、复杂嵌套与真实页面滚动测试。
 
 ## 旧版页面/功能完整性审计
 

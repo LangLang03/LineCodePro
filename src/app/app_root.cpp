@@ -18,10 +18,12 @@
 #include "application/ports/keep_alive.h"
 #endif
 #include "infrastructure/hux_completion_gateway.h"
+#include "infrastructure/hux_data_archive_service.h"
 #include "infrastructure/hux_error_log_store.h"
 #include "infrastructure/hux_model_catalog_gateway.h"
 #include "infrastructure/hux_storage_stats_repository.h"
 #include "infrastructure/sqlite_model_store.h"
+#include "infrastructure/sqlite_archive_database.h"
 #include "infrastructure/sqlite_settings_store.h"
 #include "infrastructure/theme_file_settings_store.h"
 #include "presentation/components/drawer.h"
@@ -88,6 +90,7 @@ huxerui::View PlatformServicesHost() {
       tasks, [persistence_revision] { persistence_revision += 1; }));
   const auto data_directory = file_system->Directories().data_directory;
   const auto database_file = data_directory.Child("linecode.db");
+  const auto linecode_directory = data_directory.Child(".linecode");
   auto model_store = huxerui::UseState(std::shared_ptr<application::ModelStore>{
       std::make_shared<infrastructure::SqliteModelStore>(database_file)});
   auto model_catalog =
@@ -124,6 +127,19 @@ huxerui::View PlatformServicesHost() {
               std::make_shared<infrastructure::HuxErrorLogStore>(
                   data_directory),
               error_log_platform)});
+  auto archive_database =
+      huxerui::UseState(std::shared_ptr<application::ArchiveDatabase>{
+          std::make_shared<infrastructure::SqliteArchiveDatabase>(
+              database_file)});
+  auto data_archive =
+      huxerui::UseState(std::shared_ptr<application::DataArchiveService>{
+          std::make_shared<infrastructure::HuxDataArchiveService>(
+              archive_database.Get(),
+              file_system->Directories().temporary_directory.Child(
+                  "linecode-archives"),
+              linecode_directory.Child("home"),
+              linecode_directory.Child("project"),
+              linecode_directory.Child("skills"))});
   huxerui::Lifecycle([tasks, chat = chat.Get(), database_file] {
     tasks.Launch(
         [chat, database_file] { return chat->InitializeAsync(database_file); });
@@ -151,7 +167,15 @@ huxerui::View PlatformServicesHost() {
        completion_gateway = completion_gateway.Get(),
        theme_service = theme_service.Get(), theme_settings,
        storage_stats = storage_stats.Get(),
-       error_logs = error_logs.Get()] {
+       error_logs = error_logs.Get(), data_archive = data_archive.Get(),
+       data_callbacks = presentation::DataSettingsCallbacks{
+           .persist_before_export = [chat = chat.Get()] {
+             return chat->PersistAsync();
+           },
+           .after_import = [chat = chat.Get()] {
+             return chat->ReloadAsync();
+           },
+       }] {
         return presentation::MainScreen(initial_session, project_store,
                                         model_store, model_catalog,
                                         ai_behavior_settings, input_settings,
@@ -159,7 +183,8 @@ huxerui::View PlatformServicesHost() {
                                         completion_gateway,
                                         output_settings_service,
                                         theme_service, theme_settings,
-                                        storage_stats, error_logs);
+                                        storage_stats, error_logs, data_archive,
+                                        data_callbacks);
       });
   return huxerui::Stack{
       huxerui::ProvideEnvironment(

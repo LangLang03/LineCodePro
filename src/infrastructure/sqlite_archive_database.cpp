@@ -19,6 +19,7 @@
 #include <huxerui/sqlite.h>
 
 #include "infrastructure/archive_json.h"
+#include "infrastructure/archive_validation.h"
 
 namespace linecode::infrastructure {
 namespace {
@@ -35,6 +36,7 @@ using huxerui::sqlite::Transaction;
 using SqlValue = huxerui::sqlite::Value;
 
 constexpr int kDatabaseSchemaVersion = 4;
+constexpr std::size_t kMessageTextChunkBytes = 64U * 1024U;
 constexpr std::array<std::string_view, 18> kTables{
     "settings",          "projects",          "model_configs",
     "conversations",     "messages",          "message_text_chunks",
@@ -54,6 +56,18 @@ struct PreparedTable final {
   std::vector<std::string> columns;
   std::vector<std::vector<SqlValue>> rows;
 };
+
+std::size_t Utf8ChunkEnd(std::string_view text, std::size_t start) {
+  std::size_t end = std::min(text.size(), start + kMessageTextChunkBytes);
+  if (end == text.size())
+    return end;
+  while (end > start &&
+         (static_cast<unsigned char>(text[end]) & 0xC0U) == 0x80U) {
+    --end;
+  }
+  return end == start ? std::min(text.size(), start + kMessageTextChunkBytes)
+                      : end;
+}
 
 DataArchiveError DatabaseError(const huxerui::sqlite::Error &error) {
   return {error.Message()};
@@ -299,6 +313,46 @@ void RedactRow(std::string_view table, json::Object &row) {
   }
 }
 
+void AppendLegacyMessageText(TableData &chunks,
+                             const std::vector<TableData> &messages) {
+  std::set<std::pair<std::string, std::string>> existing;
+  for (const auto &row : chunks.rows) {
+    const auto message_id = RowString(row, "message_id");
+    const auto field_name = RowString(row, "field_name");
+    if (message_id && field_name)
+      existing.emplace(*message_id, *field_name);
+  }
+
+  constexpr std::array<std::string_view, 3> fields{
+      "content", "reasoning_content", "raw_json"};
+  for (const auto &message : messages) {
+    if (message.rows.empty())
+      continue;
+    const auto &row = message.rows.front();
+    const auto message_id = RowString(row, "id");
+    if (!message_id)
+      continue;
+    for (const auto field : fields) {
+      const auto content = RowString(row, field);
+      if (!content || content->empty() || existing.contains({*message_id, std::string{field}}))
+        continue;
+      std::int64_t order{};
+      for (std::size_t start = 0; start < content->size();) {
+        const auto end = Utf8ChunkEnd(*content, start);
+        chunks.rows.push_back(json::Object{
+            {"id", EncodeCell(SqlValue{huxerui::sqlite::Null{}})},
+            {"message_id", EncodeCell(SqlValue{*message_id})},
+            {"field_name", EncodeCell(SqlValue{std::string{field}})},
+            {"chunk_order", EncodeCell(SqlValue{order++})},
+            {"content", EncodeCell(SqlValue{content->substr(start, end - start)})},
+        });
+        start = end;
+      }
+      existing.emplace(*message_id, field);
+    }
+  }
+}
+
 Result<TableData> DecodeTableRows(const RowView &row) {
   TableData output;
   output.columns.reserve(row.ColumnCount());
@@ -523,6 +577,14 @@ SqliteArchiveDatabase::ExportRedacted() {
         co_return std::unexpected(DatabaseError(columns.Error()));
       table.columns = std::move(*columns);
     }
+    if (table_name == "message_text_chunks" && existing.contains("messages")) {
+      auto legacy_messages = co_await opened->QueryAsync<TableData>(
+          "SELECT id, content, reasoning_content, raw_json FROM messages",
+          DecodeTableRows);
+      if (!legacy_messages)
+        co_return std::unexpected(DatabaseError(legacy_messages.Error()));
+      AppendLegacyMessageText(table, *legacy_messages);
+    }
     if (table_name == "model_configs")
       summary.models = table.rows.size();
     else if (table_name == "conversations")
@@ -541,6 +603,10 @@ SqliteArchiveDatabase::ExportRedacted() {
 
 huxerui::Task<DataArchiveResult<domain::ArchiveSummary>>
 SqliteArchiveDatabase::ReplaceFromSnapshot(std::string text) {
+  auto validated = ValidateDatabaseSnapshot(text, kDatabaseSchemaVersion);
+  if (!validated) {
+    co_return std::unexpected(DataArchiveError{validated.error().message});
+  }
   auto parsed = json::Parse(text);
   const auto *root = parsed ? json::AsObject(&*parsed) : nullptr;
   const auto *format = root ? json::AsString(json::Find(*root, "format")) : nullptr;

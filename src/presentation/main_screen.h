@@ -6,11 +6,13 @@
 #include <huxerui/view.h>
 
 #include "application/theme_settings.h"
+#include "presentation/screens/data_settings_screen.h"
 
 namespace linecode::application {
 class ChatSession;
 class AiBehaviorSettingsRepository;
 class CompletionGateway;
+class DataArchiveService;
 class ErrorLogService;
 class InputSettingsRepository;
 class ModelCatalogGateway;
@@ -40,6 +42,8 @@ MainScreen(std::shared_ptr<application::ChatSession> initial_session,
            huxerui::State<application::ThemeSettingsState> theme_settings,
            std::shared_ptr<application::StorageStatsRepository> storage_stats =
                {},
-           std::shared_ptr<application::ErrorLogService> error_logs = {});
+           std::shared_ptr<application::ErrorLogService> error_logs = {},
+           std::shared_ptr<application::DataArchiveService> data_archive = {},
+           DataSettingsCallbacks data_callbacks = {});
 
 } // namespace linecode::presentation

@@ -30,6 +30,24 @@ ChatSessionBootstrap::InitializeAsync(huxerui::File database_file) {
   static_cast<void>(initialized);
 }
 
+huxerui::Task<std::expected<void, std::string>>
+ChatSessionBootstrap::PersistAsync() {
+  auto persisted = co_await store_->FlushPendingAsync();
+  if (!persisted) {
+    co_return std::unexpected(persisted.Error().Message());
+  }
+  co_return std::expected<void, std::string>{};
+}
+
+huxerui::Task<std::expected<void, std::string>>
+ChatSessionBootstrap::ReloadAsync() {
+  auto reloaded = co_await store_->ReloadAsync();
+  if (!reloaded) {
+    co_return std::unexpected(reloaded.Error().Message());
+  }
+  co_return std::expected<void, std::string>{};
+}
+
 std::shared_ptr<application::ProjectWorkspaceStore>
 CreateProjectWorkspaceStore(huxerui::File root) {
   return std::make_shared<infrastructure::HuxProjectWorkspaceStore>(

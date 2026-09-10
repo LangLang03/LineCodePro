@@ -387,6 +387,121 @@ SqliteConversationStore::InitializeAsync(huxerui::File database_file) {
   co_return Result<void>{};
 }
 
+huxerui::Task<Result<void>> SqliteConversationStore::FlushPendingAsync() {
+  while (state_->phase == State::Phase::waiting ||
+         state_->phase == State::Phase::hydrating) {
+    co_await huxerui::Delay(std::chrono::milliseconds{5});
+  }
+  if (state_->phase == State::Phase::failed) {
+    co_return Error{ErrorCode::Transaction,
+                    state_->last_error.empty()
+                        ? "conversation persistence is unavailable"
+                        : state_->last_error,
+                    "flush conversations before data archive"};
+  }
+
+  ScheduleFlush(state_);
+  while (state_->flush_running) {
+    co_await huxerui::Delay(std::chrono::milliseconds{5});
+  }
+  if (!state_->pending.empty() || state_->phase == State::Phase::failed) {
+    co_return Error{ErrorCode::Transaction,
+                    state_->last_error.empty()
+                        ? "conversation persistence did not drain"
+                        : state_->last_error,
+                    "flush conversations before data archive"};
+  }
+  co_return Result<void>{};
+}
+
+huxerui::Task<Result<void>> SqliteConversationStore::ReloadAsync() {
+  auto flushed = co_await FlushPendingAsync();
+  if (!flushed) {
+    co_return flushed.Error();
+  }
+  if (!state_->database) {
+    co_return Error{ErrorCode::Transaction,
+                    "conversation database is unavailable",
+                    "reload conversations after data import"};
+  }
+
+  auto summaries =
+      co_await state_->database->QueryAsync<application::ConversationSummary>(
+          std::string{legacy_schema::list_visible_conversations},
+          DecodeConversationSummary);
+  if (!summaries) {
+    co_return summaries.Error();
+  }
+  auto current =
+      co_await state_->database
+          ->QueryAsync<std::pair<std::string, std::int64_t>>(
+              std::string{legacy_schema::find_resume_conversation},
+              [](const RowView &row)
+                  -> Result<std::pair<std::string, std::int64_t>> {
+                auto id = row.Get<std::string>(0);
+                if (!id) {
+                  return id.Error();
+                }
+                auto created_at = row.Get<std::int64_t>(1);
+                if (!created_at) {
+                  return created_at.Error();
+                }
+                return std::pair{std::move(*id), *created_at};
+              });
+  if (!current) {
+    co_return current.Error();
+  }
+
+  std::vector<StoredMessage> stored;
+  if (!current->empty()) {
+    auto loaded = co_await state_->database->QueryAsync<StoredMessage>(
+        std::string{legacy_schema::load_visible_messages}, DecodeStoredMessage,
+        current->front().first);
+    if (!loaded) {
+      co_return loaded.Error();
+    }
+    stored = std::move(*loaded);
+  }
+
+  std::vector<domain::ChatMessage> hydrated;
+  hydrated.reserve(stored.size());
+  std::int64_t next_order = 0;
+  auto next_message_id = InitialMessageId();
+  for (const auto &row : stored) {
+    if (row.local_order < 0) {
+      continue;
+    }
+    const auto fallback_id = static_cast<std::uint64_t>(row.local_order) + 1U;
+    const auto message_id = ParseOwnedMessageId(row.id).value_or(fallback_id);
+    hydrated.push_back(domain::ChatMessage{
+        .id = message_id,
+        .role = ParseRole(row.role),
+        .content = row.content,
+    });
+    if (message_id >= next_message_id &&
+        message_id != std::numeric_limits<std::uint64_t>::max()) {
+      next_message_id = message_id + 1U;
+    }
+    next_order = std::max(next_order, row.local_order + 1);
+  }
+
+  state_->selection_barrier.Invalidate();
+  state_->pending.clear();
+  state_->conversations = std::move(*summaries);
+  state_->messages = std::move(hydrated);
+  state_->conversation_id.clear();
+  state_->conversation_created_at = 0;
+  if (!current->empty()) {
+    state_->conversation_id = std::move(current->front().first);
+    state_->conversation_created_at = current->front().second;
+  }
+  state_->next_local_order = next_order;
+  state_->next_message_id = next_message_id;
+  state_->last_error.clear();
+  state_->NotifyChanged();
+  co_return Result<void>{};
+}
+
 std::span<const domain::ChatMessage>
 SqliteConversationStore::Messages() const noexcept {
   return state_->messages;

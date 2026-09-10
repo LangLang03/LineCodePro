@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "application/data_archive.h"
+#include "infrastructure/archive_validation.h"
 #include "infrastructure/linecode_zip.h"
 
 namespace linecode::infrastructure {
@@ -134,12 +135,6 @@ huxerui::Task<DataArchiveResult<std::uint64_t>> RestoreRoot(
   co_return restored;
 }
 
-bool LooksLikeDatabaseSnapshot(std::string_view json) {
-  return json.find("\"format\"") != std::string_view::npos &&
-         json.find("linecode-database") != std::string_view::npos &&
-         json.find("\"tables\"") != std::string_view::npos;
-}
-
 } // namespace
 
 HuxDataArchiveService::HuxDataArchiveService(
@@ -220,6 +215,7 @@ HuxDataArchiveService::Import(huxerui::FileReference source,
   }
   const auto *database_entry = FindEntry(*decoded, "database.json");
   const auto *legacy_entry = FindEntry(*decoded, "async-storage.json");
+  const auto *manifest_entry = FindEntry(*decoded, "manifest.json");
   if (!database_entry && !legacy_entry) {
     co_return std::unexpected(
         DataArchiveError{"please select a valid .linecode backup"});
@@ -228,14 +224,20 @@ HuxDataArchiveService::Import(huxerui::FileReference source,
     co_return std::unexpected(DataArchiveError{
         "legacy async-storage-only archives are not supported yet"});
   }
-  std::string snapshot = BytesText(database_entry->content);
-  if (!LooksLikeDatabaseSnapshot(snapshot)) {
-    co_return std::unexpected(
-        DataArchiveError{"invalid .linecode database snapshot"});
+  if (manifest_entry) {
+    auto manifest = ValidateArchiveManifest(BytesText(manifest_entry->content));
+    if (!manifest) {
+      co_return std::unexpected(DataArchiveError{manifest.error().message});
+    }
+    if (manifest->contains_database != (database_entry != nullptr)) {
+      co_return std::unexpected(
+          DataArchiveError{".linecode manifest does not match its payload"});
+    }
   }
+  std::string snapshot = BytesText(database_entry->content);
 
-  // Validate every root and stage its bytes in memory before the destructive
-  // database replacement. ZIP CRC and path checks have already completed.
+  // All archive bytes and paths are staged and validated before the
+  // destructive database replacement. ZIP CRC checks have also completed.
   auto imported = co_await database_->ReplaceFromSnapshot(std::move(snapshot));
   if (!imported) {
     co_return std::unexpected(std::move(imported.error()));

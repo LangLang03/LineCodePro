@@ -15,6 +15,7 @@
 #include "application/generation_controller.h"
 #include "application/output_settings.h"
 #include "application/ports/completion_gateway.h"
+#include "application/ports/data_archive.h"
 #include "application/ports/model_store.h"
 #include "application/ports/project_workspace_store.h"
 #include "domain/app_state.h"
@@ -24,6 +25,7 @@
 #include "presentation/platform_features.h"
 #include "presentation/screens/about_screen.h"
 #include "presentation/screens/browser_screen.h"
+#include "presentation/screens/data_settings_screen.h"
 #include "presentation/screens/error_logs_screen.h"
 #include "presentation/screens/licenses_screen.h"
 #include "presentation/screens/input_settings_screen.h"
@@ -36,6 +38,7 @@
 #include "presentation/screens/storage_screen.h"
 #include "presentation/screens/theme_settings_screen.h"
 #include "presentation/screens/tool_call_preview_screen.h"
+#include "presentation/screens/tutorial_screen.h"
 #if defined(__ANDROID__)
 #include "presentation/screens/keep_alive_screen.h"
 #endif
@@ -126,35 +129,37 @@ HomeScreen(std::shared_ptr<application::ChatSession> initial_session,
            std::shared_ptr<application::ModelStore> model_store,
            std::shared_ptr<application::CompletionGateway>
                completion_gateway,
-           huxerui::State<std::optional<bool>> selected_model_available) {
+           huxerui::State<std::optional<bool>> selected_model_available,
+           std::shared_ptr<application::GenerationController> generation,
+           huxerui::State<huxerui::TaskHandle> active_generation,
+           huxerui::State<std::size_t> revision,
+           huxerui::State<std::size_t> workspace_revision) {
   using namespace huxerui;
 
   auto drawer_open = UseState(false);
   auto selected_drawer_tab = UseState(std::size_t{0});
   auto draft = UseState(TextEditingValue::FromText(""));
-  auto revision = UseState(std::size_t{0});
   auto session = UseState(std::move(initial_session));
-  auto generation = UseState(
-      std::make_shared<application::GenerationController>(*session.Get()));
-  auto active_generation = UseState(TaskHandle{});
   auto drawer_model = UseState(DrawerModel{});
   const auto tasks = UseTaskScope();
 
-  Lifecycle([tasks, project_store, drawer_model, model_store,
-             selected_model_available] {
-    tasks.Launch([project_store, drawer_model]() -> Task<void> {
-      co_await LoadWorkspace(project_store, drawer_model);
-    });
-    tasks.Launch([model_store, selected_model_available]() -> Task<void> {
-      co_await LoadSelectedModel(model_store, selected_model_available);
-    });
-  });
+  Lifecycle(
+      [tasks, project_store, drawer_model, model_store,
+       selected_model_available] {
+        tasks.Launch([project_store, drawer_model]() -> Task<void> {
+          co_await LoadWorkspace(project_store, drawer_model);
+        });
+        tasks.Launch([model_store, selected_model_available]() -> Task<void> {
+          co_await LoadSelectedModel(model_store, selected_model_available);
+        });
+      },
+      workspace_revision);
 
   const DrawerActions drawer_actions{
       .on_new_conversation =
           [session, generation, active_generation, revision] {
             active_generation.Get().Cancel();
-            generation.Get()->Reset();
+            generation->Reset();
             session.Get()->StartNewConversation();
             revision += 1;
           },
@@ -162,7 +167,7 @@ HomeScreen(std::shared_ptr<application::ChatSession> initial_session,
           [session, generation, active_generation,
            revision](std::string_view id) {
             active_generation.Get().Cancel();
-            generation.Get()->Reset();
+            generation->Reset();
             session.Get()->SelectConversation(id);
             revision += 1;
           },
@@ -170,7 +175,7 @@ HomeScreen(std::shared_ptr<application::ChatSession> initial_session,
           [session, generation, active_generation,
            revision](std::string_view id) {
             active_generation.Get().Cancel();
-            generation.Get()->Reset();
+            generation->Reset();
             session.Get()->DeleteConversation(id);
             revision += 1;
           },
@@ -208,7 +213,7 @@ HomeScreen(std::shared_ptr<application::ChatSession> initial_session,
   View centered_chat =
       Stack{
           ChatScreen([drawer_open] { drawer_open = true; }, draft,
-                     session.Get(), generation.Get(), model_store,
+                     session.Get(), generation, model_store,
                      completion_gateway, selected_model_available.Get(),
                      active_generation, revision,
                      drawer_model)
@@ -244,18 +249,27 @@ MainScreen(std::shared_ptr<application::ChatSession> initial_session,
            std::shared_ptr<application::ThemeSettingsService> theme_service,
            huxerui::State<application::ThemeSettingsState> theme_settings,
            std::shared_ptr<application::StorageStatsRepository> storage_stats,
-           std::shared_ptr<application::ErrorLogService> error_logs) {
+           std::shared_ptr<application::ErrorLogService> error_logs,
+           std::shared_ptr<application::DataArchiveService> data_archive,
+           DataSettingsCallbacks data_callbacks) {
   using namespace huxerui;
 
   auto navigation_path = UseState(NavigationPath<domain::AppRoute>{});
   auto selected_model_available = UseState(std::optional<bool>{});
+  auto generation = UseState(std::make_shared<application::GenerationController>(
+      *initial_session));
+  auto active_generation = UseState(TaskHandle{});
+  auto chat_revision = UseState(std::size_t{0});
+  auto workspace_revision = UseState(std::size_t{0});
 
-  auto root = [initial_session = std::move(initial_session),
+  auto root = [initial_session,
                project_store = std::move(project_store), model_store,
                completion_gateway = std::move(completion_gateway),
-               selected_model_available]() -> View {
+               selected_model_available, generation = generation.Get(),
+               active_generation, chat_revision, workspace_revision]() -> View {
     return HomeScreen(initial_session, project_store, model_store,
-                      completion_gateway, selected_model_available);
+                      completion_gateway, selected_model_available, generation,
+                      active_generation, chat_revision, workspace_revision);
   };
 
   auto destination = [model_store = std::move(model_store),
@@ -269,7 +283,13 @@ MainScreen(std::shared_ptr<application::ChatSession> initial_session,
                       theme_settings,
                       storage_stats = std::move(storage_stats),
                       error_logs = std::move(error_logs),
-                      selected_model_available](domain::AppRoute route) -> View {
+                      data_archive = std::move(data_archive),
+                      data_callbacks = std::move(data_callbacks),
+                      selected_model_available,
+                      generation = generation.Get(), active_generation,
+                      chat_revision,
+                      workspace_revision](domain::AppRoute route) mutable
+      -> View {
     if (const auto *browser = route.BrowserValue()) {
       return BrowserScreen(*browser);
     }
@@ -312,6 +332,44 @@ MainScreen(std::shared_ptr<application::ChatSession> initial_session,
     }
     if (route == domain::AppRoute::error_logs) {
       return ErrorLogsScreen(error_logs);
+    }
+    if (route == domain::AppRoute::tutorial) {
+      return TutorialScreen();
+    }
+    if (route == domain::AppRoute::data) {
+      auto callbacks = data_callbacks;
+      const auto before_import = callbacks.before_import;
+      callbacks.before_import = [before_import, generation, active_generation,
+                                 chat_revision] {
+        active_generation.Get().Cancel();
+        generation->Cancel();
+        chat_revision += 1;
+        if (before_import) {
+          before_import();
+        }
+      };
+      const auto after_import = callbacks.after_import;
+      callbacks.after_import =
+          [after_import, model_store, selected_model_available, generation,
+           chat_revision,
+           workspace_revision]() -> Task<DataSettingsCallbackResult> {
+        if (after_import) {
+          auto reloaded = co_await after_import();
+          if (!reloaded) {
+            co_return std::unexpected(std::move(reloaded.error()));
+          }
+        }
+        auto selected = co_await model_store->SelectedId();
+        if (!selected) {
+          co_return std::unexpected(selected.error().message);
+        }
+        selected_model_available = !selected->empty();
+        generation->Reset();
+        chat_revision += 1;
+        workspace_revision += 1;
+        co_return DataSettingsCallbackResult{};
+      };
+      return DataSettingsScreen(data_archive, std::move(callbacks));
     }
     if (route == domain::AppRoute::about) {
       return AboutScreen(domain::AppRoute::licenses);

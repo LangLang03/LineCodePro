@@ -1,7 +1,9 @@
 #pragma once
 
+#include <expected>
 #include <functional>
 #include <memory>
+#include <string>
 
 #include <huxerui/file.h>
 #include <huxerui/task.h>
@@ -30,6 +32,9 @@ public:
   Session() const noexcept;
   [[nodiscard]] huxerui::Task<void>
   InitializeAsync(huxerui::File database_file);
+  [[nodiscard]] huxerui::Task<std::expected<void, std::string>>
+  PersistAsync();
+  [[nodiscard]] huxerui::Task<std::expected<void, std::string>> ReloadAsync();
 
 private:
   std::shared_ptr<application::ChatSession> session_;

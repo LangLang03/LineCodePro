@@ -4,6 +4,17 @@ project(linecodepro_tests LANGUAGES CXX)
 
 enable_testing()
 
+set(HUXERUI_HOME "$ENV{HUXERUI_HOME}" CACHE PATH "HuxerUI SDK directory")
+if (HUXERUI_HOME)
+    find_package(HuxerUI CONFIG REQUIRED
+            PATHS "${HUXERUI_HOME}"
+            NO_DEFAULT_PATH
+    )
+else ()
+    find_package(HuxerUI CONFIG REQUIRED)
+endif ()
+find_package(ZLIB REQUIRED)
+
 # Keep assertion-based specifications active even when this small native test
 # project is configured as Release.
 if (MSVC)
@@ -286,3 +297,53 @@ else ()
 endif ()
 
 add_test(NAME storage_stats_tests COMMAND storage_stats_tests)
+
+add_executable(archive_safety_tests
+        archive_safety_tests.cpp
+        ../src/infrastructure/archive_json.cpp
+        ../src/infrastructure/archive_validation.cpp
+        ../src/infrastructure/linecode_zip.cpp
+)
+target_include_directories(archive_safety_tests PRIVATE ../src)
+target_compile_features(archive_safety_tests PRIVATE cxx_std_23)
+target_link_libraries(archive_safety_tests PRIVATE
+        HuxerUI::huxerui
+        ZLIB::ZLIB
+)
+set_target_properties(archive_safety_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(archive_safety_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(archive_safety_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+add_test(NAME archive_safety_tests COMMAND archive_safety_tests)
+
+add_executable(tutorial_markdown_parser_tests
+        tutorial_markdown_parser_tests.cpp
+        ../src/infrastructure/tutorial_markdown_parser.cpp
+)
+target_include_directories(tutorial_markdown_parser_tests PRIVATE ../src)
+target_compile_features(tutorial_markdown_parser_tests PRIVATE cxx_std_23)
+set_target_properties(tutorial_markdown_parser_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(tutorial_markdown_parser_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(tutorial_markdown_parser_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+add_test(NAME tutorial_markdown_parser_tests
+        COMMAND tutorial_markdown_parser_tests)
+set_tests_properties(tutorial_markdown_parser_tests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/..")

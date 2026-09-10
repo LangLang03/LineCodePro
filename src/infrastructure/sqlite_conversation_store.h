@@ -28,6 +28,9 @@ public:
 
   [[nodiscard]] huxerui::Task<huxerui::sqlite::Result<void>>
   InitializeAsync(huxerui::File database_file);
+  [[nodiscard]] huxerui::Task<huxerui::sqlite::Result<void>>
+  FlushPendingAsync();
+  [[nodiscard]] huxerui::Task<huxerui::sqlite::Result<void>> ReloadAsync();
 
   [[nodiscard]] std::span<const domain::ChatMessage>
   Messages() const noexcept override;

@@ -70,18 +70,21 @@ std::uint32_t Checksum(std::span<const std::byte> bytes) {
 std::expected<huxerui::Bytes, ZipError>
 Inflate(std::span<const std::byte> compressed, std::size_t output_size) {
   huxerui::Bytes output(output_size);
+  std::byte empty_output{};
   z_stream stream{};
   stream.next_in = reinterpret_cast<Bytef *>(
       const_cast<std::byte *>(compressed.data()));
   stream.avail_in = static_cast<uInt>(compressed.size());
-  stream.next_out = reinterpret_cast<Bytef *>(output.data());
-  stream.avail_out = static_cast<uInt>(output.size());
+  stream.next_out = reinterpret_cast<Bytef *>(
+      output.empty() ? &empty_output : output.data());
+  stream.avail_out = static_cast<uInt>(output.empty() ? 1U : output.size());
   if (inflateInit2(&stream, -MAX_WBITS) != Z_OK) {
     return std::unexpected(ZipError{"cannot initialize ZIP inflater"});
   }
   const int status = inflate(&stream, Z_FINISH);
   inflateEnd(&stream);
-  if (status != Z_STREAM_END || stream.total_out != output_size) {
+  if (status != Z_STREAM_END || stream.total_out != output_size ||
+      stream.total_in != compressed.size()) {
     return std::unexpected(ZipError{"invalid Deflate data in .linecode"});
   }
   return output;
@@ -111,7 +114,7 @@ bool IsSafeArchivePath(std::string_view name) noexcept {
                                             ? name.size() - start
                                             : slash - start);
     if (part.empty() || part == "." || part == ".." ||
-        (start == 0 && part.find(':') != std::string_view::npos)) {
+        part.find(':') != std::string_view::npos) {
       return false;
     }
     if (slash == std::string_view::npos) {
@@ -142,7 +145,9 @@ WriteLineCodeZip(std::span<const ZipEntryData> entries) {
       return std::unexpected(ZipError{".linecode entry is too large"});
     }
     content_total += entry.content.size();
+    const std::size_t local_size = 30U + entry.name.size() + entry.content.size();
     if (content_total > kMaximumArchiveBytes ||
+        local_size > kMaximumArchiveBytes - output.size() ||
         output.size() > std::numeric_limits<std::uint32_t>::max()) {
       return std::unexpected(ZipError{".linecode archive is too large"});
     }
@@ -173,6 +178,10 @@ WriteLineCodeZip(std::span<const ZipEntryData> entries) {
 
   const auto central_offset = static_cast<std::uint32_t>(output.size());
   for (const auto &entry : central) {
+    const std::size_t record_size = 46U + entry.name.size();
+    if (record_size > kMaximumArchiveBytes - output.size()) {
+      return std::unexpected(ZipError{".linecode archive is too large"});
+    }
     Put32(output, kCentralHeader);
     Put16(output, 20);
     Put16(output, 20);
@@ -194,6 +203,9 @@ WriteLineCodeZip(std::span<const ZipEntryData> entries) {
   }
   const auto central_size =
       static_cast<std::uint32_t>(output.size() - central_offset);
+  if (22U > kMaximumArchiveBytes - output.size()) {
+    return std::unexpected(ZipError{".linecode archive is too large"});
+  }
   Put32(output, kEndHeader);
   Put16(output, 0);
   Put16(output, 0);
@@ -213,7 +225,9 @@ ZipResult ReadLineCodeZip(std::span<const std::byte> archive) {
       archive.size() > 65557 ? archive.size() - 65557 : 0;
   std::optional<std::size_t> end_offset;
   for (std::size_t offset = archive.size() - 22;; --offset) {
-    if (Read32(archive, offset) == kEndHeader) {
+    if (Read32(archive, offset) == kEndHeader &&
+        HasRange(archive, offset, 22) &&
+        offset + 22U + Read16(archive, offset + 20U) == archive.size()) {
       end_offset = offset;
       break;
     }
@@ -224,11 +238,17 @@ ZipResult ReadLineCodeZip(std::span<const std::byte> archive) {
   if (!end_offset || !HasRange(archive, *end_offset, 22)) {
     return std::unexpected(ZipError{"missing .linecode ZIP directory"});
   }
+  const std::uint16_t disk = Read16(archive, *end_offset + 4);
+  const std::uint16_t directory_disk = Read16(archive, *end_offset + 6);
+  const std::uint16_t disk_count = Read16(archive, *end_offset + 8);
   const std::uint16_t count = Read16(archive, *end_offset + 10);
   const std::uint32_t directory_size = Read32(archive, *end_offset + 12);
   const std::uint32_t directory_offset = Read32(archive, *end_offset + 16);
-  if (count > kMaximumEntries ||
-      !HasRange(archive, directory_offset, directory_size)) {
+  if (disk != 0 || directory_disk != 0 || disk_count != count ||
+      count > kMaximumEntries ||
+      !HasRange(archive, directory_offset, directory_size) ||
+      static_cast<std::size_t>(directory_offset) + directory_size !=
+          *end_offset) {
     return std::unexpected(ZipError{"invalid .linecode ZIP directory"});
   }
 
@@ -253,7 +273,8 @@ ZipResult ReadLineCodeZip(std::span<const std::byte> archive) {
     const auto local_offset = Read32(archive, cursor + 42);
     const std::size_t record_size =
         46ULL + name_size + extra_size + comment_size;
-    if (!HasRange(archive, cursor, record_size) || (flags & 1U) != 0U ||
+    if (!HasRange(archive, cursor, record_size) ||
+        (flags & static_cast<std::uint16_t>(~0x0808U)) != 0U ||
         (method != 0 && method != 8) || size > kMaximumEntryBytes) {
       return std::unexpected(ZipError{"unsupported or invalid ZIP entry"});
     }
@@ -274,20 +295,45 @@ ZipResult ReadLineCodeZip(std::span<const std::byte> archive) {
                        local_offset});
     cursor += record_size;
   }
+  if (cursor != static_cast<std::size_t>(directory_offset) + directory_size) {
+    return std::unexpected(ZipError{"invalid .linecode ZIP directory size"});
+  }
 
   std::vector<ZipEntryData> entries;
+  std::unordered_set<std::uint32_t> local_offsets;
   entries.reserve(central.size());
   for (const auto &entry : central) {
-    if (!HasRange(archive, entry.local_offset, 30) ||
+    if (!local_offsets.insert(entry.local_offset).second ||
+        entry.local_offset >= directory_offset ||
+        !HasRange(archive, entry.local_offset, 30) ||
         Read32(archive, entry.local_offset) != kLocalHeader) {
       return std::unexpected(ZipError{"invalid ZIP local entry"});
     }
+    const auto local_flags = Read16(archive, entry.local_offset + 6);
+    const auto local_method = Read16(archive, entry.local_offset + 8);
+    const auto local_checksum = Read32(archive, entry.local_offset + 14);
+    const auto local_compressed_size = Read32(archive, entry.local_offset + 18);
+    const auto local_size = Read32(archive, entry.local_offset + 22);
     const auto local_name_size = Read16(archive, entry.local_offset + 26);
     const auto local_extra_size = Read16(archive, entry.local_offset + 28);
     const std::size_t data_offset =
         static_cast<std::size_t>(entry.local_offset) + 30 + local_name_size +
         local_extra_size;
-    if (!HasRange(archive, data_offset, entry.compressed_size)) {
+    if (local_flags != entry.flags || local_method != entry.method ||
+        local_name_size != entry.name.size() ||
+        !HasRange(archive, entry.local_offset + 30U, local_name_size) ||
+        !std::equal(entry.name.begin(), entry.name.end(),
+                    archive.begin() + entry.local_offset + 30U,
+                    [](char expected, std::byte actual) {
+                      return static_cast<unsigned char>(expected) ==
+                             std::to_integer<unsigned char>(actual);
+                    }) ||
+        ((entry.flags & 0x0008U) == 0U &&
+         (local_checksum != entry.checksum ||
+          local_compressed_size != entry.compressed_size ||
+          local_size != entry.size)) ||
+        !HasRange(archive, data_offset, entry.compressed_size) ||
+        data_offset + entry.compressed_size > directory_offset) {
       return std::unexpected(ZipError{"truncated ZIP entry"});
     }
     const auto compressed =

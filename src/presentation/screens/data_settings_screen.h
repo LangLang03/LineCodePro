@@ -1,8 +1,11 @@
 #pragma once
 
+#include <expected>
 #include <functional>
 #include <memory>
+#include <string>
 
+#include <huxerui/task.h>
 #include <huxerui/view.h>
 
 namespace linecode::application {
@@ -11,10 +14,13 @@ class DataArchiveService;
 
 namespace linecode::presentation {
 
+using DataSettingsCallbackResult = std::expected<void, std::string>;
+
 struct DataSettingsCallbacks final {
-  std::function<void()> persist_before_export;
+  std::function<huxerui::Task<DataSettingsCallbackResult>()>
+      persist_before_export;
   std::function<void()> before_import;
-  std::function<void()> after_import;
+  std::function<huxerui::Task<DataSettingsCallbackResult>()> after_import;
 };
 
 [[nodiscard]] huxerui::View
