@@ -44,8 +44,18 @@
 
 仍在进行中（未完成，不得勾选）：
 
-- [ ] P0 内置工具组接入 `app_root.cpp`（file_ops / todo / memory / web_search），
-      并让 `shell` 在 local 模式可用。
+- [x] 内置工具组接入 `app_root.cpp`：`todo_update`、`memory_update`、
+      `web_search`、`web_fetch` 四个工具已注册进 `CompositeToolRegistry`
+      （提交 `a35c0f3`）。契约与旧版逐字一致，组开关与执行模式门禁照旧版。
+- [ ] `file_ops` 组（`file_read` / `file_write` / `file_edit` / `file_delete` /
+      `glob` / `list_dir`）尚未接入：实现已完成但本地化架构违规
+      （application 层调用了组合期的 `UseString`），正在改为应用层自有的
+      `ToolTextCatalog` 后接入。半成品暂存于
+      `docs/inflight/file_tool_registry.cpp.pending`，**未接入、未验收**。
+- [x] 已核实 `shell` 组在 local 模式本就不可用：旧版
+      `ToolSettingsRepository.java:104` 把 shell 组声明为 `MODE_REMOTE`，
+      `getEnabledToolNames()` 会按模式过滤。C++ 的 `remote` 掩码是忠实迁移，
+      不是缺失，无需放开。
 - [ ] P0 上下文压缩服务（`压缩上下文` 菜单当前仍是空实现）。
 - [ ] P0 自定义 Agent 扩展与已安装 Skill 的提示词注入（`BuildExtensionPrompt()`
       已实现但零调用点；`EXTENSIONS_CONTEXT` 模板槽位无人渲染）。
@@ -81,6 +91,45 @@ python3 tools/ui_parity_test.py \
   --baseline-package cn.lineai.legacy \
   --candidate-package cn.lineai
 ```
+
+## 代码级审计确认的剩余功能缺口（P0/P1）
+
+由只读审计逐行核实，均为旧版存在而新版缺失或为空实现；不得勾选为完成：
+
+- [ ] P0 上下文压缩服务整体缺失：`压缩上下文` 菜单项只有 `break;`
+      （`src/presentation/components/chat_screen.cpp` 的 `ChatMoreAction::compact_context`），
+      旧版对应 `ContextCompactionController.java` / `ContextCompactionService.java`。
+      同时缺压缩进度块（Compacting / 完成 / 失败）与自动压缩。
+- [ ] P0 上下文用量指示器缺失：旧版 `HeaderView.java:99-116` 的
+      Used tokens / Context window / Usage% 弹窗与 `ContextUsageIndicatorView`
+      的 80% 预警在新版完全不存在（usage 已在
+      `src/infrastructure/completion_protocol_codec.cpp` 解析但未上抛到 UI）。
+- [ ] P0 写入工具的 diff 视图与 Accept/Revert 回滚缺失：
+      `domain::ChatTimeline` 的 `diff_id` / `review_state` 已入库但展示层不读，
+      `chat_screen.cpp` 的 write 卡退化为文本 "Diff unavailable"；
+      旧版对应 `ToolCallWriteView` + `DiffView` + `ToolReviewController.revertDiff`。
+- [ ] P0 子代理 / Agent Pipeline 执行引擎整段缺失（旧版
+      `app/src/main/java/cn/lineai/mvp/agent/` 约 2576 行）。这同时导致
+      `agentSystemPrompt` 模板的 `EXTENSIONS_CONTEXT` 槽位无人渲染、
+      `SkillRepository::BuildExtensionPrompt()` 零调用点。
+- [ ] P1 图片输入（拍照/相册）缺失：`domain/input_attachment.h` 无图片负载；
+      旧版对应 `ComposerView.java` 的 `onSendWithImage` / `onImagePickerClick`。
+- [ ] P1 生成失败自动重试（旧版 `MAX_RETRIES = 3`）、模型切换提示与
+      中断恢复提示缺失。
+- [ ] P1 todo 状态未注入提示词：`main_screen.cpp` 的
+      `.todo_state = {}` 恒为空，因此 TODO_LIST 永远显示为空。
+      （注：`todo_update` 工具已注册，但状态还没接到提示词管线。）
+- [ ] P1 附件选择器缺少 SSH / terminal-provider 来源，
+      `chat_overlays.cpp` 把 `source` 硬编码为 `"local"`。
+- [ ] P1 Markdown 退化：裸 URL 不可点、引用/列表内代码块被压成一行、
+      思考块直接输出原始 `**`；旧版有 `Linkify.WEB_URLS` 与 `ThinkingBlockView` 样式。
+- [ ] P1 回合汇总「已编辑 N 个文件 / Review」区块缺失。
+
+已核实**不属于**缺口的项（不要重复投入）：
+- `shell_execute` 在 local 模式不可用 —— 旧版本身如此，见上方说明。
+- 原生「发布 Skill」页无导航入口 —— 旧版同样不可达（旧版按钮也绑的是 `onCenter()`）。
+- `PendingScreen` 占位分支 —— 27 个路由全部有真实 destination，该分支不可达。
+- 空 lambda `memory_screen.cpp` 取消按钮 —— 语义就是关闭对话框，与旧版一致。
 
 ## 已实现但仍需最终像素/功能验收的切片
 
