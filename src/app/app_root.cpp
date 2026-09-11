@@ -15,6 +15,7 @@
 #include "application/behavior_settings_repository.h"
 #include "application/chat_mode_service.h"
 #include "application/composite_tool_registry.h"
+#include "application/context_compaction.h"
 #include "application/error_log_service.h"
 #include "application/execution_mode_project_workspace.h"
 #include "application/file_tool_registry.h"
@@ -425,6 +426,11 @@ huxerui::View PlatformServicesHost() {
   // through `BuiltInToolProviders.defaults()`; each registry below still
   // applies its own group enablement and execution-mode gate, so this only
   // decides which families exist at all.
+  auto compaction_service = huxerui::UseState(
+      std::shared_ptr<application::ContextCompactionService>{
+          std::make_shared<application::ContextCompactionService>(
+              completion_gateway.Get(), prompt_templates.Get(),
+              model_store.Get())});
   auto todo_state = huxerui::UseState(
       std::shared_ptr<application::TodoStateStore>{
           std::make_shared<application::InMemoryTodoStateStore>()});
@@ -493,6 +499,7 @@ huxerui::View PlatformServicesHost() {
        tool_permissions = tool_permissions.Get(), chat_modes = chat_modes.Get(),
        ssh_settings = ssh_settings.Get(), memory_store = memory_store.Get(),
        todo_state = todo_state.Get(),
+       compaction_service = compaction_service.Get(),
        agent_extensions = agent_extensions.Get(),
        mcp_extensions = mcp_extensions.Get(),
        mcp_tool_catalog = mcp_tool_catalog.Get(),
@@ -528,7 +535,7 @@ huxerui::View PlatformServicesHost() {
             completion_loop, output_settings_service, theme_service,
             theme_settings, mcp_settings, tool_settings, tool_permissions,
             chat_modes, ssh_settings, memory_store, todo_state,
-            agent_extensions,
+            compaction_service, agent_extensions,
             mcp_extensions, mcp_tool_catalog, agent_drafts, linecode_root,
             skill_hub_services, mcp_capabilities, platform_capabilities,
             termux_integration, terminal_providers,

@@ -79,6 +79,16 @@ public:
   [[nodiscard]] virtual std::optional<domain::ChatMessage>
   RecallUserMessage(std::uint64_t message_id) = 0;
 
+  // Context compaction: hides the summarized head from future requests and
+  // appends the summary that stands in for it. The legacy controller marked
+  // every compacted message `excludeFromContext` and pushed a hidden compact
+  // block, so both flags travel together here.
+  virtual void ApplyCompaction(std::span<const std::uint64_t> excluded_ids,
+                               domain::ChatMessage summary) {
+    static_cast<void>(excluded_ids);
+    static_cast<void>(summary);
+  }
+
   // Implementations expose a UI-thread cache here. Persistent adapters may
   // fulfill the commands asynchronously, then notify their owner to render the
   // updated cache; callers never wait for storage on the UI thread.

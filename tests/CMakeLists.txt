@@ -1534,3 +1534,29 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME context_usage_tests COMMAND context_usage_tests)
+
+add_executable(context_compaction_tests
+        context_compaction_tests.cpp
+        ../src/application/context_compaction.cpp
+        ../src/application/prompt_template_repository.cpp
+        ../src/domain/context_usage.cpp
+        ../src/domain/input_attachment.cpp
+        ../src/domain/model_config.cpp
+        ../src/domain/prompt_renderer.cpp
+        ../src/domain/prompt_template.cpp
+)
+target_include_directories(context_compaction_tests PRIVATE ../src)
+target_compile_features(context_compaction_tests PRIVATE cxx_std_23)
+target_link_libraries(context_compaction_tests PRIVATE HuxerUI::testing)
+set_target_properties(context_compaction_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(context_compaction_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(context_compaction_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME context_compaction_tests COMMAND context_compaction_tests)

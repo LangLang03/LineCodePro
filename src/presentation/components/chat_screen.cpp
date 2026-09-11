@@ -1,6 +1,7 @@
 #include "presentation/components/chat_screen.h"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cctype>
 #include <chrono>
@@ -21,6 +22,7 @@
 
 #include "application/behavior_settings_repository.h"
 #include "application/chat_session.h"
+#include "application/context_compaction.h"
 #include "application/chat_export.h"
 #include "application/generation_controller.h"
 #include "application/memory_context_service.h"
@@ -260,6 +262,66 @@ private:
   State<bool> visible_;
   State<std::optional<LayerId>> layer_;
 };
+
+// Labels resolved during composition: the compaction coroutine is not a
+// composition scope and therefore cannot resolve resources itself.
+struct CompactionLabels final {
+  std::string failed_prefix;
+  std::string done;
+};
+
+// Port of `ContextCompactionController.startManualContextCompaction()`: refuse
+// while streaming, require a model and enough history, then compact and write
+// the summary back. Returns false when a guard rejected the request so the
+// caller can skip its revision bump.
+bool StartManualContextCompaction(
+    const std::shared_ptr<application::ContextCompactionService> &service,
+    const std::shared_ptr<application::ChatSession> &session,
+    TaskScope tasks, ToastHandle toast,
+    std::shared_ptr<std::atomic<bool>> busy,
+    CompactionLabels labels) {
+  if (!service) {
+    toast.Show(app::strings::context_compact_failed);
+    return false;
+  }
+  if (busy->exchange(true)) {
+    return false;
+  }
+  if (session->Messages().size() < 4) {
+    busy->store(false);
+    toast.Show(app::strings::context_compact_insufficient);
+    return false;
+  }
+  auto messages = std::vector<domain::ChatMessage>{session->Messages().begin(),
+                                                   session->Messages().end()};
+  tasks.Launch([service, session, toast, messages = std::move(messages), labels,
+                busy]() mutable -> Task<void> {
+    auto compacted =
+        co_await service->Compact(domain::ModelConfig{}, std::move(messages));
+    busy->store(false);
+    if (!compacted) {
+      toast.Show(StringVariant::Format(app::strings::context_compact_failed,
+                                       compacted.error().message));
+      co_return;
+    }
+    if (compacted->Empty()) {
+      co_return; // Cancelled: the legacy controller stayed silent.
+    }
+    std::vector<std::uint64_t> excluded;
+    for (const auto &message : session->Messages()) {
+      if (!message.hidden && !message.exclude_from_context)
+        excluded.push_back(message.id);
+    }
+    // Keep the most recent exchange verbatim, like the legacy selectRecent
+    // messages path, so the user's latest turn is never summarized away.
+    if (excluded.size() > 2)
+      excluded.resize(excluded.size() - 2);
+    session->ApplyCompaction(std::move(excluded),
+                             compacted->summary_content);
+    toast.Show(labels.done);
+  });
+  return true;
+}
 
 struct PendingToolReview final {
   std::optional<application::CompletionObserver::ToolReviewRequest> request;
@@ -2122,6 +2184,8 @@ View GenerationError(const application::GenerationController &generation,
     const std::shared_ptr<application::AiBehaviorSettingsRepository>
         &behavior_settings,
     const std::shared_ptr<application::TodoStateStore> &todo_state,
+    const std::shared_ptr<application::ContextCompactionService>
+        &compaction_service,
     const std::shared_ptr<application::OutputSettingsService> &output_settings,
     const std::shared_ptr<application::ToolPermissionService>
         &tool_permissions,
@@ -2139,6 +2203,11 @@ View GenerationError(const application::GenerationController &generation,
   const auto share_text = UseService<application::ShareTextService>();
   const auto external_link = UseService<application::ExternalLinkService>();
   const auto export_service = UseService<application::ChatExportService>();
+  auto compaction_busy = UseState(std::make_shared<std::atomic<bool>>(false));
+  const CompactionLabels compaction_labels{
+      .failed_prefix = UseString(app::strings::context_compact_failed, ""),
+      .done = UseString(app::strings::context_compact_done),
+  };
   auto attachment_visible = UseState(false);
   auto more_visible = UseState(false);
   auto permission_visible = UseState(false);
@@ -2405,12 +2474,14 @@ View GenerationError(const application::GenerationController &generation,
   auto show_more = [more_sheet, navigation, session, generation,
                     pending_messages, active_generation, revision, dialogs, toast,
                     export_service, multi_select, selected_messages,
-                    action_message] {
+                    action_message, compaction_service, tasks, compaction_busy,
+                    compaction_labels] {
     more_sheet.Show([navigation, session, generation, pending_messages,
                      active_generation, revision, dialogs, toast, export_service,
-                     multi_select, selected_messages,
-                     action_message](bool visible,
-                                     std::function<void()> dismiss) {
+                     multi_select, selected_messages, action_message,
+                     compaction_service, tasks, compaction_busy,
+                     compaction_labels](bool visible,
+                                        std::function<void()> dismiss) {
       return ChatMoreMenu(
           ChatMoreMenuState{.visible = visible, .available = {}},
           ChatOverlayCallbacks<ChatMoreAction>{
@@ -2418,7 +2489,8 @@ View GenerationError(const application::GenerationController &generation,
               .on_action =
                   [navigation, session, generation, pending_messages,
                    active_generation, revision, dialogs, toast, export_service,
-                   multi_select, selected_messages,
+                   multi_select, selected_messages, compaction_service, tasks,
+                   compaction_busy, compaction_labels,
                    action_message](ChatMoreAction action) {
                     switch (action) {
                     case ChatMoreAction::tutorial:
@@ -2466,14 +2538,25 @@ View GenerationError(const application::GenerationController &generation,
                       break;
                     case ChatMoreAction::compact_context:
                       // Legacy ContextCompactionController.showCompactConfirmation()
-                      // asks before compacting. The compaction service itself is
-                      // still missing, so only the confirmation lands here.
+                      // confirms first, then runs the manual compaction.
                       dialogs.Show(
                           app::strings::sheet_more_compact,
                           app::strings::context_compact_confirm_desc,
                           app::strings::context_compact_confirm,
                           app::strings::common_cancel,
-                          [] {}, [] {});
+                          [compaction_service, session, generation, revision,
+                           toast, tasks, compaction_busy,
+                           compaction_labels] {
+                            if (generation->State().phase ==
+                                application::GenerationPhase::running)
+                              return;
+                            auto started = StartManualContextCompaction(
+                                compaction_service, session, tasks, toast,
+                                compaction_busy, compaction_labels);
+                            if (started)
+                              revision += 1;
+                          },
+                          [] {});
                       break;
                     }
                   },

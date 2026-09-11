@@ -25,6 +25,10 @@ public:
   AppendAssistant(domain::ChatMessage message);
   [[nodiscard]] std::optional<domain::ChatMessage>
   RecallUserMessage(std::uint64_t message_id);
+  // Applies a compaction result: the summarized messages leave the context and
+  // the summary joins the conversation as a hidden message.
+  void ApplyCompaction(std::vector<std::uint64_t> excluded_ids,
+                       std::string summary_content);
   void Clear();
   [[nodiscard]] std::span<const ConversationSummary>
   Conversations() const noexcept;

@@ -104,10 +104,20 @@ python3 tools/ui_parity_test.py \
 
 由只读审计逐行核实，均为旧版存在而新版缺失或为空实现；不得勾选为完成：
 
-- [ ] P0 上下文压缩服务整体缺失：`压缩上下文` 菜单项只有 `break;`
-      （`src/presentation/components/chat_screen.cpp` 的 `ChatMoreAction::compact_context`），
-      旧版对应 `ContextCompactionController.java` / `ContextCompactionService.java`。
-      同时缺压缩进度块（Compacting / 完成 / 失败）与自动压缩。
+- [x] 上下文压缩服务已迁移并接线：`src/application/context_compaction.*` 移植了
+      `ContextCompactionService`（阈值 0.8/0.5、tail 保留 0.3、transcript 分段
+      256KiB、保留预算 20000、重试 2 次、软触发需 ≥8 条可压缩消息），
+      协议差异用**声明式策略表**（responses_compaction / openai_responses_summary /
+      generic_summary，首行命中优先）消除 `if (protocol == ...)`。
+      `压缩上下文` 菜单 → 旧版确认框 → 真正执行压缩并写回会话。
+- [x] 压缩写回端到端验证（真机 + 直接查库）：对 4 条消息执行压缩后，
+      `messages` 表中被摘要的头部两条 `exclude_from_context=1`，
+      最近一轮两条保留为 0，新增摘要行 `hidden=1`；
+      摘要正文经 `message_text_chunks` 落库，内容为
+      `contextCompactionSummaryPrefix` 模板 + 模型输出。
+- [ ] 压缩的剩余部分：压缩**进度块**（Compacting / 完成 / 失败，
+      旧版 `ContextCompactBlockView.java`）与**自动/软压缩触发**尚未接入；
+      当前只有手动压缩路径。
 - [x] 上下文用量指示器已迁移：`domain/context_usage.*` 移植了
       `ModelContextParser`（`context_size` 优先，兼容 `[128k]` 后缀，默认
       250000）与 `ContextManager`（8 token/条 + ceil(字符/4) + 附件 + 推理 +

@@ -44,6 +44,20 @@ ChatSession::RecallUserMessage(std::uint64_t message_id) {
 
 void ChatSession::Clear() { store_->Clear(); }
 
+void ChatSession::ApplyCompaction(std::vector<std::uint64_t> excluded_ids,
+                                  std::string summary_content) {
+  if (summary_content.empty())
+    return;
+  domain::ChatMessage summary;
+  summary.id = RequireStore(store_).AllocateMessageId();
+  summary.role = domain::MessageRole::assistant;
+  summary.content = std::move(summary_content);
+  // Legacy compact blocks are hidden from the transcript but stay in context,
+  // which is exactly what makes them replace the summarized history.
+  summary.hidden = true;
+  RequireStore(store_).ApplyCompaction(excluded_ids, std::move(summary));
+}
+
 std::span<const ConversationSummary>
 ChatSession::Conversations() const noexcept {
   return store_->Conversations();

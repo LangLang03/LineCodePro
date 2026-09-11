@@ -20,6 +20,7 @@
 namespace linecode::application {
 class ChatSession;
 class AiBehaviorSettingsRepository;
+class ContextCompactionService;
 class GenerationController;
 class McpCompletionLoop;
 class MemoryContextService;
@@ -50,6 +51,8 @@ namespace linecode::presentation {
     const std::shared_ptr<application::AiBehaviorSettingsRepository>
         &behavior_settings,
     const std::shared_ptr<application::TodoStateStore> &todo_state,
+    const std::shared_ptr<application::ContextCompactionService>
+        &compaction_service,
     const std::shared_ptr<application::OutputSettingsService> &output_settings,
     const std::shared_ptr<application::ToolPermissionService>
         &tool_permissions,

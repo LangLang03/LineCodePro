@@ -752,6 +752,7 @@ struct SqliteConversationStore::State final {
     recall,
     select,
     erase,
+    compact,
   };
 
   struct Event final {
@@ -763,6 +764,10 @@ struct SqliteConversationStore::State final {
     domain::ChatMessage message{};
     std::int64_t local_order{-1};
     std::int64_t timestamp{NowMilliseconds()};
+    // Populated for Operation::compact: the messages leaving the context.
+    // The `{}` initializer keeps `-Wmissing-field-initializers` quiet for the
+    // other designated-initializer call sites.
+    std::vector<std::uint64_t> excluded_ids{};
   };
 
   explicit State(huxerui::TaskScope task_scope, std::function<void()> changed)
@@ -1124,6 +1129,30 @@ SqliteConversationStore::RecallUserMessage(std::uint64_t message_id) {
   return recalled;
 }
 
+void SqliteConversationStore::ApplyCompaction(
+    const std::span<const std::uint64_t> excluded_ids,
+    domain::ChatMessage summary) {
+  if (state_->conversation_id.empty())
+    return;
+  for (auto &message : state_->messages) {
+    if (std::ranges::contains(excluded_ids, message.id))
+      message.exclude_from_context = true;
+  }
+  summary.hidden = true;
+  const auto local_order = state_->next_local_order++;
+  state_->messages.push_back(summary);
+  state_->pending.push_back(State::Event{
+      .operation = State::Operation::compact,
+      .conversation_id = state_->conversation_id,
+      .message = std::move(summary),
+      .local_order = local_order,
+      .excluded_ids = std::vector<std::uint64_t>{excluded_ids.begin(),
+                                                 excluded_ids.end()},
+  });
+  state_->NotifyChanged();
+  ScheduleFlush(state_);
+}
+
 std::span<const application::ConversationSummary>
 SqliteConversationStore::Conversations() const noexcept {
   return state_->conversations;
@@ -1437,6 +1466,63 @@ SqliteConversationStore::ProcessNextAsync(std::shared_ptr<State> state) {
             }
           }
           return {};
+        });
+  } else if (event.operation == State::Operation::compact) {
+    // Hides the summarized messages and stores the summary that replaces them.
+    // Both writes share one transaction so a failure cannot leave the context
+    // half-compacted.
+    result = co_await state->database->TransactionAsync(
+        [event](Transaction &transaction) -> Result<void> {
+          for (const auto excluded_id : event.excluded_ids) {
+            auto excluded = transaction.Execute(
+                "UPDATE messages SET exclude_from_context = 1 "
+                "WHERE conversation_id = ? AND id = ?",
+                event.conversation_id,
+                std::string{kOwnedMessagePrefix} +
+                    std::to_string(excluded_id));
+            if (!excluded)
+              return excluded.Error();
+          }
+          const std::string message_id =
+              std::string{kOwnedMessagePrefix} +
+              std::to_string(event.message.id);
+          auto inserted = transaction.Execute(
+              "INSERT INTO messages "
+              "(id, conversation_id, local_order, role, content, "
+              "reasoning_content, timestamp, streaming, hidden, "
+              "exclude_from_context, tool_call_id, tool_name, is_error, "
+              "raw_json) VALUES (?, ?, ?, ?, '', '', ?, 0, 1, 0, NULL, "
+              "NULL, 0, '') "
+              "ON CONFLICT(id) DO UPDATE SET "
+              "conversation_id = excluded.conversation_id, "
+              "local_order = excluded.local_order, role = excluded.role, "
+              "hidden = 1, exclude_from_context = 0",
+              message_id, event.conversation_id, event.local_order,
+              RoleName(event.message.role), event.timestamp);
+          if (!inserted)
+            return inserted.Error();
+          auto old_chunks = transaction.Execute(
+              "DELETE FROM message_text_chunks "
+              "WHERE message_id = ? AND field_name IN ('content', 'raw_json')",
+              message_id);
+          if (!old_chunks)
+            return old_chunks.Error();
+          const auto chunks =
+              legacy_schema::SplitMessageText(event.message.content);
+          for (std::size_t index = 0; index < chunks.size(); ++index) {
+            auto chunk = transaction.Execute(
+                "INSERT INTO message_text_chunks "
+                "(message_id, field_name, chunk_order, content) "
+                "VALUES (?, 'content', ?, ?)",
+                message_id, static_cast<std::int64_t>(index),
+                std::string{chunks[index]});
+            if (!chunk)
+              return chunk.Error();
+          }
+          auto touched = transaction.Execute(
+              "UPDATE conversations SET updated_at = ? WHERE id = ?",
+              event.timestamp, event.conversation_id);
+          return touched ? Result<void>{} : Result<void>{touched.Error()};
         });
   } else if (event.operation == State::Operation::clear) {
     const auto cleared = co_await state->database->ExecuteAsync(

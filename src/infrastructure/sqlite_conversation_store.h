@@ -39,6 +39,8 @@ public:
   void Clear() override;
   [[nodiscard]] std::optional<domain::ChatMessage>
   RecallUserMessage(std::uint64_t message_id) override;
+  void ApplyCompaction(std::span<const std::uint64_t> excluded_ids,
+                       domain::ChatMessage summary) override;
   [[nodiscard]] std::span<const application::ConversationSummary>
   Conversations() const noexcept override;
   [[nodiscard]] std::string_view
