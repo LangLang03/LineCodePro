@@ -2320,10 +2320,12 @@ View GenerationError(const application::GenerationController &generation,
 
   auto show_more = [more_sheet, navigation, session, generation,
                     pending_messages, active_generation, revision, dialogs, toast,
-                    export_service] {
+                    export_service, multi_select, selected_messages,
+                    action_message] {
     more_sheet.Show([navigation, session, generation, pending_messages,
-                     active_generation, revision, dialogs, toast,
-                     export_service](bool visible,
+                     active_generation, revision, dialogs, toast, export_service,
+                     multi_select, selected_messages,
+                     action_message](bool visible,
                                      std::function<void()> dismiss) {
       return ChatMoreMenu(
           ChatMoreMenuState{.visible = visible, .available = {}},
@@ -2331,8 +2333,9 @@ View GenerationError(const application::GenerationController &generation,
               .on_dismiss_request = std::move(dismiss),
               .on_action =
                   [navigation, session, generation, pending_messages,
-                   active_generation, revision, dialogs, toast,
-                   export_service](ChatMoreAction action) {
+                   active_generation, revision, dialogs, toast, export_service,
+                   multi_select, selected_messages,
+                   action_message](ChatMoreAction action) {
                     switch (action) {
                     case ChatMoreAction::tutorial:
                       navigation.Push(domain::AppRoute::tutorial);
@@ -2371,9 +2374,22 @@ View GenerationError(const application::GenerationController &generation,
                       break;
                     }
                     case ChatMoreAction::select_messages_to_export:
+                      // Legacy OverlayActionController routed this straight
+                      // into message multi-select mode.
+                      multi_select = true;
+                      selected_messages = std::vector<std::uint64_t>{};
+                      action_message = std::nullopt;
+                      break;
                     case ChatMoreAction::compact_context:
-                      // These typed actions are ready for their
-                      // application-service ports.
+                      // Legacy ContextCompactionController.showCompactConfirmation()
+                      // asks before compacting. The compaction service itself is
+                      // still missing, so only the confirmation lands here.
+                      dialogs.Show(
+                          app::strings::sheet_more_compact,
+                          app::strings::context_compact_confirm_desc,
+                          app::strings::context_compact_confirm,
+                          app::strings::common_cancel,
+                          [] {}, [] {});
                       break;
                     }
                   },
