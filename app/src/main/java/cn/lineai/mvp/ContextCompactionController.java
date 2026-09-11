@@ -309,7 +309,8 @@ final class ContextCompactionController {
             return;
         }
         String progressId = host.nextId();
-        messages.add(ChatMessage.compactProgress(progressId, ChatMessage.COMPACT_STATUS_RUNNING));
+        messages.add(chatSessionStore.withProcessingTimes(
+                ChatMessage.compactProgress(progressId, ChatMessage.COMPACT_STATUS_RUNNING)));
         host.persistCurrentConversation();
         host.render();
 
@@ -399,7 +400,8 @@ final class ContextCompactionController {
             return;
         }
         String progressId = host.nextId();
-        messages.add(ChatMessage.compactProgress(progressId, ChatMessage.COMPACT_STATUS_RUNNING));
+        messages.add(chatSessionStore.withProcessingTimes(
+                ChatMessage.compactProgress(progressId, ChatMessage.COMPACT_STATUS_RUNNING)));
         host.persistCurrentConversation();
         host.render();
 
@@ -517,8 +519,7 @@ final class ContextCompactionController {
                 compacted.add(message);
             }
         }
-        compacted.add(ChatMessage.compactProgress(progressId, ChatMessage.COMPACT_STATUS_DONE)
-                .withCompactStatus(ChatMessage.COMPACT_STATUS_DONE, false));
+        compacted.add(completedCompactProgress(progressId));
         messages.clear();
         messages.addAll(compacted);
         host.persistCurrentConversation();
@@ -611,8 +612,7 @@ final class ContextCompactionController {
                 compacted.add(message);
             }
         }
-        compacted.add(ChatMessage.compactProgress(progressId, ChatMessage.COMPACT_STATUS_DONE)
-                .withCompactStatus(ChatMessage.COMPACT_STATUS_DONE, false));
+        compacted.add(completedCompactProgress(progressId));
         messages.clear();
         messages.addAll(compacted);
         host.persistCurrentConversation();
@@ -659,6 +659,14 @@ final class ContextCompactionController {
         host.setCurrentCancellationToken(null);
         host.stopGenerationKeepAlive();
         host.render();
+    }
+
+    private ChatMessage completedCompactProgress(String progressId) {
+        int index = findMessageIndex(progressId);
+        ChatMessage progress = index >= 0 ? messages.get(index)
+                : chatSessionStore.withProcessingTimes(
+                        ChatMessage.compactProgress(progressId, ChatMessage.COMPACT_STATUS_RUNNING));
+        return progress.withCompactStatus(ChatMessage.COMPACT_STATUS_DONE, false);
     }
 
     private ArrayList<ChatMessage> getAutoCompactPreservedTail(String activeUserMessageId) {

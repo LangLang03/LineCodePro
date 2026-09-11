@@ -24,7 +24,7 @@ public final class ContextCompactBlockView extends LinearLayout {
         setGravity(Gravity.CENTER_VERTICAL);
         setMinimumHeight(LineTheme.dp(context, 48));
 
-        LineTheme.padding(this, 28, 12, 28, 12);
+        LineTheme.padding(this, 0, 6, 0, 6);
 
         icon = new IconButtonView(context, IconButtonView.ARCHIVE);
         icon.setClickable(false);

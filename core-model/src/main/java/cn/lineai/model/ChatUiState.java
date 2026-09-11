@@ -12,6 +12,8 @@ public final class ChatUiState {
     private final String selectedModelId;
     private final String contextLabel;
     private final int contextPercent;
+    private final int contextUsedTokens;
+    private final int contextMaxTokens;
     private final boolean streaming;
     private final boolean hasConfiguredModel;
     private final boolean thinkingScrollEnabled;
@@ -124,6 +126,21 @@ public final class ChatUiState {
             String chatMode, String conversationId, List<ChatMessage> messages,
             String selectedModelId, List<ModelConfig> availableModels, ToolApproval toolApproval
     ) {
+        this(projectLabel, projectPath, modelLabel, contextLabel, contextPercent, streaming, hasConfiguredModel,
+                thinkingScrollEnabled, thinkingAutoExpandEnabled, processAutoExpandEnabled, codeWrapEnabled,
+                browserMode, enterKeyBehavior, chatMode, conversationId, messages, selectedModelId,
+                availableModels, toolApproval, 0, 0);
+    }
+
+    public ChatUiState(
+            String projectLabel, String projectPath, String modelLabel, String contextLabel,
+            int contextPercent, boolean streaming, boolean hasConfiguredModel,
+            boolean thinkingScrollEnabled, boolean thinkingAutoExpandEnabled,
+            boolean processAutoExpandEnabled, boolean codeWrapEnabled, String browserMode, String enterKeyBehavior,
+            String chatMode, String conversationId, List<ChatMessage> messages,
+            String selectedModelId, List<ModelConfig> availableModels, ToolApproval toolApproval,
+            int contextUsedTokens, int contextMaxTokens
+    ) {
         this.toolApproval = toolApproval;
         this.projectLabel = projectLabel;
         this.projectPath = projectPath == null ? "" : projectPath;
@@ -131,6 +148,8 @@ public final class ChatUiState {
         this.selectedModelId = selectedModelId == null ? "" : selectedModelId;
         this.contextLabel = contextLabel;
         this.contextPercent = contextPercent;
+        this.contextUsedTokens = Math.max(0, contextUsedTokens);
+        this.contextMaxTokens = Math.max(0, contextMaxTokens);
         this.streaming = streaming;
         this.hasConfiguredModel = hasConfiguredModel;
         this.thinkingScrollEnabled = thinkingScrollEnabled;
@@ -154,13 +173,14 @@ public final class ChatUiState {
         return new ChatUiState(projectLabel, projectPath, modelLabel, contextLabel, contextPercent, streaming,
                 hasConfiguredModel, thinkingScrollEnabled, thinkingAutoExpandEnabled, processAutoExpandEnabled,
                 codeWrapEnabled, browserMode,
-                enterKeyBehavior, chatMode, conversationId, messages, selectedModelId, availableModels, approval);
+                enterKeyBehavior, chatMode, conversationId, messages, selectedModelId, availableModels, approval,
+                contextUsedTokens, contextMaxTokens);
     }
     public ChatUiState withDisplayMessages(List<ChatMessage> displayMessages) {
         return new ChatUiState(projectLabel, projectPath, modelLabel, contextLabel, contextPercent, streaming,
                 hasConfiguredModel, thinkingScrollEnabled, thinkingAutoExpandEnabled, processAutoExpandEnabled,
                 codeWrapEnabled, browserMode, enterKeyBehavior, chatMode, conversationId, displayMessages,
-                selectedModelId, availableModels, toolApproval);
+                selectedModelId, availableModels, toolApproval, contextUsedTokens, contextMaxTokens);
     }
     public String getProjectLabel() { return projectLabel; }
     public String getProjectPath() { return projectPath; }
@@ -169,6 +189,8 @@ public final class ChatUiState {
     public List<ModelConfig> getAvailableModels() { return availableModels; }
     public String getContextLabel() { return contextLabel; }
     public int getContextPercent() { return contextPercent; }
+    public int getContextUsedTokens() { return contextUsedTokens; }
+    public int getContextMaxTokens() { return contextMaxTokens; }
     public boolean isStreaming() { return streaming; }
     public boolean hasConfiguredModel() { return hasConfiguredModel; }
     public boolean isThinkingScrollEnabled() { return thinkingScrollEnabled; }

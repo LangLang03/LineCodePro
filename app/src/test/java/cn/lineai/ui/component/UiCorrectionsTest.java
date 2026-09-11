@@ -108,6 +108,68 @@ public class UiCorrectionsTest {
         assertEquals((float)LineTheme.FONT_MD,text(add,activity.getString(R.string.common_save)).getTextSize(),.01f);
         screenshot(add,"model-add");
     }
+
+    @Test public void contextUsageRingSitsBeforeShieldAndShowsExactValues() throws Exception {
+        HeaderView header = new HeaderView(activity);
+        ChatUiState state = new ChatUiState("LineCode", "/workspace", "model", "25% / 128K", 25,
+                false, true, true, false, false, false, OutputSettings.BROWSER_BUILTIN,
+                InputSettings.ENTER_SEND, ChatMode.DEFAULT, "chat", Collections.emptyList(), "model",
+                Collections.emptyList(), null, 32768, 131072);
+        header.render(state);
+        layout(header);
+        ContextUsageIndicatorView usage = all(header, ContextUsageIndicatorView.class).get(0);
+        IconButtonView shield = icon(header, IconButtonView.SHIELD);
+        assertEquals(25, usage.getPercent());
+        assertTrue(usage.getRight() <= shield.getLeft());
+        usage.performClick();
+        android.app.Dialog dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        assertNotNull(dialog);
+        assertNotNull(text(dialog.getWindow().getDecorView(), "32,768"));
+        assertNotNull(text(dialog.getWindow().getDecorView(), "131,072"));
+        assertNotNull(text(dialog.getWindow().getDecorView(), "25%"));
+        dialog.dismiss();
+        screenshot(header, "context-usage-header");
+    }
+
+    @Test public void compactionRendersDirectlyInsideProcessedWithoutAToolDisclosure() throws Exception {
+        ChatMessage compact = ChatMessage.compactProgress("compact", ChatMessage.COMPACT_STATUS_DONE)
+                .withCompactStatus(ChatMessage.COMPACT_STATUS_DONE, false).withProcessingTimes(1000, 5000);
+        ChatMessage answer = new ChatMessage("answer", ChatMessage.Role.ASSISTANT, "继续完成。", false)
+                .withProcessingTimes(1000, 5000);
+        ConversationTimeline.Row row = ConversationTimeline.build(Arrays.asList(compact, answer)).get(0);
+        Map<String, Boolean> disclosure = new HashMap<>();
+        disclosure.put("compact:process", true);
+        AssistantTurnView view = new AssistantTurnView(activity);
+        view.bind(row, disclosure, "", null, null, null, false, false);
+        layout(view);
+        int visibleCompact = 0;
+        for (ContextCompactBlockView compactView : all(view, ContextCompactBlockView.class)) {
+            if (compactView.isShown()) visibleCompact++;
+        }
+        assertEquals(1, visibleCompact);
+        assertEquals(0, visibleTextCount(view, activity.getString(R.string.chat_tools_count, 1)));
+        screenshot(view, "compact-inside-processed");
+    }
+
+    @Test @Config(sdk=29, application=Application.class, qualifiers="zh-rCN-w390dp-h844dp-mdpi")
+    public void expandingProcessedWithDuplicateToolIdsDoesNotUseAnInvalidChildIndex() {
+        ArrayList<ChatMessage> messages = new ArrayList<>();
+        for (int i = 0; i < 9; i++) {
+            ToolCall call = new ToolCall("duplicate", ToolNames.FILE_READ, "{}");
+            messages.add(new ChatMessage("work" + i, ChatMessage.Role.ASSISTANT, "step " + i, false)
+                    .withToolCalls(Collections.singletonList(call), false)
+                    .withToolResults(Collections.singletonList(
+                            ToolResult.of("duplicate", ToolNames.FILE_READ, "OK", false))));
+        }
+        messages.add(new ChatMessage("answer", ChatMessage.Role.ASSISTANT, "完成。", false));
+        ConversationTimeline.Row row = ConversationTimeline.build(messages).get(0);
+        Map<String, Boolean> disclosure = new HashMap<>();
+        disclosure.put(row.first.getId() + ":process", true);
+        AssistantTurnView view = new AssistantTurnView(activity);
+        view.bind(row, disclosure, "", null, null, null, false, false);
+        layout(view);
+        assertEquals(9, visibleTextCount(view, activity.getString(R.string.chat_tools_count, 1)));
+    }
     private void assertMatchingHeaderActions(View page,int rightType) {
         IconButtonView left=icon(page,IconButtonView.CHEVRON_LEFT),right=icon(page,rightType);
         assertEquals(22,iconSize(left));
