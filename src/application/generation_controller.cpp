@@ -304,6 +304,7 @@ bool GenerationController::Observe(const std::uint64_t generation_id,
             result.name = entry.result->name;
             result.content = entry.result->content;
             result.error = entry.result->error;
+            result.diff_id = entry.result->diff_id;
             tool.result = std::move(result);
           }
           const auto previous = std::ranges::find_if(

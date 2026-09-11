@@ -352,6 +352,10 @@ struct FileToolContext final {
   ProjectWorkspaceController *projects{};
   ToolFileAccess *files{};
   ToolTextLanguage language{ToolTextLanguage::english};
+  // Records revertable changes for the write family, mirroring the legacy
+  // `DiffRecorder` that wrapped FileWriteTool and FileEditTool. Optional: a
+  // null store simply means "no review history".
+  DiffStore *diffs{};
 };
 
 // Converts one catalog argument exactly like huxerui::StringVariant::Format:
@@ -623,6 +627,21 @@ ExecuteFileRead(FileToolContext context, std::string arguments_json) {
   co_return ToolSuccess(TruncateContent(std::move(result)));
 }
 
+// Port of `DiffRecorder.executeWithDiff`'s tail: only a real content change is
+// recorded, and the resulting identifier travels back on the tool result so
+// the card can offer Accept / Revert.
+huxerui::Task<std::string>
+RecordChange(const FileToolContext &context, std::string absolute_path,
+             std::string old_content, std::string new_content,
+             const bool old_exists) {
+  if (context.diffs == nullptr || old_content == new_content)
+    co_return std::string{};
+  auto recorded = co_await context.diffs->Record(
+      std::move(absolute_path), std::move(old_content), std::move(new_content),
+      old_exists);
+  co_return std::move(recorded.id);
+}
+
 huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>>
 ExecuteFileWrite(FileToolContext context, std::string arguments_json) {
   auto workspace = co_await WorkspaceRoot(context);
@@ -661,17 +680,27 @@ ExecuteFileWrite(FileToolContext context, std::string arguments_json) {
       }
     }
   }
+  std::string old_content;
+  if (info.has_value()) {
+    auto previous = co_await context.files->ReadText(target->absolute);
+    if (previous)
+      old_content = std::move(*previous);
+  }
   const std::string content = StringArgument(*object, "content");
   auto written = co_await context.files->WriteText(target->absolute, content);
   if (!written) {
     co_return ToolFailure(Text(context, ToolTextKey::tool_file_write_failed,
                                written.error().message));
   }
-  co_return ToolSuccess(
+  auto result = ToolSuccess(
       Text(context,
            info.has_value() ? ToolTextKey::tool_file_write_updated
                             : ToolTextKey::tool_file_write_created,
            input_path, LineCount(content)));
+  result.diff_id = co_await RecordChange(context, target->absolute,
+                                         std::move(old_content), content,
+                                         info.has_value());
+  co_return result;
 }
 
 huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>>
@@ -728,14 +757,18 @@ ExecuteFileEdit(FileToolContext context, std::string arguments_json) {
       replace_all ? ReplaceAll(*content, old_string, new_string)
                   : ReplaceFirst(*content, old_string, new_string);
   const std::size_t replaced = replace_all ? count : 1U;
-  auto written = co_await context.files->WriteText(target->absolute,
-                                                   std::move(next));
+  auto updated = next;
+  auto written =
+      co_await context.files->WriteText(target->absolute, std::move(next));
   if (!written) {
     co_return ToolFailure(Text(context, ToolTextKey::tool_file_edit_failed,
                                written.error().message));
   }
-  co_return ToolSuccess(Text(context, ToolTextKey::tool_file_edit_success,
-                             target->display, replaced));
+  auto result = ToolSuccess(Text(context, ToolTextKey::tool_file_edit_success,
+                                 target->display, replaced));
+  result.diff_id = co_await RecordChange(context, target->absolute, *content,
+                                         std::move(updated), true);
+  co_return result;
 }
 
 // FileDeleteTool.paths(): the "paths" array plus the legacy file_path/path
@@ -1026,9 +1059,10 @@ bool FileOpsGroupEnabled(const domain::McpExecutionSettings &settings) {
 FileToolRegistry::FileToolRegistry(
     std::shared_ptr<McpExecutionSettingsService> settings,
     std::shared_ptr<ProjectWorkspaceController> workspace,
-    std::shared_ptr<ToolFileAccess> files, ToolTextLanguage language)
+    std::shared_ptr<ToolFileAccess> files, ToolTextLanguage language,
+    std::shared_ptr<DiffStore> diffs)
     : settings_(std::move(settings)), workspace_(std::move(workspace)),
-      files_(std::move(files)), language_(language) {
+      files_(std::move(files)), language_(language), diffs_(std::move(diffs)) {
   if (!settings_ || !workspace_ || !files_) {
     throw std::invalid_argument(
         "FileToolRegistry requires settings, project workspace and file access "
@@ -1073,7 +1107,8 @@ FileToolRegistry::Invoke(std::string name, std::string arguments_json) {
   co_return co_await found->execute(
       FileToolContext{.projects = workspace_.get(),
                       .files = files_.get(),
-                      .language = language_},
+                      .language = language_,
+                      .diffs = diffs_.get()},
       std::move(arguments_json));
 }
 

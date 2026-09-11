@@ -16,6 +16,7 @@
 #include "application/chat_mode_service.h"
 #include "application/composite_tool_registry.h"
 #include "application/context_compaction.h"
+#include "application/diff_review_service.h"
 #include "application/error_log_service.h"
 #include "application/execution_mode_project_workspace.h"
 #include "application/file_tool_registry.h"
@@ -66,6 +67,8 @@
 #include "infrastructure/hux_skill_hub_gateway.h"
 #include "infrastructure/hux_skill_hub_session_gateway.h"
 #include "infrastructure/hux_tool_file_access.h"
+#include "infrastructure/sqlite_diff_file_restorer.h"
+#include "infrastructure/sqlite_diff_store.h"
 #include "infrastructure/hux_web_tools_gateway.h"
 #include "infrastructure/hux_storage_stats_repository.h"
 #include "infrastructure/hux_workspace_file_store.h"
@@ -426,6 +429,17 @@ huxerui::View PlatformServicesHost() {
   // through `BuiltInToolProviders.defaults()`; each registry below still
   // applies its own group enablement and execution-mode gate, so this only
   // decides which families exist at all.
+  // File-change history: the write tools record here and the chat card reads
+  // the bodies back for its diff view.
+  auto diff_store = huxerui::UseState(std::shared_ptr<application::DiffStore>{
+      std::make_shared<infrastructure::SqliteDiffStore>(database_file)});
+  auto diff_restore = huxerui::UseState(
+      std::shared_ptr<application::DiffFileRestore>{
+          std::make_shared<infrastructure::SqliteDiffFileRestorer>()});
+  auto diff_review = huxerui::UseState(
+      std::shared_ptr<application::DiffReviewService>{
+          std::make_shared<application::DiffReviewService>(*diff_store.Get(),
+                                                           *diff_restore.Get())});
   auto compaction_service = huxerui::UseState(
       std::shared_ptr<application::ContextCompactionService>{
           std::make_shared<application::ContextCompactionService>(
@@ -459,7 +473,8 @@ huxerui::View PlatformServicesHost() {
       std::shared_ptr<application::ToolRegistry>{
           std::make_shared<application::FileToolRegistry>(
               mcp_settings.Get(), project_workspace.Get(),
-              tool_file_access.Get())});
+              tool_file_access.Get(), application::ToolTextLanguage::english,
+              diff_store.Get())});
   tool_sources.push_back(todo_tools.Get());
   tool_sources.push_back(memory_tools.Get());
   tool_sources.push_back(web_tool_registry.Get());
@@ -500,6 +515,7 @@ huxerui::View PlatformServicesHost() {
        ssh_settings = ssh_settings.Get(), memory_store = memory_store.Get(),
        todo_state = todo_state.Get(),
        compaction_service = compaction_service.Get(),
+       diff_store = diff_store.Get(), diff_review = diff_review.Get(),
        agent_extensions = agent_extensions.Get(),
        mcp_extensions = mcp_extensions.Get(),
        mcp_tool_catalog = mcp_tool_catalog.Get(),
@@ -535,7 +551,7 @@ huxerui::View PlatformServicesHost() {
             completion_loop, output_settings_service, theme_service,
             theme_settings, mcp_settings, tool_settings, tool_permissions,
             chat_modes, ssh_settings, memory_store, todo_state,
-            compaction_service, agent_extensions,
+            compaction_service, diff_store, diff_review, agent_extensions,
             mcp_extensions, mcp_tool_catalog, agent_drafts, linecode_root,
             skill_hub_services, mcp_capabilities, platform_capabilities,
             termux_integration, terminal_providers,

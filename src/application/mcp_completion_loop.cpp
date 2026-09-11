@@ -282,6 +282,7 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
         result.content = invoked->content.empty() ? "MCP tool completed"
                                                   : std::move(invoked->content);
         result.error = invoked->error;
+        result.diff_id = std::move(invoked->diff_id);
       } else {
         result.content = invoked.error().message;
         result.error = true;

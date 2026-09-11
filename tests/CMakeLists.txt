@@ -1560,3 +1560,71 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME context_compaction_tests COMMAND context_compaction_tests)
+
+add_executable(diff_lines_tests
+        diff_lines_tests.cpp
+        ../src/domain/diff_lines.cpp
+)
+target_include_directories(diff_lines_tests PRIVATE ../src)
+target_compile_features(diff_lines_tests PRIVATE cxx_std_23)
+set_target_properties(diff_lines_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(diff_lines_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(diff_lines_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME diff_lines_tests COMMAND diff_lines_tests)
+
+add_executable(diff_store_tests
+        diff_store_tests.cpp
+        ../src/infrastructure/sqlite_diff_store.cpp
+        ../src/infrastructure/sqlite_diff_file_restorer.cpp
+        ../src/infrastructure/archive_json.cpp
+)
+target_include_directories(diff_store_tests PRIVATE ../src)
+target_compile_features(diff_store_tests PRIVATE cxx_std_23)
+huxerui_use_library(diff_store_tests
+        TARGET HuxerUI::SQLite
+        URL "https://github.com/HuxerUI/Lib-SQLite.git"
+        COMMIT "0b316df41cbd88b212e6aeead326196e3db6c96a"
+)
+target_link_libraries(diff_store_tests PRIVATE HuxerUI::testing)
+set_target_properties(diff_store_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(diff_store_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(diff_store_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME diff_store_tests COMMAND diff_store_tests)
+
+add_executable(diff_review_service_tests
+        diff_review_service_tests.cpp
+        ../src/application/diff_review_service.cpp
+)
+target_include_directories(diff_review_service_tests PRIVATE ../src)
+target_compile_features(diff_review_service_tests PRIVATE cxx_std_23)
+target_link_libraries(diff_review_service_tests PRIVATE HuxerUI::testing)
+set_target_properties(diff_review_service_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(diff_review_service_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(diff_review_service_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME diff_review_service_tests COMMAND diff_review_service_tests)

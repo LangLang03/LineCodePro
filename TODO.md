@@ -133,10 +133,23 @@ python3 tools/ui_parity_test.py \
       `1d47496 fix: keep compaction inside processing turns`），
       因此**此前所有「基线」截图都缺少上下文用量指示器等新特性**。
       已重建并重新安装 `cn.lineai.legacy`，后续像素对照均以新版为准。
-- [ ] P0 写入工具的 diff 视图与 Accept/Revert 回滚缺失：
-      `domain::ChatTimeline` 的 `diff_id` / `review_state` 已入库但展示层不读，
-      `chat_screen.cpp` 的 write 卡退化为文本 "Diff unavailable"；
-      旧版对应 `ToolCallWriteView` + `DiffView` + `ToolReviewController.revertDiff`。
+- [x] 写入工具的 diff 视图与 Accept/Revert 回滚已迁移：
+      `domain/diff_lines.*` 移植 `DiffLines.calculate`（前后缀对齐 + LCS，
+      超 100 万格退化为整块替换）；`SqliteDiffStore` 移植 `DiffRepository`
+      （id 格式 `毫秒_36进制随机`、`revert` 三段守卫与四条英文文案逐字一致）；
+      `DiffReviewService` 移植 `ToolReviewController`（state 归一化、回滚、
+      本地审核缓存）；`SqliteDiffFileRestorer` 移植 `FileRestorer`。
+      工具侧：`file_write` / `file_edit` 成功后经 `DiffStore::Record` 记录并把
+      `diff_id` 沿 `ToolInvocationResult → CompletionToolResult →
+      domain::ChatToolResult → ToolTimelinePresentation` 传回卡片。
+      卡片：展开时加载 diff 体，渲染红/绿行 + 行号 + 末行换行提示 +
+      撤销/同意按钮；审核状态以仓储为准叠加（对应旧版 `applyLocalReviews`）。
+- [x] 回滚真机端到端验证：改写文件内容后触发 `file_write`，卡片显示
+      「需要确认」+ diff（`ORIGINAL CONTENT BEFORE TOOL` 红行 /
+      `linecode file tool ok` 绿行 / `文件末尾没有换行符`）；点击「撤销」后
+      文件恢复为原内容、`diff_records.reverted=1`、
+      `raw_json` 为 `{"review_state":"rejected","review_message":"Reverted change to <path>"}`，
+      卡片转为「已撤销」且按钮消失。
 - [ ] P0 子代理 / Agent Pipeline 执行引擎整段缺失（旧版
       `app/src/main/java/cn/lineai/mvp/agent/` 约 2576 行）。这同时导致
       `agentSystemPrompt` 模板的 `EXTENSIONS_CONTEXT` 槽位无人渲染、

@@ -37,6 +37,16 @@ struct ToolTimelinePresentation final {
   std::string input_detail;
   std::string output_detail;
   std::string auxiliary;
+  // Recorded file change for write-family tools; empty when the tool produced
+  // no revertable change. The `{}` keeps `-Wmissing-field-initializers` quiet
+  // at designated-initializer call sites.
+  // Tool call this card belongs to; the review action is keyed by it, exactly
+  // like the legacy `ToolReviewController.review(toolCallId, ...)`.
+  std::string tool_call_id{};
+  std::string diff_id{};
+  // "accepted" / "rejected" / empty while still pending review.
+  std::string review_state{};
+  std::string review_message{};
   std::vector<ToolTimelineTodoItem> todo_items;
   int item_count{};
   int completed_count{};

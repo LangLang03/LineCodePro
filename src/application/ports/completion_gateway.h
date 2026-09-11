@@ -44,6 +44,8 @@ struct CompletionToolResult final {
   std::string name;
   std::string content;
   bool error{};
+  // Recorded file change, when the tool produced one.
+  std::string diff_id{};
 
   bool operator==(const CompletionToolResult &) const = default;
 };

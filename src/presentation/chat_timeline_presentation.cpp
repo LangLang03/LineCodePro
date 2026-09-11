@@ -320,6 +320,7 @@ PresentToolTimeline(const domain::AssistantToolEvent &event) {
                                            event.result->error)
                            : application::ToolResultDisplayProjection{};
   ToolTimelinePresentation result{
+      .tool_call_id = event.call.id,
       .visual = DefaultToolTimelineRendererRegistry().Resolve(event.call.name),
       .status = event.call.status,
       .title = event.call.name,
@@ -364,6 +365,11 @@ PresentToolTimeline(const domain::AssistantToolEvent &event) {
       result.title = "Unnamed file";
     result.auxiliary = path;
     result.detail = event.result ? event.result->content : "";
+    if (event.result) {
+      result.diff_id = event.result->diff_id;
+      result.review_state = event.result->review_state;
+      result.review_message = event.result->review_message;
+    }
     break;
   }
   case ToolTimelineVisualKind::remove:

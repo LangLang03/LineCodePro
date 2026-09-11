@@ -47,6 +47,10 @@ struct ToolRegistryError final {
 struct ToolInvocationResult final {
   std::string content;
   bool error{};
+  // Set by tools that record a revertable file change (legacy
+  // `ToolResult.withDiffId`). Empty for everything else. The `{}` keeps
+  // `-Wmissing-field-initializers` quiet at designated-initializer call sites.
+  std::string diff_id{};
 
   bool operator==(const ToolInvocationResult &) const = default;
 };

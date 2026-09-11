@@ -6,6 +6,7 @@
 
 #include "application/mcp_execution_settings.h"
 #include "application/ports/project_workspace_controller.h"
+#include "application/ports/diff_store.h"
 #include "application/ports/tool_file_access.h"
 #include "application/ports/tool_registry.h"
 #include "application/tool_text_catalog.h"
@@ -29,7 +30,8 @@ public:
   FileToolRegistry(std::shared_ptr<McpExecutionSettingsService> settings,
                    std::shared_ptr<ProjectWorkspaceController> workspace,
                    std::shared_ptr<ToolFileAccess> files,
-                   ToolTextLanguage language = ToolTextLanguage::english);
+                   ToolTextLanguage language = ToolTextLanguage::english,
+                   std::shared_ptr<DiffStore> diffs = {});
 
   [[nodiscard]] huxerui::Task<std::expected<void, ToolRegistryError>>
   Refresh() override;
@@ -43,6 +45,7 @@ private:
   std::shared_ptr<ProjectWorkspaceController> workspace_;
   std::shared_ptr<ToolFileAccess> files_;
   ToolTextLanguage language_{ToolTextLanguage::english};
+  std::shared_ptr<DiffStore> diffs_;
   std::vector<RegisteredTool> tools_;
 };
 

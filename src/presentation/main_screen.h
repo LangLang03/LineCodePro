@@ -8,6 +8,7 @@
 
 #include "application/ports/todo_state_store.h"
 #include "application/context_compaction.h"
+#include "application/diff_review_service.h"
 #include "application/theme_settings.h"
 #include "domain/mcp_execution_settings.h"
 #include "presentation/platform_features.h"
@@ -68,6 +69,8 @@ huxerui::View MainScreen(
     std::shared_ptr<application::MemoryStore> memory_store,
     std::shared_ptr<application::TodoStateStore> todo_state,
     std::shared_ptr<application::ContextCompactionService> compaction_service,
+    std::shared_ptr<application::DiffStore> diff_store,
+    std::shared_ptr<application::DiffReviewService> diff_review,
     std::shared_ptr<application::AgentExtensionStore> agent_extensions,
     std::shared_ptr<application::McpExtensionStore> mcp_extensions,
     std::shared_ptr<application::McpToolCatalog> mcp_tool_catalog,

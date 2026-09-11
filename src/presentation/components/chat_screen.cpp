@@ -7,6 +7,8 @@
 #include <chrono>
 #include <functional>
 #include <iterator>
+#include <map>
+#include <set>
 #include <memory>
 #include <numbers>
 #include <optional>
@@ -23,6 +25,8 @@
 #include "application/behavior_settings_repository.h"
 #include "application/chat_session.h"
 #include "application/context_compaction.h"
+#include "application/diff_review_service.h"
+#include "application/ports/diff_store.h"
 #include "application/chat_export.h"
 #include "application/generation_controller.h"
 #include "application/memory_context_service.h"
@@ -38,6 +42,7 @@
 #include "application/slash_command_catalog.h"
 #include "application/tool_permission_service.h"
 #include "domain/context_usage.h"
+#include "domain/diff_lines.h"
 #include "infrastructure/tutorial_markdown_parser.h"
 #include "presentation/components/chat_overlays.h"
 #include "presentation/components/tutorial_markdown.h"
@@ -771,10 +776,61 @@ View AssistantMarkdown(std::string_view markdown, bool code_wrap,
                        const TutorialMarkdownLinkHandler &on_link = {},
                        const TutorialMarkdownCopyHandler &on_copy = {});
 
+// Everything a write card needs about one recorded change. The review state
+// travels with the body so the card can overlay the latest decision, which is
+// what the legacy `ToolReviewController.applyLocalReviews` did at render time.
+struct DiffEntry final {
+  domain::DiffLines lines;
+  std::string review_state;
+  std::string review_message;
+};
+
+using DiffCache = std::map<std::string, DiffEntry>;
+
+// Loads the requested records and publishes them in one update, so the cards
+// recompose once instead of per record.
+Task<void> LoadDiffs(std::shared_ptr<application::DiffStore> store,
+                     State<std::shared_ptr<DiffCache>> cache,
+                     std::shared_ptr<std::set<std::string>> pending,
+                     std::vector<std::string> wanted) {
+  auto loaded = std::make_shared<DiffCache>(*cache.Get());
+  bool changed = false;
+  for (const auto &id : wanted) {
+    auto record = co_await store->Find(id);
+    if (record) {
+      loaded->insert_or_assign(
+          id, DiffEntry{.lines = domain::CalculateDiffLines(
+                            record->old_content, record->new_content),
+                        .review_state = record->EffectiveReviewState(),
+                        .review_message = record->review_message});
+      changed = true;
+    }
+    pending->erase(id);
+  }
+  if (changed)
+    cache = loaded;
+}
+
+// Everything a tool card needs beyond its own presentation: the recorded
+// change behind a write tool and the review action that accepts or reverts it.
+struct ToolRendererContext final {
+  // Diff bodies keyed by record id. Cards look themselves up, because one
+  // conversation can contain several recorded changes.
+  std::shared_ptr<const DiffCache> diff_cache;
+  // Fetches one record's body. Called from an event handler (expanding the
+  // card), never during composition, because launching a task is forbidden
+  // while composing.
+  std::function<void(std::string diff_id)> on_request_diff;
+  std::function<void(std::string tool_call_id, std::string diff_id,
+                     std::string state)>
+      on_review;
+};
+
 View ShellToolRenderer(const ToolTimelinePresentation &presentation,
                        bool expanded, std::function<void()> toggle,
                        const TutorialMarkdownLinkHandler &,
-                       const TutorialMarkdownCopyHandler &) {
+                       const TutorialMarkdownCopyHandler &,
+                       const ToolRendererContext &context) {
   std::vector<View> rows;
   rows.push_back(LegacyToolHeader(presentation, app::images::terminal,
                                   expanded, std::move(toggle)));
@@ -787,7 +843,8 @@ View ShellToolRenderer(const ToolTimelinePresentation &presentation,
 View ReadToolRenderer(const ToolTimelinePresentation &presentation,
                       bool expanded, std::function<void()> toggle,
                       const TutorialMarkdownLinkHandler &,
-                      const TutorialMarkdownCopyHandler &) {
+                      const TutorialMarkdownCopyHandler &,
+                      const ToolRendererContext &context) {
   std::vector<View> rows;
   rows.push_back(LegacyToolHeader(presentation, app::images::file_text,
                                   expanded, std::move(toggle)));
@@ -797,47 +854,260 @@ View ReadToolRenderer(const ToolTimelinePresentation &presentation,
       .With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
+// Legacy `DiffView`: a horizontally scrollable unified diff. Context lines
+// around every change stay visible while distant unchanged regions collapse to
+// a single gap marker, and rendering stops after 200 lines.
+View DiffView(const domain::DiffLines &diff) {
+  std::vector<bool> visible(diff.lines.size(), false);
+  for (std::size_t index = 0; index < diff.lines.size(); ++index) {
+    if (diff.lines[index].kind == domain::DiffLine::Kind::unchanged)
+      continue;
+    const auto from = index >= 3 ? index - 3 : 0;
+    const auto to = std::min(diff.lines.size(), index + 4);
+    for (auto around = from; around < to; ++around)
+      visible[around] = true;
+  }
+
+  std::vector<View> rows;
+  std::size_t displayed = 0;
+  bool omitted = false;
+  for (std::size_t index = 0; index < diff.lines.size(); ++index) {
+    if (!visible[index] && diff.added + diff.removed > 0) {
+      omitted = true;
+      continue;
+    }
+    if (displayed >= 200) {
+      rows.push_back(
+          Text(StringVariant::Format(app::strings::tool_call_diff_truncated,
+                                     static_cast<std::int64_t>(
+                                         diff.lines.size())))
+              .Style(ChatTextStyle(12.0F, FontWeight::Regular,
+                                   colors::tertiary))
+              .With(Padding(EdgeInsets{.top = 12.0F,
+                                       .right = 14.0F,
+                                       .bottom = 12.0F,
+                                       .left = 14.0F})));
+      break;
+    }
+    if (omitted) {
+      rows.push_back(Text("⋯")
+                         .Style(ChatTextStyle(13.0F, FontWeight::Regular,
+                                              colors::tertiary))
+                         .With(Padding(EdgeInsets{.top = 4.0F,
+                                                  .right = 0.0F,
+                                                  .bottom = 4.0F,
+                                                  .left = 18.0F})));
+      omitted = false;
+    }
+    const auto &line = diff.lines[index];
+    const bool added = line.kind == domain::DiffLine::Kind::added;
+    const bool removed = line.kind == domain::DiffLine::Kind::removed;
+    const Color text_color = added ? colors::diff_add_text
+                              : removed ? colors::diff_delete_text
+                                        : colors::secondary;
+    rows.push_back(
+        Row{
+            Stack{}.With(Frame{.width = 3.0F}, Grow(),
+                         Background(added ? colors::success
+                                     : removed ? colors::danger
+                                               : Color::Transparent())),
+            Text(std::to_string(line.number))
+                .Style(TextStyle{Font::Monospace(13.0F), text_color})
+                .Align(TextAlign::Trailing)
+                .With(Frame{.width = 42.0F},
+                      Padding(EdgeInsets{.top = 3.0F,
+                                         .right = 10.0F,
+                                         .bottom = 3.0F,
+                                         .left = 2.0F})),
+            Text(line.text)
+                .Style(TextStyle{Font::Monospace(13.0F), text_color})
+                .With(Padding(EdgeInsets{.top = 3.0F,
+                                         .right = 14.0F,
+                                         .bottom = 3.0F,
+                                         .left = 4.0F})),
+        }
+            .With(Frame{.min_height = 26.0F},
+                  Background(added   ? colors::diff_add_background
+                             : removed ? colors::diff_delete_background
+                                       : Color::Transparent()),
+                  CrossAlign(CrossAxisAlignment::Stretch)));
+    if (!line.terminated) {
+      rows.push_back(Text(app::strings::tool_call_diff_no_newline)
+                         .Style(ChatTextStyle(12.0F, FontWeight::Regular,
+                                              colors::tertiary))
+                         .With(Padding(EdgeInsets{.top = 4.0F,
+                                                  .right = 14.0F,
+                                                  .bottom = 4.0F,
+                                                  .left = 14.0F})));
+    }
+    ++displayed;
+  }
+  if (omitted) {
+    rows.push_back(Text("⋯")
+                       .Style(ChatTextStyle(13.0F, FontWeight::Regular,
+                                            colors::tertiary))
+                       .With(Padding(EdgeInsets{.top = 4.0F,
+                                                .right = 0.0F,
+                                                .bottom = 4.0F,
+                                                .left = 18.0F})));
+  }
+  return ScrollView(Column(std::move(rows))
+                        .With(CrossAlign(CrossAxisAlignment::Stretch)))
+      .ScrollAxis(Axis::Horizontal);
+}
+
 View WriteToolRenderer(const ToolTimelinePresentation &presentation,
                        bool expanded, std::function<void()> toggle,
                        const TutorialMarkdownLinkHandler &,
-                       const TutorialMarkdownCopyHandler &) {
+                       const TutorialMarkdownCopyHandler &on_copy,
+                       const ToolRendererContext &context) {
   std::vector<View> rows;
-  rows.push_back(LegacyToolHeader(presentation, app::images::file_pen_line,
-                                  expanded, std::move(toggle)));
-  if (expanded) {
-    const auto detail = presentation.detail.empty()
-                            ? std::string{"Diff unavailable"}
-                            : presentation.detail;
-    rows.push_back(
-        Column{
-            Row{Text(presentation.title)
-                    .Style(ChatTextStyle(13.0F, FontWeight::Regular,
-                                         colors::secondary)),
-                Spacer(),
-                Stack{Image(app::images::copy)
-                          .Tint(colors::secondary)
-                          .With(Frame{.width = 16.0F, .height = 16.0F})}
-                    .With(Frame{.width = 44.0F, .height = 44.0F},
-                          Align(HorizontalAlignment::Center,
-                                VerticalAlignment::Center))}
-                .With(Padding(EdgeInsets{.left = 12.0F})),
-            ScrollView(SelectionArea(
-                           Text(detail)
-                               .Style(TextStyle{Font::Monospace(13.0F),
-                                                presentation.failed
-                                                    ? colors::danger
-                                                    : colors::secondary})
-                               .With(Padding(EdgeInsets{
-                                   .top = 10.0F,
-                                   .right = 14.0F,
-                                   .bottom = 10.0F,
-                                   .left = 14.0F}))))
-                .ScrollAxis(Axis::Vertical)
-                .With(Frame{.max_height = 224.0F}, ScrollBar()),
-        }.With(CrossAlign(CrossAxisAlignment::Stretch),
-               Background(colors::code), Border(colors::code_border, 1.0F),
-               CornerRadius(12.0F), ClipChildren()));
+  const auto diff_id = presentation.diff_id;
+  const auto request_diff = context.on_request_diff;
+  // Expanding asks for the body first; the card then renders it once the
+  // request publishes the loaded lines.
+  rows.push_back(LegacyToolHeader(
+      presentation, app::images::file_pen_line, expanded,
+      [toggle = std::move(toggle), diff_id, request_diff] {
+        std::invoke(toggle);
+        if (request_diff && !diff_id.empty())
+          std::invoke(request_diff, diff_id);
+      }));
+  if (!expanded)
+    return Column(std::move(rows))
+        .With(CrossAlign(CrossAxisAlignment::Stretch));
+
+  const DiffEntry *entry = nullptr;
+  if (context.diff_cache) {
+    const auto found = context.diff_cache->find(presentation.diff_id);
+    if (found != context.diff_cache->end())
+      entry = &found->second;
   }
+  // The store is authoritative: the transcript copy predates the decision.
+  const std::string review_state =
+      entry != nullptr && !entry->review_state.empty()
+          ? entry->review_state
+          : presentation.review_state;
+  const std::string review_message =
+      entry != nullptr && !entry->review_message.empty()
+          ? entry->review_message
+          : presentation.review_message;
+  const bool reverted = review_state == "rejected";
+  const bool accepted = review_state == "accepted";
+  const bool awaiting_review =
+      !presentation.diff_id.empty() && !reverted && !accepted;
+
+  // The legacy card derived its label from the review state, falling back to
+  // "Created" when the write produced a file that did not exist before.
+  StringResource status = app::strings::tool_call_write_done;
+  if (presentation.failed)
+    status = app::strings::chat_tool_failed;
+  else if (reverted)
+    status = app::strings::tool_call_write_reverted;
+  else if (awaiting_review)
+    status = app::strings::tool_call_status_pending_review;
+
+  std::vector<View> detail_children;
+  detail_children.push_back(
+      Row{
+          Text(StringVariant{status})
+              .Style(ChatTextStyle(13.0F, FontWeight::Regular,
+                                   presentation.failed ? colors::danger
+                                                       : colors::secondary)),
+          Text(presentation.title)
+              .Style(ChatTextStyle(13.0F, FontWeight::Regular,
+                                   colors::secondary))
+              .With(Padding(EdgeInsets{.left = 4.0F})),
+          Spacer(),
+          Stack{Image(app::images::copy)
+                    .Tint(colors::secondary)
+                    .With(Frame{.width = 16.0F, .height = 16.0F})}
+              .OnClick([on_copy, detail = presentation.detail] {
+                if (!detail.empty())
+                  std::invoke(on_copy, detail);
+              })
+              .With(Frame{.width = 44.0F, .height = 44.0F},
+                    Align(HorizontalAlignment::Center,
+                          VerticalAlignment::Center), Focusable(),
+                    PointerCursor(PointerCursorKind::Hand),
+                    Semantics{.label = app::strings::tool_call_copy_file}),
+      }
+          .With(Padding(EdgeInsets{.left = 12.0F}),
+                CrossAlign(CrossAxisAlignment::Center)));
+
+  if (entry != nullptr) {
+    detail_children.push_back(
+        ScrollView(DiffView(entry->lines))
+            .ScrollAxis(Axis::Vertical)
+            .With(Frame{.max_height = 224.0F}, ScrollBar()));
+  } else {
+    detail_children.push_back(
+        Text(presentation.diff_id.empty()
+                 ? app::strings::tool_call_diff_unavailable
+                 : app::strings::tool_call_diff_loading)
+            .Style(ChatTextStyle(12.0F, FontWeight::Regular,
+                                 colors::tertiary))
+            .With(Padding(EdgeInsets{.top = 10.0F,
+                                     .right = 14.0F,
+                                     .bottom = 10.0F,
+                                     .left = 14.0F})));
+  }
+
+  const std::string message = presentation.failed
+                                  ? presentation.detail
+                                  : review_message;
+  if (!message.empty()) {
+    detail_children.push_back(
+        Text(message)
+            .Style(ChatTextStyle(13.0F, FontWeight::Regular,
+                                 presentation.failed ? colors::danger
+                                                     : colors::secondary))
+            .With(Padding(EdgeInsets{.top = 10.0F,
+                                     .right = 14.0F,
+                                     .bottom = 10.0F,
+                                     .left = 14.0F})));
+  }
+
+  if (awaiting_review && context.on_review) {
+    const auto diff_id = presentation.diff_id;
+    const auto call_id = presentation.tool_call_id;
+    const auto on_review = context.on_review;
+    detail_children.push_back(
+        Row{
+            Text(app::strings::tool_call_write_revert)
+                .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::text))
+                .Align(TextAlign::Center)
+                .OnClick([on_review, call_id, diff_id] {
+                  std::invoke(on_review, call_id, diff_id,
+                              std::string{"rejected"});
+                })
+                .With(Frame{.min_height = 48.0F},
+                      Padding(EdgeInsets::Symmetric(14.0F, 0.0F)), Focusable(),
+                      PointerCursor(PointerCursorKind::Hand)),
+            Text(app::strings::tool_call_write_accept)
+                .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::text))
+                .Align(TextAlign::Center)
+                .OnClick([on_review, call_id, diff_id] {
+                  std::invoke(on_review, call_id, diff_id,
+                              std::string{"accepted"});
+                })
+                .With(Frame{.min_height = 48.0F},
+                      Padding(EdgeInsets::Symmetric(14.0F, 0.0F)), Focusable(),
+                      PointerCursor(PointerCursorKind::Hand)),
+        }
+            .With(MainAlign(MainAxisAlignment::End),
+                  CrossAlign(CrossAxisAlignment::Center),
+                  Padding(EdgeInsets{.top = 6.0F,
+                                     .right = 8.0F,
+                                     .bottom = 6.0F,
+                                     .left = 8.0F})));
+  }
+
+  rows.push_back(Column(std::move(detail_children))
+                     .With(CrossAlign(CrossAxisAlignment::Stretch),
+                           Background(colors::code),
+                           Border(colors::code_border, 1.0F),
+                           CornerRadius(12.0F), ClipChildren()));
   return Column(std::move(rows))
       .With(CrossAlign(CrossAxisAlignment::Stretch));
 }
@@ -845,7 +1115,8 @@ View WriteToolRenderer(const ToolTimelinePresentation &presentation,
 View DeleteToolRenderer(const ToolTimelinePresentation &presentation,
                         bool expanded, std::function<void()> toggle,
                         const TutorialMarkdownLinkHandler &,
-                        const TutorialMarkdownCopyHandler &) {
+                        const TutorialMarkdownCopyHandler &,
+                       const ToolRendererContext &context) {
   std::vector<View> rows;
   rows.push_back(LegacyToolHeader(presentation, app::images::trash_2,
                                   expanded, std::move(toggle)));
@@ -873,7 +1144,8 @@ View TodoIndicator(ToolTimelineTodoItem::State state) {
 View TodoToolRenderer(const ToolTimelinePresentation &presentation, bool,
                       std::function<void()>,
                       const TutorialMarkdownLinkHandler &,
-                      const TutorialMarkdownCopyHandler &) {
+                      const TutorialMarkdownCopyHandler &,
+                      const ToolRendererContext &context) {
   if (presentation.failed && !presentation.detail.empty())
     return ToolCodeCard(presentation.detail, presentation, 240.0F);
   std::vector<View> rows;
@@ -907,7 +1179,8 @@ View TodoToolRenderer(const ToolTimelinePresentation &presentation, bool,
 View AgentToolRenderer(const ToolTimelinePresentation &presentation,
                        bool expanded, std::function<void()> toggle,
                        const TutorialMarkdownLinkHandler &on_link,
-                       const TutorialMarkdownCopyHandler &on_copy) {
+                       const TutorialMarkdownCopyHandler &on_copy,
+                       const ToolRendererContext &context) {
   std::vector<View> title_rows;
   title_rows.push_back(
       Row{Text(presentation.title)
@@ -964,17 +1237,20 @@ View AgentToolRenderer(const ToolTimelinePresentation &presentation,
 View PipelineToolRenderer(const ToolTimelinePresentation &presentation,
                           bool expanded, std::function<void()> toggle,
                           const TutorialMarkdownLinkHandler &on_link,
-                          const TutorialMarkdownCopyHandler &on_copy) {
+                          const TutorialMarkdownCopyHandler &on_copy,
+                       const ToolRendererContext &context) {
   auto copy = presentation;
   copy.title += "  " + std::to_string(copy.completed_count) + "/" +
                 std::to_string(copy.item_count);
-  return AgentToolRenderer(copy, expanded, std::move(toggle), on_link, on_copy);
+  return AgentToolRenderer(copy, expanded, std::move(toggle), on_link, on_copy,
+                           context);
 }
 
 View GenericToolRenderer(const ToolTimelinePresentation &presentation,
                          bool expanded, std::function<void()> toggle,
                          const TutorialMarkdownLinkHandler &,
-                         const TutorialMarkdownCopyHandler &) {
+                         const TutorialMarkdownCopyHandler &,
+                       const ToolRendererContext &context) {
   std::vector<View> rows;
   rows.push_back(LegacyToolHeader(presentation, app::images::mcp, expanded,
                                   std::move(toggle)));
@@ -1017,7 +1293,8 @@ View GenericToolRenderer(const ToolTimelinePresentation &presentation,
 using ToolRenderer = View (*)(const ToolTimelinePresentation &, bool,
                               std::function<void()>,
                               const TutorialMarkdownLinkHandler &,
-                              const TutorialMarkdownCopyHandler &);
+                              const TutorialMarkdownCopyHandler &,
+                              const ToolRendererContext &);
 
 struct ToolRendererPolicy final {
   ToolTimelineVisualKind visual;
@@ -1095,7 +1372,8 @@ View ToolTimelineCard(const domain::AssistantToolEvent &event,
                       std::string key,
                       State<std::vector<std::string>> toggled,
                       const TutorialMarkdownLinkHandler &on_link,
-                      const TutorialMarkdownCopyHandler &on_copy) {
+                      const TutorialMarkdownCopyHandler &on_copy,
+                      const ToolRendererContext &context) {
   const auto presentation = PresentToolTimeline(event);
   if (!presentation.visible)
     return Stack{}.With(Frame{.height = 0.0F});
@@ -1104,7 +1382,7 @@ View ToolTimelineCard(const domain::AssistantToolEvent &event,
   return RendererFor(presentation.visual)(
       presentation, expanded,
       [toggled, key = std::move(key)] { ToggleKey(toggled, key); }, on_link,
-      on_copy);
+      on_copy, context);
 }
 
 View AssistantTimeline(
@@ -1112,7 +1390,8 @@ View AssistantTimeline(
     const ChatTimelineSettings &settings,
     State<std::vector<std::string>> toggled,
     const TutorialMarkdownLinkHandler &on_link,
-    const TutorialMarkdownCopyHandler &on_copy) {
+    const TutorialMarkdownCopyHandler &on_copy,
+    const ToolRendererContext &context) {
   const auto presentation = PresentAssistantProcess(
       message, live, settings.process_auto_expand);
   if (!presentation.visible)
@@ -1177,8 +1456,8 @@ View AssistantTimeline(
                       on_copy));
               },
               [&](const domain::AssistantToolEvent &tool) {
-                rows.push_back(
-                    ToolTimelineCard(tool, key, toggled, on_link, on_copy));
+                rows.push_back(ToolTimelineCard(tool, key, toggled, on_link,
+                                                on_copy, context));
               }},
           message.timeline[index]);
     }
@@ -1204,6 +1483,7 @@ View MessageBubble(const domain::ChatMessage &message,
                    State<std::vector<std::string>> toggled_timeline,
                    const TutorialMarkdownLinkHandler &on_link,
                    const TutorialMarkdownCopyHandler &on_copy,
+                   const ToolRendererContext &context,
                    bool live = false) {
   if (message.role == domain::MessageRole::tool)
     return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
@@ -1230,7 +1510,7 @@ View MessageBubble(const domain::ChatMessage &message,
   }
   View assistant = Column{
       AssistantTimeline(message, live, timeline_settings, toggled_timeline,
-                        on_link, on_copy),
+                        on_link, on_copy, context),
       std::move(assistant_text),
       std::move(assistant_error),
   }.With(CrossAlign(CrossAxisAlignment::Stretch));
@@ -1286,7 +1566,8 @@ View Conversation(
     const ChatTimelineSettings &timeline_settings,
     State<std::vector<std::string>> toggled_timeline,
     const TutorialMarkdownLinkHandler &on_link,
-    const TutorialMarkdownCopyHandler &on_copy) {
+    const TutorialMarkdownCopyHandler &on_copy,
+    const ToolRendererContext &context) {
   static_cast<void>(revision);
   const auto messages = session->Messages();
   if (messages.empty()) {
@@ -1312,22 +1593,22 @@ View Conversation(
                        ? MessageBubble(streaming_message, action_message, false,
                                        selected_messages, {}, timeline_settings,
                                        toggled_timeline, on_link, on_copy,
-                                       true)
+                                       context, true)
                        : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
   View list = ScrollView(Column{
                              ForEach(messages,
                                      [action_message, multi_select,
                                       selected_messages,
                                       callbacks, timeline_settings,
-                                      toggled_timeline, on_link,
-                                      on_copy](const auto &message) {
+                                      toggled_timeline, on_link, on_copy,
+                                      context](const auto &message) {
                                        return MessageBubble(
                                                   message, action_message,
                                                   multi_select,
                                                   selected_messages, callbacks,
                                                   timeline_settings,
                                                   toggled_timeline, on_link,
-                                                  on_copy)
+                                                  on_copy, context)
                                            .Key(message.id);
                                      }),
                              std::move(streaming),
@@ -2186,6 +2467,8 @@ View GenerationError(const application::GenerationController &generation,
     const std::shared_ptr<application::TodoStateStore> &todo_state,
     const std::shared_ptr<application::ContextCompactionService>
         &compaction_service,
+    const std::shared_ptr<application::DiffStore> &diff_store,
+    const std::shared_ptr<application::DiffReviewService> &diff_review,
     const std::shared_ptr<application::OutputSettingsService> &output_settings,
     const std::shared_ptr<application::ToolPermissionService>
         &tool_permissions,
@@ -2204,10 +2487,6 @@ View GenerationError(const application::GenerationController &generation,
   const auto external_link = UseService<application::ExternalLinkService>();
   const auto export_service = UseService<application::ChatExportService>();
   auto compaction_busy = UseState(std::make_shared<std::atomic<bool>>(false));
-  const CompactionLabels compaction_labels{
-      .failed_prefix = UseString(app::strings::context_compact_failed, ""),
-      .done = UseString(app::strings::context_compact_done),
-  };
   auto attachment_visible = UseState(false);
   auto more_visible = UseState(false);
   auto permission_visible = UseState(false);
@@ -2229,6 +2508,51 @@ View GenerationError(const application::GenerationController &generation,
   auto timeline_settings = UseState(ChatTimelineSettings{});
   auto toggled_timeline = UseState(std::vector<std::string>{});
   const auto tasks = UseTaskScope();
+  // Diff bodies live in the store, not in the transcript. `Lifecycle` runs
+  // outside composition (the task scope forbids launching during composition)
+  // and re-runs whenever `revision` moves on, which is also when a new tool
+  // result may have brought a fresh record id.
+  auto diff_cache = UseState(std::make_shared<DiffCache>());
+  const auto diff_pending =
+      UseState(std::make_shared<std::set<std::string>>()).Get();
+  Lifecycle([tasks, session, revision, diff_store, diff_cache, diff_pending] {
+    if (!diff_store)
+      return;
+    std::vector<std::string> wanted;
+    for (const auto &message : session->Messages()) {
+      for (const auto &event : message.timeline) {
+        const auto *tool = std::get_if<domain::AssistantToolEvent>(&event);
+        if (tool == nullptr || !tool->result.has_value())
+          continue;
+        const auto &id = tool->result->diff_id;
+        if (id.empty() || diff_cache.Get()->contains(id) ||
+            diff_pending->contains(id))
+          continue;
+        diff_pending->insert(id);
+        wanted.push_back(id);
+      }
+    }
+    if (wanted.empty())
+      return;
+    tasks.Launch(LoadDiffs(diff_store, diff_cache, diff_pending,
+                           std::move(wanted)));
+  });
+
+  // Same loader, driven by the card's expand event.
+  auto request_diff = [tasks, diff_store, diff_cache, diff_pending](
+                          std::string diff_id) {
+    if (!diff_store || diff_id.empty() || diff_cache.Get()->contains(diff_id) ||
+        diff_pending->contains(diff_id))
+      return;
+    diff_pending->insert(diff_id);
+    tasks.Launch(LoadDiffs(diff_store, diff_cache, diff_pending,
+                           std::vector<std::string>{std::move(diff_id)}));
+  };
+
+  const CompactionLabels compaction_labels{
+      .failed_prefix = UseString(app::strings::context_compact_failed, ""),
+      .done = UseString(app::strings::context_compact_done),
+  };
   const auto toast = UseToast();
 
   Lifecycle([tasks, tool_permissions, permission_state, toast] {
@@ -2761,6 +3085,31 @@ View GenerationError(const application::GenerationController &generation,
       std::vector<domain::ChatMessage>{session->Messages().begin(),
                                        session->Messages().end()},
       context_tokens, timeline_settings.Get().preserve_reasoning);
+  // The write card asks for a decision by identifier; accepting only records
+  // the state while rejecting also restores the previous file contents.
+  auto review_change = [diff_review, diff_store, tasks, revision, diff_cache,
+                        diff_pending](std::string tool_call_id,
+                                      std::string diff_id,
+                                      std::string state) {
+    if (!diff_review || tool_call_id.empty())
+      return;
+    tasks.Launch([diff_review, diff_store, tool_call_id = std::move(tool_call_id),
+                  diff_id = std::move(diff_id), state = std::move(state),
+                  revision, diff_cache,
+                  diff_pending]() -> Task<void> {
+      co_await diff_review->Review(std::move(tool_call_id), std::move(state),
+                                   std::move(diff_id));
+      // Re-read the record so the card shows the decision that was just made
+      // instead of the transcript's stale copy.
+      if (diff_store && !diff_id.empty()) {
+        diff_pending->insert(diff_id);
+        co_await LoadDiffs(diff_store, diff_cache, diff_pending,
+                           std::vector<std::string>{std::move(diff_id)});
+      }
+      revision += 1;
+    });
+  };
+
   const ContextUsageLabels context_usage_labels{
       .title = UseString(app::strings::context_usage_title),
       .used = UseString(app::strings::context_usage_used),
@@ -2800,7 +3149,10 @@ View GenerationError(const application::GenerationController &generation,
       Conversation(session, generation, revision.Get(), navigation,
                    action_message, multi_select.Get(), selected_messages,
                    message_actions, timeline_settings.Get(),
-                   toggled_timeline, open_markdown_link, copy_code),
+                   toggled_timeline, open_markdown_link, copy_code,
+                   ToolRendererContext{.diff_cache = diff_cache.Get(),
+                                       .on_request_diff = request_diff,
+                                       .on_review = review_change}),
       GenerationError(*generation, revision.Get()),
       std::move(composer_or_review),
   }
