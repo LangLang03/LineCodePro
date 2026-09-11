@@ -19,12 +19,16 @@
 #include "application/execution_mode_project_workspace.h"
 #include "application/image_generation_tool_registry.h"
 #include "application/image_understanding_tool_registry.h"
+#include "application/in_memory_todo_state_store.h"
 #include "application/legacy_attachment_prompt_renderer.h"
 #include "application/mcp_completion_loop.h"
 #include "application/mcp_execution_settings.h"
 #include "application/mcp_extension_tool_registry.h"
+#include "application/memory_tool_registry.h"
 #include "application/mode_workspace_image_reader.h"
 #include "application/output_settings.h"
+#include "application/todo_tool_registry.h"
+#include "application/web_tool_registry.h"
 #include "application/ports/workspace_directory_share.h"
 #include "application/project_workspace_service.h"
 #include "application/prompt_request_composer.h"
@@ -41,6 +45,8 @@
 #include "application/tool_permission_service.h"
 #if defined(__ANDROID__)
 #include "application/ports/keep_alive.h"
+#include "application/ports/todo_state_store.h"
+#include "application/ports/web_tools.h"
 #endif
 #include "application/ports/storage_permission.h"
 #include "application/ports/terminal_provider.h"
@@ -57,6 +63,7 @@
 #include "infrastructure/hux_skill_files.h"
 #include "infrastructure/hux_skill_hub_gateway.h"
 #include "infrastructure/hux_skill_hub_session_gateway.h"
+#include "infrastructure/hux_web_tools_gateway.h"
 #include "infrastructure/hux_storage_stats_repository.h"
 #include "infrastructure/hux_workspace_file_store.h"
 #include "infrastructure/image_generation_codec.h"
@@ -412,6 +419,32 @@ huxerui::View PlatformServicesHost() {
               std::make_shared<
                   infrastructure::HuxImageUnderstandingGateway>(http))});
   tool_sources.push_back(image_understanding_tools.Get());
+  // Built-in tool groups. The legacy product registered these unconditionally
+  // through `BuiltInToolProviders.defaults()`; each registry below still
+  // applies its own group enablement and execution-mode gate, so this only
+  // decides which families exist at all.
+  auto todo_state = huxerui::UseState(
+      std::shared_ptr<application::TodoStateStore>{
+          std::make_shared<application::InMemoryTodoStateStore>()});
+  auto todo_tools = huxerui::UseState(
+      std::shared_ptr<application::ToolRegistry>{
+          std::make_shared<application::TodoToolRegistry>(mcp_settings.Get(),
+                                                         todo_state.Get())});
+  auto memory_tools = huxerui::UseState(
+      std::shared_ptr<application::ToolRegistry>{
+          std::make_shared<application::MemoryToolRegistry>(
+              mcp_settings.Get(), memory_store.Get(),
+              project_workspace.Get())});
+  auto web_tools = huxerui::UseState(
+      std::shared_ptr<application::WebToolsGateway>{
+          std::make_shared<infrastructure::HuxWebToolsGateway>(http)});
+  auto web_tool_registry = huxerui::UseState(
+      std::shared_ptr<application::ToolRegistry>{
+          std::make_shared<application::WebToolRegistry>(
+              mcp_settings.Get(), tool_settings.Get(), web_tools.Get())});
+  tool_sources.push_back(todo_tools.Get());
+  tool_sources.push_back(memory_tools.Get());
+  tool_sources.push_back(web_tool_registry.Get());
   auto runtime_tools =
       huxerui::UseState(std::shared_ptr<application::ToolRegistry>{
           std::make_shared<application::CompositeToolRegistry>(

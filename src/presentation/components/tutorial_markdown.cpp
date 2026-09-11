@@ -139,7 +139,8 @@ View ListBlock(const domain::TutorialList& list, float scale,
 }
 
 View CodeBlock(const domain::TutorialCodeBlock& block, bool wraps,
-               float scale) {
+               float scale,
+               const TutorialMarkdownCopyHandler& on_copy) {
   View code = Text(block.code).Style(
       TextStyle{Font::Monospace(13.0F * scale), colors::text});
   View body = code;
@@ -147,17 +148,27 @@ View CodeBlock(const domain::TutorialCodeBlock& block, bool wraps,
     body = ScrollView(std::move(code).With(Frame{.min_width = 760.0F}))
                .ScrollAxis(Axis::Horizontal);
   }
+  View copy_icon = Stack {
+    Image(app::images::copy)
+        .Tint(colors::tertiary)
+        .With(Frame{.width = 18.0F, .height = 18.0F}),
+  }.With(Frame{.width = 48.0F, .height = 48.0F},
+         Align(HorizontalAlignment::Center, VerticalAlignment::Center));
+  if (on_copy) {
+    // The legacy button copies that block's own source, not the whole message.
+    copy_icon = std::move(copy_icon)
+                    .OnClick([on_copy, source = block.code] {
+                      std::invoke(on_copy, source);
+                    })
+                    .With(Semantics{.label = app::strings::markdown_code_copy_desc},
+                          Focusable(), PointerCursor(PointerCursorKind::Hand));
+  }
   View card = Column {
     Row {
       Text(block.language)
           .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
       Spacer(),
-      Stack {
-        Image(app::images::copy)
-            .Tint(colors::tertiary)
-            .With(Frame{.width = 18.0F, .height = 18.0F}),
-      }.With(Frame{.width = 48.0F, .height = 48.0F},
-             Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
+      std::move(copy_icon),
     }.With(Frame{.min_height = 48.0F},
            CrossAlign(CrossAxisAlignment::Center)),
     body,
@@ -247,7 +258,8 @@ View ThematicBreakBlock() {
 
 View TutorialMarkdownBlockView(const domain::TutorialBlock& block,
                                bool code_wrap_enabled, float text_scale,
-                               TutorialMarkdownLinkHandler on_link) {
+                               TutorialMarkdownLinkHandler on_link,
+                               TutorialMarkdownCopyHandler on_copy) {
   return std::visit(
       Overloaded{
           [text_scale, on_link](const domain::TutorialHeading& value) {
@@ -262,9 +274,9 @@ View TutorialMarkdownBlockView(const domain::TutorialBlock& block,
           [text_scale, on_link](const domain::TutorialList& value) {
             return ListBlock(value, text_scale, on_link);
           },
-          [code_wrap_enabled,
-           text_scale](const domain::TutorialCodeBlock& value) {
-            return CodeBlock(value, code_wrap_enabled, text_scale);
+          [code_wrap_enabled, text_scale,
+           on_copy](const domain::TutorialCodeBlock& value) {
+            return CodeBlock(value, code_wrap_enabled, text_scale, on_copy);
           },
           [text_scale](const domain::TutorialImageBlock &value) {
             return ImageBlock(value, text_scale);
@@ -281,13 +293,14 @@ View TutorialMarkdownBlockView(const domain::TutorialBlock& block,
 
 View TutorialMarkdownDocumentView(const domain::TutorialDocument& document,
                                   bool code_wrap_enabled, float text_scale,
-                                  TutorialMarkdownLinkHandler on_link) {
+                                  TutorialMarkdownLinkHandler on_link,
+                                  TutorialMarkdownCopyHandler on_copy) {
   std::vector<View> blocks;
   blocks.reserve(document.blocks.size());
   for (const auto& block : document.blocks)
     blocks.push_back(
         TutorialMarkdownBlockView(block, code_wrap_enabled, text_scale,
-                                  on_link));
+                                  on_link, on_copy));
   return SelectionArea(Column(std::move(blocks)).With(
       CrossAlign(CrossAxisAlignment::Stretch)));
 }

@@ -1421,3 +1421,70 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME agent_extension_draft_tests COMMAND agent_extension_draft_tests)
+
+add_executable(todo_tool_tests
+        todo_tool_tests.cpp
+        ../src/application/todo_tool_registry.cpp
+        ../src/infrastructure/archive_json.cpp
+)
+target_include_directories(todo_tool_tests PRIVATE ../src)
+target_compile_features(todo_tool_tests PRIVATE cxx_std_23)
+target_link_libraries(todo_tool_tests PRIVATE HuxerUI::testing)
+set_target_properties(todo_tool_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(todo_tool_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(todo_tool_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME todo_tool_tests COMMAND todo_tool_tests)
+
+add_executable(memory_tool_tests
+        memory_tool_tests.cpp
+        ../src/application/memory_tool_registry.cpp
+        ../src/domain/memory.cpp
+        ../src/infrastructure/archive_json.cpp
+)
+target_include_directories(memory_tool_tests PRIVATE ../src)
+target_compile_features(memory_tool_tests PRIVATE cxx_std_23)
+target_link_libraries(memory_tool_tests PRIVATE HuxerUI::testing)
+set_target_properties(memory_tool_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(memory_tool_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(memory_tool_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME memory_tool_tests COMMAND memory_tool_tests)
+
+add_executable(web_tool_tests
+        web_tool_tests.cpp
+        ../src/application/web_tool_registry.cpp
+        ../src/domain/tool_settings.cpp
+        ../src/infrastructure/archive_json.cpp
+        ../src/infrastructure/hux_web_tools_gateway.cpp
+        ../src/infrastructure/web_tools_codec.cpp
+)
+target_include_directories(web_tool_tests PRIVATE ../src)
+target_compile_features(web_tool_tests PRIVATE cxx_std_23)
+target_link_libraries(web_tool_tests PRIVATE HuxerUI::testing HuxerUI::huxerui)
+set_target_properties(web_tool_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(web_tool_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(web_tool_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME web_tool_tests COMMAND web_tool_tests)

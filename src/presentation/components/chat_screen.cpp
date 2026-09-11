@@ -626,11 +626,13 @@ View ToolCodeCard(std::string text, const ToolTimelinePresentation &presentation
 }
 
 View AssistantMarkdown(std::string_view markdown, bool code_wrap,
-                       const TutorialMarkdownLinkHandler &on_link = {});
+                       const TutorialMarkdownLinkHandler &on_link = {},
+                       const TutorialMarkdownCopyHandler &on_copy = {});
 
 View ShellToolRenderer(const ToolTimelinePresentation &presentation,
                        bool expanded, std::function<void()> toggle,
-                       const TutorialMarkdownLinkHandler &) {
+                       const TutorialMarkdownLinkHandler &,
+                       const TutorialMarkdownCopyHandler &) {
   std::vector<View> rows;
   rows.push_back(LegacyToolHeader(presentation, app::images::terminal,
                                   expanded, std::move(toggle)));
@@ -642,7 +644,8 @@ View ShellToolRenderer(const ToolTimelinePresentation &presentation,
 
 View ReadToolRenderer(const ToolTimelinePresentation &presentation,
                       bool expanded, std::function<void()> toggle,
-                      const TutorialMarkdownLinkHandler &) {
+                      const TutorialMarkdownLinkHandler &,
+                      const TutorialMarkdownCopyHandler &) {
   std::vector<View> rows;
   rows.push_back(LegacyToolHeader(presentation, app::images::file_text,
                                   expanded, std::move(toggle)));
@@ -654,7 +657,8 @@ View ReadToolRenderer(const ToolTimelinePresentation &presentation,
 
 View WriteToolRenderer(const ToolTimelinePresentation &presentation,
                        bool expanded, std::function<void()> toggle,
-                       const TutorialMarkdownLinkHandler &) {
+                       const TutorialMarkdownLinkHandler &,
+                       const TutorialMarkdownCopyHandler &) {
   std::vector<View> rows;
   rows.push_back(LegacyToolHeader(presentation, app::images::file_pen_line,
                                   expanded, std::move(toggle)));
@@ -698,7 +702,8 @@ View WriteToolRenderer(const ToolTimelinePresentation &presentation,
 
 View DeleteToolRenderer(const ToolTimelinePresentation &presentation,
                         bool expanded, std::function<void()> toggle,
-                        const TutorialMarkdownLinkHandler &) {
+                        const TutorialMarkdownLinkHandler &,
+                        const TutorialMarkdownCopyHandler &) {
   std::vector<View> rows;
   rows.push_back(LegacyToolHeader(presentation, app::images::trash_2,
                                   expanded, std::move(toggle)));
@@ -725,7 +730,8 @@ View TodoIndicator(ToolTimelineTodoItem::State state) {
 
 View TodoToolRenderer(const ToolTimelinePresentation &presentation, bool,
                       std::function<void()>,
-                      const TutorialMarkdownLinkHandler &) {
+                      const TutorialMarkdownLinkHandler &,
+                      const TutorialMarkdownCopyHandler &) {
   if (presentation.failed && !presentation.detail.empty())
     return ToolCodeCard(presentation.detail, presentation, 240.0F);
   std::vector<View> rows;
@@ -758,7 +764,8 @@ View TodoToolRenderer(const ToolTimelinePresentation &presentation, bool,
 
 View AgentToolRenderer(const ToolTimelinePresentation &presentation,
                        bool expanded, std::function<void()> toggle,
-                       const TutorialMarkdownLinkHandler &on_link) {
+                       const TutorialMarkdownLinkHandler &on_link,
+                       const TutorialMarkdownCopyHandler &on_copy) {
   std::vector<View> title_rows;
   title_rows.push_back(
       Row{Text(presentation.title)
@@ -788,7 +795,8 @@ View AgentToolRenderer(const ToolTimelinePresentation &presentation,
                                                  colors::tertiary)));
     if (!presentation.output_detail.empty())
       content.push_back(
-          AssistantMarkdown(presentation.output_detail, true, on_link));
+          AssistantMarkdown(presentation.output_detail, true, on_link,
+                            on_copy));
     if (content.empty())
       content.push_back(Text(presentation.running ? "Running…" : "Done")
                             .Style(ChatTextStyle(12.0F, FontWeight::Regular,
@@ -813,16 +821,18 @@ View AgentToolRenderer(const ToolTimelinePresentation &presentation,
 
 View PipelineToolRenderer(const ToolTimelinePresentation &presentation,
                           bool expanded, std::function<void()> toggle,
-                          const TutorialMarkdownLinkHandler &on_link) {
+                          const TutorialMarkdownLinkHandler &on_link,
+                          const TutorialMarkdownCopyHandler &on_copy) {
   auto copy = presentation;
   copy.title += "  " + std::to_string(copy.completed_count) + "/" +
                 std::to_string(copy.item_count);
-  return AgentToolRenderer(copy, expanded, std::move(toggle), on_link);
+  return AgentToolRenderer(copy, expanded, std::move(toggle), on_link, on_copy);
 }
 
 View GenericToolRenderer(const ToolTimelinePresentation &presentation,
                          bool expanded, std::function<void()> toggle,
-                         const TutorialMarkdownLinkHandler &) {
+                         const TutorialMarkdownLinkHandler &,
+                         const TutorialMarkdownCopyHandler &) {
   std::vector<View> rows;
   rows.push_back(LegacyToolHeader(presentation, app::images::mcp, expanded,
                                   std::move(toggle)));
@@ -864,7 +874,8 @@ View GenericToolRenderer(const ToolTimelinePresentation &presentation,
 
 using ToolRenderer = View (*)(const ToolTimelinePresentation &, bool,
                               std::function<void()>,
-                              const TutorialMarkdownLinkHandler &);
+                              const TutorialMarkdownLinkHandler &,
+                              const TutorialMarkdownCopyHandler &);
 
 struct ToolRendererPolicy final {
   ToolTimelineVisualKind visual;
@@ -891,10 +902,12 @@ ToolRenderer RendererFor(ToolTimelineVisualKind visual) {
 }
 
 View AssistantMarkdown(std::string_view markdown, bool code_wrap,
-                       const TutorialMarkdownLinkHandler &on_link) {
+                       const TutorialMarkdownLinkHandler &on_link,
+                       const TutorialMarkdownCopyHandler &on_copy) {
   infrastructure::TutorialMarkdownParser parser;
   const auto document = parser.Parse(markdown);
-  return TutorialMarkdownDocumentView(document, code_wrap, 1.0F, on_link)
+  return TutorialMarkdownDocumentView(document, code_wrap, 1.0F, on_link,
+                                     on_copy)
       .With(Frame{.max_width = 684.0F});
 }
 
@@ -939,7 +952,8 @@ View ReasoningTimelineBlock(
 View ToolTimelineCard(const domain::AssistantToolEvent &event,
                       std::string key,
                       State<std::vector<std::string>> toggled,
-                      const TutorialMarkdownLinkHandler &on_link) {
+                      const TutorialMarkdownLinkHandler &on_link,
+                      const TutorialMarkdownCopyHandler &on_copy) {
   const auto presentation = PresentToolTimeline(event);
   if (!presentation.visible)
     return Stack{}.With(Frame{.height = 0.0F});
@@ -947,14 +961,16 @@ View ToolTimelineCard(const domain::AssistantToolEvent &event,
                                     presentation.initially_expanded);
   return RendererFor(presentation.visual)(
       presentation, expanded,
-      [toggled, key = std::move(key)] { ToggleKey(toggled, key); }, on_link);
+      [toggled, key = std::move(key)] { ToggleKey(toggled, key); }, on_link,
+      on_copy);
 }
 
 View AssistantTimeline(
     const domain::ChatMessage &message, bool live,
     const ChatTimelineSettings &settings,
     State<std::vector<std::string>> toggled,
-    const TutorialMarkdownLinkHandler &on_link) {
+    const TutorialMarkdownLinkHandler &on_link,
+    const TutorialMarkdownCopyHandler &on_copy) {
   const auto presentation = PresentAssistantProcess(
       message, live, settings.process_auto_expand);
   if (!presentation.visible)
@@ -1015,10 +1031,12 @@ View AssistantTimeline(
               [&](const domain::AssistantTextEvent &text) {
                 if (!text.text.empty())
                   rows.push_back(AssistantMarkdown(
-                      text.text, settings.code_wrap_enabled, on_link));
+                      text.text, settings.code_wrap_enabled, on_link,
+                      on_copy));
               },
               [&](const domain::AssistantToolEvent &tool) {
-                rows.push_back(ToolTimelineCard(tool, key, toggled, on_link));
+                rows.push_back(
+                    ToolTimelineCard(tool, key, toggled, on_link, on_copy));
               }},
           message.timeline[index]);
     }
@@ -1043,6 +1061,7 @@ View MessageBubble(const domain::ChatMessage &message,
                    const ChatTimelineSettings &timeline_settings,
                    State<std::vector<std::string>> toggled_timeline,
                    const TutorialMarkdownLinkHandler &on_link,
+                   const TutorialMarkdownCopyHandler &on_copy,
                    bool live = false) {
   if (message.role == domain::MessageRole::tool)
     return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
@@ -1060,7 +1079,7 @@ View MessageBubble(const domain::ChatMessage &message,
                             : AssistantMarkdown(
                                   message.content,
                                   timeline_settings.code_wrap_enabled,
-                                  on_link);
+                                  on_link, on_copy);
   View assistant_error = Stack{}.With(Frame{.height = 0.0F});
   if (message.error && !message.error_message.empty()) {
     assistant_error = Text(message.error_message)
@@ -1069,7 +1088,7 @@ View MessageBubble(const domain::ChatMessage &message,
   }
   View assistant = Column{
       AssistantTimeline(message, live, timeline_settings, toggled_timeline,
-                        on_link),
+                        on_link, on_copy),
       std::move(assistant_text),
       std::move(assistant_error),
   }.With(CrossAlign(CrossAxisAlignment::Stretch));
@@ -1124,7 +1143,8 @@ View Conversation(
     MessageActionCallbacks callbacks,
     const ChatTimelineSettings &timeline_settings,
     State<std::vector<std::string>> toggled_timeline,
-    const TutorialMarkdownLinkHandler &on_link) {
+    const TutorialMarkdownLinkHandler &on_link,
+    const TutorialMarkdownCopyHandler &on_copy) {
   static_cast<void>(revision);
   const auto messages = session->Messages();
   if (messages.empty()) {
@@ -1149,21 +1169,23 @@ View Conversation(
                            application::GenerationPhase::running
                        ? MessageBubble(streaming_message, action_message, false,
                                        selected_messages, {}, timeline_settings,
-                                       toggled_timeline, on_link, true)
+                                       toggled_timeline, on_link, on_copy,
+                                       true)
                        : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
   View list = ScrollView(Column{
                              ForEach(messages,
                                      [action_message, multi_select,
                                       selected_messages,
                                       callbacks, timeline_settings,
-                                      toggled_timeline,
-                                      on_link](const auto &message) {
+                                      toggled_timeline, on_link,
+                                      on_copy](const auto &message) {
                                        return MessageBubble(
                                                   message, action_message,
                                                   multi_select,
                                                   selected_messages, callbacks,
                                                   timeline_settings,
-                                                  toggled_timeline, on_link)
+                                                  toggled_timeline, on_link,
+                                                  on_copy)
                                            .Key(message.id);
                                      }),
                              std::move(streaming),
@@ -2522,6 +2544,12 @@ View GenerationError(const application::GenerationController &generation,
         navigation.Push(domain::AppRoute::Browser(target.ToString(),
                                                   javascript_enabled));
       };
+  // Legacy code blocks copy their own source and confirm with a toast.
+  auto copy_code = [clipboard, toast](std::string code) {
+    if (clipboard)
+      clipboard->WriteText(code);
+    toast.Show(app::strings::markdown_code_copied);
+  };
 
   return Column{
       Header(std::move(open_drawer), session, generation, pending_messages,
@@ -2530,7 +2558,7 @@ View GenerationError(const application::GenerationController &generation,
       Conversation(session, generation, revision.Get(), navigation,
                    action_message, multi_select.Get(), selected_messages,
                    message_actions, timeline_settings.Get(),
-                   toggled_timeline, open_markdown_link),
+                   toggled_timeline, open_markdown_link, copy_code),
       GenerationError(*generation, revision.Get()),
       std::move(composer_or_review),
   }

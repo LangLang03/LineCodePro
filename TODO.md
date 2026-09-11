@@ -1,6 +1,15 @@
 # LineCode C++ 迁移清单
 
-最后更新：2026-09-11，分支 `hui-cpp`。
+最后更新：2026-09-11（夜间续作），分支 `hui-cpp`。
+
+> 本轮由代码级审计确认的最大缺口：**内置工具套件未接入运行时**。
+> `src/app/app_root.cpp` 的 `CompositeToolRegistry` 过去只装入 MCP 扩展、
+> 图像生成、图像理解、SSH 与终端提供者五类来源，旧版 14 个内置工具
+> （file_read / file_write / file_edit / file_delete / glob / list_dir /
+> todo_update / memory_update / web_fetch / web_search / agent /
+> agent_pipeline / agent_output / shell）在默认 local 模式下**一个都不存在**，
+> 模型没有任何文件读写、检索、待办、记忆或联网能力。这是产品核心闭环的
+> 阻断项，已列为 P0，正在按组补齐并接入组合根。
 
 本文件是剩余工作清单，不是完成声明。只有同时通过功能、数据安全、旧版/新版同机截图和真机交互验证的项目，才可以勾选为完成。
 
@@ -20,6 +29,26 @@
 - [ ] 永远不提交根目录用户文件 `error.log`。
 
 ## 当前可复现验证基线
+
+本轮已完成并通过验证（提交 `520d3de`，已推送 `origin/hui-cpp`）：
+
+- [x] 聊天导出接入 `ChatExportService`：更多菜单「导出对话」与多选导出共用
+      旧版同一个格式选择器（剪贴板 / 纯文本 / Markdown / PDF / 对话截图）。
+- [x] 底部弹层遮罩改用调色板 `overlay`（旧版语义），弹层 MAE 从 47.2/53.9/34.1
+      降到 4.4/4.8/2.7，遮罩像素与旧版逐通道一致。
+- [x] 主题页「创作起点」网格恢复每格 8dp 尾部边距与网格 8dp 顶距。
+- [x] 许可页补上实际链接的 libssh2 与 Mbed TLS。
+- [x] 代码块复制按钮接入真实剪贴板与「已复制」提示（此前无 `OnClick`）。
+- [x] 原生测试 61/61（新增 todo 工具契约测试），Android Release 双 ABI + Lint +
+      原签名通过，模拟器冷启动无崩溃。
+
+仍在进行中（未完成，不得勾选）：
+
+- [ ] P0 内置工具组接入 `app_root.cpp`（file_ops / todo / memory / web_search），
+      并让 `shell` 在 local 模式可用。
+- [ ] P0 上下文压缩服务（`压缩上下文` 菜单当前仍是空实现）。
+- [ ] P0 自定义 Agent 扩展与已安装 Skill 的提示词注入（`BuildExtensionPrompt()`
+      已实现但零调用点；`EXTENSIONS_CONTEXT` 模板槽位无人渲染）。
 
 - [x] 原生测试：49/49 通过；已包含归档安全、真实 SQLite 导出脱敏、旧功能 schema、MCP/工具设置、Slash 命令、待发送队列、附件、Skill、SSH 真实协议 fixture、Memory 与 Extension SQLite 契约测试。
 - [x] Android Release：arm64-v8a、x86_64、Lint、签名打包通过。

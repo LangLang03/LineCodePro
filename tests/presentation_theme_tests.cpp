@@ -45,8 +45,11 @@ void StandardDialogMatchesLegacyLineAlertDialog() {
 }
 
 void BottomSheetLeavesLegacyPanelAppearanceToScreenComponents() {
-  const auto style = LineBottomSheetStyle();
-  assert(style.scrim == Color::Rgb(0, 0, 0, 0.60F));
+  // Legacy in-app overlays paint the palette overlay, not the dialog dim.
+  auto colors = LineColors::Default();
+  colors.overlay = Color::Rgb(7, 8, 9, 0.26F);
+  const auto style = LineBottomSheetStyle(colors);
+  assert(style.scrim == Color::Rgb(7, 8, 9, 0.26F));
   assert(style.background == VisualFill(Color::Transparent()));
   assert(style.shadow.color == Color::Transparent());
   assert(style.corner_radii == CornerRadii{24.0F});
