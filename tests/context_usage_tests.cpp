@@ -49,6 +49,19 @@ ChatMessage ToolMessage(std::string call_id, std::string name,
   return message;
 }
 
+void GroupedTokensMatchNumberFormat() {
+  using linecode::domain::FormatGroupedTokens;
+  assert(FormatGroupedTokens(0) == "0");
+  assert(FormatGroupedTokens(7) == "7");
+  assert(FormatGroupedTokens(999) == "999");
+  assert(FormatGroupedTokens(1'000) == "1,000");
+  assert(FormatGroupedTokens(4'096) == "4,096");
+  assert(FormatGroupedTokens(25'000) == "25,000");
+  assert(FormatGroupedTokens(250'000) == "250,000");
+  assert(FormatGroupedTokens(1'000'000) == "1,000,000");
+  assert(FormatGroupedTokens(-12'345) == "-12,345");
+}
+
 void FormatLabelMatchesLegacy() {
   assert(linecode::domain::FormatContextLabel(250'000) == "250K");
   assert(linecode::domain::FormatContextLabel(1'000'000) == "1M");
@@ -193,6 +206,7 @@ void SnapshotClampsPercent() {
 
 int main() {
   FormatLabelMatchesLegacy();
+  GroupedTokensMatchNumberFormat();
   ModelIdSuffixIsParsedLikeModelContextParser();
   ExplicitContextSizeWinsOverSuffix();
   EstimationMirrorsContextManager();

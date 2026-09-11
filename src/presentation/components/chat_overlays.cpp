@@ -561,4 +561,6 @@ View ChatAttachmentPicker(const ChatAttachmentPickerState &state,
   return InsetSheet(std::move(panel));
 }
 
+View ChatSheetPanel(View panel) { return InsetSheet(std::move(panel)); }
+
 } // namespace linecode::presentation

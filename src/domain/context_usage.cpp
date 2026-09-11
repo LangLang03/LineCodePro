@@ -122,6 +122,23 @@ std::string FormatContextLabel(const int tokens) {
   return std::to_string(tokens);
 }
 
+std::string FormatGroupedTokens(const int tokens) {
+  std::string digits = std::to_string(std::abs(tokens));
+  std::string grouped;
+  grouped.reserve(digits.size() + digits.size() / 3 + 1);
+  const std::size_t leading = digits.size() % 3 == 0 ? 3 : digits.size() % 3;
+  for (std::size_t index = 0; index < digits.size(); ++index) {
+    // The subtraction must stay signed: with unsigned indices a position
+    // before the leading group would wrap and match the separator test.
+    if (index >= leading && (index - leading) % 3 == 0)
+      grouped.push_back(',');
+    grouped.push_back(digits[index]);
+  }
+  if (tokens < 0)
+    grouped.insert(grouped.begin(), '-');
+  return grouped;
+}
+
 ModelContextInfo ResolveModelContext(const std::string_view model_id) {
   const auto trimmed = Trim(model_id);
   const auto suffix = ParseSuffix(trimmed);

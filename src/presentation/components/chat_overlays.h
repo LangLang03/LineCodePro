@@ -144,4 +144,9 @@ ChatPermissionMenu(const ChatPermissionMenuState &state,
 ChatAttachmentPicker(const ChatAttachmentPickerState &state,
                      ChatAttachmentPickerCallbacks callbacks);
 
+// Wraps arbitrary bottom-sheet content in the shared legacy framing: a 560dp
+// panel inside 16dp side insets, offset to clear the Android navigation bar.
+// Reused so panels built outside this file land on the same geometry.
+[[nodiscard]] huxerui::View ChatSheetPanel(huxerui::View panel);
+
 } // namespace linecode::presentation

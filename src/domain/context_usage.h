@@ -61,6 +61,10 @@ struct ContextSnapshot final {
   bool operator==(const ContextSnapshot &) const = default;
 };
 
+// Renders a token count with thousands grouping, matching the legacy
+// `NumberFormat.getIntegerInstance()` used by the usage sheet.
+[[nodiscard]] std::string FormatGroupedTokens(int tokens);
+
 // Computes the snapshot the header indicator and usage sheet render.
 [[nodiscard]] ContextSnapshot SnapshotContext(
     const std::vector<ChatMessage> &messages, int context_tokens,

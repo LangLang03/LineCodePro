@@ -114,6 +114,15 @@ python3 tools/ui_parity_test.py \
       工具调用）。头部在品牌与盾牌之间渲染 40dp 环形指示器（≥80% 转 WARNING），
       点击弹出 Used tokens / Context window / Usage% 面板。
       真机验证：空会话 0%，发送 "hello" 后为 10（8 + ceil(5/4)），上限 250000。
+      与重建后的旧版逐项对照：指示器同为 `[639,146][744,272]`（文案本地化后
+      `Context usage, 0%` ↔ `上下文占用 0%`）；面板横向 105..975、行距 110px、
+      `250,000` 千位分隔与 `0%` 全部一致；仅整块面板纵向比旧版低约 125px
+      （旧版弹层自行留出底部系统栏 inset，本项目按此前要求贴底），**记为残留差异**。
+- [ ] 重建旧版对照 APK 后发现的既有偏差：此前使用的
+      `app-baseline.apk` 构建于 9月6日，落后旧仓库多个提交（例如
+      `1d47496 fix: keep compaction inside processing turns`），
+      因此**此前所有「基线」截图都缺少上下文用量指示器等新特性**。
+      已重建并重新安装 `cn.lineai.legacy`，后续像素对照均以新版为准。
 - [ ] P0 写入工具的 diff 视图与 Accept/Revert 回滚缺失：
       `domain::ChatTimeline` 的 `diff_id` / `review_state` 已入库但展示层不读，
       `chat_screen.cpp` 的 write 卡退化为文本 "Diff unavailable"；

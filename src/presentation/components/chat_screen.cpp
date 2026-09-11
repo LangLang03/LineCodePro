@@ -325,25 +325,29 @@ struct ContextUsageLabels final {
 
 View ContextUsageRow(const std::string &label, std::string value) {
   return Row{
-      Text(label).Style(ChatTextStyle(15.0F, FontWeight::Regular,
-                                      colors::secondary)),
-      Spacer(),
+      Text(label)
+          .Style(ChatTextStyle(14.0F, FontWeight::Regular, colors::secondary))
+          .With(Grow()),
       Text(std::move(value))
-          .Style(ChatTextStyle(15.0F, FontWeight::Regular, colors::text)),
+          .Style(ChatTextStyle(14.0F, FontWeight::Medium, colors::text)),
   }
-      .With(Frame{.min_height = 44.0F},
+      .With(Frame{.height = 42.0F},
             CrossAlign(CrossAxisAlignment::Center));
 }
 
 View ContextUsageSheet(domain::ContextSnapshot snapshot,
                        ContextUsageLabels labels) {
   return Column{
-      Text(labels.title).Style(ChatTextStyle(18.0F, FontWeight::Medium)),
-      ContextUsageRow(labels.used, std::to_string(snapshot.used_tokens)),
-      ContextUsageRow(labels.limit, std::to_string(snapshot.max_tokens)),
+      Text(labels.title)
+          .Style(ChatTextStyle(18.0F, FontWeight::Medium))
+          .With(Frame{.height = 42.0F}),
+      ContextUsageRow(labels.used,
+                      domain::FormatGroupedTokens(snapshot.used_tokens)),
+      ContextUsageRow(labels.limit,
+                      domain::FormatGroupedTokens(snapshot.max_tokens)),
       ContextUsageRow(labels.percent, labels.percent_value),
   }
-      .With(Spacing(4.0F), CrossAlign(CrossAxisAlignment::Stretch));
+      .With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
 View Header(
@@ -2689,19 +2693,19 @@ View GenerationError(const application::GenerationController &generation,
             bool visible, std::function<void()> dismiss) -> View {
           if (!visible)
             return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
-          return Column{
+          return ChatSheetPanel(
               Column{
                   Stack{}.With(Frame{.width = 36.0F, .height = 4.0F},
                                Background(colors::tertiary),
                                CornerRadius(2.0F)),
                   ContextUsageSheet(snapshot, labels),
               }
-                  .With(Spacing(12.0F), Padding(24.0F),
+                  .With(Padding(EdgeInsets{.top = 22.0F,
+                                           .right = 24.0F,
+                                           .bottom = 24.0F,
+                                           .left = 24.0F}),
                         CrossAlign(CrossAxisAlignment::Stretch),
-                        Background(colors::background), CornerRadius(24.0F)),
-          }
-              .With(Frame{.max_width = 592.0F}, Padding(EdgeInsets::Symmetric(
-                                                    16.0F, 0.0F)));
+                        Background(colors::background), CornerRadius(24.0F)));
         });
   };
 
