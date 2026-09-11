@@ -12,6 +12,10 @@
 
 #include "app/bootstrap.h"
 #include "application/agent_extension_draft.h"
+#include "application/agent_result_registry.h"
+#include "application/agent_result_registry_sink.h"
+#include "application/agent_tool_registry.h"
+#include "application/sub_agent_runner.h"
 #include "application/behavior_settings_repository.h"
 #include "application/chat_mode_service.h"
 #include "application/composite_tool_registry.h"
@@ -479,10 +483,37 @@ huxerui::View PlatformServicesHost() {
   tool_sources.push_back(memory_tools.Get());
   tool_sources.push_back(web_tool_registry.Get());
   tool_sources.push_back(file_tools.Get());
-  auto runtime_tools =
+  // Sub-agents never receive the agent tools themselves (legacy
+  // `AgentExecutionController.isAgentToolAllowed` excluded `agent` and
+  // `agent_pipeline`), so the runner is built against the non-agent composite
+  // and the top-level registry adds the agent group on top of it.
+  auto base_tools =
       huxerui::UseState(std::shared_ptr<application::ToolRegistry>{
           std::make_shared<application::CompositeToolRegistry>(
               std::move(tool_sources))});
+  auto agent_results = huxerui::UseState(
+      std::make_shared<application::AgentResultRegistry>());
+  auto sub_agent_runner = huxerui::UseState(
+      std::shared_ptr<application::SubAgentRunner>{
+          std::make_shared<application::SubAgentRunner>(
+              completion_gateway.Get(), base_tools.Get(),
+              prompt_templates.Get(), model_store.Get(),
+              std::make_shared<application::AgentResultRegistrySink>(
+                  agent_results.Get()),
+              std::make_shared<application::SkillRepositoryExtensionPromptSource>(
+                  skill_repository.Get()),
+              std::make_shared<application::TaskScopeSubAgentLauncher>(
+                  tasks))});
+  auto agent_tools = huxerui::UseState(
+      std::shared_ptr<application::ToolRegistry>{
+          std::make_shared<application::AgentToolRegistry>(
+              mcp_settings.Get(), agent_results.Get(),
+              sub_agent_runner.Get())});
+  auto runtime_tools =
+      huxerui::UseState(std::shared_ptr<application::ToolRegistry>{
+          std::make_shared<application::CompositeToolRegistry>(
+              std::vector<std::shared_ptr<application::ToolRegistry>>{
+                  base_tools.Get(), agent_tools.Get()})});
   auto agent_drafts = huxerui::UseState(
       std::shared_ptr<application::AgentExtensionDraftGenerator>{
           std::make_shared<application::CompletionAgentExtensionDraftGenerator>(
@@ -514,6 +545,7 @@ huxerui::View PlatformServicesHost() {
        tool_permissions = tool_permissions.Get(), chat_modes = chat_modes.Get(),
        ssh_settings = ssh_settings.Get(), memory_store = memory_store.Get(),
        todo_state = todo_state.Get(),
+       skills = skill_repository.Get(),
        compaction_service = compaction_service.Get(),
        diff_store = diff_store.Get(), diff_review = diff_review.Get(),
        agent_extensions = agent_extensions.Get(),
@@ -550,7 +582,7 @@ huxerui::View PlatformServicesHost() {
             ai_behavior_settings, input_settings, prompt_templates,
             completion_loop, output_settings_service, theme_service,
             theme_settings, mcp_settings, tool_settings, tool_permissions,
-            chat_modes, ssh_settings, memory_store, todo_state,
+            chat_modes, ssh_settings, memory_store, todo_state, skills,
             compaction_service, diff_store, diff_review, agent_extensions,
             mcp_extensions, mcp_tool_catalog, agent_drafts, linecode_root,
             skill_hub_services, mcp_capabilities, platform_capabilities,

@@ -39,6 +39,7 @@
 #include "application/ports/storage_permission.h"
 #include "application/prompt_request_composer.h"
 #include "application/ports/todo_state_store.h"
+#include "application/skill_repository.h"
 #include "application/slash_command_catalog.h"
 #include "application/tool_permission_service.h"
 #include "domain/context_usage.h"
@@ -1685,6 +1686,10 @@ struct ComposerGenerationDependencies final {
   // `ModelPromptController.renderTodoStateForPrompt()` did the same, so the
   // projection has to be refreshed per request rather than captured once.
   std::shared_ptr<application::TodoStateStore> todo_state;
+  // Installed Skill prompts. Legacy `ModelPromptController` folded these into
+  // the system prompt on every request; the C++ port keeps that by refreshing
+  // them here instead of capturing the text once.
+  std::shared_ptr<application::SkillRepository> skills;
 };
 
 class ComposerGenerationRunner final
@@ -1841,6 +1846,17 @@ private:
         prompt_context.todo_state = application::RenderTodoState(*todo);
     }
     prompt_context.learning_context = context->prompt;
+    if (dependencies_.skills) {
+      auto extensions = co_await dependencies_.skills->BuildExtensionPrompt();
+      if (extensions && !extensions->empty()) {
+        // Legacy `SystemPromptProvider.build(homePath, tone, chatMode,
+        // extensionContext, ...)`: the extension block occupied the slot the
+        // template renders as {{LEARNING_CONTEXT}}.
+        if (!prompt_context.learning_context.empty())
+          prompt_context.learning_context += "\n\n";
+        prompt_context.learning_context += *extensions;
+      }
+    }
     prompt_context.permission_mode =
         domain::SerializeToolPermissionMode(permission_mode_);
     prompt_context.attachment_history.assign(
@@ -2211,6 +2227,7 @@ struct SlashPopupRow final {
     const std::shared_ptr<application::AiBehaviorSettingsRepository>
         &behavior_settings,
     const std::shared_ptr<application::TodoStateStore> &todo_state,
+    const std::shared_ptr<application::SkillRepository> &skills,
     const std::shared_ptr<PendingToolReview> &pending_review,
     const std::shared_ptr<application::PendingMessageQueue> &pending_messages,
     State<std::optional<std::string>> quote_text,
@@ -2230,6 +2247,7 @@ struct SlashPopupRow final {
           .memory_context = memory_context,
           .behavior_settings = behavior_settings,
           .todo_state = todo_state,
+          .skills = skills,
       },
       pending_review, pending_messages, tasks, active_generation, revision,
       std::move(current_project_id), std::move(prompt_context), permission_mode,
@@ -2465,6 +2483,7 @@ View GenerationError(const application::GenerationController &generation,
     const std::shared_ptr<application::AiBehaviorSettingsRepository>
         &behavior_settings,
     const std::shared_ptr<application::TodoStateStore> &todo_state,
+    const std::shared_ptr<application::SkillRepository> &skills,
     const std::shared_ptr<application::ContextCompactionService>
         &compaction_service,
     const std::shared_ptr<application::DiffStore> &diff_store,
@@ -3046,7 +3065,8 @@ View GenerationError(const application::GenerationController &generation,
         draft, session, generation, model_store, completion_loop,
         has_selected_model, tasks, active_generation, revision,
         selected_attachments, show_attachments, memory_context,
-        behavior_settings, todo_state, pending_review.Get(), pending_messages,
+        behavior_settings, todo_state, skills, pending_review.Get(),
+        pending_messages,
         quote_text,
         handle_slash_command, interaction_mode->chat_mode, slash_models,
         slash_selected_model_id, input_settings, current_project_id,

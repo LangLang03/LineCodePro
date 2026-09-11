@@ -28,6 +28,7 @@ class McpCompletionLoop;
 class MemoryContextService;
 class ModelStore;
 class OutputSettingsService;
+class SkillRepository;
 class PendingMessageQueue;
 class StoragePermissionService;
 class ToolPermissionService;
@@ -53,6 +54,7 @@ namespace linecode::presentation {
     const std::shared_ptr<application::AiBehaviorSettingsRepository>
         &behavior_settings,
     const std::shared_ptr<application::TodoStateStore> &todo_state,
+    const std::shared_ptr<application::SkillRepository> &skills,
     const std::shared_ptr<application::ContextCompactionService>
         &compaction_service,
     const std::shared_ptr<application::DiffStore> &diff_store,

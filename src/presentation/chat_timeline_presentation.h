@@ -32,11 +32,11 @@ struct ToolTimelineTodoItem final {
 struct ToolTimelinePresentation final {
   ToolTimelineVisualKind visual{ToolTimelineVisualKind::generic};
   domain::ToolCallStatus status{domain::ToolCallStatus::requested};
-  std::string title;
-  std::string detail;
-  std::string input_detail;
-  std::string output_detail;
-  std::string auxiliary;
+  std::string title{};
+  std::string detail{};
+  std::string input_detail{};
+  std::string output_detail{};
+  std::string auxiliary{};
   // Recorded file change for write-family tools; empty when the tool produced
   // no revertable change. The `{}` keeps `-Wmissing-field-initializers` quiet
   // at designated-initializer call sites.
@@ -47,7 +47,7 @@ struct ToolTimelinePresentation final {
   // "accepted" / "rejected" / empty while still pending review.
   std::string review_state{};
   std::string review_message{};
-  std::vector<ToolTimelineTodoItem> todo_items;
+  std::vector<ToolTimelineTodoItem> todo_items{};
   int item_count{};
   int completed_count{};
   int running_count{};

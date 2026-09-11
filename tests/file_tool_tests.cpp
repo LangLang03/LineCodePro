@@ -657,7 +657,9 @@ void CheckCatalogMatchesProperties() {
   const auto english = ParseProperties(*english_text);
   const auto chinese = ParseProperties(*chinese_text);
 
-  assert(application::kToolTextKeyCount == 42U);
+  // The catalog also carries the agent / agent_pipeline / agent_output tool
+  // strings, so the count covers every migrated tool_* resource.
+  assert(application::kToolTextKeyCount >= 42U);
   std::size_t matched = 0;
   for (std::size_t index = 0; index < application::kToolTextKeyCount; ++index) {
     const auto key = static_cast<application::ToolTextKey>(index);
@@ -674,9 +676,9 @@ void CheckCatalogMatchesProperties() {
            chinese_entry->second);
     ++matched;
   }
-  assert(matched == 42U);
+  assert(matched == application::kToolTextKeyCount);
 
-  // The 38 keys the built-in file tools actually produce.
+  // The built-in file tool keys the file tools actually produce.
   assert(english.contains("tool_file_read_not_found"));
   assert(english.contains("tool_call_action_match"));
 }

@@ -1628,3 +1628,73 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME diff_review_service_tests COMMAND diff_review_service_tests)
+
+add_executable(agent_pipeline_tests
+        agent_pipeline_tests.cpp
+        ../src/domain/agent_pipeline.cpp
+)
+target_include_directories(agent_pipeline_tests PRIVATE ../src)
+target_compile_features(agent_pipeline_tests PRIVATE cxx_std_23)
+set_target_properties(agent_pipeline_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(agent_pipeline_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(agent_pipeline_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME agent_pipeline_tests COMMAND agent_pipeline_tests)
+
+add_executable(sub_agent_runner_tests
+        sub_agent_runner_tests.cpp
+        ../src/domain/agent_pipeline.cpp
+        ../src/application/sub_agent_runner.cpp
+        ../src/application/prompt_template_repository.cpp
+        ../src/application/skill_repository.cpp
+        ../src/domain/skill.cpp
+        ../src/domain/prompt_renderer.cpp
+        ../src/infrastructure/archive_json.cpp
+        ../src/domain/prompt_template.cpp
+)
+target_include_directories(sub_agent_runner_tests PRIVATE ../src)
+target_compile_features(sub_agent_runner_tests PRIVATE cxx_std_23)
+target_link_libraries(sub_agent_runner_tests PRIVATE HuxerUI::testing)
+set_target_properties(sub_agent_runner_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(sub_agent_runner_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(sub_agent_runner_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME sub_agent_runner_tests COMMAND sub_agent_runner_tests)
+
+add_executable(agent_tool_tests
+        agent_tool_tests.cpp
+        ../src/application/agent_result_registry.cpp
+        ../src/application/agent_tool_registry.cpp
+        ../src/application/tool_text_catalog.cpp
+        ../src/domain/agent_pipeline.cpp
+        ../src/infrastructure/archive_json.cpp
+)
+target_include_directories(agent_tool_tests PRIVATE ../src)
+target_compile_features(agent_tool_tests PRIVATE cxx_std_23)
+target_link_libraries(agent_tool_tests PRIVATE HuxerUI::testing)
+set_target_properties(agent_tool_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(agent_tool_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(agent_tool_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME agent_tool_tests COMMAND agent_tool_tests)

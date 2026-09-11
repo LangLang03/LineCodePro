@@ -320,7 +320,6 @@ PresentToolTimeline(const domain::AssistantToolEvent &event) {
                                            event.result->error)
                            : application::ToolResultDisplayProjection{};
   ToolTimelinePresentation result{
-      .tool_call_id = event.call.id,
       .visual = DefaultToolTimelineRendererRegistry().Resolve(event.call.name),
       .status = event.call.status,
       .title = event.call.name,
@@ -328,6 +327,7 @@ PresentToolTimeline(const domain::AssistantToolEvent &event) {
       .input_detail = {},
       .output_detail = {},
       .auxiliary = {},
+      .tool_call_id = event.call.id,
       .todo_items = {},
       .item_count = 0,
       .completed_count = 0,

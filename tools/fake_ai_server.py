@@ -39,6 +39,7 @@ IMAGE_UNDERSTANDING_PROMPT = "Describe the deterministic LineCode fixture"
 FILE_TOOL_TRIGGER = "__LINECODE_TEST_FILE__"
 FILE_TOOL_PATH = "linecode-tool-check.txt"
 FILE_TOOL_CONTENT = "linecode file tool ok"
+AGENT_TOOL_TRIGGER = "__LINECODE_TEST_AGENT__"
 TODO_TOOL_TRIGGER = "__LINECODE_TEST_TODO__"
 TODO_TOOL_ITEMS = (
     {"content": "Verify the todo prompt projection", "status": "in_progress"},
@@ -289,6 +290,17 @@ class FakeAiHandler(BaseHTTPRequestHandler):
                for message in messages):
             return None
         strategies = (
+            (
+                AGENT_TOOL_TRIGGER,
+                "agent",
+                {
+                    "type": "explore",
+                    "description": "Inspect the workspace",
+                    "prompt": "List the files and report what you find.",
+                    "read_scope": ["."],
+                },
+                "call_linecode_agent_test",
+            ),
             (
                 FILE_TOOL_TRIGGER,
                 "file_write",

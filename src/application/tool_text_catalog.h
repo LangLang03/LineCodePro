@@ -73,10 +73,35 @@ enum class ToolTextKey : std::uint8_t {
   tool_call_action_read,
   tool_call_action_list_dir,
   tool_call_action_match,
+  tool_agent_invalid_type,
+  tool_agent_explore_no_write,
+  tool_agent_description_empty,
+  tool_agent_prompt_empty,
+  tool_agent_runner_not_available,
+  tool_agent_parse_failed,
+  tool_pipeline_agents_empty,
+  tool_pipeline_agent_not_object,
+  tool_pipeline_agent_id_empty,
+  tool_pipeline_agent_id_duplicate,
+  tool_pipeline_agent_self_depend,
+  tool_pipeline_agent_invalid_type,
+  tool_pipeline_explore_no_write,
+  tool_pipeline_coding_needs_write,
+  tool_pipeline_scope_duplicate,
+  tool_pipeline_scope_overlap,
+  tool_pipeline_agent_description_empty,
+  tool_pipeline_agent_prompt_empty,
+  tool_pipeline_runner_not_available,
+  tool_agent_output_id_missing,
+  tool_agent_output_store_missing,
+  tool_agent_output_not_found,
+  tool_agent_output_still_running,
+  tool_agent_output_failed,
+  tool_agent_output_empty,
 };
 
 // Number of ToolTextKey values, and the row count of the generated table.
-inline constexpr std::size_t kToolTextKeyCount = 42;
+inline constexpr std::size_t kToolTextKeyCount = 67;
 
 // Packaged resource key of a catalog entry, such as "tool_file_read_failed".
 [[nodiscard]] std::string_view ToolTextName(ToolTextKey key) noexcept;

@@ -150,10 +150,28 @@ python3 tools/ui_parity_test.py \
       文件恢复为原内容、`diff_records.reverted=1`、
       `raw_json` 为 `{"review_state":"rejected","review_message":"Reverted change to <path>"}`，
       卡片转为「已撤销」且按钮消失。
-- [ ] P0 子代理 / Agent Pipeline 执行引擎整段缺失（旧版
-      `app/src/main/java/cn/lineai/mvp/agent/` 约 2576 行）。这同时导致
-      `agentSystemPrompt` 模板的 `EXTENSIONS_CONTEXT` 槽位无人渲染、
-      `SkillRepository::BuildExtensionPrompt()` 零调用点。
+- [x] 子代理 / Agent Pipeline 执行引擎已迁移并接线：
+      `domain/agent_pipeline.*` 移植分层解析（`dependencyLevels` 的逐层收敛，
+      并把旧版「未知依赖与环共用空列表」的歧义拆成两个独立错误码）；
+      `application/sub_agent_runner.*` 移植 `AgentExecutionController` 的模型循环、
+      工具集裁剪（explore 只读 / sub-coding 读写）、路径保护、取消与预算上限、
+      async explore、pipeline 分层执行与上游输出注入；
+      `application/agent_tool_registry.*` 移植 `agent` / `agent_pipeline` /
+      `agent_output` 三个工具的全部校验分支；
+      `application/agent_result_registry.*` 移植结果记录、紧凑 ref 与
+      `agent_output` 的 output/meta 两种模式。
+- [x] `EXTENSIONS_CONTEXT` 与 `BuildExtensionPrompt()` 缺口已闭合：
+      `SkillRepositoryExtensionPromptSource` 让已安装 Skill 的提示词首次有了调用点；
+      `SkillRepository` 也接进了主页聊天请求（旧版把扩展块放在
+      `{{LEARNING_CONTEXT}}` 槽位，逐字复刻）。
+- [x] 真机端到端验证：模型收到的工具列表为 13 个，含
+      `agent` / `agent_pipeline` / `agent_output`；触发一次 `agent`（explore）
+      后返回紧凑 ref `{"agent_id":"ag_...","linecode_agent_ref":true,
+      "status":"done","preview":"..."}`，子代理真实执行了一轮模型请求。
+- [ ] 子代理的剩余部分未迁移：进度会话（`AgentProgressSession` /
+      `PipelineProgressSession`）、流式 delta、子代理内的工具审批通道；
+      `custom_tool_names` / `custom_mcp_ids` 未接入；同层并行依赖注入的
+      `TaskScopeSubAgentLauncher`（未注入时退化为顺序执行）。
 - [ ] P1 图片输入（拍照/相册）缺失：`domain/input_attachment.h` 无图片负载；
       旧版对应 `ComposerView.java` 的 `onSendWithImage` / `onImagePickerClick`。
 - [ ] P1 生成失败自动重试（旧版 `MAX_RETRIES = 3`）、模型切换提示与
