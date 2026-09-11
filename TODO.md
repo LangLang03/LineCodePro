@@ -273,6 +273,23 @@ python3 tools/ui_parity_test.py \
 
 ## UI 像素级验收
 
+平台级残留（已验证，无法用布局修正消除，**不得用魔数硬凑**）：
+
+- [ ] **文本行距不支持**：旧版 `LineTheme.text` 默认 `setLineSpacing(2dp)`，
+      说明文字另设 6dp。HuxerUI 的 `TextStyle`/`Font` 公开 API 没有行距字段，
+      因此多行文本行高比旧版矮（实测空会话标题 100px vs 106px、
+      说明 103px vs 128px）。影响所有多行文本。
+- [ ] **`TextField.Placeholder()` 不渲染**：旧版 `FormTextFieldView` 用
+      Android `EditText.hint`，空输入框内始终显示浅灰占位
+      （`如 GPT-4o、Claude Sonnet`、`https://api.example.com/v1`、`sk-…`）。
+      HuxerUI 的 `.Placeholder()` 在聚焦与未聚焦下均不产生可见文本
+      （已在模型表单与主题页两处独立验证），候选因此缺 4 个输入框占位。
+      文案与接线本身都正确（`model_form_name_remote_hint` 等）。
+
+本轮已验证的改善：空会话三行间距改为容器承载后，说明文字 top
+`656→708`（旧版 715）、按钮背景 top `916`（旧版 917，已对齐）；
+同基线对比 MAE `2.2236→2.1973`。剩余为上述行距差异。
+
 最新切片证据（均为 1080×2400、420 dpi、zh-CN、旧/新同模拟器）：
 
 - Memory 首页：功能回放 0 失败，MAE `1.6860`，差异像素 `4.2183%`。

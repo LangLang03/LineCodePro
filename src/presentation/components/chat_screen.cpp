@@ -506,12 +506,19 @@ View Header(
 
 View EmptyConversation(
     const RouteNavigationController<domain::AppRoute> &navigation) {
+  // Spacing between the three rows comes from wrapping containers rather than
+  // per-child padding: the legacy layout used `topMargin` (20dp then 28dp),
+  // and a child's own padding did not shift its siblings here.
   return Column{
       Text(app::strings::chat_empty_title)
           .Style(ChatTextStyle(28.0F, FontWeight::Regular)),
-      Text(app::strings::message_list_configure_desc)
-          .Style(ChatTextStyle(15.0F, FontWeight::Regular, colors::secondary))
-          .With(Padding(EdgeInsets{.top = 20.0F})),
+      Column{
+          Text(app::strings::message_list_configure_desc)
+              .Style(ChatTextStyle(15.0F, FontWeight::Regular,
+                                   colors::secondary)),
+      }
+          .With(Padding(EdgeInsets{.top = 20.0F}),
+                CrossAlign(CrossAxisAlignment::Start)),
       Column{
           Stack{
               Text(app::strings::empty_state_add_model)
@@ -527,7 +534,11 @@ View EmptyConversation(
                   Background(colors::accent), CornerRadius(22.0F), Focusable(),
                   PointerCursor(PointerCursorKind::Hand)),
       }
-          .With(Padding(EdgeInsets{.top = 40.0F})),
+          // 40dp, not the legacy 28dp: the description above renders shorter
+          // here (no line spacing support), so the button needs the extra
+          // margin to land on the same baseline as the legacy layout.
+          .With(Padding(EdgeInsets{.top = 40.0F}),
+                CrossAlign(CrossAxisAlignment::Start)),
   }
       .With(
           CrossAlign(CrossAxisAlignment::Start), Grow(),
