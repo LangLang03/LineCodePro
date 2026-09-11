@@ -1514,3 +1514,23 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME file_tool_tests COMMAND file_tool_tests)
+
+add_executable(context_usage_tests
+        context_usage_tests.cpp
+        ../src/domain/context_usage.cpp
+        ../src/domain/input_attachment.cpp
+)
+target_include_directories(context_usage_tests PRIVATE ../src)
+target_compile_features(context_usage_tests PRIVATE cxx_std_23)
+set_target_properties(context_usage_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(context_usage_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(context_usage_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME context_usage_tests COMMAND context_usage_tests)

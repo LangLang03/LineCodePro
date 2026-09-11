@@ -108,10 +108,12 @@ python3 tools/ui_parity_test.py \
       （`src/presentation/components/chat_screen.cpp` 的 `ChatMoreAction::compact_context`），
       旧版对应 `ContextCompactionController.java` / `ContextCompactionService.java`。
       同时缺压缩进度块（Compacting / 完成 / 失败）与自动压缩。
-- [ ] P0 上下文用量指示器缺失：旧版 `HeaderView.java:99-116` 的
-      Used tokens / Context window / Usage% 弹窗与 `ContextUsageIndicatorView`
-      的 80% 预警在新版完全不存在（usage 已在
-      `src/infrastructure/completion_protocol_codec.cpp` 解析但未上抛到 UI）。
+- [x] 上下文用量指示器已迁移：`domain/context_usage.*` 移植了
+      `ModelContextParser`（`context_size` 优先，兼容 `[128k]` 后缀，默认
+      250000）与 `ContextManager`（8 token/条 + ceil(字符/4) + 附件 + 推理 +
+      工具调用）。头部在品牌与盾牌之间渲染 40dp 环形指示器（≥80% 转 WARNING），
+      点击弹出 Used tokens / Context window / Usage% 面板。
+      真机验证：空会话 0%，发送 "hello" 后为 10（8 + ceil(5/4)），上限 250000。
 - [ ] P0 写入工具的 diff 视图与 Accept/Revert 回滚缺失：
       `domain::ChatTimeline` 的 `diff_id` / `review_state` 已入库但展示层不读，
       `chat_screen.cpp` 的 write 卡退化为文本 "Diff unavailable"；

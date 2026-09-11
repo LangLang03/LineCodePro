@@ -7,6 +7,7 @@
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -34,6 +35,7 @@
 #include "application/ports/todo_state_store.h"
 #include "application/slash_command_catalog.h"
 #include "application/tool_permission_service.h"
+#include "domain/context_usage.h"
 #include "infrastructure/tutorial_markdown_parser.h"
 #include "presentation/components/chat_overlays.h"
 #include "presentation/components/tutorial_markdown.h"
@@ -278,6 +280,72 @@ void ResolveToolReview(
   revision += 1;
 }
 
+// Legacy `ContextUsageIndicatorView`: a 2dp-stroke ring whose sweep is the
+// used percentage, turning WARNING at 80% and above.
+View ContextUsageIndicator(int percent, std::function<void()> on_click) {
+  // Theme tokens are composition-bound: resolve them here and capture the
+  // plain colors, because the paint callback runs at draw time.
+  const Color track = colors::border;
+  const Color progress =
+      percent >= 80 ? static_cast<Color>(colors::warning)
+                    : static_cast<Color>(colors::secondary);
+  // The ring lives in a Stack child: `Align` positions a container's content,
+  // so a bare Canvas leaf would collapse to zero size.
+  return Stack{
+      Canvas([percent, track, progress](PaintContext &paint, Size) {
+        constexpr float kPi = std::numbers::pi_v<float>;
+        const Point center{10.0F, 10.0F};
+        const StrokeStyle stroke{.width = 2.0F, .cap = StrokeCap::Round};
+        paint.DrawArc(center, 8.0F, 0.0F, 2.0F * kPi, track, stroke);
+        if (percent > 0) {
+          paint.DrawArc(center, 8.0F, -kPi / 2.0F,
+                        static_cast<float>(percent) * 3.6F * kPi / 180.0F,
+                        progress, stroke);
+        }
+      }).With(Frame{.width = 20.0F, .height = 20.0F}),
+  }
+      .OnClick(std::move(on_click))
+      .With(Frame{.width = 40.0F, .height = 48.0F},
+            Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+            Semantics{.label = StringVariant::Format(
+                          app::strings::context_usage_accessibility,
+                          percent)},
+            Focusable(), PointerCursor(PointerCursorKind::Hand));
+}
+
+// Resolved during composition because a bottom-sheet factory is not a
+// composition scope and therefore cannot resolve resources itself.
+struct ContextUsageLabels final {
+  std::string title;
+  std::string used;
+  std::string limit;
+  std::string percent;
+  std::string percent_value;
+};
+
+View ContextUsageRow(const std::string &label, std::string value) {
+  return Row{
+      Text(label).Style(ChatTextStyle(15.0F, FontWeight::Regular,
+                                      colors::secondary)),
+      Spacer(),
+      Text(std::move(value))
+          .Style(ChatTextStyle(15.0F, FontWeight::Regular, colors::text)),
+  }
+      .With(Frame{.min_height = 44.0F},
+            CrossAlign(CrossAxisAlignment::Center));
+}
+
+View ContextUsageSheet(domain::ContextSnapshot snapshot,
+                       ContextUsageLabels labels) {
+  return Column{
+      Text(labels.title).Style(ChatTextStyle(18.0F, FontWeight::Medium)),
+      ContextUsageRow(labels.used, std::to_string(snapshot.used_tokens)),
+      ContextUsageRow(labels.limit, std::to_string(snapshot.max_tokens)),
+      ContextUsageRow(labels.percent, labels.percent_value),
+  }
+      .With(Spacing(4.0F), CrossAlign(CrossAxisAlignment::Stretch));
+}
+
 View Header(
     std::function<void()> open_drawer,
     const std::shared_ptr<application::ChatSession> &session,
@@ -285,7 +353,9 @@ View Header(
     const std::shared_ptr<application::PendingMessageQueue> &pending_messages,
     State<TaskHandle> active_generation, State<std::size_t> revision,
     std::function<void()> show_permissions, std::function<void()> show_more,
-    std::string project_label, std::function<void()> show_project_picker) {
+    std::string project_label, std::function<void()> show_project_picker,
+    const domain::ContextSnapshot &context_usage,
+    std::function<void()> show_context_usage) {
   auto reset_conversation = [session, generation, pending_messages,
                              active_generation, revision] {
     active_generation.Get().Cancel();
@@ -314,6 +384,8 @@ View Header(
           .With(Frame{.min_height = 48.0F},
                 CrossAlign(CrossAxisAlignment::Center), Grow(), Focusable(),
                 PointerCursor(PointerCursorKind::Hand)),
+      ContextUsageIndicator(context_usage.percent,
+                            std::move(show_context_usage)),
       HeaderAction(app::images::shield, 19.0F, std::move(show_permissions)),
       HeaderAction(app::images::plus, 19.0F, reset_conversation),
       HeaderAction(app::images::more_vertical, 19.0F, std::move(show_more)),
@@ -468,6 +540,9 @@ struct ChatTimelineSettings final {
   bool process_auto_expand{};
   bool thinking_auto_expand{};
   bool thinking_scroll{true};
+  // Legacy ContextManager excluded reasoning from the estimate unless the
+  // behaviour setting kept it in the request.
+  bool preserve_reasoning{};
   application::BrowserMode browser_mode{application::BrowserMode::builtin};
   bool browser_javascript_enabled{};
 };
@@ -2103,6 +2178,7 @@ View GenerationError(const application::GenerationController &generation,
       timeline_settings.Update([&loaded](auto &settings) {
         settings.thinking_auto_expand = loaded->thinking_auto_expand;
         settings.thinking_scroll = loaded->thinking_scroll;
+        settings.preserve_reasoning = loaded->preserve_reasoning;
       });
     });
     tasks.Launch([output_settings, timeline_settings, toast]() -> Task<void> {
@@ -2143,6 +2219,10 @@ View GenerationError(const application::GenerationController &generation,
       bottom_sheets, attachment_visible, attachment_layer);
   const ControlledBottomSheet more_sheet(bottom_sheets, more_visible,
                                          more_layer);
+  auto context_usage_visible = UseState(false);
+  auto context_usage_layer = UseState(std::optional<LayerId>{});
+  const ControlledBottomSheet context_usage_sheet(
+      bottom_sheets, context_usage_visible, context_usage_layer);
   const ControlledBottomSheet permission_sheet(
       bottom_sheets, permission_visible, permission_layer);
 
@@ -2581,10 +2661,55 @@ View GenerationError(const application::GenerationController &generation,
     toast.Show(app::strings::markdown_code_copied);
   };
 
+  // Local estimate over the live history; the legacy header recomputed the
+  // same snapshot on every render instead of caching it.
+  int context_tokens = domain::default_context_tokens;
+  for (const auto &model : slash_models.Get()) {
+    if (model.id == slash_selected_model_id.Get()) {
+      context_tokens = domain::ResolveModelContext(model).context_tokens;
+      break;
+    }
+  }
+  const auto context_snapshot = domain::SnapshotContext(
+      std::vector<domain::ChatMessage>{session->Messages().begin(),
+                                       session->Messages().end()},
+      context_tokens, timeline_settings.Get().preserve_reasoning);
+  const ContextUsageLabels context_usage_labels{
+      .title = UseString(app::strings::context_usage_title),
+      .used = UseString(app::strings::context_usage_used),
+      .limit = UseString(app::strings::context_usage_limit),
+      .percent = UseString(app::strings::context_usage_percent),
+      .percent_value = UseString(app::strings::context_usage_percent_value,
+                                 context_snapshot.percent),
+  };
+  auto show_context_usage = [context_usage_sheet, context_snapshot,
+                             context_usage_labels] {
+    context_usage_sheet.Show(
+        [snapshot = context_snapshot, labels = context_usage_labels](
+            bool visible, std::function<void()> dismiss) -> View {
+          if (!visible)
+            return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
+          return Column{
+              Column{
+                  Stack{}.With(Frame{.width = 36.0F, .height = 4.0F},
+                               Background(colors::tertiary),
+                               CornerRadius(2.0F)),
+                  ContextUsageSheet(snapshot, labels),
+              }
+                  .With(Spacing(12.0F), Padding(24.0F),
+                        CrossAlign(CrossAxisAlignment::Stretch),
+                        Background(colors::background), CornerRadius(24.0F)),
+          }
+              .With(Frame{.max_width = 592.0F}, Padding(EdgeInsets::Symmetric(
+                                                    16.0F, 0.0F)));
+        });
+  };
+
   return Column{
       Header(std::move(open_drawer), session, generation, pending_messages,
              active_generation, revision, show_permission, show_more,
-             std::move(project_label), std::move(show_project_picker)),
+             std::move(project_label), std::move(show_project_picker),
+             context_snapshot, std::move(show_context_usage)),
       Conversation(session, generation, revision.Get(), navigation,
                    action_message, multi_select.Get(), selected_messages,
                    message_actions, timeline_settings.Get(),
