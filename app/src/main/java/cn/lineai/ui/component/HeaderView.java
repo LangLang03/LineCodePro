@@ -9,6 +9,7 @@ import cn.lineai.R;
 import cn.lineai.model.ChatUiState;
 import cn.lineai.ui.theme.IconButtonView;
 import cn.lineai.ui.theme.LineTheme;
+import java.text.NumberFormat;
 
 /** Conversation navigation and the current workspace selector. */
 public final class HeaderView extends LinearLayout {
@@ -22,6 +23,9 @@ public final class HeaderView extends LinearLayout {
     private Listener listener;
     private final LinearLayout brand;
     private final TextView projectText;
+    private final ContextUsageIndicatorView contextUsage;
+    private ChatUiState state;
+    private android.app.Dialog contextUsageDialog;
 
     public HeaderView(Context context) {
         super(context);
@@ -53,6 +57,10 @@ public final class HeaderView extends LinearLayout {
         chevron.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         brand.addView(chevron, new LayoutParams(LineTheme.dp(context, 24), LineTheme.dp(context, 32)));
         addView(brand, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
+        contextUsage = new ContextUsageIndicatorView(context);
+        contextUsage.setContentDescription(context.getString(R.string.context_usage_title));
+        contextUsage.setOnClickListener(v -> showContextUsage());
+        addView(contextUsage, new LayoutParams(LineTheme.dp(context, 40), LineTheme.dp(context, 48)));
         IconButtonView permissions = new IconButtonView(context, IconButtonView.SHIELD);
         permissions.setIconSizeDp(40, 19);
         permissions.setIconColor(LineTheme.TEXT_SECONDARY);
@@ -75,12 +83,52 @@ public final class HeaderView extends LinearLayout {
     public void setListener(Listener listener) { this.listener = listener; }
     @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
         super.onSizeChanged(width, height, oldWidth, oldHeight);
-        projectText.setMaxWidth(Math.max(0, width - getPaddingLeft() - getPaddingRight() - LineTheme.dp(getContext(), 184)));
+        projectText.setMaxWidth(Math.max(0, width - getPaddingLeft() - getPaddingRight() - LineTheme.dp(getContext(), 224)));
     }
     public void render(ChatUiState state) {
+        this.state = state;
         String label = state.getProjectLabel();
         if (label == null || label.isEmpty()) label = getContext().getString(R.string.header_project_default);
         projectText.setText(label);
         brand.setContentDescription(label);
+        contextUsage.setPercent(state.getContextPercent());
+        contextUsage.setContentDescription(getContext().getString(
+                R.string.context_usage_accessibility, state.getContextPercent()));
+    }
+
+    private void showContextUsage() {
+        if (state == null) return;
+        if (contextUsageDialog != null) contextUsageDialog.dismiss();
+        LinearLayout content = new LinearLayout(getContext());
+        content.setOrientation(VERTICAL);
+        content.setBackground(LineTheme.roundedTop(getContext(), LineTheme.BG, 24));
+        LineTheme.padding(content, 24, 22, 24, 24);
+        TextView title = LineTheme.textMedium(getContext(), getContext().getString(R.string.context_usage_title),
+                18, LineTheme.TEXT);
+        content.addView(title, new LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(getContext(), 42)));
+        NumberFormat numbers = NumberFormat.getIntegerInstance();
+        addUsageRow(content, R.string.context_usage_used,
+                numbers.format(state.getContextUsedTokens()));
+        addUsageRow(content, R.string.context_usage_limit,
+                numbers.format(state.getContextMaxTokens()));
+        addUsageRow(content, R.string.context_usage_percent,
+                getContext().getString(R.string.context_usage_percent_value, state.getContextPercent()));
+        contextUsageDialog = DialogBuilder.showBottomSheet(getContext(), content);
+    }
+
+    private void addUsageRow(LinearLayout content, int labelRes, String value) {
+        LinearLayout row = new LinearLayout(getContext());
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView label = LineTheme.text(getContext(), getContext().getString(labelRes), 14,
+                LineTheme.TEXT_SECONDARY, android.graphics.Typeface.NORMAL);
+        TextView amount = LineTheme.textMedium(getContext(), value, 14, LineTheme.TEXT);
+        row.addView(label, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
+        row.addView(amount, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        content.addView(row, new LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(getContext(), 42)));
+    }
+
+    @Override protected void onDetachedFromWindow() {
+        if (contextUsageDialog != null) contextUsageDialog.dismiss();
+        super.onDetachedFromWindow();
     }
 }

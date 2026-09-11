@@ -1000,6 +1000,12 @@
     <string name="thinking_done_label">思考完毕</string>
 
     <string name="context_compact_label">压缩</string>
+    <string name="context_usage_title">上下文占用</string>
+    <string name="context_usage_used">已使用 Token</string>
+    <string name="context_usage_limit">上下文上限</string>
+    <string name="context_usage_percent">占用比例</string>
+    <string name="context_usage_percent_value">%1$d%%</string>
+    <string name="context_usage_accessibility">上下文占用 %1$d%%</string>
 
     <string name="provider_mimo_token_plan">Mimo Token 计划</string>
 

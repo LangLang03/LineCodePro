@@ -8,6 +8,8 @@ import cn.lineai.tool.ui.ToolCallUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 /** Presentation only: never changes the messages sent to the model or exported by the user. */
 public final class ConversationTimeline {
@@ -23,17 +25,24 @@ public final class ConversationTimeline {
         public final String id;
         public final String text;
         public final boolean reasoning;
+        public final String compactStatus;
         public final List<Operation> operations;
         public final List<Block> steps;
         private Block(String id, String text, boolean reasoning, List<Operation> operations) {
-            this(id, text, reasoning, operations, Collections.emptyList());
+            this(id, text, reasoning, "", operations, Collections.emptyList());
         }
         private Block(String id, String text, boolean reasoning, List<Operation> operations, List<Block> steps) {
+            this(id, text, reasoning, "", operations, steps);
+        }
+        private Block(String id, String text, boolean reasoning, String compactStatus,
+                      List<Operation> operations, List<Block> steps) {
             this.id = id; this.text = text; this.reasoning = reasoning;
+            this.compactStatus = compactStatus == null ? "" : compactStatus;
             this.operations = Collections.unmodifiableList(new ArrayList<>(operations));
             this.steps = Collections.unmodifiableList(new ArrayList<>(steps));
         }
         public boolean isTools() { return !operations.isEmpty(); }
+        public boolean isCompact() { return !compactStatus.isEmpty(); }
         public boolean isAgent() {
             if (operations.size() != 1) return false;
             ToolDisplayCategory category = ToolCallUtils.getDisplayCategory(operations.get(0).call.getName());
@@ -57,7 +66,7 @@ public final class ConversationTimeline {
             boolean hasProcess = false, active = false, awaiting = false;
             long startedAt = 0, finishedAt = 0;
             for (ChatMessage message : messages) {
-                hasProcess |= message.hasToolCalls() || message.isRetryNotice() || message.isError();
+                hasProcess |= message.hasToolCalls() || message.isRetryNotice() || message.isError() || message.isCompactBlock();
                 if (message.getProcessingStartedAt() > 0) {
                     startedAt = startedAt == 0 ? message.getProcessingStartedAt() : Math.min(startedAt, message.getProcessingStartedAt());
                     finishedAt = Math.max(finishedAt, message.getProcessingFinishedAt());
@@ -69,7 +78,7 @@ public final class ConversationTimeline {
                     active |= result == null || "running".equals(result.getReviewState());
                 }
             }
-            isTurn = hasProcess && first.getRole() == ChatMessage.Role.ASSISTANT && !first.isCompactBlock();
+            isTurn = hasProcess && first.getRole() == ChatMessage.Role.ASSISTANT;
             ChatMessage last = messages.get(messages.size() - 1);
             answer = isTurn && !last.hasToolCalls() && !last.isRetryNotice() && !last.isError()
                     && (last.getProcessingStartedAt() == 0 || last.getProcessingFinishedAt() > 0)
@@ -81,11 +90,19 @@ public final class ConversationTimeline {
             ArrayList<Block> blocks = new ArrayList<>();
             ArrayList<Operation> group = new ArrayList<>();
             ArrayList<Block> steps = new ArrayList<>();
+            Map<String, Integer> blockIds = new HashMap<>();
             for (ChatMessage message : messages) {
+                if (message.isCompactBlock()) {
+                    flush(blocks, group, steps, blockIds);
+                    blocks.add(new Block(uniqueId(message.getId() + ":compact", blockIds), "", false,
+                            message.getCompactStatus(), Collections.emptyList(), Collections.emptyList()));
+                    continue;
+                }
                 boolean hasProse = message != answer && !message.getContent().trim().isEmpty();
-                if (hasProse) flush(blocks, group, steps);
+                if (hasProse) flush(blocks, group, steps, blockIds);
                 if (message != answer && !message.getReasoningContent().trim().isEmpty()) {
-                    Block reasoning = new Block(message.getId() + ":reasoning", message.getReasoningContent(), true, Collections.emptyList());
+                    Block reasoning = new Block(uniqueId(message.getId() + ":reasoning", blockIds),
+                            message.getReasoningContent(), true, Collections.emptyList());
                     // Internal reasoning is part of the work, not a new outward assistant reply.
                     if (group.isEmpty()) {
                         if (hasProse) blocks.add(reasoning);
@@ -93,13 +110,16 @@ public final class ConversationTimeline {
                     else steps.add(reasoning);
                 }
                 if (hasProse) {
-                    blocks.add(new Block(message.getId() + ":text", message.getContent(), false, Collections.emptyList()));
+                    blocks.add(new Block(uniqueId(message.getId() + ":text", blockIds),
+                            message.getContent(), false, Collections.emptyList()));
                 }
-                for (ToolCall call : message.getToolCalls()) {
+                for (int callIndex = 0; callIndex < message.getToolCalls().size(); callIndex++) {
+                    ToolCall call = message.getToolCalls().get(callIndex);
                     Operation operation = new Operation(call, message.getToolResult(call.getId()));
-                    Block callBlock = new Block("call:" + call.getId(), "", false, Collections.singletonList(operation));
+                    Block callBlock = new Block(uniqueId("call:" + call.getId(), blockIds),
+                            "", false, Collections.singletonList(operation));
                     if (callBlock.isAgent()) {
-                        flush(blocks, group, steps);
+                        flush(blocks, group, steps, blockIds);
                         blocks.add(callBlock);
                         continue;
                     }
@@ -107,15 +127,22 @@ public final class ConversationTimeline {
                     steps.add(callBlock);
                 }
             }
-            flush(blocks, group, steps);
+            flush(blocks, group, steps, blockIds);
             process = Collections.unmodifiableList(blocks);
         }
     }
 
-    private static void flush(List<Block> blocks, ArrayList<Operation> group, ArrayList<Block> steps) {
+    private static void flush(List<Block> blocks, ArrayList<Operation> group, ArrayList<Block> steps,
+                              Map<String, Integer> blockIds) {
         if (group.isEmpty()) return;
-        blocks.add(new Block("tools:" + group.get(0).call.getId(), "", false, group, steps));
+        blocks.add(new Block(uniqueId("tools:" + group.get(0).call.getId(), blockIds), "", false, group, steps));
         group.clear(); steps.clear();
+    }
+
+    private static String uniqueId(String preferred, Map<String, Integer> counts) {
+        int occurrence = counts.containsKey(preferred) ? counts.get(preferred) + 1 : 1;
+        counts.put(preferred, occurrence);
+        return occurrence == 1 ? preferred : preferred + "#" + occurrence;
     }
 
     public static List<Row> build(List<ChatMessage> visibleMessages) {
@@ -123,15 +150,24 @@ public final class ConversationTimeline {
         ArrayList<ChatMessage> turn = new ArrayList<>();
         for (ChatMessage message : visibleMessages) {
             if (message.isHidden() || message.getRole() == ChatMessage.Role.TOOL || message.getRole() == ChatMessage.Role.SYSTEM) continue;
-            if (message.getRole() != ChatMessage.Role.ASSISTANT || message.isCompactBlock() || message.isModelSwitchNotification()) {
+            if (message.getRole() != ChatMessage.Role.ASSISTANT || message.isModelSwitchNotification()) {
                 flushTurn(rows, turn);
                 rows.add(new Row(Collections.singletonList(message)));
             } else {
+                if (message.isCompactBlock() && endsWithCompletedAnswer(turn)) flushTurn(rows, turn);
                 turn.add(message);
             }
         }
         flushTurn(rows, turn);
         return rows;
+    }
+
+    private static boolean endsWithCompletedAnswer(List<ChatMessage> turn) {
+        if (turn.isEmpty()) return false;
+        ChatMessage last = turn.get(turn.size() - 1);
+        return !last.isCompactBlock() && !last.hasToolCalls() && !last.isRetryNotice() && !last.isError()
+                && !last.isStreaming() && !last.getContent().trim().isEmpty()
+                && (last.getProcessingStartedAt() == 0 || last.getProcessingFinishedAt() > 0);
     }
 
     private static void flushTurn(List<Row> rows, ArrayList<ChatMessage> turn) {

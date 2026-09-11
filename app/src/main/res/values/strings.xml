@@ -999,6 +999,12 @@
     <string name="thinking_done_label">Done thinking</string>
 
     <string name="context_compact_label">Compacting</string>
+    <string name="context_usage_title">Context usage</string>
+    <string name="context_usage_used">Used tokens</string>
+    <string name="context_usage_limit">Context window</string>
+    <string name="context_usage_percent">Usage</string>
+    <string name="context_usage_percent_value">%1$d%%</string>
+    <string name="context_usage_accessibility">Context usage, %1$d%%</string>
 
     <string name="provider_mimo_token_plan">Mimo Token Plan</string>
 

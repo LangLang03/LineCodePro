@@ -108,4 +108,17 @@ public final class ChatUiStateTest {
         Assert.assertEquals(state.getMessages(), state.getMessages());
         Assert.assertSame(state.getMessages(), state.getMessages());
     }
+
+    @Test
+    public void contextTokenValuesSurviveDisplayCopies() {
+        ChatUiState state = new ChatUiState(
+                "project", "/repo", "model", "25% / 128K", 25, false, true,
+                true, false, false, false, OutputSettings.BROWSER_BUILTIN,
+                InputSettings.ENTER_SEND, ChatMode.DEFAULT, "c1", Arrays.asList(message("m1")),
+                "model", Arrays.asList(model("model", 131072)), null, 32768, 131072);
+        ChatUiState copy = state.withDisplayMessages(Arrays.asList(message("m2"))).withToolApproval(null);
+        Assert.assertEquals(32768, copy.getContextUsedTokens());
+        Assert.assertEquals(131072, copy.getContextMaxTokens());
+        Assert.assertEquals(25, copy.getContextPercent());
+    }
 }

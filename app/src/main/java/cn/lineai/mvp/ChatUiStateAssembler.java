@@ -82,7 +82,9 @@ public final class ChatUiStateAssembler {
                 messages,
                 selectedModelId,
                 availableModels,
-                null
+                null,
+                contextSnapshot.getUsedTokens(),
+                contextSnapshot.getMaxTokens()
         );
     }
 

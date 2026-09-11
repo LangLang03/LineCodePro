@@ -117,4 +117,39 @@ public class ConversationTimelineTest {
                 ChatMessage.toolResult("t", "Secret read output", "c", "file_read", false), text("b", "World")));
         assertEquals(2, rows.size()); assertFalse(rows.get(0).isTurn); assertFalse(rows.get(1).isTurn);
     }
+
+    @Test public void compactionStaysInsideTheCurrentProcessingTurnAsADirectBlock() {
+        ChatMessage work = tools("work", "", "file_read").withProcessingTimes(1000, 0);
+        ChatMessage compact = ChatMessage.compactProgress("compact", ChatMessage.COMPACT_STATUS_DONE)
+                .withCompactStatus(ChatMessage.COMPACT_STATUS_DONE, false).withProcessingTimes(1000, 0);
+        ChatMessage answer = text("answer", "Ready.").withProcessingTimes(1000, 9000);
+        List<ConversationTimeline.Row> rows = ConversationTimeline.build(Arrays.asList(work, compact, answer));
+        assertEquals(1, rows.size());
+        assertEquals(2, rows.get(0).process.size());
+        assertTrue(rows.get(0).process.get(0).isTools());
+        assertTrue(rows.get(0).process.get(1).isCompact());
+        assertFalse(rows.get(0).process.get(1).isTools());
+        assertEquals("Ready.", rows.get(0).answer.getContent());
+    }
+
+    @Test public void manualCompactionDoesNotAbsorbThePreviousCompletedAnswer() {
+        ChatMessage answer = text("answer", "Previous answer.").withProcessingTimes(1000, 2000);
+        ChatMessage compact = ChatMessage.compactProgress("compact", ChatMessage.COMPACT_STATUS_RUNNING)
+                .withProcessingTimes(3000, 0);
+        List<ConversationTimeline.Row> rows = ConversationTimeline.build(Arrays.asList(answer, compact));
+        assertEquals(2, rows.size());
+        assertFalse(rows.get(0).isTurn);
+        assertTrue(rows.get(1).isTurn);
+        assertTrue(rows.get(1).process.get(0).isCompact());
+        assertTrue(rows.get(1).running);
+    }
+
+    @Test public void duplicateToolCallIdsReceiveDistinctStableBlocks() {
+        ToolCall duplicate = new ToolCall("same", "file_read", "{}");
+        ChatMessage first = text("a", "First step.").withToolCalls(Collections.singletonList(duplicate), false);
+        ChatMessage second = text("b", "Second step.").withToolCalls(Collections.singletonList(duplicate), false);
+        ConversationTimeline.Row row = ConversationTimeline.build(Arrays.asList(first, second, text("end", "Done."))).get(0);
+        assertEquals(4, row.process.size());
+        assertNotEquals(row.process.get(1).id, row.process.get(3).id);
+    }
 }

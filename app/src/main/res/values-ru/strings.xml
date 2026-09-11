@@ -999,6 +999,12 @@
     <string name="thinking_done_label">Размышления завершены</string>
 
     <string name="context_compact_label">Сжатие</string>
+    <string name="context_usage_title">Использование контекста</string>
+    <string name="context_usage_used">Использовано токенов</string>
+    <string name="context_usage_limit">Окно контекста</string>
+    <string name="context_usage_percent">Использование</string>
+    <string name="context_usage_percent_value">%1$d%%</string>
+    <string name="context_usage_accessibility">Использование контекста: %1$d%%</string>
 
     <string name="provider_mimo_token_plan">Mimo Token Plan</string>
 

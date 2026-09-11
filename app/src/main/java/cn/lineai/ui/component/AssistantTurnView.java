@@ -192,7 +192,12 @@ public final class AssistantTurnView extends LinearLayout {
         ArrayList<View> children = new ArrayList<>();
         for (Block block : row.process) {
             View view = blocks.get(block.id);
-            if (block.reasoning) {
+            if (block.isCompact()) {
+                ContextCompactBlockView compact = view instanceof ContextCompactBlockView
+                        ? (ContextCompactBlockView) view : new ContextCompactBlockView(getContext());
+                compact.bind(block.compactStatus);
+                view = compact;
+            } else if (block.reasoning) {
                 ThinkingBlockView thought = view instanceof ThinkingBlockView ? (ThinkingBlockView) view : new ThinkingBlockView(getContext());
                 ChatMessage owner = null;
                 for (ChatMessage message : row.messages) if (block.id.equals(message.getId() + ":reasoning")) owner = message;
@@ -315,10 +320,14 @@ public final class AssistantTurnView extends LinearLayout {
         for (int i = parent.getChildCount() - 1; i >= 0; i--) if (!children.contains(parent.getChildAt(i))) parent.removeViewAt(i);
         for (int i = 0; i < children.size(); i++) {
             View child = children.get(i);
-            if (parent.getChildAt(i) == child) continue;
+            if (i < parent.getChildCount() && parent.getChildAt(i) == child) continue;
             if (child.getParent() == parent) parent.removeView(child);
+            else if (child.getParent() instanceof android.view.ViewGroup) {
+                ((android.view.ViewGroup) child.getParent()).removeView(child);
+            }
             LayoutParams params = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-            params.bottomMargin = dp(gap); parent.addView(child, i, params);
+            params.bottomMargin = dp(gap);
+            parent.addView(child, Math.min(i, parent.getChildCount()), params);
         }
     }
     private boolean isOpen(String key) { return Boolean.TRUE.equals(disclosure.get(key)); }
