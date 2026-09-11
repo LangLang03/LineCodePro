@@ -30,6 +30,7 @@
 #include "application/ports/model_store.h"
 #include "application/ports/storage_permission.h"
 #include "application/project_workspace_service.h"
+#include "application/ports/todo_state_store.h"
 #include "application/prompt_request_composer.h"
 #include "application/ssh_settings_service.h"
 #include "application/tool_permission_service.h"
@@ -217,6 +218,7 @@ huxerui::View HomeScreen(
     std::shared_ptr<application::MemoryContextService> memory_context,
     std::shared_ptr<application::AiBehaviorSettingsRepository>
         behavior_settings,
+    std::shared_ptr<application::TodoStateStore> todo_state,
     std::shared_ptr<application::OutputSettingsService> output_settings,
     std::shared_ptr<application::ToolPermissionService> tool_permissions,
     std::shared_ptr<application::ChatModeService> chat_modes,
@@ -336,6 +338,9 @@ huxerui::View HomeScreen(
           (std::filesystem::path{project_path} / ".linecode" / "skills")
               .string(),
       .learning_context = {},
+      // Refreshed from the live task list before each request; see
+      // ComposerGenerationRunner. An empty seed keeps {{TODO_STATE}} on the
+      // legacy "no list yet" branch until the first load completes.
       .todo_state = {},
       .permission_mode = "auto",
       .tools_context = {},
@@ -349,6 +354,7 @@ huxerui::View HomeScreen(
                      storage_permission, selected_model_available.Get(),
                      active_generation, revision, pending_messages,
                      drawer_model, memory_context, behavior_settings,
+                     todo_state,
                      output_settings, tool_permissions, chat_modes,
                      interaction_mode,
                      input_settings, project_id, std::move(prompt_context),
@@ -391,6 +397,7 @@ huxerui::View MainScreen(
     std::shared_ptr<application::ChatModeService> chat_modes,
     std::shared_ptr<application::SshSettingsService> ssh_settings,
     std::shared_ptr<application::MemoryStore> memory_store,
+    std::shared_ptr<application::TodoStateStore> todo_state,
     std::shared_ptr<application::AgentExtensionStore> agent_extensions,
     std::shared_ptr<application::McpExtensionStore> mcp_extensions,
     std::shared_ptr<application::McpToolCatalog> mcp_tool_catalog,
@@ -452,7 +459,7 @@ huxerui::View MainScreen(
        model_store, completion_loop = std::move(completion_loop),
        storage_permission = std::move(storage_permission),
        memory_context = memory_context.Get(), ai_behavior_settings,
-       output_settings_service,
+       todo_state = std::move(todo_state), output_settings_service,
        tool_permissions, chat_modes, interaction_mode, active_input_settings,
        linecode_root, workspace_state, selected_model_available,
        generation = generation.Get(), active_generation, chat_revision,
@@ -460,7 +467,7 @@ huxerui::View MainScreen(
        workspace_revision]() -> View {
     return HomeScreen(initial_session, project_workspace, model_store,
                       completion_loop, storage_permission, memory_context,
-                      ai_behavior_settings, output_settings_service,
+                      ai_behavior_settings, todo_state, output_settings_service,
                       tool_permissions, chat_modes,
                       interaction_mode, active_input_settings.Get(),
                       linecode_root, workspace_state, selected_model_available,

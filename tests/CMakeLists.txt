@@ -1488,3 +1488,29 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME web_tool_tests COMMAND web_tool_tests)
+
+add_executable(file_tool_tests
+        file_tool_tests.cpp
+        ../src/application/file_tool_registry.cpp
+        ../src/application/tool_file_access.cpp
+        ../src/application/tool_file_path_policy.cpp
+        ../src/application/tool_text_catalog.cpp
+        ../src/infrastructure/archive_json.cpp
+)
+target_include_directories(file_tool_tests PRIVATE ../src)
+target_compile_definitions(file_tool_tests PRIVATE
+        LINECODE_STRING_RESOURCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../resources/strings")
+target_compile_features(file_tool_tests PRIVATE cxx_std_23)
+target_link_libraries(file_tool_tests PRIVATE HuxerUI::testing)
+set_target_properties(file_tool_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(file_tool_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(file_tool_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME file_tool_tests COMMAND file_tool_tests)

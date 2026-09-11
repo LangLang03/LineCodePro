@@ -47,11 +47,19 @@
 - [x] 内置工具组接入 `app_root.cpp`：`todo_update`、`memory_update`、
       `web_search`、`web_fetch` 四个工具已注册进 `CompositeToolRegistry`
       （提交 `a35c0f3`）。契约与旧版逐字一致，组开关与执行模式门禁照旧版。
-- [ ] `file_ops` 组（`file_read` / `file_write` / `file_edit` / `file_delete` /
-      `glob` / `list_dir`）尚未接入：实现已完成但本地化架构违规
-      （application 层调用了组合期的 `UseString`），正在改为应用层自有的
-      `ToolTextCatalog` 后接入。半成品暂存于
-      `docs/inflight/file_tool_registry.cpp.pending`，**未接入、未验收**。
+- [x] `file_ops` 组（`file_read` / `file_write` / `file_edit` / `file_delete` /
+      `glob` / `list_dir`）已接入 `CompositeToolRegistry`。本地化违规已修复：
+      application 层不再调用组合期的 `UseString`，改由应用层自有的
+      `ToolTextCatalog`（`src/application/tool_text_catalog.*`，由
+      `tools/gen_tool_text_catalog.py` 从 properties 生成，测试每次逐条比对）
+      解析文案。
+- [x] 真机端到端证据：模型收到的工具列表包含全部 10 个内置工具；触发一次
+      `file_write` 后设备上真实落盘
+      `/data/data/cn.lineai/files/.linecode/home/linecode-tool-check.txt`，
+      内容与模型提交的完全一致。
+- [ ] `ToolTextCatalog` 目前固定英文（构造函数默认值）：`domain::McpExecutionSettings`
+      不含语言字段，且 HuxerUI 0.3.0 没有公开的「组合期读取当前 Locale」接口。
+      仅影响工具回给模型的文案语言，不影响功能。
 - [x] 已核实 `shell` 组在 local 模式本就不可用：旧版
       `ToolSettingsRepository.java:104` 把 shell 组声明为 `MODE_REMOTE`，
       `getEnabledToolNames()` 会按模式过滤。C++ 的 `remote` 掩码是忠实迁移，
@@ -116,9 +124,10 @@ python3 tools/ui_parity_test.py \
       旧版对应 `ComposerView.java` 的 `onSendWithImage` / `onImagePickerClick`。
 - [ ] P1 生成失败自动重试（旧版 `MAX_RETRIES = 3`）、模型切换提示与
       中断恢复提示缺失。
-- [ ] P1 todo 状态未注入提示词：`main_screen.cpp` 的
-      `.todo_state = {}` 恒为空，因此 TODO_LIST 永远显示为空。
-      （注：`todo_update` 工具已注册，但状态还没接到提示词管线。）
+- [x] todo 状态已注入提示词：`TodoStateStore` 由组合根经
+      `MainScreen → HomeScreen → ChatScreen → ComposerGenerationRunner` 注入，
+      每次请求前重新 `Load()` + `RenderTodoState()`，与旧版
+      `GenerationFlowController.java:773` 在工具循环内重建提示词的行为一致。
 - [ ] P1 附件选择器缺少 SSH / terminal-provider 来源，
       `chat_overlays.cpp` 把 `source` 硬编码为 `"local"`。
 - [ ] P1 Markdown 退化：裸 URL 不可点、引用/列表内代码块被压成一行、

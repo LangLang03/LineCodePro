@@ -14,6 +14,7 @@
 #include "domain/behavior_settings.h"
 #include "application/chat_mode_service.h"
 #include "application/prompt_request_composer.h"
+#include "application/ports/todo_state_store.h"
 #include "presentation/components/drawer.h"
 
 namespace linecode::application {
@@ -48,6 +49,7 @@ namespace linecode::presentation {
     const std::shared_ptr<application::MemoryContextService> &memory_context,
     const std::shared_ptr<application::AiBehaviorSettingsRepository>
         &behavior_settings,
+    const std::shared_ptr<application::TodoStateStore> &todo_state,
     const std::shared_ptr<application::OutputSettingsService> &output_settings,
     const std::shared_ptr<application::ToolPermissionService>
         &tool_permissions,

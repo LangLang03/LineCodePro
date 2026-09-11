@@ -31,6 +31,7 @@
 #include "application/ports/share_text.h"
 #include "application/ports/storage_permission.h"
 #include "application/prompt_request_composer.h"
+#include "application/ports/todo_state_store.h"
 #include "application/slash_command_catalog.h"
 #include "application/tool_permission_service.h"
 #include "infrastructure/tutorial_markdown_parser.h"
@@ -1258,6 +1259,10 @@ struct ComposerGenerationDependencies final {
   std::shared_ptr<application::McpCompletionLoop> completion_loop;
   std::shared_ptr<application::MemoryContextService> memory_context;
   std::shared_ptr<application::AiBehaviorSettingsRepository> behavior_settings;
+  // Feeds {{TODO_STATE}} from the live task list. Legacy
+  // `ModelPromptController.renderTodoStateForPrompt()` did the same, so the
+  // projection has to be refreshed per request rather than captured once.
+  std::shared_ptr<application::TodoStateStore> todo_state;
 };
 
 class ComposerGenerationRunner final
@@ -1408,6 +1413,11 @@ private:
     }
 
     auto prompt_context = prompt_context_;
+    if (dependencies_.todo_state) {
+      auto todo = co_await dependencies_.todo_state->Load();
+      if (todo)
+        prompt_context.todo_state = application::RenderTodoState(*todo);
+    }
     prompt_context.learning_context = context->prompt;
     prompt_context.permission_mode =
         domain::SerializeToolPermissionMode(permission_mode_);
@@ -1778,6 +1788,7 @@ struct SlashPopupRow final {
     const std::shared_ptr<application::MemoryContextService> &memory_context,
     const std::shared_ptr<application::AiBehaviorSettingsRepository>
         &behavior_settings,
+    const std::shared_ptr<application::TodoStateStore> &todo_state,
     const std::shared_ptr<PendingToolReview> &pending_review,
     const std::shared_ptr<application::PendingMessageQueue> &pending_messages,
     State<std::optional<std::string>> quote_text,
@@ -1796,6 +1807,7 @@ struct SlashPopupRow final {
           .completion_loop = completion_loop,
           .memory_context = memory_context,
           .behavior_settings = behavior_settings,
+          .todo_state = todo_state,
       },
       pending_review, pending_messages, tasks, active_generation, revision,
       std::move(current_project_id), std::move(prompt_context), permission_mode,
@@ -2030,6 +2042,7 @@ View GenerationError(const application::GenerationController &generation,
     const std::shared_ptr<application::MemoryContextService> &memory_context,
     const std::shared_ptr<application::AiBehaviorSettingsRepository>
         &behavior_settings,
+    const std::shared_ptr<application::TodoStateStore> &todo_state,
     const std::shared_ptr<application::OutputSettingsService> &output_settings,
     const std::shared_ptr<application::ToolPermissionService>
         &tool_permissions,
@@ -2526,7 +2539,8 @@ View GenerationError(const application::GenerationController &generation,
         draft, session, generation, model_store, completion_loop,
         has_selected_model, tasks, active_generation, revision,
         selected_attachments, show_attachments, memory_context,
-        behavior_settings, pending_review.Get(), pending_messages, quote_text,
+        behavior_settings, todo_state, pending_review.Get(), pending_messages,
+        quote_text,
         handle_slash_command, interaction_mode->chat_mode, slash_models,
         slash_selected_model_id, input_settings, current_project_id,
         std::move(prompt_context), permission_state->mode, toast);

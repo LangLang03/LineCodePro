@@ -8,6 +8,7 @@
 #include "application/ports/project_workspace_controller.h"
 #include "application/ports/tool_file_access.h"
 #include "application/ports/tool_registry.h"
+#include "application/tool_text_catalog.h"
 
 namespace linecode::application {
 
@@ -18,11 +19,17 @@ namespace linecode::application {
 // table inside the implementation, so adding a tool never adds a dispatch
 // branch. Enablement follows the "file_ops" group state and its local-only
 // execution mode, matching the legacy tool registry.
+//
+// Tool output is localized through the application-owned text catalog rather
+// than app::strings::*, because the built-in tools run outside composition
+// where huxerui::UseString is unavailable. The language is fixed at
+// construction; the default keeps the English product strings.
 class FileToolRegistry final : public ToolRegistry {
 public:
   FileToolRegistry(std::shared_ptr<McpExecutionSettingsService> settings,
                    std::shared_ptr<ProjectWorkspaceController> workspace,
-                   std::shared_ptr<ToolFileAccess> files);
+                   std::shared_ptr<ToolFileAccess> files,
+                   ToolTextLanguage language = ToolTextLanguage::english);
 
   [[nodiscard]] huxerui::Task<std::expected<void, ToolRegistryError>>
   Refresh() override;
@@ -35,6 +42,7 @@ private:
   std::shared_ptr<McpExecutionSettingsService> settings_;
   std::shared_ptr<ProjectWorkspaceController> workspace_;
   std::shared_ptr<ToolFileAccess> files_;
+  ToolTextLanguage language_{ToolTextLanguage::english};
   std::vector<RegisteredTool> tools_;
 };
 

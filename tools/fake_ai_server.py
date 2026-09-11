@@ -36,6 +36,14 @@ IMAGE_TOOL_PROMPT = "A deterministic LineCode fixture image"
 IMAGE_UNDERSTANDING_TRIGGER = "__LINECODE_TEST_VISION__"
 IMAGE_UNDERSTANDING_PATH = "assets/linecode-test.png"
 IMAGE_UNDERSTANDING_PROMPT = "Describe the deterministic LineCode fixture"
+FILE_TOOL_TRIGGER = "__LINECODE_TEST_FILE__"
+FILE_TOOL_PATH = "linecode-tool-check.txt"
+FILE_TOOL_CONTENT = "linecode file tool ok"
+TODO_TOOL_TRIGGER = "__LINECODE_TEST_TODO__"
+TODO_TOOL_ITEMS = (
+    {"content": "Verify the todo prompt projection", "status": "in_progress"},
+    {"content": "Confirm the todo projection round trip", "status": "pending"},
+)
 MAX_REQUEST_BODY_BYTES = 1024 * 1024
 REQUEST_READ_TIMEOUT_SECONDS = 5.0
 
@@ -281,6 +289,21 @@ class FakeAiHandler(BaseHTTPRequestHandler):
                for message in messages):
             return None
         strategies = (
+            (
+                FILE_TOOL_TRIGGER,
+                "file_write",
+                {
+                    "file_path": FILE_TOOL_PATH,
+                    "content": FILE_TOOL_CONTENT,
+                },
+                "call_linecode_file_test",
+            ),
+            (
+                TODO_TOOL_TRIGGER,
+                "todo_update",
+                {"items": list(TODO_TOOL_ITEMS)},
+                "call_linecode_todo_test",
+            ),
             (
                 SHELL_TOOL_TRIGGER,
                 "shell_execute",

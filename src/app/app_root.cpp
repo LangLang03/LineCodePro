@@ -17,6 +17,7 @@
 #include "application/composite_tool_registry.h"
 #include "application/error_log_service.h"
 #include "application/execution_mode_project_workspace.h"
+#include "application/file_tool_registry.h"
 #include "application/image_generation_tool_registry.h"
 #include "application/image_understanding_tool_registry.h"
 #include "application/in_memory_todo_state_store.h"
@@ -63,6 +64,7 @@
 #include "infrastructure/hux_skill_files.h"
 #include "infrastructure/hux_skill_hub_gateway.h"
 #include "infrastructure/hux_skill_hub_session_gateway.h"
+#include "infrastructure/hux_tool_file_access.h"
 #include "infrastructure/hux_web_tools_gateway.h"
 #include "infrastructure/hux_storage_stats_repository.h"
 #include "infrastructure/hux_workspace_file_store.h"
@@ -442,9 +444,20 @@ huxerui::View PlatformServicesHost() {
       std::shared_ptr<application::ToolRegistry>{
           std::make_shared<application::WebToolRegistry>(
               mcp_settings.Get(), tool_settings.Get(), web_tools.Get())});
+  // `file_ops` is local-only in the legacy product, so its registry owns the
+  // mode gate and the workspace-relative path policy.
+  auto tool_file_access = huxerui::UseState(
+      std::shared_ptr<application::ToolFileAccess>{
+          std::make_shared<infrastructure::HuxToolFileAccess>()});
+  auto file_tools = huxerui::UseState(
+      std::shared_ptr<application::ToolRegistry>{
+          std::make_shared<application::FileToolRegistry>(
+              mcp_settings.Get(), project_workspace.Get(),
+              tool_file_access.Get())});
   tool_sources.push_back(todo_tools.Get());
   tool_sources.push_back(memory_tools.Get());
   tool_sources.push_back(web_tool_registry.Get());
+  tool_sources.push_back(file_tools.Get());
   auto runtime_tools =
       huxerui::UseState(std::shared_ptr<application::ToolRegistry>{
           std::make_shared<application::CompositeToolRegistry>(
@@ -479,6 +492,7 @@ huxerui::View PlatformServicesHost() {
        mcp_settings = mcp_settings.Get(), tool_settings = tool_settings.Get(),
        tool_permissions = tool_permissions.Get(), chat_modes = chat_modes.Get(),
        ssh_settings = ssh_settings.Get(), memory_store = memory_store.Get(),
+       todo_state = todo_state.Get(),
        agent_extensions = agent_extensions.Get(),
        mcp_extensions = mcp_extensions.Get(),
        mcp_tool_catalog = mcp_tool_catalog.Get(),
@@ -513,7 +527,8 @@ huxerui::View PlatformServicesHost() {
             ai_behavior_settings, input_settings, prompt_templates,
             completion_loop, output_settings_service, theme_service,
             theme_settings, mcp_settings, tool_settings, tool_permissions,
-            chat_modes, ssh_settings, memory_store, agent_extensions,
+            chat_modes, ssh_settings, memory_store, todo_state,
+            agent_extensions,
             mcp_extensions, mcp_tool_catalog, agent_drafts, linecode_root,
             skill_hub_services, mcp_capabilities, platform_capabilities,
             termux_integration, terminal_providers,
