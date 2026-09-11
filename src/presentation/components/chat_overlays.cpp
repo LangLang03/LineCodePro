@@ -10,6 +10,7 @@
 #include <app_resources.h>
 #include <huxerui/huxerui.h>
 
+#include "domain/input_attachment.h"
 #include "presentation/line_theme.h"
 #include "presentation/platform_features.h"
 
@@ -309,8 +310,9 @@ void AppendAttachmentRows(std::vector<View> &rows,
   } else {
     row = std::move(row).OnClick(
         [callback = callbacks.on_file_toggled,
-         file = ChatAttachmentFile{
-             .path = node.path, .name = node.name, .source = "local"}] {
+         file = ChatAttachmentFile{.path = node.path,
+                                   .name = node.name,
+                                   .source = state.source}] {
           if (callback) {
             std::invoke(callback, file);
           }
@@ -530,7 +532,14 @@ View ChatAttachmentPicker(const ChatAttachmentPickerState &state,
       Column{
           Row{
               Column{
-                  Text(app::strings::attachment_picker_title_local)
+                  Text(state.source == domain::InputAttachment::source_ssh
+                           ? StringVariant{app::strings::attachment_picker_title_ssh}
+                       : state.source ==
+                               domain::InputAttachment::source_terminal_provider
+                           ? StringVariant{app::strings::
+                                               attachment_picker_title_terminal_provider}
+                           : StringVariant{app::strings::
+                                               attachment_picker_title_local})
                       .Style(TextStyle{
                           Font::System(17.0F).WithWeight(FontWeight::Bold),
                           colors::text}),

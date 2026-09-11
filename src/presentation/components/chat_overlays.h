@@ -108,6 +108,10 @@ struct ChatAttachmentFile final {
 
 struct ChatAttachmentPickerState final {
   bool visible = false;
+  // Where the browsed files live. Legacy `AttachmentPickerCoordinator` derived
+  // this from the execution mode, so SSH and terminal-provider attachments are
+  // tagged correctly instead of always claiming to be local.
+  std::string source = "local";
   std::optional<ChatAttachmentNode> tree;
   std::vector<std::string> selected_paths;
   std::vector<std::string> expanded_directories;

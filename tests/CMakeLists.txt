@@ -1698,3 +1698,36 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME agent_tool_tests COMMAND agent_tool_tests)
+
+add_executable(auto_compaction_tests
+        auto_compaction_tests.cpp
+        ../src/application/auto_compaction_service.cpp
+        ../src/application/chat_session.cpp
+        ../src/application/context_compaction.cpp
+        ../src/application/legacy_attachment_policy.cpp
+        ../src/application/prompt_template_repository.cpp
+        ../src/application/send_message.cpp
+        ../src/infrastructure/in_memory_conversation_store.cpp
+        ../src/domain/compaction_progress.cpp
+        ../src/domain/context_usage.cpp
+        ../src/domain/input_attachment.cpp
+        ../src/domain/model_config.cpp
+        ../src/domain/prompt_renderer.cpp
+        ../src/domain/prompt_template.cpp
+        ../src/presentation/compaction_progress_presentation.cpp
+)
+target_include_directories(auto_compaction_tests PRIVATE ../src)
+target_compile_features(auto_compaction_tests PRIVATE cxx_std_23)
+target_link_libraries(auto_compaction_tests PRIVATE HuxerUI::testing)
+set_target_properties(auto_compaction_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(auto_compaction_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(auto_compaction_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME auto_compaction_tests COMMAND auto_compaction_tests)

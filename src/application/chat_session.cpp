@@ -46,16 +46,34 @@ void ChatSession::Clear() { store_->Clear(); }
 
 void ChatSession::ApplyCompaction(std::vector<std::uint64_t> excluded_ids,
                                   std::string summary_content) {
+  ApplyCompaction(std::move(excluded_ids), std::move(summary_content), {});
+}
+
+void ChatSession::ApplyCompaction(std::vector<std::uint64_t> excluded_ids,
+                                  std::string summary_content,
+                                  std::vector<domain::ChatMessage> trailing) {
   if (summary_content.empty())
     return;
+  auto &store = RequireStore(store_);
   domain::ChatMessage summary;
-  summary.id = RequireStore(store_).AllocateMessageId();
+  summary.id = store.AllocateMessageId();
   summary.role = domain::MessageRole::assistant;
   summary.content = std::move(summary_content);
   // Legacy compact blocks are hidden from the transcript but stay in context,
   // which is exactly what makes them replace the summarized history.
   summary.hidden = true;
-  RequireStore(store_).ApplyCompaction(excluded_ids, std::move(summary));
+  store.ApplyCompaction(excluded_ids, std::move(summary));
+  for (auto &message : trailing) {
+    // The originals were handed to `ApplyCompaction` (and left the context), so
+    // the tail travels as hidden copies that still render nowhere but take part
+    // in the model request, right after the summary.
+    message.id = store.AllocateMessageId();
+    message.hidden = true;
+    message.exclude_from_context = false;
+    message.streaming = false;
+    message.compact_status.clear();
+    store.Append(std::move(message));
+  }
 }
 
 std::span<const ConversationSummary>

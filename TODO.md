@@ -115,9 +115,19 @@ python3 tools/ui_parity_test.py \
       最近一轮两条保留为 0，新增摘要行 `hidden=1`；
       摘要正文经 `message_text_chunks` 落库，内容为
       `contextCompactionSummaryPrefix` 模板 + 模型输出。
-- [ ] 压缩的剩余部分：压缩**进度块**（Compacting / 完成 / 失败，
-      旧版 `ContextCompactBlockView.java`）与**自动/软压缩触发**尚未接入；
-      当前只有手动压缩路径。
+- [x] 压缩进度块与自动/软压缩触发已迁移：
+      `domain/compaction_progress.*` 表达 running/done/error 三种状态；
+      `application/auto_compaction_service.*` 移植 `ContextCompactionController`
+      的三条触发判定（请求前硬触发 80%、请求前软触发 50% 且受
+      `soft_compaction` 开关控制、工具循环中硬触发）、`PreservedTail`、
+      硬/软两套合并语义（摘要必须进上下文、被摘要的标 exclude、
+      保留尾部与近期用户消息原样）；`presentation/compaction_progress_presentation.*`
+      移植 `ContextCompactBlockView`，进度块在时间线中独立成块。
+- [x] 真机端到端验证（把测试模型上下文窗口设为 120 token 以触达阈值）：
+      连续 6 轮对话后自动压缩真实触发，数据库出现 `hidden=1` 的摘要行、
+      `exclude_from_context=1` 的历史消息、空正文的进度块行；
+      UI 逐条显示 `消息 → 「压缩」 → 回复`，文案与旧版 `context_compact_label`
+      一致，无崩溃。
 - [x] 上下文用量指示器已迁移：`domain/context_usage.*` 移植了
       `ModelContextParser`（`context_size` 优先，兼容 `[128k]` 后缀，默认
       250000）与 `ContextManager`（8 token/条 + ceil(字符/4) + 附件 + 推理 +
@@ -180,8 +190,10 @@ python3 tools/ui_parity_test.py \
       `MainScreen → HomeScreen → ChatScreen → ComposerGenerationRunner` 注入，
       每次请求前重新 `Load()` + `RenderTodoState()`，与旧版
       `GenerationFlowController.java:773` 在工具循环内重建提示词的行为一致。
-- [ ] P1 附件选择器缺少 SSH / terminal-provider 来源，
-      `chat_overlays.cpp` 把 `source` 硬编码为 `"local"`。
+- [x] 附件选择器来源已按执行模式区分：`ChatAttachmentPickerState` 新增
+      `source`，标题按 `attachment_picker_title_{local,ssh,terminal_provider}`
+      三选一，文件项继承该来源；来源由 `McpExecutionSettingsService::Load()`
+      的执行模式决定（对应旧版 `AttachmentPickerCoordinator` 的判定）。
 - [ ] P1 Markdown 退化：裸 URL 不可点、引用/列表内代码块被压成一行、
       思考块直接输出原始 `**`；旧版有 `Linkify.WEB_URLS` 与 `ThinkingBlockView` 样式。
 - [ ] P1 回合汇总「已编辑 N 个文件 / Review」区块缺失。

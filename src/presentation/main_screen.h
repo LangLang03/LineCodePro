@@ -70,6 +70,7 @@ huxerui::View MainScreen(
     std::shared_ptr<application::MemoryStore> memory_store,
     std::shared_ptr<application::TodoStateStore> todo_state,
     std::shared_ptr<application::SkillRepository> skills,
+    std::shared_ptr<application::McpExecutionSettingsService> execution_settings,
     std::shared_ptr<application::ContextCompactionService> compaction_service,
     std::shared_ptr<application::DiffStore> diff_store,
     std::shared_ptr<application::DiffReviewService> diff_review,

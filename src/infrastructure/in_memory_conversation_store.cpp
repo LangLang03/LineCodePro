@@ -1,5 +1,6 @@
 #include "infrastructure/in_memory_conversation_store.h"
 
+#include <algorithm>
 #include <limits>
 #include <ranges>
 #include <utility>
@@ -24,6 +25,17 @@ void InMemoryConversationStore::Append(domain::ChatMessage message) {
 }
 
 void InMemoryConversationStore::Clear() { messages_.clear(); }
+
+void InMemoryConversationStore::ApplyCompaction(
+    const std::span<const std::uint64_t> excluded_ids,
+    domain::ChatMessage summary) {
+  for (auto &message : messages_) {
+    if (std::ranges::contains(excluded_ids, message.id))
+      message.exclude_from_context = true;
+  }
+  summary.hidden = true;
+  Append(std::move(summary));
+}
 
 std::optional<domain::ChatMessage>
 InMemoryConversationStore::RecallUserMessage(std::uint64_t message_id) {

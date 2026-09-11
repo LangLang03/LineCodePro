@@ -22,9 +22,11 @@
 #include <app_resources.h>
 #include <huxerui/huxerui.h>
 
+#include "application/auto_compaction_service.h"
 #include "application/behavior_settings_repository.h"
 #include "application/chat_session.h"
 #include "application/context_compaction.h"
+#include "application/mcp_execution_settings.h"
 #include "application/diff_review_service.h"
 #include "application/ports/diff_store.h"
 #include "application/chat_export.h"
@@ -42,6 +44,7 @@
 #include "application/skill_repository.h"
 #include "application/slash_command_catalog.h"
 #include "application/tool_permission_service.h"
+#include "domain/compaction_progress.h"
 #include "domain/context_usage.h"
 #include "domain/diff_lines.h"
 #include "infrastructure/tutorial_markdown_parser.h"
@@ -49,6 +52,7 @@
 #include "presentation/components/tutorial_markdown.h"
 #include "presentation/components/tool_approval_view.h"
 #include "presentation/chat_timeline_presentation.h"
+#include "presentation/compaction_progress_presentation.h"
 #include "presentation/line_theme.h"
 #include "presentation/platform_features.h"
 
@@ -274,6 +278,37 @@ private:
 struct CompactionLabels final {
   std::string failed_prefix;
   std::string done;
+  // `context_compact_label` ("Compacting" / "压缩"), rendered by the progress
+  // block row.
+  std::string progress;
+};
+
+// Live state of an automatic context compaction. The block itself is a real
+// `domain::ChatMessage` carrying `compact_status`; this holder only tracks
+// whether the send path is currently compacting so the transcript can show the
+// running block before the write-back lands.
+struct AutoCompactionUiState final {
+  // The transcript shows the live block only while the generation that owns the
+  // compaction is still current, so a cancelled or superseded request cannot
+  // leave a running block behind.
+  std::uint64_t generation_id{};
+  bool running{};
+  std::string status{std::string{domain::compact_status_running}};
+
+  void Begin(std::uint64_t generation) {
+    generation_id = generation;
+    status = std::string{domain::compact_status_running};
+    running = true;
+  }
+
+  void Finish(std::string next_status) {
+    status = std::move(next_status);
+    running = false;
+  }
+
+  [[nodiscard]] bool RunningFor(std::uint64_t generation) const noexcept {
+    return running && generation_id == generation;
+  }
 };
 
 // Port of `ContextCompactionController.startManualContextCompaction()`: refuse
@@ -1369,6 +1404,48 @@ View ReasoningTimelineBlock(
             Padding(EdgeInsets{.right = 4.0F, .bottom = 8.0F, .left = 4.0F}));
 }
 
+// Port of `cn.lineai.ui.component.ContextCompactBlockView`: one horizontal row
+// with an archive icon, the "Compacting" label, a weight-1 spacer and either an
+// indeterminate progress circle (running) or a status icon (done = CHECK,
+// error = CLOSE). The geometry comes from `CompactBlockMetrics()` so the
+// numbers stay next to the legacy references in the presentation header.
+View CompactProgressBlock(const domain::ChatMessage &message,
+                          const std::string &label) {
+  const auto presentation = PresentCompactProgress(message);
+  const auto metrics = CompactBlockMetricsDefault();
+  const Color tint = presentation.danger ? static_cast<Color>(colors::danger)
+                                         : static_cast<Color>(colors::tertiary);
+  View status = presentation.show_progress_bar
+                    ? View{ProgressCircle().With(Frame{
+                          .width = metrics.progress_size,
+                          .height = metrics.progress_size})}
+                    : View{Image(presentation.status_icon ==
+                                         CompactStatusIcon::close
+                                     ? app::images::x
+                                     : app::images::check)
+                               .Tint(tint)
+                               .With(Frame{.width = metrics.icon_slot,
+                                           .height = metrics.status_icon_size})};
+  return Row{
+      Stack{Image(app::images::archive)
+                .Tint(tint)
+                .With(Frame{.width = metrics.archive_icon_size,
+                            .height = metrics.archive_icon_size})}
+          .With(Frame{.width = metrics.icon_slot,
+                      .height = metrics.icon_slot},
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
+      Text(label).Style(ChatTextStyle(metrics.label_size, FontWeight::Regular,
+                                      tint)),
+      Spacer(),
+      std::move(status),
+  }
+      .With(Frame{.min_height = metrics.min_height},
+            Padding(EdgeInsets{.top = metrics.vertical_padding,
+                               .bottom = metrics.vertical_padding}),
+            Spacing(metrics.label_left_margin),
+            CrossAlign(CrossAxisAlignment::Center));
+}
+
 View ToolTimelineCard(const domain::AssistantToolEvent &event,
                       std::string key,
                       State<std::vector<std::string>> toggled,
@@ -1485,9 +1562,17 @@ View MessageBubble(const domain::ChatMessage &message,
                    const TutorialMarkdownLinkHandler &on_link,
                    const TutorialMarkdownCopyHandler &on_copy,
                    const ToolRendererContext &context,
-                   bool live = false) {
+                   std::string_view compact_label, bool live = false) {
   if (message.role == domain::MessageRole::tool)
     return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
+  // `ConversationTimeline.build` skips hidden messages: a compaction summary
+  // stays in the context but never renders as a user bubble.
+  if (message.hidden)
+    return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
+  // A compaction progress block flushes the surrounding group and becomes a
+  // block of its own (ui/model ConversationTimeline.java:95-99).
+  if (IsCompactTimelineBlock(message))
+    return CompactProgressBlock(message, std::string{compact_label});
   const bool user = message.role == domain::MessageRole::user;
   const bool selected = std::ranges::contains(selected_messages.Get(),
                                               message.id);
@@ -1568,7 +1653,9 @@ View Conversation(
     State<std::vector<std::string>> toggled_timeline,
     const TutorialMarkdownLinkHandler &on_link,
     const TutorialMarkdownCopyHandler &on_copy,
-    const ToolRendererContext &context) {
+    const ToolRendererContext &context,
+    const std::shared_ptr<AutoCompactionUiState> &auto_compaction,
+    std::string compact_label) {
   static_cast<void>(revision);
   const auto messages = session->Messages();
   if (messages.empty()) {
@@ -1594,24 +1681,39 @@ View Conversation(
                        ? MessageBubble(streaming_message, action_message, false,
                                        selected_messages, {}, timeline_settings,
                                        toggled_timeline, on_link, on_copy,
-                                       context, true)
+                                       context, compact_label, true)
                        : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
+  // While an automatic compaction runs, its progress block sits at the end of
+  // the transcript as a block of its own; after the write-back the persisted
+  // block carries the final status, exactly like the legacy controller that
+  // re-rendered between `running` and `done`/`error`.
+  View compaction = Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
+  if (auto_compaction &&
+      auto_compaction->RunningFor(generation_state.generation_id)) {
+    compaction = MessageBubble(
+        domain::CompactProgressMessage(0U, auto_compaction->status),
+        action_message, false, selected_messages, {}, timeline_settings,
+        toggled_timeline, on_link, on_copy, context, compact_label);
+  }
   View list = ScrollView(Column{
                              ForEach(messages,
                                      [action_message, multi_select,
                                       selected_messages,
                                       callbacks, timeline_settings,
                                       toggled_timeline, on_link, on_copy,
-                                      context](const auto &message) {
+                                      context,
+                                      compact_label](const auto &message) {
                                        return MessageBubble(
                                                   message, action_message,
                                                   multi_select,
                                                   selected_messages, callbacks,
                                                   timeline_settings,
                                                   toggled_timeline, on_link,
-                                                  on_copy, context)
+                                                  on_copy, context,
+                                                  compact_label)
                                            .Key(message.id);
                                      }),
+                             std::move(compaction),
                              std::move(streaming),
                          }
                              .With(CrossAlign(CrossAxisAlignment::Stretch),
@@ -1690,6 +1792,11 @@ struct ComposerGenerationDependencies final {
   // the system prompt on every request; the C++ port keeps that by refreshing
   // them here instead of capturing the text once.
   std::shared_ptr<application::SkillRepository> skills;
+  // Automatic context compaction before a request. Absent in previews that do
+  // not wire a compaction service.
+  std::shared_ptr<application::ContextCompactionService> compaction;
+  // Status holder for the live progress block.
+  std::shared_ptr<AutoCompactionUiState> auto_compaction;
 };
 
 class ComposerGenerationRunner final
@@ -1748,6 +1855,156 @@ public:
   }
 
 private:
+  // Resets the live progress block when the send path leaves `compacting`,
+  // including the cancellation path where HuxerUI destroys the coroutine.
+  class AutoCompactionGuard final {
+  public:
+    explicit AutoCompactionGuard(
+        std::shared_ptr<AutoCompactionUiState> state) noexcept
+        : state_(std::move(state)) {}
+
+    ~AutoCompactionGuard() {
+      if (state_)
+        state_->running = false;
+    }
+
+    AutoCompactionGuard(const AutoCompactionGuard &) = delete;
+    AutoCompactionGuard &operator=(const AutoCompactionGuard &) = delete;
+
+    void Finish(std::string status) const {
+      if (state_)
+        state_->Finish(std::move(status));
+    }
+
+  private:
+    std::shared_ptr<AutoCompactionUiState> state_;
+  };
+
+  // Port of the pre-request trigger in `ChatInteractionController.send()`
+  // (lines 223-244) together with
+  // `ContextCompactionController.startContextCompaction()` /
+  // `startSoftContextCompaction()`: decide the trigger, show the running
+  // progress block, summarize, then write the result back. The request then
+  // continues with the refreshed transcript.
+  Task<void> AutoCompactBeforeRequest(application::GenerationWork &work,
+                                      const domain::ModelConfig &model,
+                                      const domain::AiBehaviorSettings &behavior) {
+    if (!dependencies_.compaction || !dependencies_.auto_compaction ||
+        !dependencies_.session)
+      co_return;
+
+    auto snapshot = [this] {
+      const auto messages = dependencies_.session->Messages();
+      return std::vector<domain::ChatMessage>{messages.begin(), messages.end()};
+    };
+    auto messages = snapshot();
+    // Legacy lines 222-223: the active user message is the last entry of the
+    // conversation, because `send()` appended it before checking the trigger.
+    std::optional<std::uint64_t> active_user_message_id;
+    for (auto entry = messages.rbegin(); entry != messages.rend(); ++entry) {
+      if (entry->role == domain::MessageRole::user) {
+        active_user_message_id = entry->id;
+        break;
+      }
+    }
+    const auto preserved =
+        application::PreservedTail(messages, active_user_message_id);
+    const auto preserved_ids = application::MessageIdSet(preserved);
+    const std::optional<domain::ModelConfig> model_option{model};
+    // This port has no `TokenUsageTracker`, so the checks fall back to the
+    // local estimate exactly like the legacy controller did before the server
+    // reported an input token count.
+    constexpr int kNoObservedTokens = 0;
+    const bool hard = application::ShouldAutoCompactBeforeRequest(
+        model_option, messages, kNoObservedTokens, preserved_ids,
+        behavior.preserve_reasoning);
+    const bool soft =
+        !hard && application::ShouldAutoSoftCompactBeforeRequest(
+                     model_option, messages, kNoObservedTokens,
+                     behavior.soft_compaction, preserved_ids,
+                     behavior.preserve_reasoning);
+    if (!hard && !soft)
+      co_return;
+
+    std::vector<domain::ChatMessage> base;
+    base.reserve(messages.size());
+    for (const auto &message : messages) {
+      if (std::ranges::contains(preserved_ids, message.id))
+        continue;
+      base.push_back(message);
+    }
+    std::vector<std::uint64_t> retained_ids;
+    if (soft) {
+      // Legacy lines 388-389: only the oldest slice is summarized.
+      base =
+          application::ContextCompactionService::SplitForSoftCompact(base).head;
+    } else {
+      // Legacy lines 479-481: keep the recent user messages verbatim.
+      retained_ids = application::RetainedUserMessageIds(base);
+    }
+    if (!application::HasCompactableBaseMessages(base))
+      co_return;
+    // Legacy `finishContextCompaction` (lines 476-521) leaves the summarized
+    // base and the retained user messages in place and appends the summary,
+    // then the preserved tail. The append-only conversation port reproduces
+    // that order by excluding the tail too and re-appending it after the
+    // summary (see `ChatSession::ApplyCompaction`), so the model reads
+    // "summary -> recent context -> current question" instead of finding the
+    // summary after the question it is supposed to answer.
+    std::vector<std::uint64_t> excluded_ids;
+    excluded_ids.reserve(base.size() + preserved.size());
+    for (const auto &message : base) {
+      if (!std::ranges::contains(retained_ids, message.id))
+        excluded_ids.push_back(message.id);
+    }
+    for (const auto &message : preserved)
+      excluded_ids.push_back(message.id);
+
+    // Legacy lines 311-315: the running progress block is pushed before the
+    // compaction starts so the transcript shows it while the model works.
+    dependencies_.auto_compaction->Begin(work.generation_id);
+    revision_ += 1;
+    const AutoCompactionGuard guard{dependencies_.auto_compaction};
+
+    auto compacted =
+        co_await dependencies_.compaction->Compact(model, std::move(base));
+    if (!compacted) {
+      // Legacy lines 333-343 / 630-662: the block fails and the failure text is
+      // appended; the original request still runs.
+      guard.Finish(std::string{domain::compact_status_error});
+      static_cast<void>(dependencies_.session->AppendAssistant(
+          domain::CompactProgressMessage(0U, domain::compact_status_error)));
+      revision_ += 1;
+      toast_.Show(
+          application::CompactFailureMessage(compacted.error().message));
+    } else if (compacted->Empty() || compacted->summary_content.empty()) {
+      // Cancelled (`("", "")`) or "the model returned no summary": the block
+      // becomes an error and nothing is written back. Legacy line 473.
+      guard.Finish(std::string{domain::compact_status_error});
+      static_cast<void>(dependencies_.session->AppendAssistant(
+          domain::CompactProgressMessage(0U, domain::compact_status_error)));
+      revision_ += 1;
+      if (!compacted->Empty())
+        toast_.Show(application::CompactFailureNoSummary());
+    } else {
+      // The summarized messages leave the context and the summary joins it;
+      // the retained user messages stay in place and the preserved tail is
+      // re-appended after the summary, both verbatim.
+      dependencies_.session->ApplyCompaction(std::move(excluded_ids),
+                                             compacted->summary_content,
+                                             std::move(preserved));
+      // Legacy lines 517-522: the completed block closes the transcript.
+      static_cast<void>(dependencies_.session->AppendAssistant(
+          domain::CompactProgressMessage(0U, domain::compact_status_done)));
+      guard.Finish(std::string{domain::compact_status_done});
+      revision_ += 1;
+    }
+    // The request snapshot predates the compaction; rebuild it so the model
+    // sees the summary instead of the summarized history (legacy
+    // `Host.startInitialModelRequest`).
+    dependencies_.generation->RefreshMessages(work);
+  }
+
   void ResetToolReview() const {
     pending_review_->request.reset();
     pending_review_->decision.reset();
@@ -1824,6 +2081,14 @@ private:
               .message = behavior.error().message});
       co_return;
     }
+
+    // Legacy `ChatInteractionController.send()` (lines 223-244) compacted the
+    // conversation before starting the model request: the 80% hard trigger
+    // first, then the 50%-80% soft trigger when the user switch allows it. The
+    // request continues afterwards, so the model sees the summarized history.
+    co_await AutoCompactBeforeRequest(work, **selected_model, *behavior);
+    if (!dependencies_.generation->IsCurrent(work.generation_id))
+      co_return;
 
     auto context = co_await dependencies_.memory_context->Prepare(
         current_project_id_, user_text, conversation_id,
@@ -2237,7 +2502,10 @@ struct SlashPopupRow final {
     State<std::string> slash_selected_model_id,
     domain::InputSettings input_settings, std::string current_project_id,
     application::PromptAssemblyContext prompt_context,
-    domain::ToolPermissionMode permission_mode, ToastHandle toast) {
+    domain::ToolPermissionMode permission_mode, ToastHandle toast,
+    const std::shared_ptr<application::ContextCompactionService>
+        &compaction_service,
+    const std::shared_ptr<AutoCompactionUiState> &auto_compaction) {
   auto runner = std::make_shared<ComposerGenerationRunner>(
       ComposerGenerationDependencies{
           .session = session,
@@ -2248,6 +2516,8 @@ struct SlashPopupRow final {
           .behavior_settings = behavior_settings,
           .todo_state = todo_state,
           .skills = skills,
+          .compaction = compaction_service,
+          .auto_compaction = auto_compaction,
       },
       pending_review, pending_messages, tasks, active_generation, revision,
       std::move(current_project_id), std::move(prompt_context), permission_mode,
@@ -2484,6 +2754,8 @@ View GenerationError(const application::GenerationController &generation,
         &behavior_settings,
     const std::shared_ptr<application::TodoStateStore> &todo_state,
     const std::shared_ptr<application::SkillRepository> &skills,
+    const std::shared_ptr<application::McpExecutionSettingsService>
+        &execution_settings,
     const std::shared_ptr<application::ContextCompactionService>
         &compaction_service,
     const std::shared_ptr<application::DiffStore> &diff_store,
@@ -2571,7 +2843,12 @@ View GenerationError(const application::GenerationController &generation,
   const CompactionLabels compaction_labels{
       .failed_prefix = UseString(app::strings::context_compact_failed, ""),
       .done = UseString(app::strings::context_compact_done),
+      // `context_compact_label` ("Compacting" / "压缩"), the progress block row
+      // label. Resolved here because the compaction coroutine is not a
+      // composition scope.
+      .progress = UseString(app::strings::context_compact_label),
   };
+  auto auto_compaction = UseState(std::make_shared<AutoCompactionUiState>());
   const auto toast = UseToast();
 
   Lifecycle([tasks, tool_permissions, permission_state, toast] {
@@ -2907,8 +3184,36 @@ View GenerationError(const application::GenerationController &generation,
     });
   };
 
+  // Legacy `AttachmentPickerCoordinator.onAttachmentPickerRequested()`: the
+  // browsed files' source follows the configured execution mode.
+  auto attachment_source = UseState(std::string{
+      domain::InputAttachment::source_local});
+  Lifecycle([tasks, execution_settings, attachment_source] {
+    if (!execution_settings)
+      return;
+    tasks.Launch([execution_settings,
+                  attachment_source]() -> Task<void> {
+      auto settings = co_await execution_settings->Load();
+      if (!settings)
+        co_return;
+      switch (settings->mode) {
+      case domain::McpExecutionMode::ssh:
+        attachment_source = std::string{domain::InputAttachment::source_ssh};
+        break;
+      case domain::McpExecutionMode::terminal_provider:
+        attachment_source =
+            std::string{domain::InputAttachment::source_terminal_provider};
+        break;
+      case domain::McpExecutionMode::local:
+        attachment_source = std::string{domain::InputAttachment::source_local};
+        break;
+      }
+    });
+  });
+
   auto show_attachments = [attachment_sheet, workspace, selected_attachments,
-                           expanded_attachment_directories] {
+                           expanded_attachment_directories,
+                           attachment_source] {
     std::optional<ChatAttachmentNode> initial_tree;
     if (workspace->file_tree.has_value()) {
       initial_tree = ToAttachmentNode(*workspace->file_tree);
@@ -2918,8 +3223,9 @@ View GenerationError(const application::GenerationController &generation,
     }
 
     attachment_sheet.Show(
-        [workspace, selected_attachments, expanded_attachment_directories](
-            bool visible, std::function<void()> dismiss) {
+        [workspace, selected_attachments, expanded_attachment_directories,
+         attachment_source](bool visible,
+                            std::function<void()> dismiss) {
           std::optional<ChatAttachmentNode> tree;
           if (workspace->file_tree.has_value()) {
             tree = ToAttachmentNode(*workspace->file_tree);
@@ -2927,6 +3233,9 @@ View GenerationError(const application::GenerationController &generation,
           return ChatAttachmentPicker(
               ChatAttachmentPickerState{
                   .visible = visible,
+                  // Legacy AttachmentPickerCoordinator derived this from the
+                  // execution mode, so remote attachments are labelled right.
+                  .source = attachment_source.Get(),
                   .tree = std::move(tree),
                   .selected_paths = AttachmentPaths(selected_attachments.Get()),
                   .expanded_directories = expanded_attachment_directories.Get(),
@@ -3070,7 +3379,8 @@ View GenerationError(const application::GenerationController &generation,
         quote_text,
         handle_slash_command, interaction_mode->chat_mode, slash_models,
         slash_selected_model_id, input_settings, current_project_id,
-        std::move(prompt_context), permission_state->mode, toast);
+        std::move(prompt_context), permission_state->mode, toast,
+        compaction_service, auto_compaction.Get());
   }
 
   const TutorialMarkdownLinkHandler open_markdown_link =
@@ -3172,7 +3482,8 @@ View GenerationError(const application::GenerationController &generation,
                    toggled_timeline, open_markdown_link, copy_code,
                    ToolRendererContext{.diff_cache = diff_cache.Get(),
                                        .on_request_diff = request_diff,
-                                       .on_review = review_change}),
+                                       .on_review = review_change},
+                   auto_compaction.Get(), compaction_labels.progress),
       GenerationError(*generation, revision.Get()),
       std::move(composer_or_review),
   }

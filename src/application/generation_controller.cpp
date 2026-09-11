@@ -174,10 +174,22 @@ GenerationController::Begin(
   state_.phase = GenerationPhase::running;
   state_.started_at_millis = NowMillis();
 
+  std::vector<CompletionMessage> messages = BuildMessages();
+  return GenerationWork{.generation_id = generation_id,
+                        .messages = std::move(messages)};
+}
+
+std::vector<CompletionMessage> GenerationController::BuildMessages() const {
   std::vector<CompletionMessage> messages;
   messages.reserve(session_.Messages().size());
   for (const auto &message : session_.Messages()) {
-    if (message.hidden || message.exclude_from_context)
+    // Legacy `ContextManager` filters on `isExcludeFromContext()` only
+    // (feature-model ContextManager.java:37); `hidden` is a transcript-only
+    // flag, which is exactly why a context-compaction summary is written with
+    // hidden=true and excludeFromContext=false: it stays out of the timeline
+    // but replaces the summarized history in the model request. Compact block
+    // progress rows carry exclude_from_context=true, so they are skipped here.
+    if (message.exclude_from_context)
       continue;
     if (message.role == domain::MessageRole::user) {
       messages.push_back(CompletionMessage{.role = CompletionRole::user,
@@ -186,8 +198,11 @@ GenerationController::Begin(
       AppendAssistantHistory(message, messages, *result_display_);
     }
   }
-  return GenerationWork{.generation_id = generation_id,
-                        .messages = std::move(messages)};
+  return messages;
+}
+
+void GenerationController::RefreshMessages(GenerationWork &work) const {
+  work.messages = BuildMessages();
 }
 
 bool GenerationController::Complete(const std::uint64_t generation_id,

@@ -62,8 +62,16 @@ public:
   [[nodiscard]] bool IsCurrent(std::uint64_t generation_id) const noexcept;
   [[nodiscard]] const GenerationState &State() const noexcept;
 
+  // Rebuilds `work.messages` from the current conversation. The legacy
+  // controller restarted the model request after a context compaction
+  // (`Host.startInitialModelRequest`), so a caller that compacts between
+  // `Begin()` and the completion request refreshes the snapshot here instead of
+  // sending the pre-compaction transcript.
+  void RefreshMessages(GenerationWork &work) const;
+
 private:
   void PersistPartial(bool error, std::string error_message);
+  [[nodiscard]] std::vector<CompletionMessage> BuildMessages() const;
 
   ChatSession &session_;
   std::shared_ptr<const ToolResultDisplayProjector> result_display_;

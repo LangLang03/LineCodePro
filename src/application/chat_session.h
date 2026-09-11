@@ -29,6 +29,16 @@ public:
   // the summary joins the conversation as a hidden message.
   void ApplyCompaction(std::vector<std::uint64_t> excluded_ids,
                        std::string summary_content);
+  // Same write-back, plus messages that must stay in the context *after* the
+  // summary. The append-only conversation port cannot move the originals, so
+  // the legacy `finishContextCompaction` order
+  // (`ContextCompactionController.java:517-521`: summary, then the preserved
+  // tail, then the completed progress block) is reproduced by excluding the
+  // originals and re-appending hidden, in-context copies. The transcript is
+  // unaffected: the originals keep rendering, the copies stay hidden.
+  void ApplyCompaction(std::vector<std::uint64_t> excluded_ids,
+                       std::string summary_content,
+                       std::vector<domain::ChatMessage> trailing);
   void Clear();
   [[nodiscard]] std::span<const ConversationSummary>
   Conversations() const noexcept;

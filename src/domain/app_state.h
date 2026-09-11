@@ -237,6 +237,11 @@ struct ChatMessage final {
   std::string error_message{};
   std::int64_t processing_started_at{};
   std::int64_t processing_finished_at{};
+  // Port of `ChatMessage.compactStatus`: non-empty marks this message as a
+  // context-compaction progress block ("running" / "done" / "error", see
+  // `domain/compaction_progress.h`). The field is declared last so every
+  // existing designated initializer keeps its declaration order.
+  std::string compact_status{};
 
   bool operator==(const ChatMessage &) const = default;
 };

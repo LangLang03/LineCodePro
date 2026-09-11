@@ -13,6 +13,10 @@ public:
   [[nodiscard]] std::uint64_t AllocateMessageId() noexcept override;
   void Append(domain::ChatMessage message) override;
   void Clear() override;
+  // Port contract: the summarized messages leave the context and the summary
+  // joins the conversation hidden from the transcript but present in it.
+  void ApplyCompaction(std::span<const std::uint64_t> excluded_ids,
+                       domain::ChatMessage summary) override;
   [[nodiscard]] std::optional<domain::ChatMessage>
   RecallUserMessage(std::uint64_t message_id) override;
 
