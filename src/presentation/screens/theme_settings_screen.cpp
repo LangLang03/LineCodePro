@@ -2,7 +2,11 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -37,6 +41,49 @@ struct FieldMeta final {
   StringResource title;
   StringResource description;
 };
+
+enum class StarterId : std::uint8_t {
+  default_theme,
+  light,
+  dark,
+  coffee,
+  vscode,
+  github_dark,
+  gruvbox,
+  high_contrast,
+  saved,
+};
+
+using StarterPaletteFactory = ThemePalette (*)(
+    const application::ThemeSettingsState &);
+
+struct Starter final {
+  StarterId id;
+  StringResource title;
+  ImageResource icon;
+  StarterPaletteFactory palette;
+};
+
+template <ThemeMode Mode, const char *CodeBackground = nullptr>
+ThemePalette BuiltInStarterPalette(
+    const application::ThemeSettingsState &) {
+  auto palette = domain::PaletteForMode(Mode);
+  if constexpr (CodeBackground != nullptr) {
+    palette[ThemeColorRole::code_background] =
+        *domain::ParseHexColor(CodeBackground);
+  }
+  return palette;
+}
+
+inline constexpr char kLightCodeBackground[] = "#F2F2F7";
+inline constexpr char kDarkCodeBackground[] = "#151515";
+inline constexpr char kCoffeeCodeBackground[] = "#EFE4D4";
+
+ThemePalette SavedStarterPalette(
+    const application::ThemeSettingsState &saved) {
+  return domain::ApplyThemeDraft(domain::PaletteForMode(ThemeMode::custom),
+                                 saved.custom_colors);
+}
 
 Color UiColor(domain::PackedColor value) {
   return Color::Rgb(static_cast<int>((value >> 16U) & 0xFFU),
@@ -222,8 +269,10 @@ View PaletteChips(const ThemePalette &palette) {
 }
 
 View StarterTile(
-    int id, StringResource title, ImageResource icon, ThemePalette palette,
-    int selected, State<int> active_starter, State<ThemeColorDraft> draft,
+    StarterId id, StringResource title, ImageResource icon, ThemePalette palette,
+    std::optional<StarterId> selected,
+    State<std::optional<StarterId>> active_starter,
+    State<ThemeColorDraft> draft,
     State<std::array<TextEditingValue, domain::theme_color_count>> editing) {
   const bool active = id == selected;
   return Column{
@@ -237,15 +286,6 @@ View StarterTile(
   }
       .OnClick([id, palette, active_starter, draft, editing] {
         auto next = domain::EditableThemeDraft(palette);
-        if (id == 1)
-          next[static_cast<std::size_t>(ThemeColorRole::code_background)] =
-              "#F2F2F7";
-        if (id == 2)
-          next[static_cast<std::size_t>(ThemeColorRole::code_background)] =
-              "#151515";
-        if (id == 3)
-          next[static_cast<std::size_t>(ThemeColorRole::code_background)] =
-              "#EFE4D4";
         active_starter = id;
         draft = next;
         editing = EditingValues(next);
@@ -257,37 +297,37 @@ View StarterTile(
 }
 
 View StarterPanel(
-    const application::ThemeSettingsState &saved, State<int> active,
+    const application::ThemeSettingsState &saved,
+    State<std::optional<StarterId>> active,
     State<ThemeColorDraft> draft,
     State<std::array<TextEditingValue, domain::theme_color_count>> editing) {
-  struct Starter final {
-    int id;
-    ThemeMode mode;
-    StringResource title;
-    ImageResource icon;
-  };
   std::vector<Starter> starters{
-      {0, ThemeMode::custom, app::strings::screen_theme_starter_default,
-       app::images::paintbrush},
-      {1, ThemeMode::light, app::strings::screen_theme_starter_light,
-       app::images::sun},
-      {2, ThemeMode::dark, app::strings::screen_theme_starter_dark,
-       app::images::moon},
-      {3, ThemeMode::coffee, app::strings::screen_theme_starter_coffee,
-       app::images::coffee},
-      {4, ThemeMode::vscode, app::strings::screen_theme_starter_vscode,
-       app::images::code},
-      {5, ThemeMode::github_dark, app::strings::screen_theme_starter_github,
-       app::images::git_branch},
-      {6, ThemeMode::gruvbox, app::strings::screen_theme_starter_gruvbox,
-       app::images::code},
-      {7, ThemeMode::high_contrast,
-       app::strings::screen_theme_starter_high_contrast, app::images::contrast},
+      {StarterId::default_theme, app::strings::screen_theme_starter_default,
+       app::images::paintbrush, &BuiltInStarterPalette<ThemeMode::custom>},
+      {StarterId::light, app::strings::screen_theme_starter_light,
+       app::images::sun,
+       &BuiltInStarterPalette<ThemeMode::light, kLightCodeBackground>},
+      {StarterId::dark, app::strings::screen_theme_starter_dark,
+       app::images::moon,
+       &BuiltInStarterPalette<ThemeMode::dark, kDarkCodeBackground>},
+      {StarterId::coffee, app::strings::screen_theme_starter_coffee,
+       app::images::coffee,
+       &BuiltInStarterPalette<ThemeMode::coffee, kCoffeeCodeBackground>},
+      {StarterId::vscode, app::strings::screen_theme_starter_vscode,
+       app::images::code, &BuiltInStarterPalette<ThemeMode::vscode>},
+      {StarterId::github_dark, app::strings::screen_theme_starter_github,
+       app::images::git_branch,
+       &BuiltInStarterPalette<ThemeMode::github_dark>},
+      {StarterId::gruvbox, app::strings::screen_theme_starter_gruvbox,
+       app::images::code, &BuiltInStarterPalette<ThemeMode::gruvbox>},
+      {StarterId::high_contrast,
+       app::strings::screen_theme_starter_high_contrast, app::images::contrast,
+       &BuiltInStarterPalette<ThemeMode::high_contrast>},
   };
   if (saved.has_saved_custom_colors) {
-    starters.push_back({8, ThemeMode::custom,
+    starters.push_back({StarterId::saved,
                         app::strings::screen_theme_starter_saved,
-                        app::images::save});
+                        app::images::save, &SavedStarterPalette});
   }
   std::vector<View> grid;
   for (std::size_t row = 0; row < (starters.size() + 2) / 3; ++row) {
@@ -299,14 +339,10 @@ View StarterPanel(
         continue;
       }
       const auto &starter = starters[index];
-      auto palette = starter.id == 8
-                         ? domain::ApplyThemeDraft(
-                               domain::PaletteForMode(ThemeMode::custom),
-                               saved.custom_colors)
-                         : domain::PaletteForMode(starter.mode);
+      auto palette = std::invoke(starter.palette, saved);
       tiles.push_back(StarterTile(starter.id, starter.title, starter.icon,
                                   palette, active.Get(), active, draft, editing)
-                          .Key(starter.id));
+                          .Key(std::to_underlying(starter.id)));
     }
     grid.push_back(Row(std::move(tiles)).With(Spacing(8.0F)));
   }
@@ -354,7 +390,8 @@ constexpr std::array<std::string_view, 32> kSwatches{
 
 View SwatchPanel(
     const FieldMeta &active_field, State<ThemeColorRole> active_role,
-    State<int> active_starter, State<ThemeColorDraft> draft,
+    State<std::optional<StarterId>> active_starter,
+    State<ThemeColorDraft> draft,
     State<std::array<TextEditingValue, domain::theme_color_count>> editing) {
   const auto role_index = static_cast<std::size_t>(active_role.Get());
   std::vector<View> lines;
@@ -379,7 +416,7 @@ View SwatchPanel(
                 editing.Update([&](auto &next) {
                   next[role_index] = TextEditingValue::FromText(value);
                 });
-                active_starter = -1;
+                active_starter = std::nullopt;
               })
               .With(
                   Frame{.width = 34.0F, .height = 34.0F},
@@ -407,7 +444,8 @@ View SwatchPanel(
 
 View EditorRow(
     const FieldMeta &field, std::size_t index,
-    State<ThemeColorRole> active_role, State<int> active_starter,
+    State<ThemeColorRole> active_role,
+    State<std::optional<StarterId>> active_starter,
     State<ThemeColorDraft> draft,
     State<std::array<TextEditingValue, domain::theme_color_count>> editing) {
   const bool active = active_role.Get() == field.role;
@@ -444,7 +482,7 @@ View EditorRow(
             draft.Update(
                 [&](ThemeColorDraft &values) { values[index] = normalized; });
             active_role = role;
-            active_starter = -1;
+            active_starter = std::nullopt;
           })
           .With(Frame{.width = 92.0F, .height = 38.0F}, CornerRadius(8.0F),
                 Background(colors::surface_light),
@@ -460,7 +498,8 @@ View EditorRow(
 }
 
 View EditorGroup(
-    State<ThemeColorRole> active_role, State<int> active_starter,
+    State<ThemeColorRole> active_role,
+    State<std::optional<StarterId>> active_starter,
     State<ThemeColorDraft> draft,
     State<std::array<TextEditingValue, domain::theme_color_count>> editing) {
   const auto fields = Fields();
@@ -488,7 +527,9 @@ ThemeSettingsScreen(std::shared_ptr<application::ThemeSettingsService> service,
   auto draft = UseState(settings->custom_colors);
   auto editing = UseState(EditingValues(settings->custom_colors));
   auto active_role = UseState(ThemeColorRole::accent);
-  auto active_starter = UseState(settings->has_saved_custom_colors ? 8 : 0);
+  auto active_starter = UseState(std::optional{
+      settings->has_saved_custom_colors ? StarterId::saved
+                                        : StarterId::default_theme});
   const auto preview = domain::ApplyThemeDraft(
       domain::PaletteForMode(ThemeMode::custom), draft.Get());
   const bool valid = domain::IsValidThemeDraft(draft.Get());
@@ -506,7 +547,7 @@ ThemeSettingsScreen(std::shared_ptr<application::ThemeSettingsService> service,
                     domain::PaletteForMode(ThemeMode::custom));
                 draft = reset;
                 editing = EditingValues(reset);
-                active_starter = 0;
+                active_starter = StarterId::default_theme;
               })
               .With(
                   Frame{.width = 34.0F, .height = 34.0F},
@@ -526,7 +567,7 @@ ThemeSettingsScreen(std::shared_ptr<application::ThemeSettingsService> service,
                       return;
                     }
                     settings = service->SaveCustomColors(draft.Get());
-                    active_starter = 8;
+                    active_starter = StarterId::saved;
                   })
               .With(Frame{.height = 34.0F}, Spacing(4.0F),
                     Padding(EdgeInsets::Symmetric(12.0F, 0.0F)),

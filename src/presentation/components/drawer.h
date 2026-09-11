@@ -17,6 +17,7 @@ namespace linecode::presentation {
 enum class DrawerTab : std::size_t {
   conversations = 0,
   files = 1,
+  count,
 };
 
 struct DrawerConversation final {
@@ -75,13 +76,13 @@ struct DrawerActions final {
 // Empty-state adapter retained for the first in-memory application slice.
 huxerui::View Drawer(
     huxerui::State<bool> drawer_open,
-    huxerui::State<std::size_t> selected_tab
+    huxerui::State<DrawerTab> selected_tab
 );
 
 // Controlled production surface. The application owns data and every side effect.
 huxerui::View Drawer(
     huxerui::State<bool> drawer_open,
-    huxerui::State<std::size_t> selected_tab,
+    huxerui::State<DrawerTab> selected_tab,
     const DrawerModel& model,
     const DrawerActions& actions
 );

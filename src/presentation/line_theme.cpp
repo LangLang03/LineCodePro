@@ -10,7 +10,7 @@ namespace linecode::presentation {
 namespace {
 
 huxerui::Color ToColor(domain::PackedColor value,
-                       domain::PackedColor background) {
+                       [[maybe_unused]] domain::PackedColor background) {
   int red = static_cast<int>((value >> 16U) & 0xFFU);
   int green = static_cast<int>((value >> 8U) & 0xFFU);
   int blue = static_cast<int>(value & 0xFFU);
@@ -148,6 +148,67 @@ huxerui::ThemeSpec LineTheme(const LineColors &line_colors) {
   return theme;
 }
 
+huxerui::DialogStyle LineDialogStyle(const LineColors &line_colors) {
+  auto dialog = huxerui::DialogStyle::Default();
+#if defined(__ANDROID__)
+  // The Android host composites the HuxerUI surface at roughly 80% opacity.
+  // Compensate so the visible modal barrier matches the legacy 60% black
+  // dialog scrim instead of washing the page out behind the dialog.
+  // 0.685 compensates the host attenuation to the legacy 60% barrier; 0.69
+  // quantizes the parity device backdrop one RGB step too dark (100 vs 101).
+  dialog.scrim = huxerui::Color::Rgb(0, 0, 0, 0.685F);
+#else
+  dialog.scrim = huxerui::Color::Rgb(0, 0, 0, 0.60F);
+#endif
+  // Legacy LineAlertDialog is the app-wide standard dialog presentation. The
+  // Memory screen owns a separate 12dp custom panel and does not inherit these
+  // content/action metrics.
+  dialog.background = line_colors.background;
+  dialog.title_style = huxerui::TextStyle{
+      huxerui::Font::System(20.0F).WithWeight(huxerui::FontWeight::Bold),
+      line_colors.text};
+  dialog.message_style = huxerui::TextStyle{
+      huxerui::Font::System(16.0F), line_colors.text};
+  dialog.positive_action_style = huxerui::TextStyle{
+      huxerui::Font::System(14.0F), line_colors.text};
+  dialog.negative_action_style = huxerui::TextStyle{
+      huxerui::Font::System(14.0F), line_colors.text};
+  dialog.positive_action_background = huxerui::Color::Transparent();
+  dialog.negative_action_background = huxerui::Color::Transparent();
+  dialog.minimum_action_height = 48.0F;
+  dialog.corner_radii = huxerui::CornerRadii{24.0F};
+  dialog.maximum_width = 560.0F;
+  dialog.viewport_margin = 16.0F;
+  return dialog;
+}
+
+huxerui::BottomSheetStyle LineBottomSheetStyle() {
+  auto bottom_sheet = huxerui::BottomSheetStyle::Default();
+  // The Android host attenuates the declared overlay alpha. Match the
+  // calibrated value so the visible sheet barrier is the legacy 60% black
+  // (about RGB 101 over the light page), instead of the palette's lighter
+  // overlay.
+#if defined(__ANDROID__)
+  bottom_sheet.scrim = huxerui::Color::Rgb(0, 0, 0, 0.68F);
+#else
+  bottom_sheet.scrim = huxerui::Color::Rgb(0, 0, 0, 0.60F);
+#endif
+  bottom_sheet.background = huxerui::Color::Transparent();
+  bottom_sheet.shadow =
+      huxerui::Shadow{.color = huxerui::Color::Transparent()};
+  bottom_sheet.corner_radii = huxerui::CornerRadii(24.0F);
+  bottom_sheet.drag_handle = huxerui::Color::Transparent();
+  // The legacy panel is capped at 560dp and sits inside 16dp side insets.
+  bottom_sheet.maximum_width = 592.0F;
+  bottom_sheet.enter =
+      huxerui::TweenSpec{.duration = 0.18,
+                         .easing = huxerui::Easing::EaseOut};
+  bottom_sheet.exit =
+      huxerui::TweenSpec{.duration = 0.15,
+                         .easing = huxerui::Easing::EaseIn};
+  return bottom_sheet;
+}
+
 huxerui::ThemeDefinition LineLightThemeDefinition() {
   return LineThemeDefinition(LineColors::Default());
 }
@@ -174,10 +235,13 @@ huxerui::ThemeDefinition LineThemeDefinition(const LineColors &line_colors) {
 
   auto navigation = huxerui::NavigationStyle::Default();
   if (navigation.motion.has_value()) {
-    navigation.motion->push = huxerui::TweenSpec{
-        .duration = 0.28, .easing = huxerui::Easing::EaseOut};
-    navigation.motion->pop =
-        huxerui::TweenSpec{.duration = 0.22, .easing = huxerui::Easing::EaseIn};
+    const huxerui::TransitionSpec push{
+        huxerui::SlideTransition{},
+        huxerui::TweenSpec{.duration = 0.28,
+                           .easing = huxerui::Easing::EaseOut}};
+    navigation.motion->push = push;
+    navigation.motion->pop = push.Reversed(huxerui::TweenSpec{
+        .duration = 0.22, .easing = huxerui::Easing::EaseIn});
   }
   definition.Set(std::move(navigation));
 
@@ -208,19 +272,8 @@ huxerui::ThemeDefinition LineThemeDefinition(const LineColors &line_colors) {
 #endif
   definition.Set(std::move(divider));
 
-  auto bottom_sheet = huxerui::BottomSheetStyle::Default();
-  bottom_sheet.scrim = line_colors.overlay;
-  bottom_sheet.background = huxerui::Color::Transparent();
-  bottom_sheet.shadow = huxerui::Shadow{.color = huxerui::Color::Transparent()};
-  bottom_sheet.corner_radii = huxerui::CornerRadii(24.0F);
-  bottom_sheet.drag_handle = huxerui::Color::Transparent();
-  // The legacy panel is capped at 560dp and sits inside 16dp side insets.
-  bottom_sheet.maximum_width = 592.0F;
-  bottom_sheet.enter =
-      huxerui::TweenSpec{.duration = 0.18, .easing = huxerui::Easing::EaseOut};
-  bottom_sheet.exit =
-      huxerui::TweenSpec{.duration = 0.15, .easing = huxerui::Easing::EaseIn};
-  definition.Set(std::move(bottom_sheet));
+  definition.Set(LineDialogStyle(line_colors));
+  definition.Set(LineBottomSheetStyle());
   return definition;
 }
 

@@ -3,40 +3,134 @@
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include <huxerui/task.h>
 
+#include "domain/behavior_settings.h"
 #include "domain/model_config.h"
 
 namespace linecode::application {
 
 enum class CompletionRole : std::uint8_t {
+  system,
   user,
   assistant,
+  tool,
+};
+
+struct CompletionTool final {
+  std::string name;
+  std::string description;
+  std::string parameters_json;
+
+  bool operator==(const CompletionTool &) const = default;
+};
+
+struct CompletionToolCall final {
+  std::string id;
+  std::string name;
+  std::string arguments_json;
+
+  bool operator==(const CompletionToolCall &) const = default;
+};
+
+struct CompletionToolResult final {
+  std::string call_id;
+  std::string name;
+  std::string content;
+  bool error{};
+
+  bool operator==(const CompletionToolResult &) const = default;
 };
 
 struct CompletionMessage final {
   CompletionRole role{CompletionRole::user};
   std::string content;
+  std::string reasoning_content{};
+  std::vector<CompletionToolCall> tool_calls{};
+  std::optional<CompletionToolResult> tool_result{};
 
   bool operator==(const CompletionMessage &) const = default;
+
+  [[nodiscard]] static CompletionMessage
+  Assistant(std::string content, std::vector<CompletionToolCall> tool_calls) {
+    return {.role = CompletionRole::assistant,
+            .content = std::move(content),
+            .tool_calls = std::move(tool_calls),
+            .tool_result = std::nullopt};
+  }
+
+  [[nodiscard]] static CompletionMessage Tool(CompletionToolResult result) {
+    return {.role = CompletionRole::tool,
+            .content = {},
+            .tool_calls = {},
+            .tool_result = std::move(result)};
+  }
 };
 
 struct CompletionRequest final {
   domain::ModelConfig model;
   std::vector<CompletionMessage> messages;
+  std::vector<CompletionTool> tools;
+  domain::ReasoningEffort reasoning_effort{domain::ReasoningEffort::medium};
+  bool preserve_reasoning{};
   bool stream{true};
+  std::string permission_scope;
 };
 
 struct CompletionResponse final {
   std::string text;
+  std::string reasoning_content{};
+  std::vector<CompletionToolCall> tool_calls;
   std::int64_t input_tokens{};
   std::int64_t output_tokens{};
 
   bool operator==(const CompletionResponse &) const = default;
 };
+
+enum class CompletionReasoningKind : std::uint8_t {
+  thinking,
+  summary,
+};
+
+struct CompletionTextDelta final {
+  std::string text;
+
+  bool operator==(const CompletionTextDelta &) const = default;
+};
+
+struct CompletionReasoningDelta final {
+  std::string text;
+  CompletionReasoningKind kind{CompletionReasoningKind::thinking};
+  bool starts_new_segment{};
+
+  bool operator==(const CompletionReasoningDelta &) const = default;
+};
+
+enum class CompletionToolCallStatus : std::uint8_t {
+  requested,
+  awaiting_review,
+  running,
+  completed,
+  failed,
+  rejected,
+};
+
+struct CompletionToolCallEvent final {
+  CompletionToolCall call;
+  CompletionToolCallStatus status{CompletionToolCallStatus::requested};
+  std::optional<CompletionToolResult> result;
+
+  bool operator==(const CompletionToolCallEvent &) const = default;
+};
+
+using CompletionEvent =
+    std::variant<CompletionTextDelta, CompletionReasoningDelta,
+                 CompletionToolCallEvent>;
 
 enum class CompletionErrorCode : std::uint8_t {
   unsupported_protocol,
@@ -55,7 +149,24 @@ struct CompletionError final {
 };
 
 struct CompletionObserver final {
+  // One typed stream for assistant prose, reasoning and tool lifecycle.  The
+  // legacy text callback remains temporarily for source compatibility while
+  // callers migrate to on_event.
+  std::function<void(const CompletionEvent &)> on_event{};
   std::function<void(std::string)> on_text_delta;
+  enum class ToolReviewDecision : std::uint8_t {
+    reject,
+    allow_once,
+    allow_always,
+  };
+  struct ToolReviewRequest final {
+    CompletionToolCall call;
+    bool can_allow_always{};
+
+    bool operator==(const ToolReviewRequest &) const = default;
+  };
+  std::function<huxerui::Task<ToolReviewDecision>(ToolReviewRequest)>
+      on_tool_review;
 };
 
 class CompletionGateway {

@@ -23,6 +23,7 @@ struct GenerationState final {
   std::uint64_t generation_id{};
   GenerationPhase phase{GenerationPhase::idle};
   std::string error;
+  std::string streamed_text;
 
   bool operator==(const GenerationState &) const = default;
 };
@@ -38,8 +39,12 @@ public:
 
   [[nodiscard]] std::expected<GenerationWork, SendMessageError>
   Begin(std::string text);
+  [[nodiscard]] std::expected<GenerationWork, SendMessageError>
+  Begin(std::string text, std::vector<domain::InputAttachment> attachments);
   [[nodiscard]] bool Complete(std::uint64_t generation_id,
                               CompletionResponse response);
+  [[nodiscard]] bool AppendTextDelta(std::uint64_t generation_id,
+                                     std::string delta);
   [[nodiscard]] bool Fail(std::uint64_t generation_id,
                           CompletionError error);
   void Cancel() noexcept;

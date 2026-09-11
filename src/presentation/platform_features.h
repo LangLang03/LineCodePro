@@ -39,6 +39,20 @@ struct FeatureAvailability<Feature, HostPlatform::android> final : std::true_typ
 template <PlatformFeature Feature>
 inline constexpr bool FeatureAvailable = FeatureAvailability<Feature>::value;
 
+struct PlatformCapabilities final {
+  HostPlatform host{CurrentHostPlatform()};
+  bool termux_integration{};
+
+  bool operator==(const PlatformCapabilities &) const = default;
+};
+
+consteval PlatformCapabilities CurrentPlatformCapabilities() noexcept {
+  return {
+      .host = CurrentHostPlatform(),
+      .termux_integration = FeatureAvailable<PlatformFeature::termux>,
+  };
+}
+
 template <PlatformFeature Feature, typename Factory>
   requires std::invocable<Factory>
 void IfFeatureAvailable(Factory&& factory) {
@@ -49,5 +63,11 @@ void IfFeatureAvailable(Factory&& factory) {
 
 static_assert(!FeatureAvailability<PlatformFeature::keep_alive, HostPlatform::windows>::value);
 static_assert(FeatureAvailability<PlatformFeature::keep_alive, HostPlatform::android>::value);
+static_assert(
+    !FeatureAvailability<PlatformFeature::termux, HostPlatform::windows>::value);
+static_assert(
+    FeatureAvailability<PlatformFeature::termux, HostPlatform::android>::value);
+static_assert(!CurrentPlatformCapabilities().termux_integration ||
+              CurrentPlatformCapabilities().host == HostPlatform::android);
 
 } // namespace linecode::presentation

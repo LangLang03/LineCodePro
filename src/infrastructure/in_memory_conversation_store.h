@@ -13,6 +13,8 @@ public:
   [[nodiscard]] std::uint64_t AllocateMessageId() noexcept override;
   void Append(domain::ChatMessage message) override;
   void Clear() override;
+  [[nodiscard]] std::optional<domain::ChatMessage>
+  RecallUserMessage(std::uint64_t message_id) override;
 
 private:
   std::vector<domain::ChatMessage> messages_;

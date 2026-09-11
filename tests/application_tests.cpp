@@ -1,5 +1,7 @@
 #include <cassert>
 #include <memory>
+#include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 
@@ -29,6 +31,19 @@ public:
   }
 
   void Clear() override { messages.clear(); }
+
+  [[nodiscard]] std::optional<linecode::domain::ChatMessage>
+  RecallUserMessage(std::uint64_t message_id) override {
+    const auto found = std::ranges::find(messages, message_id,
+                                         &linecode::domain::ChatMessage::id);
+    if (found == messages.end() ||
+        found->role != linecode::domain::MessageRole::user) {
+      return std::nullopt;
+    }
+    auto recalled = *found;
+    messages.erase(found, messages.end());
+    return recalled;
+  }
 
   [[nodiscard]] std::span<const linecode::application::ConversationSummary>
   Conversations() const noexcept override {
@@ -106,11 +121,26 @@ int main() {
 
   store.Append({.id = 41,
                 .role = linecode::domain::MessageRole::assistant,
-                .content = "restored"});
+                .content = "restored",
+                .attachments = {}});
   SendMessage resumed_send{store};
   const auto resumed = resumed_send.Execute("next");
   assert(resumed.has_value());
   assert(resumed->id == 42);
+
+  store.Clear();
+  store.Append({.id = 50,
+                .role = linecode::domain::MessageRole::user,
+                .content = "try again",
+                .attachments = {}});
+  store.Append({.id = 51,
+                .role = linecode::domain::MessageRole::assistant,
+                .content = "answer",
+                .attachments = {}});
+  const auto recalled = store.RecallUserMessage(50);
+  assert(recalled && recalled->content == "try again");
+  assert(store.Messages().empty());
+  assert(!store.RecallUserMessage(51));
 
   linecode::application::ChatSession session{
       std::make_unique<InMemoryConversationStore>()};

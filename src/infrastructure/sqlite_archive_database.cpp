@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -19,7 +18,11 @@
 #include <huxerui/sqlite.h>
 
 #include "infrastructure/archive_json.h"
+#include "infrastructure/archive_redaction.h"
 #include "infrastructure/archive_validation.h"
+#include "infrastructure/legacy_conversation_schema.h"
+#include "infrastructure/legacy_feature_schema.h"
+#include "infrastructure/legacy_project_schema.h"
 
 namespace linecode::infrastructure {
 namespace {
@@ -35,7 +38,6 @@ using huxerui::sqlite::RowView;
 using huxerui::sqlite::Transaction;
 using SqlValue = huxerui::sqlite::Value;
 
-constexpr int kDatabaseSchemaVersion = 4;
 constexpr std::size_t kMessageTextChunkBytes = 64U * 1024U;
 constexpr std::array<std::string_view, 18> kTables{
     "settings",          "projects",          "model_configs",
@@ -71,104 +73,6 @@ std::size_t Utf8ChunkEnd(std::string_view text, std::size_t start) {
 
 DataArchiveError DatabaseError(const huxerui::sqlite::Error &error) {
   return {error.Message()};
-}
-
-std::string Lower(std::string_view value) {
-  std::string lowered;
-  lowered.reserve(value.size());
-  for (const unsigned char c : value) {
-    lowered.push_back(static_cast<char>(std::tolower(c)));
-  }
-  return lowered;
-}
-
-bool IsSensitiveName(std::string_view value) {
-  constexpr std::array keywords{
-      "apikey",      "api_key",     "api-key",    "authorization",
-      "password",    "passwd",      "passphrase", "privatekey",
-      "private_key", "private-key", "secret",     "token",
-      "cookie",
-  };
-  const auto lowered = Lower(value);
-  return std::ranges::any_of(
-      keywords, [&](std::string_view keyword) { return lowered.contains(keyword); });
-}
-
-void RedactRecursive(json::Value &value) {
-  if (auto *object = std::get_if<json::Object>(&value)) {
-    for (auto &[key, child] : *object) {
-      if (IsSensitiveName(key)) {
-        child = std::string{};
-      } else {
-        RedactRecursive(child);
-      }
-    }
-  } else if (auto *array = std::get_if<json::Array>(&value)) {
-    for (auto &child : *array) {
-      RedactRecursive(child);
-    }
-  }
-}
-
-std::string RedactObjectFields(std::string_view raw,
-                               std::span<const std::string_view> fields) {
-  if (raw.empty())
-    return {};
-  auto parsed = json::Parse(raw);
-  if (!parsed)
-    return {};
-  auto *object = std::get_if<json::Object>(&*parsed);
-  if (!object)
-    return {};
-  for (const auto field : fields) {
-    if (auto found = object->find(field); found != object->end())
-      found->second = std::string{};
-  }
-  return json::Serialize(*parsed);
-}
-
-std::string RedactRecursiveJson(std::string_view raw) {
-  if (raw.empty())
-    return {};
-  auto parsed = json::Parse(raw);
-  if (!parsed)
-    return IsSensitiveName(raw) ? std::string{} : std::string{raw};
-  RedactRecursive(*parsed);
-  return json::Serialize(*parsed);
-}
-
-std::string RedactHeaders(std::string_view raw) {
-  if (raw.empty())
-    return "[]";
-  auto parsed = json::Parse(raw);
-  if (!parsed)
-    return {};
-  auto *array = std::get_if<json::Array>(&*parsed);
-  if (!array)
-    return {};
-  for (auto &value : *array) {
-    auto *object = std::get_if<json::Object>(&value);
-    if (!object)
-      continue;
-    const auto *name_value = json::Find(*object, "name");
-    const auto *name = json::AsString(name_value);
-    if (name && IsSensitiveName(*name))
-      (*object)["value"] = std::string{};
-  }
-  return json::Serialize(*parsed);
-}
-
-std::string RedactSettingValue(std::string_view key, std::string_view raw) {
-  if (key == "@lineai_ssh_config") {
-    constexpr std::array<std::string_view, 3> fields{"password", "privateKey",
-                                                     "passphrase"};
-    return RedactObjectFields(raw, fields);
-  }
-  if (key == "@lineai_web_search_config") {
-    constexpr std::array<std::string_view, 1> fields{"apiKey"};
-    return RedactObjectFields(raw, fields);
-  }
-  return IsSensitiveName(key) ? std::string{} : std::string{raw};
 }
 
 std::string Base64Encode(std::span<const std::byte> bytes) {
@@ -289,27 +193,61 @@ void SetStringCell(json::Object &row, std::string_view column,
     (*cell)["value"] = std::move(value);
 }
 
-void RedactRow(std::string_view table, json::Object &row) {
-  if (table == "messages") {
+void RedactMessageRow(json::Object &row) {
+  SetStringCell(row, "content", {});
+  SetStringCell(row, "reasoning_content", {});
+  SetStringCell(row, "raw_json", {});
+}
+
+void RedactMessageTextChunkRow(json::Object &row) {
+  const auto field = RowString(row, "field_name").value_or("");
+  if (field == "raw_json")
     SetStringCell(row, "content", {});
-    SetStringCell(row, "reasoning_content", {});
-    SetStringCell(row, "raw_json", {});
-  } else if (table == "model_configs") {
-    SetStringCell(row, "api_key", {});
-    constexpr std::array<std::string_view, 2> fields{"apiKey", "api_key"};
-    SetStringCell(row, "raw_json",
-                  RedactObjectFields(RowString(row, "raw_json").value_or(""),
-                                     fields));
-  } else if (table == "settings") {
-    const auto key = RowString(row, "key").value_or("");
-    SetStringCell(row, "value",
-                  RedactSettingValue(key, RowString(row, "value").value_or("")));
-  } else if (table == "extension_mcps") {
-    SetStringCell(
-        row, "request_headers_json",
-        RedactHeaders(RowString(row, "request_headers_json").value_or("")));
-    SetStringCell(row, "raw_json",
-                  RedactRecursiveJson(RowString(row, "raw_json").value_or("")));
+}
+
+void RedactModelRow(json::Object &row) {
+  SetStringCell(row, "api_key", {});
+  SetStringCell(
+      row, "raw_json",
+      RedactArchiveJsonSecrets(RowString(row, "raw_json").value_or("")));
+}
+
+void RedactSettingRow(json::Object &row) {
+  const auto key = RowString(row, "key").value_or("");
+  SetStringCell(
+      row, "value",
+      RedactArchiveSettingValue(key, RowString(row, "value").value_or("")));
+}
+
+void RedactMcpRow(json::Object &row) {
+  SetStringCell(
+      row, "request_headers_json",
+      RedactArchiveHeaders(RowString(row, "request_headers_json").value_or("")));
+  SetStringCell(
+      row, "raw_json",
+      RedactArchiveJsonSecrets(RowString(row, "raw_json").value_or("")));
+}
+
+using RowRedactor = void (*)(json::Object &);
+
+struct TableRedactionRule final {
+  std::string_view table;
+  RowRedactor redact;
+};
+
+constexpr std::array kTableRedactionRules{
+    TableRedactionRule{"messages", RedactMessageRow},
+    TableRedactionRule{"message_text_chunks", RedactMessageTextChunkRow},
+    TableRedactionRule{"model_configs", RedactModelRow},
+    TableRedactionRule{"settings", RedactSettingRow},
+    TableRedactionRule{"extension_mcps", RedactMcpRow},
+};
+
+void RedactRow(std::string_view table, json::Object &row) {
+  const auto rule = std::ranges::find(kTableRedactionRules, table,
+                                      &TableRedactionRule::table);
+  if (rule != kTableRedactionRules.end()) {
+    rule->redact(row);
   }
 }
 
@@ -323,8 +261,12 @@ void AppendLegacyMessageText(TableData &chunks,
       existing.emplace(*message_id, *field_name);
   }
 
-  constexpr std::array<std::string_view, 3> fields{
-      "content", "reasoning_content", "raw_json"};
+  // raw_json can contain provider response payloads, cookies, tokens, or
+  // encrypted reasoning continuations.  Attachments have their own typed
+  // table, so compatibility export must never recreate raw_json after the
+  // table redaction pass above.
+  constexpr std::array<std::string_view, 2> fields{"content",
+                                                    "reasoning_content"};
   for (const auto &message : messages) {
     if (message.rows.empty())
       continue;
@@ -455,7 +397,9 @@ PrepareImport(const json::Object &tables,
     const auto *rows = table ? json::AsArray(json::Find(*table, "rows")) : nullptr;
     if (!rows)
       continue;
-    PreparedTable output{.name = std::string{table_name}};
+    PreparedTable output{.name = std::string{table_name},
+                         .columns = {},
+                         .rows = {}};
     for (const auto &row_value : *rows) {
       const auto *row = json::AsObject(&row_value);
       if (!row)
@@ -540,7 +484,11 @@ huxerui::Task<DataArchiveResult<ArchiveDatabaseExport>>
 SqliteArchiveDatabase::ExportRedacted() {
   auto opened = co_await Database::OpenAsync(
       database_file_, huxerui::sqlite::OpenOptions{
-                          .mode = huxerui::sqlite::OpenMode::ReadOnly});
+                          // Lib-SQLite verifies PRAGMA journal_mode during
+                          // open, which SQLite rejects on a read-only handle.
+                          // ReadWrite still refuses a missing database and
+                          // this export path issues no mutating statements.
+                          .mode = huxerui::sqlite::OpenMode::ReadWrite});
   if (!opened)
     co_return std::unexpected(DatabaseError(opened.Error()));
 
@@ -595,7 +543,7 @@ SqliteArchiveDatabase::ExportRedacted() {
   }
 
   json::Object root{{"format", "linecode-database"},
-                    {"schemaVersion", std::int64_t{kDatabaseSchemaVersion}},
+                    {"schemaVersion", kCurrentArchiveDatabaseSchemaVersion},
                     {"tables", std::move(table_json)}};
   co_return ArchiveDatabaseExport{.json = json::Serialize(root),
                                   .summary = summary};
@@ -603,7 +551,8 @@ SqliteArchiveDatabase::ExportRedacted() {
 
 huxerui::Task<DataArchiveResult<domain::ArchiveSummary>>
 SqliteArchiveDatabase::ReplaceFromSnapshot(std::string text) {
-  auto validated = ValidateDatabaseSnapshot(text, kDatabaseSchemaVersion);
+  auto validated =
+      ValidateDatabaseSnapshot(text, kCurrentArchiveDatabaseSchemaVersion);
   if (!validated) {
     co_return std::unexpected(DataArchiveError{validated.error().message});
   }
@@ -617,7 +566,7 @@ SqliteArchiveDatabase::ReplaceFromSnapshot(std::string text) {
                                       : nullptr;
   if (!version || *version < 0)
     co_return std::unexpected(DataArchiveError{"invalid database schemaVersion"});
-  if (*version > kDatabaseSchemaVersion) {
+  if (*version > kCurrentArchiveDatabaseSchemaVersion) {
     co_return std::unexpected(DataArchiveError{
         "archive was created by a newer LineCode database schema"});
   }
@@ -634,6 +583,12 @@ SqliteArchiveDatabase::ReplaceFromSnapshot(std::string text) {
   std::map<std::string, std::vector<std::string>, std::less<>> live_columns;
   auto schema = co_await opened->TransactionAsync(
       [&](Transaction &transaction) -> Result<void> {
+        auto ensured = legacy_feature_schema::Ensure(transaction);
+        if (!ensured)
+          return ensured.Error();
+        auto projects = legacy_project_schema::Ensure(transaction);
+        if (!projects)
+          return projects.Error();
         auto existing = ExistingTables(transaction);
         if (!existing)
           return existing.Error();
@@ -683,6 +638,217 @@ SqliteArchiveDatabase::ReplaceFromSnapshot(std::string text) {
       .models = CountRows(*prepared, "model_configs"),
       .settings = CountRows(*prepared, "settings"),
   };
+}
+
+huxerui::Task<DataArchiveResult<domain::ArchiveSummary>>
+SqliteArchiveDatabase::ImportLegacy(application::LegacyArchiveData data,
+                                    domain::ArchiveImportMode mode) {
+  auto opened = co_await Database::OpenAsync(
+      database_file_, huxerui::sqlite::OpenOptions{
+                          .create_parent_directories = true});
+  if (!opened)
+    co_return std::unexpected(DatabaseError(opened.Error()));
+
+  const bool replace = mode == domain::ArchiveImportMode::replace;
+  auto imported = co_await opened->TransactionAsync(
+      [data = std::move(data), replace](Transaction &transaction)
+          -> Result<domain::ArchiveSummary> {
+        auto existing = ExistingTables(transaction);
+        if (!existing)
+          return existing.Error();
+        constexpr std::array required{"settings", "model_configs",
+                                      "conversations", "messages",
+                                      "message_text_chunks"};
+        if (!std::ranges::all_of(required, [&](std::string_view table) {
+              return existing->contains(table);
+            })) {
+          return huxerui::sqlite::Error{
+              huxerui::sqlite::ErrorCode::SchemaMismatch,
+              "legacy archive target database schema is incomplete",
+              "validate legacy archive target schema"};
+        }
+
+        if (replace) {
+          if (existing->contains("conversation_index")) {
+            auto removed = transaction.Execute("DELETE FROM conversation_index");
+            if (!removed)
+              return removed.Error();
+          }
+          auto conversations = transaction.Execute("DELETE FROM conversations");
+          if (!conversations)
+            return conversations.Error();
+          auto models = transaction.Execute("DELETE FROM model_configs");
+          if (!models)
+            return models.Error();
+          auto settings = transaction.Execute(
+              "DELETE FROM settings WHERE key GLOB ? OR key GLOB ?",
+              std::string{"@lineai_*"}, std::string{"@linecode_*"});
+          if (!settings)
+            return settings.Error();
+        }
+
+        const auto imported_at = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                     std::chrono::system_clock::now()
+                                         .time_since_epoch())
+                                     .count();
+        for (std::size_t index = 0; index < data.models.size(); ++index) {
+          const auto &model = data.models[index];
+          auto selected = transaction.Query<std::string>(
+              "SELECT id FROM model_configs WHERE selected = 1 "
+              "ORDER BY updated_at DESC LIMIT 1",
+              [](const RowView &row) { return row.Get<std::string>(0); });
+          if (!selected)
+            return selected.Error();
+          if (selected->empty()) {
+            selected = transaction.Query<std::string>(
+                "SELECT id FROM model_configs "
+                "ORDER BY selected DESC, updated_at DESC LIMIT 1",
+                [](const RowView &row) { return row.Get<std::string>(0); });
+            if (!selected)
+              return selected.Error();
+          }
+          const std::int64_t selected_value =
+              !selected->empty() && selected->front() == model.config.id ? 1 : 0;
+          const std::int64_t timestamp =
+              imported_at + static_cast<std::int64_t>(index);
+          auto saved = transaction.Execute(
+              "INSERT OR REPLACE INTO model_configs "
+              "(id, name, protocol_type, provider_label, base_url, api_key, "
+              "model_id, tool_call_limit, compression_model_enabled, "
+              "compression_model_auto, compression_model_id, context_size, "
+              "selected, raw_json, created_at, updated_at) "
+              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              model.config.id, model.config.name,
+              std::string{domain::ModelProtocolStorageName(model.config.protocol)},
+              model.config.provider_label, model.config.base_url,
+              model.config.api_key, model.config.model_id,
+              static_cast<std::int64_t>(model.config.tool_call_limit),
+              model.config.compression_model_enabled,
+              model.config.compression_model_auto,
+              model.config.compression_model_id,
+              static_cast<std::int64_t>(model.config.context_size),
+              selected_value, model.raw_json, timestamp, timestamp);
+          if (!saved)
+            return saved.Error();
+        }
+        if (!data.selected_model_id.empty()) {
+          auto cleared = transaction.Execute(
+              "UPDATE model_configs SET selected = 0");
+          if (!cleared)
+            return cleared.Error();
+          auto selected = transaction.Execute(
+              "UPDATE model_configs SET selected = 1, updated_at = ? WHERE id = ?",
+              imported_at + static_cast<std::int64_t>(data.models.size()),
+              data.selected_model_id);
+          if (!selected)
+            return selected.Error();
+        }
+
+        for (const auto &conversation : data.conversations) {
+          auto saved_conversation = transaction.Execute(
+              "INSERT OR REPLACE INTO conversations "
+              "(id, title, project_id, created_at, updated_at, current, raw_json) "
+              "VALUES (?, ?, ?, ?, ?, 0, ?)",
+              conversation.id, conversation.title, std::string{},
+              conversation.created_at, conversation.updated_at,
+              conversation.raw_json);
+          if (!saved_conversation)
+            return saved_conversation.Error();
+          auto removed = transaction.Execute(
+              "DELETE FROM messages WHERE conversation_id = ?",
+              conversation.id);
+          if (!removed)
+            return removed.Error();
+          for (std::size_t order = 0; order < conversation.messages.size();
+               ++order) {
+            const auto &message = conversation.messages[order];
+            auto saved_message = transaction.Execute(
+                "INSERT OR REPLACE INTO messages "
+                "(id, conversation_id, local_order, role, content, "
+                "reasoning_content, timestamp, streaming, hidden, "
+                "exclude_from_context, tool_call_id, tool_name, is_error, "
+                "raw_json) VALUES (?, ?, ?, ?, '', '', ?, ?, ?, ?, ?, ?, ?, '')",
+                message.id, conversation.id, static_cast<std::int64_t>(order),
+                message.role, message.timestamp, message.streaming,
+                message.hidden, message.exclude_from_context,
+                message.tool_call_id, message.tool_name, message.is_error);
+            if (!saved_message)
+              return saved_message.Error();
+            const std::array fields{
+                std::pair<std::string_view, std::string_view>{"content",
+                                                              message.content},
+                std::pair<std::string_view, std::string_view>{
+                    "reasoning_content", message.reasoning_content},
+                std::pair<std::string_view, std::string_view>{"raw_json",
+                                                              message.raw_json},
+            };
+            for (const auto &[field, content] : fields) {
+              const auto chunks = legacy_schema::SplitMessageText(content);
+              for (std::size_t chunk_order = 0; chunk_order < chunks.size();
+                   ++chunk_order) {
+                auto saved_chunk = transaction.Execute(
+                    "INSERT INTO message_text_chunks "
+                    "(message_id, field_name, chunk_order, content) "
+                    "VALUES (?, ?, ?, ?)",
+                    message.id, std::string{field},
+                    static_cast<std::int64_t>(chunk_order),
+                    std::string{chunks[chunk_order]});
+                if (!saved_chunk)
+                  return saved_chunk.Error();
+              }
+            }
+          }
+        }
+        if (!data.current_conversation_id.empty()) {
+          auto cleared =
+              transaction.Execute("UPDATE conversations SET current = 0");
+          if (!cleared)
+            return cleared.Error();
+          auto selected = transaction.Execute(
+              "UPDATE conversations SET current = 1 WHERE id = ?",
+              data.current_conversation_id);
+          if (!selected)
+            return selected.Error();
+        }
+
+        for (const auto &[key, value] : data.settings) {
+          auto saved = transaction.Execute(
+              "INSERT INTO settings (key, value, type, updated_at) "
+              "VALUES (?, ?, 'string', ?) "
+              "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
+              "type = excluded.type, updated_at = excluded.updated_at",
+              key, value, imported_at);
+          if (!saved)
+            return saved.Error();
+        }
+
+        const auto count = [&](std::string sql) -> Result<std::uint64_t> {
+          auto rows = transaction.Query<std::int64_t>(
+              std::move(sql), [](const RowView &row) {
+                return row.Get<std::int64_t>(0);
+              });
+          if (!rows)
+            return rows.Error();
+          return rows->empty() ? 0U : static_cast<std::uint64_t>(rows->front());
+        };
+        auto conversations = count("SELECT COUNT(*) FROM conversations");
+        if (!conversations)
+          return conversations.Error();
+        auto models = count("SELECT COUNT(*) FROM model_configs");
+        if (!models)
+          return models.Error();
+        auto settings = count(
+            "SELECT COUNT(*) FROM settings WHERE key GLOB '@lineai_*' OR "
+            "key GLOB '@linecode_*'");
+        if (!settings)
+          return settings.Error();
+        return domain::ArchiveSummary{.conversations = *conversations,
+                                      .models = *models,
+                                      .settings = *settings};
+      });
+  if (!imported)
+    co_return std::unexpected(DatabaseError(imported.Error()));
+  co_return *imported;
 }
 
 } // namespace linecode::infrastructure

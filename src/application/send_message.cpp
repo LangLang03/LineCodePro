@@ -1,25 +1,51 @@
 #include "application/send_message.h"
 
-#include <algorithm>
-#include <cctype>
-#include <ranges>
 #include <string_view>
 #include <utility>
+
+#include "application/legacy_attachment_policy.h"
 
 namespace linecode::application {
 namespace {
 
-bool IsBlank(std::string_view text) {
-  return std::ranges::all_of(text, [](unsigned char character) {
-    return std::isspace(character) != 0;
-  });
+std::string Trim(std::string text) {
+  std::string_view view{text};
+  while (!view.empty() &&
+         static_cast<unsigned char>(view.front()) <=
+             static_cast<unsigned char>(' ')) {
+    view.remove_prefix(1);
+  }
+  while (!view.empty() &&
+         static_cast<unsigned char>(view.back()) <=
+             static_cast<unsigned char>(' ')) {
+    view.remove_suffix(1);
+  }
+  if (view.data() == text.data() && view.size() == text.size()) {
+    return text;
+  }
+  return std::string{view};
 }
 
 } // namespace
 
+SendMessage::SendMessage(ConversationStore &store) noexcept
+    : SendMessage(store, DefaultAttachmentPolicy()) {}
+
+SendMessage::SendMessage(ConversationStore &store,
+                         const AttachmentPolicy &attachment_policy) noexcept
+    : store_(store), attachment_policy_(attachment_policy) {}
+
 std::expected<domain::ChatMessage, SendMessageError>
 SendMessage::Execute(std::string text) {
-  if (text.empty() || IsBlank(text)) {
+  return Execute(std::move(text), {});
+}
+
+std::expected<domain::ChatMessage, SendMessageError>
+SendMessage::Execute(std::string text,
+                     std::vector<domain::InputAttachment> attachments) {
+  text = Trim(std::move(text));
+  attachments = attachment_policy_.Sanitize(attachments);
+  if (text.empty() && attachments.empty()) {
     return std::unexpected(SendMessageError::empty);
   }
 
@@ -27,6 +53,7 @@ SendMessage::Execute(std::string text) {
       .id = store_.AllocateMessageId(),
       .role = domain::MessageRole::user,
       .content = std::move(text),
+      .attachments = std::move(attachments),
   };
   store_.Append(message);
   return message;

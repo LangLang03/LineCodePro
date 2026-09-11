@@ -1,5 +1,7 @@
 #include "presentation/screens/settings_screen.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -27,6 +29,7 @@ struct SettingsItem final {
 enum class SettingsRowKind : std::uint8_t {
   grouped,
   tutorial,
+  count,
 };
 
 struct SettingsRowMetrics final {
@@ -35,22 +38,27 @@ struct SettingsRowMetrics final {
   float chevron_size;
 };
 
-constexpr SettingsRowMetrics MetricsFor(SettingsRowKind kind) noexcept {
-  if (kind == SettingsRowKind::tutorial) {
-    return {
+constexpr std::array kSettingsRowMetrics{
+    SettingsRowMetrics{
+        // The legacy grouped rows measure to 170 px at 420 dpi. Keeping the
+        // logical minimum explicit avoids HuxerUI font metrics making them 68dp.
+        .minimum_height = 64.75F,
+        .icon_corner_radius = 18.0F,
+        .chevron_size = 16.0F,
+    },
+    SettingsRowMetrics{
         .minimum_height = 68.0F,
         .icon_corner_radius = 8.0F,
         .chevron_size = 17.0F,
-    };
-  }
-  return {
-      // The legacy grouped rows measure to 170 px at 420 dpi. Keeping the
-      // logical minimum explicit avoids HuxerUI font metrics making them 68dp.
-      .minimum_height = 64.75F,
-      .icon_corner_radius = 18.0F,
-      .chevron_size = 16.0F,
-  };
+    },
+};
+
+constexpr SettingsRowMetrics MetricsFor(SettingsRowKind kind) noexcept {
+  return kSettingsRowMetrics[std::to_underlying(kind)];
 }
+
+static_assert(kSettingsRowMetrics.size() ==
+              std::to_underlying(SettingsRowKind::count));
 
 TextStyle LabelStyle(float size, FontWeight weight = FontWeight::Regular,
                      Color color = colors::text) {
@@ -148,48 +156,63 @@ void AppendSection(
 }
 
 StringResource RouteTitle(domain::AppRoute route) {
-  switch (*route.PageValue()) {
-  case domain::AppRoute::tutorial:
-    return app::strings::settings_row_tutorial_title;
-  case domain::AppRoute::models:
-    return app::strings::settings_row_models_title;
-  case domain::AppRoute::llm:
-    return app::strings::settings_row_llm_title;
-  case domain::AppRoute::prompt_templates:
-    return app::strings::screen_prompt_templates_title;
-  case domain::AppRoute::mcp:
-    return app::strings::settings_row_mcp_title;
-  case domain::AppRoute::tool_settings:
-    return app::strings::settings_row_tool_settings_title;
-  case domain::AppRoute::extensions:
-    return app::strings::settings_row_extensions_title;
-  case domain::AppRoute::input:
-    return app::strings::settings_row_input_title;
-  case domain::AppRoute::theme:
-    return app::strings::settings_row_theme_title;
-  case domain::AppRoute::output:
-    return app::strings::settings_row_output_title;
-  case domain::AppRoute::tool_call_preview:
-    return app::strings::screen_toolcall_preview_title;
-  case domain::AppRoute::security:
-    return app::strings::settings_row_security_title;
-  case domain::AppRoute::storage:
-    return app::strings::settings_row_storage_title;
-  case domain::AppRoute::memory:
-    return app::strings::settings_row_memory_title;
-  case domain::AppRoute::data:
-    return app::strings::settings_row_data_title;
-  case domain::AppRoute::error_logs:
-    return app::strings::settings_row_error_logs_title;
-  case domain::AppRoute::keep_alive:
-    return app::strings::settings_row_keep_alive_title;
-  case domain::AppRoute::about:
-    return app::strings::settings_row_about_title;
-  case domain::AppRoute::licenses:
-    return app::strings::screen_licenses_title;
-  case domain::AppRoute::settings:
+  struct RouteTitlePresentation final {
+    domain::AppRoute::Page page;
+    StringResource title;
+  };
+  const std::array presentations{
+      RouteTitlePresentation{domain::AppRoute::tutorial,
+                             app::strings::settings_row_tutorial_title},
+      RouteTitlePresentation{domain::AppRoute::models,
+                             app::strings::settings_row_models_title},
+      RouteTitlePresentation{domain::AppRoute::llm,
+                             app::strings::settings_row_llm_title},
+      RouteTitlePresentation{domain::AppRoute::prompt_templates,
+                             app::strings::screen_prompt_templates_title},
+      RouteTitlePresentation{domain::AppRoute::mcp,
+                             app::strings::settings_row_mcp_title},
+      RouteTitlePresentation{domain::AppRoute::ssh_settings,
+                             app::strings::screen_ssh_title},
+      RouteTitlePresentation{domain::AppRoute::termux_integration,
+                             app::strings::screen_termux_title},
+      RouteTitlePresentation{domain::AppRoute::tool_settings,
+                             app::strings::settings_row_tool_settings_title},
+      RouteTitlePresentation{domain::AppRoute::extensions,
+                             app::strings::settings_row_extensions_title},
+      RouteTitlePresentation{domain::AppRoute::input,
+                             app::strings::settings_row_input_title},
+      RouteTitlePresentation{domain::AppRoute::theme,
+                             app::strings::settings_row_theme_title},
+      RouteTitlePresentation{domain::AppRoute::output,
+                             app::strings::settings_row_output_title},
+      RouteTitlePresentation{domain::AppRoute::tool_call_preview,
+                             app::strings::screen_toolcall_preview_title},
+      RouteTitlePresentation{domain::AppRoute::security,
+                             app::strings::settings_row_security_title},
+      RouteTitlePresentation{domain::AppRoute::storage,
+                             app::strings::settings_row_storage_title},
+      RouteTitlePresentation{domain::AppRoute::memory,
+                             app::strings::settings_row_memory_title},
+      RouteTitlePresentation{domain::AppRoute::data,
+                             app::strings::settings_row_data_title},
+      RouteTitlePresentation{domain::AppRoute::error_logs,
+                             app::strings::settings_row_error_logs_title},
+      RouteTitlePresentation{domain::AppRoute::keep_alive,
+                             app::strings::settings_row_keep_alive_title},
+      RouteTitlePresentation{domain::AppRoute::about,
+                             app::strings::settings_row_about_title},
+      RouteTitlePresentation{domain::AppRoute::licenses,
+                             app::strings::screen_licenses_title},
+      RouteTitlePresentation{domain::AppRoute::settings,
+                             app::strings::screen_settings_title},
+  };
+  const auto *page = route.PageValue();
+  if (!page)
     return app::strings::screen_settings_title;
-  }
+  const auto found = std::ranges::find(presentations, *page,
+                                       &RouteTitlePresentation::page);
+  if (found != presentations.end())
+    return found->title;
   return app::strings::screen_settings_title;
 }
 

@@ -35,6 +35,54 @@ constexpr std::size_t kMaximumTreeIndentDepth = 5;
 constexpr Color kJavascriptFile = Color::Rgb(240, 219, 79);
 constexpr Color kXmlFile = Color::Rgb(255, 159, 10);
 
+struct DrawerTabSelection final {
+  DrawerTab active;
+  std::function<void(DrawerTab)> select;
+};
+
+struct DrawerTabGeometry final {
+  float header_bottom_padding;
+  float button_height;
+  float tabs_bottom_padding;
+};
+
+using HeaderActionsFactory = void (*)(std::vector<View>&, const DrawerActions&);
+using TabBodyFactory = View (*)(State<bool>, const DrawerModel&,
+                                const DrawerActions&);
+using TabActivation = void (*)(const DrawerActions&);
+
+struct DrawerTabPresentation final {
+  DrawerTab tab;
+  StringResource header_title;
+  StringResource tab_label;
+  ImageResource tab_icon;
+  HeaderActionsFactory append_header_actions;
+  TabActivation activate;
+  DrawerTabGeometry geometry;
+  TabBodyFactory body;
+};
+
+using FileRuleMatcher = bool (*)(const DrawerFileNode&, std::string_view);
+using FileTintFactory = Color (*)();
+
+struct FilePresentationRule final {
+  FileRuleMatcher matches;
+  ImageResource icon;
+  FileTintFactory tint;
+  float icon_size;
+};
+
+struct FilePresentation final {
+  ImageResource icon;
+  Color tint;
+  float icon_size;
+};
+
+View ConversationBody(State<bool> drawer_open, const DrawerModel& model,
+                      const DrawerActions& actions);
+View FileBody(State<bool> drawer_open, const DrawerModel& model,
+              const DrawerActions& actions);
+
 consteval float HeaderTopPadding() {
   if constexpr (CurrentHostPlatform() == HostPlatform::android) {
     return 4.0F;
@@ -86,6 +134,69 @@ View InlineIcon(ImageResource image, Color tint, float size) {
       .With(Frame{.width = size, .height = size});
 }
 
+void AppendNoHeaderActions(std::vector<View>&, const DrawerActions&) {}
+
+void AppendFileHeaderActions(std::vector<View>& children,
+                             const DrawerActions& actions) {
+  children.emplace_back(ActionIcon(
+      app::images::refresh_cw, colors::accent, kHeaderActionSize, 16.0F,
+      [callback = actions.on_file_tree_refresh] { InvokeIfPresent(callback); }));
+}
+
+void ActivateWithoutSideEffect(const DrawerActions&) {}
+
+void ActivateFiles(const DrawerActions& actions) {
+  InvokeIfPresent(actions.on_file_tree_activated);
+}
+
+const std::array kDrawerTabPresentations{
+    DrawerTabPresentation{
+        .tab = DrawerTab::conversations,
+        .header_title = app::strings::drawer_title_conversations,
+        .tab_label = app::strings::drawer_tab_conversations,
+        .tab_icon = app::images::message_square,
+        .append_header_actions = &AppendNoHeaderActions,
+        .activate = &ActivateWithoutSideEffect,
+        .geometry =
+            {
+                .header_bottom_padding = 25.14F,
+                .button_height = 35.14F,
+                .tabs_bottom_padding = 11.62F,
+            },
+        .body = &ConversationBody,
+    },
+    DrawerTabPresentation{
+        .tab = DrawerTab::files,
+        .header_title = app::strings::drawer_title_files,
+        .tab_label = app::strings::drawer_tab_files,
+        .tab_icon = app::images::folder_open,
+        .append_header_actions = &AppendFileHeaderActions,
+        .activate = &ActivateFiles,
+        .geometry =
+            {
+                .header_bottom_padding = 24.0F,
+                .button_height = 34.76F,
+                .tabs_bottom_padding = 12.0F,
+            },
+        .body = &FileBody,
+    },
+};
+
+constexpr std::size_t DrawerTabIndex(DrawerTab tab) noexcept {
+  return std::to_underlying(tab);
+}
+
+static_assert(DrawerTabIndex(DrawerTab::conversations) == 0);
+static_assert(DrawerTabIndex(DrawerTab::files) == 1);
+static_assert(kDrawerTabPresentations.size() == DrawerTabIndex(DrawerTab::count));
+
+const DrawerTabPresentation& DrawerTabPresentationFor(DrawerTab tab) {
+  return kDrawerTabPresentations[DrawerTabIndex(tab)];
+}
+
+View RenderDrawer(State<bool> drawer_open, const DrawerTabSelection& selection,
+                  const DrawerModel& model, const DrawerActions& actions);
+
 std::string FormatConversationTime(std::int64_t updated_at_millis) {
   if (updated_at_millis <= 0) {
     return {};
@@ -117,20 +228,13 @@ std::string FormatConversationTime(std::int64_t updated_at_millis) {
   return formatted;
 }
 
-View Header(bool files_active, const DrawerActions &actions) {
+View Header(const DrawerTabPresentation& presentation,
+            const DrawerActions& actions) {
   std::vector<View> children;
-  children.emplace_back(Text(files_active
-                                 ? app::strings::drawer_title_files
-                                 : app::strings::drawer_title_conversations)
+  children.emplace_back(Text(presentation.header_title)
                             .Style(DrawerTextStyle(17.0F, FontWeight::Bold))
                             .With(Grow()));
-  if (files_active) {
-    children.emplace_back(ActionIcon(app::images::refresh_cw, colors::accent,
-                                     kHeaderActionSize, 16.0F,
-                                     [callback = actions.on_file_tree_refresh] {
-                                       InvokeIfPresent(callback);
-                                     }));
-  }
+  std::invoke(presentation.append_header_actions, children, actions);
 
   return Row(std::move(children))
       .With(Padding(EdgeInsets{
@@ -139,7 +243,7 @@ View Header(bool files_active, const DrawerActions &actions) {
                 // The legacy text-only title row is 3 physical pixels taller
                 // than HuxerUI's font-driven intrinsic row at 420 dpi.  The
                 // file header is already governed by its 32dp refresh well.
-                .bottom = files_active ? 24.0F : 25.14F,
+                .bottom = presentation.geometry.header_bottom_padding,
                 .left = 24.0F,
             }),
             Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center));
@@ -201,35 +305,32 @@ View DrawerTabButton(ImageResource image, StringResource label, bool active,
             Focusable(), PointerCursor(PointerCursorKind::Hand));
 }
 
-View DrawerTabs(State<std::size_t> selected_tab, const DrawerActions &actions) {
-  const std::size_t active = std::min(selected_tab.Get(), std::size_t{1});
-  const bool files_active = active == static_cast<std::size_t>(DrawerTab::files);
-  const float button_height = files_active ? 34.76F : 35.14F;
-  View tabs =
-      Row{
-          DrawerTabButton(app::images::message_square,
-                          app::strings::drawer_tab_conversations, active == 0,
-                          button_height,
-                          [selected_tab] {
-                            selected_tab = static_cast<std::size_t>(
-                                DrawerTab::conversations);
-                          }),
-          DrawerTabButton(
-              app::images::folder_open, app::strings::drawer_tab_files,
-              active == 1, button_height,
-              [selected_tab, callback = actions.on_file_tree_activated] {
-                if (selected_tab.Get() !=
-                    static_cast<std::size_t>(DrawerTab::files)) {
-                  selected_tab = static_cast<std::size_t>(DrawerTab::files);
-                  InvokeIfPresent(callback);
-                }
-              }),
-      }
-          .With(Padding(2.0F), Spacing(0.0F),
-                CrossAlign(CrossAxisAlignment::Stretch), Grow());
+View DrawerTabs(const DrawerTabSelection& selection,
+                const DrawerTabPresentation& active_presentation,
+                const DrawerActions& actions) {
+  std::vector<View> buttons;
+  buttons.reserve(kDrawerTabPresentations.size());
+  for (const auto& presentation : kDrawerTabPresentations) {
+    buttons.emplace_back(DrawerTabButton(
+        presentation.tab_icon, presentation.tab_label,
+        presentation.tab == selection.active,
+        active_presentation.geometry.button_height,
+        [selection, tab = presentation.tab, activate = presentation.activate,
+         actions] {
+          if (selection.active == tab) {
+            return;
+          }
+          std::invoke(selection.select, tab);
+          std::invoke(activate, actions);
+        }));
+  }
+  View tabs = Row(std::move(buttons))
+                  .With(Padding(2.0F), Spacing(0.0F),
+                        CrossAlign(CrossAxisAlignment::Stretch), Grow());
   return Row{std::move(tabs)}.With(
       Padding(EdgeInsets{.right = 16.0F,
-                         .bottom = files_active ? 12.0F : 11.62F,
+                         .bottom =
+                             active_presentation.geometry.tabs_bottom_padding,
                          .left = 16.0F}));
 }
 
@@ -326,14 +427,6 @@ View ConversationBody(State<bool> drawer_open, const DrawerModel &model,
       .With(Grow(), CrossAlign(CrossAxisAlignment::Stretch));
 }
 
-enum class FilePresentation {
-  directory_closed,
-  directory_open,
-  code,
-  text,
-  generic,
-};
-
 std::string Lowercase(std::string_view value) {
   std::string result(value);
   std::ranges::transform(result, result.begin(), [](unsigned char character) {
@@ -347,66 +440,88 @@ bool EndsWith(std::string_view value, std::string_view suffix) {
          value.substr(value.size() - suffix.size()) == suffix;
 }
 
-FilePresentation FileKind(const DrawerFileNode &node) {
-  if (node.directory) {
-    return node.expanded ? FilePresentation::directory_open
-                         : FilePresentation::directory_closed;
-  }
+constexpr std::array kCodeFileExtensions{
+    std::string_view{".java"}, std::string_view{".kt"},
+    std::string_view{".js"},   std::string_view{".ts"},
+    std::string_view{".tsx"},  std::string_view{".jsx"},
+    std::string_view{".json"}, std::string_view{".gradle"},
+};
 
-  const std::string lower = Lowercase(node.name);
-  constexpr std::array code_extensions{
-      std::string_view{".java"},   std::string_view{".kt"},
-      std::string_view{".js"},     std::string_view{".ts"},
-      std::string_view{".tsx"},    std::string_view{".jsx"},
-      std::string_view{".xml"},    std::string_view{".json"},
-      std::string_view{".gradle"},
+constexpr std::array kTextFileExtensions{
+    std::string_view{".md"},
+    std::string_view{".txt"},
+    std::string_view{".log"},
+};
+
+template <std::size_t Size>
+bool HasExtension(std::string_view path,
+                  const std::array<std::string_view, Size>& extensions) {
+  return std::ranges::any_of(extensions, [path](std::string_view extension) {
+    return EndsWith(path, extension);
+  });
+}
+
+bool MatchesOpenDirectory(const DrawerFileNode& node, std::string_view) {
+  return node.directory && node.expanded;
+}
+
+bool MatchesClosedDirectory(const DrawerFileNode& node, std::string_view) {
+  return node.directory && !node.expanded;
+}
+
+bool MatchesXmlFile(const DrawerFileNode& node, std::string_view lowercase_name) {
+  return !node.directory && EndsWith(lowercase_name, ".xml");
+}
+
+bool MatchesCodeFile(const DrawerFileNode& node,
+                     std::string_view lowercase_name) {
+  return !node.directory && HasExtension(lowercase_name, kCodeFileExtensions);
+}
+
+bool MatchesTextFile(const DrawerFileNode& node,
+                     std::string_view lowercase_name) {
+  return !node.directory && HasExtension(lowercase_name, kTextFileExtensions);
+}
+
+bool MatchesAnyFile(const DrawerFileNode&, std::string_view) { return true; }
+
+Color AccentFileTint() { return colors::accent; }
+Color SecondaryFileTint() { return colors::secondary; }
+Color TertiaryFileTint() { return colors::tertiary; }
+Color JavascriptFileTint() { return kJavascriptFile; }
+Color XmlFileTint() { return kXmlFile; }
+
+const std::array kFilePresentationRules{
+    FilePresentationRule{&MatchesOpenDirectory, app::images::folder_open,
+                         &AccentFileTint, 16.0F},
+    FilePresentationRule{&MatchesClosedDirectory, app::images::folder,
+                         &SecondaryFileTint, 16.0F},
+    FilePresentationRule{&MatchesXmlFile, app::images::file_code, &XmlFileTint,
+                         14.0F},
+    FilePresentationRule{&MatchesCodeFile, app::images::file_code,
+                         &JavascriptFileTint, 14.0F},
+    FilePresentationRule{&MatchesTextFile, app::images::file_text,
+                         &SecondaryFileTint, 14.0F},
+    FilePresentationRule{&MatchesAnyFile, app::images::file, &TertiaryFileTint,
+                         14.0F},
+};
+
+FilePresentation FilePresentationFor(const DrawerFileNode& node) {
+  const std::string lowercase_name = Lowercase(node.name);
+  const auto rule = std::ranges::find_if(
+      kFilePresentationRules, [&node, lowercase_name](const auto& candidate) {
+        return std::invoke(candidate.matches, node, lowercase_name);
+      });
+  return {
+      .icon = rule->icon,
+      .tint = std::invoke(rule->tint),
+      .icon_size = rule->icon_size,
   };
-  if (std::ranges::any_of(code_extensions, [&](std::string_view extension) {
-        return EndsWith(lower, extension);
-      })) {
-    return FilePresentation::code;
-  }
-  if (EndsWith(lower, ".md") || EndsWith(lower, ".txt") ||
-      EndsWith(lower, ".log")) {
-    return FilePresentation::text;
-  }
-  return FilePresentation::generic;
-}
-
-ImageResource FileImage(FilePresentation presentation) {
-  switch (presentation) {
-  case FilePresentation::directory_closed:
-    return app::images::folder;
-  case FilePresentation::directory_open:
-    return app::images::folder_open;
-  case FilePresentation::code:
-    return app::images::file_code;
-  case FilePresentation::text:
-    return app::images::file_text;
-  case FilePresentation::generic:
-    return app::images::file;
-  }
-  return app::images::file;
-}
-
-Color FileColor(const DrawerFileNode &node, FilePresentation presentation) {
-  if (presentation == FilePresentation::directory_open) {
-    return colors::accent;
-  }
-  if (presentation == FilePresentation::directory_closed ||
-      presentation == FilePresentation::text) {
-    return colors::secondary;
-  }
-  if (presentation == FilePresentation::code) {
-    return EndsWith(Lowercase(node.name), ".xml") ? kXmlFile : kJavascriptFile;
-  }
-  return colors::tertiary;
 }
 
 View FileRow(const DrawerFileNode &node, std::size_t depth, bool root,
              const DrawerActions &actions) {
-  const FilePresentation presentation = FileKind(node);
-  const float icon_size = node.directory ? 16.0F : 14.0F;
+  const FilePresentation presentation = FilePresentationFor(node);
   const DrawerFileTarget target{
       .path = node.path,
       .name = node.name,
@@ -414,8 +529,8 @@ View FileRow(const DrawerFileNode &node, std::size_t depth, bool root,
       .root = root,
   };
   std::vector<View> content;
-  content.emplace_back(InlineIcon(FileImage(presentation),
-                                  FileColor(node, presentation), icon_size));
+  content.emplace_back(
+      InlineIcon(presentation.icon, presentation.tint, presentation.icon_size));
   // Spacer owns Grow(1) by default.  The legacy tree uses a fixed 8 dp icon
   // margin, so a Spacer here pushes leaf names across the whole row.
   content.emplace_back(Stack{}.With(Frame{.width = 8.0F, .height = 1.0F}));
@@ -490,7 +605,8 @@ View ProjectStrip(const DrawerModel &model, const DrawerActions &actions) {
       Padding(EdgeInsets{.right = 16.0F, .bottom = 8.0F, .left = 16.0F}));
 }
 
-View FileBody(const DrawerModel &model, const DrawerActions &actions) {
+View FileBody(State<bool>, const DrawerModel &model,
+              const DrawerActions &actions) {
   std::vector<View> rows;
   if (model.file_tree) {
     AppendFileRows(rows, *model.file_tree, 0, true, actions);
@@ -512,6 +628,20 @@ View FileBody(const DrawerModel &model, const DrawerActions &actions) {
           .With(Grow()),
   }
       .With(Grow(), CrossAlign(CrossAxisAlignment::Stretch));
+}
+
+View RenderDrawer(State<bool> drawer_open, const DrawerTabSelection& selection,
+                  const DrawerModel& model, const DrawerActions& actions) {
+  const auto& presentation = DrawerTabPresentationFor(selection.active);
+  return LegacyDrawerViewport(
+      Column{
+          Header(presentation, actions),
+          DrawerTabs(selection, presentation, actions),
+          std::invoke(presentation.body, drawer_open, model, actions),
+      }
+          .With(Frame{.min_width = 240.0F, .max_width = kDrawerWidth},
+                CrossAlign(CrossAxisAlignment::Stretch),
+                Background(colors::background)));
 }
 
 } // namespace
@@ -539,24 +669,17 @@ DrawerStyle LegacyDrawerStyle() {
   };
 }
 
-View Drawer(State<bool> drawer_open, State<std::size_t> selected_tab) {
+View Drawer(State<bool> drawer_open, State<DrawerTab> selected_tab) {
   return Drawer(drawer_open, selected_tab, DrawerModel{}, DrawerActions{});
 }
 
-View Drawer(State<bool> drawer_open, State<std::size_t> selected_tab,
-            const DrawerModel &model, const DrawerActions &actions) {
-  const bool files_active = std::min(selected_tab.Get(), std::size_t{1}) ==
-                            static_cast<std::size_t>(DrawerTab::files);
-  return LegacyDrawerViewport(
-      Column{
-          Header(files_active, actions),
-          DrawerTabs(selected_tab, actions),
-          files_active ? FileBody(model, actions)
-                       : ConversationBody(drawer_open, model, actions),
-      }
-          .With(Frame{.min_width = 240.0F, .max_width = kDrawerWidth},
-                CrossAlign(CrossAxisAlignment::Stretch),
-                Background(colors::background)));
+View Drawer(State<bool> drawer_open, State<DrawerTab> selected_tab,
+            const DrawerModel& model, const DrawerActions& actions) {
+  const DrawerTabSelection selection{
+      .active = selected_tab.Get(),
+      .select = [selected_tab](DrawerTab tab) { selected_tab = tab; },
+  };
+  return RenderDrawer(drawer_open, selection, model, actions);
 }
 
 } // namespace linecode::presentation

@@ -9,10 +9,16 @@ GenerationController::GenerationController(ChatSession &session) noexcept
 
 std::expected<GenerationWork, SendMessageError>
 GenerationController::Begin(std::string text) {
+  return Begin(std::move(text), {});
+}
+
+std::expected<GenerationWork, SendMessageError>
+GenerationController::Begin(
+    std::string text, std::vector<domain::InputAttachment> attachments) {
   if (state_.phase == GenerationPhase::running) {
     return std::unexpected(SendMessageError::generation_in_progress);
   }
-  auto sent = session_.Send(std::move(text));
+  auto sent = session_.Send(std::move(text), std::move(attachments));
   if (!sent.has_value()) {
     return std::unexpected(sent.error());
   }
@@ -20,7 +26,8 @@ GenerationController::Begin(std::string text) {
   const auto generation_id = ++next_generation_id_;
   state_ = GenerationState{.generation_id = generation_id,
                            .phase = GenerationPhase::running,
-                           .error = {}};
+                           .error = {},
+                           .streamed_text = {}};
 
   std::vector<CompletionMessage> messages;
   messages.reserve(session_.Messages().size());
@@ -34,6 +41,8 @@ GenerationController::Begin(std::string text) {
                     ? CompletionRole::assistant
                     : CompletionRole::user,
         .content = message.content,
+        .tool_calls = {},
+        .tool_result = std::nullopt,
     });
   }
   return GenerationWork{.generation_id = generation_id,
@@ -45,6 +54,8 @@ bool GenerationController::Complete(const std::uint64_t generation_id,
   if (!IsCurrent(generation_id)) {
     return false;
   }
+  if (response.text.empty() && !state_.streamed_text.empty())
+    response.text = state_.streamed_text;
   if (response.text.empty()) {
     return Fail(generation_id,
                 CompletionError{.code = CompletionErrorCode::decode,
@@ -53,6 +64,15 @@ bool GenerationController::Complete(const std::uint64_t generation_id,
   static_cast<void>(session_.AppendAssistant(std::move(response.text)));
   state_.phase = GenerationPhase::completed;
   state_.error.clear();
+  state_.streamed_text.clear();
+  return true;
+}
+
+bool GenerationController::AppendTextDelta(
+    const std::uint64_t generation_id, std::string delta) {
+  if (!IsCurrent(generation_id) || delta.empty())
+    return false;
+  state_.streamed_text += delta;
   return true;
 }
 
@@ -63,6 +83,7 @@ bool GenerationController::Fail(const std::uint64_t generation_id,
   }
   state_.phase = GenerationPhase::failed;
   state_.error = std::move(error.message);
+  state_.streamed_text.clear();
   return true;
 }
 
@@ -72,6 +93,7 @@ void GenerationController::Cancel() noexcept {
   }
   state_.phase = GenerationPhase::cancelled;
   state_.error.clear();
+  state_.streamed_text.clear();
 }
 
 void GenerationController::Reset() noexcept { state_ = {}; }

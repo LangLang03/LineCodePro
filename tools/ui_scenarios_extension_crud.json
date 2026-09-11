@@ -1,0 +1,63 @@
+{
+  "settle_seconds": 1.0,
+  "launch_settle_seconds": 0.8,
+  "locale": "zh-CN",
+  "setup": [
+    {"type": "sleep", "seconds": 1.0},
+    {"type": "tap_text", "value": "同意", "optional": true},
+    {"type": "sleep", "seconds": 1.0}
+  ],
+  "scenarios": [
+    {
+      "name": "agent_create",
+      "compare_pixels": false,
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "Agent、MCP、Skills 和 LineCode 扩展"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "Agent 扩展"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "添加 Agent"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_labeled_editable", "label": "名字"},
+        {"type": "sleep", "seconds": 0.2},
+        {"type": "text", "value": "ParityAgent"},
+        {"type": "expect_labeled_editable_text", "label": "名字", "value": "ParityAgent"},
+        {"type": "tap_labeled_editable", "label": "英文标识"},
+        {"type": "sleep", "seconds": 0.2},
+        {"type": "text", "value": "parity-agent"},
+        {"type": "expect_labeled_editable_text", "label": "英文标识", "value": "parity-agent"},
+        {"type": "keyevent", "key": 4},
+        {"type": "sleep", "seconds": 0.2},
+        {"type": "tap_labeled_editable", "label": "提示词"},
+        {"type": "sleep", "seconds": 0.2},
+        {"type": "text", "value": "Return_a_fixed_test_reply"},
+        {"type": "expect_labeled_editable_text", "label": "提示词", "value": "Return_a_fixed_test_reply"},
+        {"type": "keyevent", "key": 4},
+        {"type": "sleep", "seconds": 0.2},
+        {"type": "tap_text", "value": "保存"},
+        {"type": "sleep", "seconds": 2.0},
+        {"type": "expect_text", "value": "已安装"},
+        {"type": "expect_text", "value": "ParityAgent"}
+      ]
+    },
+    {
+      "name": "agent_reload",
+      "compare_pixels": false,
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "Agent、MCP、Skills 和 LineCode 扩展"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "Agent 扩展"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "expect_text", "value": "ParityAgent"}
+      ]
+    }
+  ]
+}

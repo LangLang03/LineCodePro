@@ -13,35 +13,64 @@
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/components/legacy_settings_card_frame.h"
 #include "presentation/line_theme.h"
+#include "presentation/prompt_template_presentation.h"
 
 namespace linecode::presentation {
 namespace {
 using namespace huxerui;
 
-struct PromptMeta final { StringResource title; StringResource description; };
+const std::array kPromptTemplateTextResources{
+    app::strings::prompt_template_system_prompt_title,
+    app::strings::prompt_template_system_prompt_description,
+    app::strings::prompt_template_work_directory_title,
+    app::strings::prompt_template_work_directory_description,
+    app::strings::prompt_template_tone_coding_title,
+    app::strings::prompt_template_tone_coding_description,
+    app::strings::prompt_template_tone_chat_title,
+    app::strings::prompt_template_tone_chat_description,
+    app::strings::prompt_template_chat_mode_chat_title,
+    app::strings::prompt_template_chat_mode_chat_description,
+    app::strings::prompt_template_chat_mode_plan_title,
+    app::strings::prompt_template_chat_mode_plan_description,
+    app::strings::prompt_template_chat_mode_agent_title,
+    app::strings::prompt_template_chat_mode_agent_description,
+    app::strings::prompt_template_learning_context_title,
+    app::strings::prompt_template_learning_context_description,
+    app::strings::prompt_template_context_compaction_title,
+    app::strings::prompt_template_context_compaction_description,
+    app::strings::prompt_template_model_identity_title,
+    app::strings::prompt_template_model_identity_description,
+    app::strings::prompt_template_todo_state_title,
+    app::strings::prompt_template_todo_state_description,
+    app::strings::prompt_template_todo_usage_title,
+    app::strings::prompt_template_todo_usage_description,
+    app::strings::prompt_template_agent_role_explore_remote_title,
+    app::strings::prompt_template_agent_role_explore_remote_description,
+    app::strings::prompt_template_agent_role_coding_remote_title,
+    app::strings::prompt_template_agent_role_coding_remote_description,
+    app::strings::prompt_template_agent_role_explore_local_title,
+    app::strings::prompt_template_agent_role_explore_local_description,
+    app::strings::prompt_template_agent_role_coding_local_title,
+    app::strings::prompt_template_agent_role_coding_local_description,
+    app::strings::prompt_template_agent_system_prompt_title,
+    app::strings::prompt_template_agent_system_prompt_description,
+    app::strings::prompt_template_image_understanding_tool_system_title,
+    app::strings::prompt_template_image_understanding_tool_system_description,
+    app::strings::prompt_template_context_compaction_summary_prefix_title,
+    app::strings::prompt_template_context_compaction_summary_prefix_description,
+    app::strings::prompt_template_context_compaction_responses_fallback_title,
+    app::strings::prompt_template_context_compaction_responses_fallback_description,
+    app::strings::prompt_template_source_builtin_chat,
+    app::strings::prompt_template_source_builtin_plan,
+    app::strings::prompt_template_source_builtin_agent,
+};
 
-const std::array<PromptMeta, 20> kPromptMeta{{
-    {app::strings::prompt_template_system_prompt_title, app::strings::prompt_template_system_prompt_description},
-    {app::strings::prompt_template_work_directory_title, app::strings::prompt_template_work_directory_description},
-    {app::strings::prompt_template_tone_coding_title, app::strings::prompt_template_tone_coding_description},
-    {app::strings::prompt_template_tone_chat_title, app::strings::prompt_template_tone_chat_description},
-    {app::strings::prompt_template_chat_mode_chat_title, app::strings::prompt_template_chat_mode_chat_description},
-    {app::strings::prompt_template_chat_mode_plan_title, app::strings::prompt_template_chat_mode_plan_description},
-    {app::strings::prompt_template_chat_mode_agent_title, app::strings::prompt_template_chat_mode_agent_description},
-    {app::strings::prompt_template_learning_context_title, app::strings::prompt_template_learning_context_description},
-    {app::strings::prompt_template_context_compaction_title, app::strings::prompt_template_context_compaction_description},
-    {app::strings::prompt_template_model_identity_title, app::strings::prompt_template_model_identity_description},
-    {app::strings::prompt_template_todo_state_title, app::strings::prompt_template_todo_state_description},
-    {app::strings::prompt_template_todo_usage_title, app::strings::prompt_template_todo_usage_description},
-    {app::strings::prompt_template_agent_role_explore_remote_title, app::strings::prompt_template_agent_role_explore_remote_description},
-    {app::strings::prompt_template_agent_role_coding_remote_title, app::strings::prompt_template_agent_role_coding_remote_description},
-    {app::strings::prompt_template_agent_role_explore_local_title, app::strings::prompt_template_agent_role_explore_local_description},
-    {app::strings::prompt_template_agent_role_coding_local_title, app::strings::prompt_template_agent_role_coding_local_description},
-    {app::strings::prompt_template_agent_system_prompt_title, app::strings::prompt_template_agent_system_prompt_description},
-    {app::strings::prompt_template_image_understanding_tool_system_title, app::strings::prompt_template_image_understanding_tool_system_description},
-    {app::strings::prompt_template_context_compaction_summary_prefix_title, app::strings::prompt_template_context_compaction_summary_prefix_description},
-    {app::strings::prompt_template_context_compaction_responses_fallback_title, app::strings::prompt_template_context_compaction_responses_fallback_description},
-}};
+static_assert(kPromptTemplateTextResources.size() == PromptTemplateTextCount());
+
+const auto kPromptTemplatePresentations =
+    MakePromptTemplatePresentationRegistry([](PromptTemplateText key) {
+      return kPromptTemplateTextResources[std::to_underlying(key)];
+    });
 
 struct EditorState final {
   domain::PromptTemplateItem item;
@@ -83,9 +112,10 @@ std::string Variables(const domain::PromptTemplateDefinition &definition) {
   return result;
 }
 
-View Section(StringResource title, View body) {
+View Section(StringVariant title, View body) {
   return Column{
-      Text(title).Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
+      Text(std::move(title))
+          .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
           .With(Padding(EdgeInsets{.top = 20.0F, .right = 16.0F,
                                    .bottom = 12.0F, .left = 16.0F})),
       LegacySettingsCardFrame{std::move(body).With(
@@ -106,8 +136,7 @@ View ActionButton(ImageResource icon, StringResource label, std::function<void()
             Focusable(), PointerCursor(PointerCursorKind::Hand));
 }
 
-View Editor(std::size_t index, const PromptMeta &meta,
-            std::string source,
+View Editor(std::size_t index, StringVariant description, std::string source,
             State<std::vector<EditorState>> editors,
             std::shared_ptr<application::PromptTemplateRepository> repository,
             TaskScope tasks, ToastHandle toast) {
@@ -170,7 +199,8 @@ View Editor(std::size_t index, const PromptMeta &meta,
   }.With(Frame{.height = 34.0F}, CrossAlign(CrossAxisAlignment::Center));
 
   return Column{
-      Text(meta.description).Style(Label(13.0F, FontWeight::Regular, colors::secondary)),
+      Text(std::move(description))
+          .Style(Label(13.0F, FontWeight::Regular, colors::secondary)),
       Text::Format(app::strings::screen_prompt_templates_source, source,
                    Variables(definition))
           .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
@@ -207,11 +237,19 @@ View Editor(std::size_t index, const PromptMeta &meta,
 
   std::vector<View> content;
   std::string intro = UseString(app::strings::screen_prompt_templates_variables);
-  for (std::size_t index = 0; index < editors->size() && index < kPromptMeta.size(); ++index) {
+  for (std::size_t index = 0; index < editors->size(); ++index) {
     const auto &definition = editors->at(index).item.definition;
-    intro += "\n\n- " + UseString(kPromptMeta[index].title) +
+    const auto *presentation = FindPromptTemplatePresentation(
+        kPromptTemplatePresentations, definition.id);
+    const StringVariant unknown = StringVariant::Format(
+        app::strings::prompt_template_error_unknown, definition.id);
+    const StringVariant title =
+        presentation ? StringVariant{presentation->title} : unknown;
+    const StringVariant description =
+        presentation ? StringVariant{presentation->description} : unknown;
+    intro += "\n\n- " + UseString(title) +
              UseString(app::strings::screen_prompt_templates_item_separator) +
-             UseString(kPromptMeta[index].description);
+             UseString(description);
     const auto variables = Variables(definition);
     if (!variables.empty()) {
       intro += UseString(app::strings::screen_prompt_templates_item_variables, variables);
@@ -221,17 +259,22 @@ View Editor(std::size_t index, const PromptMeta &meta,
       app::strings::screen_prompt_templates_section,
       Text(intro).Style(Label(13.0F, FontWeight::Regular, colors::secondary))
           .With(Padding(EdgeInsets::All(16.0F))))) ;
-  for (std::size_t index = 0; index < editors->size() && index < kPromptMeta.size(); ++index) {
+  for (std::size_t index = 0; index < editors->size(); ++index) {
     const auto &definition = editors->at(index).item.definition;
+    const auto *presentation = FindPromptTemplatePresentation(
+        kPromptTemplatePresentations, definition.id);
+    const StringVariant unknown = StringVariant::Format(
+        app::strings::prompt_template_error_unknown, definition.id);
+    const StringVariant title =
+        presentation ? StringVariant{presentation->title} : unknown;
+    const StringVariant description =
+        presentation ? StringVariant{presentation->description} : unknown;
     std::string source = definition.source;
-    if (definition.id == "chatModeChat")
-      source = UseString(app::strings::prompt_template_source_builtin_chat);
-    else if (definition.id == "chatModePlan")
-      source = UseString(app::strings::prompt_template_source_builtin_plan);
-    else if (definition.id == "chatModeAgent")
-      source = UseString(app::strings::prompt_template_source_builtin_agent);
-    content.push_back(Section(kPromptMeta[index].title,
-                              Editor(index, kPromptMeta[index], std::move(source), editors,
+    if (presentation && presentation->builtin_source) {
+      source = UseString(*presentation->builtin_source);
+    }
+    content.push_back(Section(title,
+                              Editor(index, description, std::move(source), editors,
                                      repository, tasks, toast))
                           .Key(editors->at(index).item.definition.id));
   }

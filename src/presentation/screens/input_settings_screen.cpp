@@ -70,12 +70,12 @@ View PopupItem(PopupContext popup, StringResource label,
 } // namespace
 
 [[huxerui::composable]] View InputSettingsScreen(
-    std::shared_ptr<application::InputSettingsRepository> repository) {
+    std::shared_ptr<application::InputSettingsRepository> repository,
+    State<domain::InputSettings> settings) {
   const auto navigation = UseNavigation<domain::AppRoute>();
   const auto tasks = UseTaskScope();
   const auto toast = UseToast();
   const auto popup = UsePopup();
-  auto settings = UseState(domain::InputSettings{});
   Lifecycle([tasks, repository, settings, toast] {
     tasks.Launch([repository, settings, toast]() -> Task<void> {
       auto loaded = co_await repository->Load();

@@ -17,14 +17,26 @@ ChatSession::Send(std::string text) {
   return send_message_.Execute(std::move(text));
 }
 
+std::expected<domain::ChatMessage, SendMessageError>
+ChatSession::Send(std::string text,
+                  std::vector<domain::InputAttachment> attachments) {
+  return send_message_.Execute(std::move(text), std::move(attachments));
+}
+
 domain::ChatMessage ChatSession::AppendAssistant(std::string text) {
   domain::ChatMessage message{
       .id = store_->AllocateMessageId(),
       .role = domain::MessageRole::assistant,
       .content = std::move(text),
+      .attachments = {},
   };
   store_->Append(message);
   return message;
+}
+
+std::optional<domain::ChatMessage>
+ChatSession::RecallUserMessage(std::uint64_t message_id) {
+  return store_->RecallUserMessage(message_id);
 }
 
 void ChatSession::Clear() { store_->Clear(); }

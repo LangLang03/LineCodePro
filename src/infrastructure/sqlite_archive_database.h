@@ -24,6 +24,11 @@ public:
       application::DataArchiveResult<domain::ArchiveSummary>>
   ReplaceFromSnapshot(std::string json) override;
 
+  [[nodiscard]] huxerui::Task<
+      application::DataArchiveResult<domain::ArchiveSummary>>
+  ImportLegacy(application::LegacyArchiveData data,
+               domain::ArchiveImportMode mode) override;
+
 private:
   huxerui::File database_file_;
 };

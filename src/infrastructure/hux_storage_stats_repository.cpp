@@ -34,7 +34,7 @@ huxerui::Task<std::expected<StorageCategoryStats, StorageStatsError>>
 MeasureTree(const File &root) {
   const auto root_info = co_await root.StatAsync();
   if (!root_info.Succeeded()) {
-    if (root_info.Error().code == huxerui::FileErrorCode::NotFound) {
+    if (root_info.Error().code == huxerui::IoErrorCode::NotFound) {
       co_return StorageCategoryStats{};
     }
     co_return std::unexpected(

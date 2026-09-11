@@ -1,6 +1,9 @@
 #include "presentation/screens/model_add_screen.h"
 
+#include <algorithm>
 #include <array>
+#include <cctype>
+#include <chrono>
 #include <functional>
 #include <numbers>
 #include <optional>
@@ -12,7 +15,9 @@
 #include <huxerui/huxerui.h>
 
 #include "presentation/components/legacy_screen_header_layout.h"
+#include "presentation/model_form_presentation.h"
 #include "presentation/line_theme.h"
+#include "presentation/model_protocol_presentation.h"
 
 namespace linecode::presentation {
 namespace {
@@ -20,6 +25,7 @@ namespace {
 using namespace huxerui;
 
 enum class CatalogTarget : std::uint8_t { primary, compression };
+enum class LocalAcceleration : std::uint8_t { automatic, cpu, npu };
 
 struct ModelFormState final {
   std::string id;
@@ -28,23 +34,121 @@ struct ModelFormState final {
   std::string provider_label;
   TextEditingValue base_url;
   TextEditingValue api_key;
-  TextEditingValue model_id;
+  ModelSelectionSlots<TextEditingValue> primary_id;
   TextEditingValue tool_limit;
   TextEditingValue context_size;
-  TextEditingValue compression_id;
+  ModelSelectionSlots<TextEditingValue> compression_id;
   bool compression_enabled{};
   bool compression_auto{true};
-  bool compression_custom{};
-  bool custom_model{true};
   bool local{};
   bool protocol_locked{};
   bool preset_mode{};
   bool busy{};
   bool attempted_save{};
-  int acceleration{};
+  LocalAcceleration acceleration{LocalAcceleration::automatic};
   std::vector<std::string> primary_catalog;
   std::vector<std::string> compression_catalog;
   std::string error;
+};
+
+using CatalogMember = std::vector<std::string> ModelFormState::*;
+using SelectionMember =
+    ModelSelectionSlots<TextEditingValue> ModelFormState::*;
+
+void CompletePrimarySelection(ModelFormState& state, bool custom) {
+  if (!custom && state.preset_mode && state.name.text.empty()) {
+    state.name =
+        TextEditingValue::FromText(state.primary_id.catalog.text);
+  }
+}
+
+void CompleteCompressionSelection(ModelFormState&, bool) {}
+
+void CompletePrimaryCatalogLoad(ModelFormState& state) {
+  state.primary_id.SetCustom(false);
+}
+
+void CompleteCompressionCatalogLoad(ModelFormState&) {}
+
+struct CatalogTargetPolicy final {
+  CatalogTarget target;
+  CatalogMember catalog;
+  SelectionMember selection;
+  void (*after_selection)(ModelFormState&, bool);
+  void (*after_load)(ModelFormState&);
+};
+
+const std::array catalog_target_policies{
+    CatalogTargetPolicy{
+        CatalogTarget::primary,
+        &ModelFormState::primary_catalog,
+        &ModelFormState::primary_id,
+        CompletePrimarySelection,
+        CompletePrimaryCatalogLoad,
+    },
+    CatalogTargetPolicy{
+        CatalogTarget::compression,
+        &ModelFormState::compression_catalog,
+        &ModelFormState::compression_id,
+        CompleteCompressionSelection,
+        CompleteCompressionCatalogLoad,
+    },
+};
+
+[[nodiscard]] const CatalogTargetPolicy&
+CatalogPolicyFor(CatalogTarget target) noexcept {
+  const auto found = std::ranges::find(catalog_target_policies, target,
+                                       &CatalogTargetPolicy::target);
+  if (found != catalog_target_policies.end())
+    return *found;
+  std::unreachable();
+}
+
+struct ValidationPresentation final {
+  application::ModelValidationCode code;
+  StringResource message;
+};
+
+const std::array validation_presentations{
+    ValidationPresentation{
+        application::ModelValidationCode::local_backend_unavailable,
+        app::strings::model_form_local_pending},
+    ValidationPresentation{
+        application::ModelValidationCode::missing_name_or_model_id,
+        app::strings::model_form_missing_id},
+    ValidationPresentation{application::ModelValidationCode::missing_api_key,
+                           app::strings::model_form_missing_key},
+    ValidationPresentation{
+        application::ModelValidationCode::invalid_tool_call_limit,
+        app::strings::model_form_invalid_tool_limit},
+    ValidationPresentation{
+        application::ModelValidationCode::missing_compression_model_id,
+        app::strings::model_form_missing_compression},
+};
+
+struct LocalAccelerationPresentation final {
+  LocalAcceleration mode;
+  StringResource label;
+  float height;
+  float baseline_padding;
+};
+
+const std::array local_acceleration_presentations{
+    LocalAccelerationPresentation{LocalAcceleration::automatic,
+                                  app::strings::model_form_acceleration_auto,
+                                  ModelFormLayoutMetrics::toggle_height,
+                                  ModelFormLayoutMetrics::
+                                      toggle_baseline_padding},
+    LocalAccelerationPresentation{LocalAcceleration::cpu,
+                                  app::strings::model_form_acceleration_cpu,
+                                  ModelFormLayoutMetrics::latin_toggle_height,
+                                  ModelFormLayoutMetrics::
+                                      latin_toggle_baseline_padding},
+    LocalAccelerationPresentation{LocalAcceleration::npu,
+                                  app::strings::model_form_acceleration_npu,
+                                  ModelFormLayoutMetrics::latin_toggle_height,
+                                  ModelFormLayoutMetrics::
+                                      latin_toggle_baseline_padding},
 };
 
 TextStyle Label(float size, FontWeight weight = FontWeight::Regular,
@@ -67,14 +171,24 @@ ModelFormState MakeState(const application::ModelDraft &draft,
       .provider_label = draft.provider_label,
       .base_url = TextEditingValue::FromText(draft.base_url),
       .api_key = TextEditingValue::FromText(draft.api_key),
-      .model_id = TextEditingValue::FromText(draft.model_id),
+      .primary_id =
+          ModelSelectionSlots<TextEditingValue>{
+              .manual = TextEditingValue::FromText(draft.model_id),
+              .catalog = TextEditingValue::FromText(draft.model_id),
+              .custom = !draft.model_id.empty(),
+          },
       .tool_limit = TextEditingValue::FromText(draft.tool_call_limit),
       .context_size = TextEditingValue::FromText(draft.context_size),
-      .compression_id = TextEditingValue::FromText(draft.compression_model_id),
+      .compression_id =
+          ModelSelectionSlots<TextEditingValue>{
+              .manual =
+                  TextEditingValue::FromText(draft.compression_model_id),
+              .catalog =
+                  TextEditingValue::FromText(draft.compression_model_id),
+              .custom = !draft.compression_model_id.empty(),
+          },
       .compression_enabled = draft.compression_enabled,
       .compression_auto = draft.compression_auto,
-      .compression_custom = !draft.compression_model_id.empty(),
-      .custom_model = !draft.model_id.empty(),
       .local = draft.local,
       .protocol_locked = protocol_locked,
       .preset_mode = preset_mode,
@@ -89,11 +203,11 @@ application::ModelDraft MakeDraft(const ModelFormState &state) {
       .provider_label = state.provider_label,
       .base_url = state.base_url.text,
       .api_key = state.api_key.text,
-      .model_id = state.model_id.text,
+      .model_id = state.primary_id.Effective().text,
       .tool_call_limit = state.tool_limit.text,
       .compression_enabled = state.compression_enabled,
       .compression_auto = state.compression_auto,
-      .compression_model_id = state.compression_id.text,
+      .compression_model_id = state.compression_id.Effective().text,
       .context_size = state.context_size.text,
       .local = state.local,
   };
@@ -109,43 +223,49 @@ auto ChangeText(State<ModelFormState> state, Member member) {
   };
 }
 
-StringVariant ProtocolName(domain::ModelProtocol protocol) {
-  switch (protocol) {
-  case domain::ModelProtocol::openai_compatible:
-    return app::strings::model_protocol_openai;
-  case domain::ModelProtocol::codex_responses:
-    return app::strings::model_protocol_codex;
-  case domain::ModelProtocol::anthropic_messages:
-    return app::strings::model_protocol_anthropic;
-  case domain::ModelProtocol::local_gguf:
-    return app::strings::model_protocol_local;
-  }
-  return app::strings::model_protocol_openai;
+auto ChangeConnectionText(State<ModelFormState> state,
+                          TextEditingValue ModelFormState::*member) {
+  return [state, member](const TextEditingValue &value) {
+    auto next = state.Get();
+    next.*member = value;
+    next.primary_catalog.clear();
+    next.primary_id.ClearCatalog();
+    next.compression_catalog.clear();
+    next.compression_id.ClearCatalog();
+    next.error.clear();
+    state = std::move(next);
+  };
+}
+
+auto ChangeManualSelection(State<ModelFormState> state,
+                           SelectionMember member) {
+  return [state, member](const TextEditingValue &value) {
+    auto next = state.Get();
+    (next.*member).manual = value;
+    next.error.clear();
+    state = std::move(next);
+  };
 }
 
 StringVariant ValidationMessage(application::ModelValidationCode code) {
-  switch (code) {
-  case application::ModelValidationCode::local_backend_unavailable:
-    return app::strings::model_form_local_pending;
-  case application::ModelValidationCode::missing_name_or_model_id:
-    return app::strings::model_form_missing_id;
-  case application::ModelValidationCode::missing_api_key:
-    return app::strings::model_form_missing_key;
-  case application::ModelValidationCode::invalid_tool_call_limit:
-    return app::strings::model_form_invalid_tool_limit;
-  case application::ModelValidationCode::missing_compression_model_id:
-    return app::strings::model_form_missing_compression;
-  }
-  return app::strings::model_form_missing_id;
+  const auto found = std::ranges::find(validation_presentations, code,
+                                       &ValidationPresentation::code);
+  if (found != validation_presentations.end())
+    return found->message;
+  std::unreachable();
 }
 
 View HeaderAction(StringVariant label, bool enabled,
                   std::function<void()> action) {
-  return Text(std::move(label))
-      .Style(Label(16.0F, FontWeight::Medium,
-                   enabled ? colors::accent : colors::tertiary))
-      .Align(TextAlign::Center)
-      .VerticalAlign(TextVerticalAlign::Center)
+  return Stack {
+    Text(std::move(label))
+        .Style(Label(16.0F, FontWeight::Medium,
+                     enabled ? colors::accent : colors::tertiary))
+        // Android's centered TextView paints this font about 1.5dp below the
+        // geometric center of its line box.
+        .With(Padding(EdgeInsets{
+            .top = ModelFormLayoutMetrics::header_action_baseline_padding})),
+  }
       .OnClick([enabled, action = std::move(action)] {
         if (enabled && action) {
           std::invoke(action);
@@ -154,18 +274,22 @@ View HeaderAction(StringVariant label, bool enabled,
       // Android TextView's 16sp line box plus 8dp vertical padding paints at
       // roughly 39dp on the parity device. Keep that measured action height so
       // the title and both header actions share the legacy vertical center.
-      .With(Frame{.min_width = 42.0F, .min_height = 39.0F},
+      .With(Frame{.min_width =
+                      ModelFormLayoutMetrics::header_action_minimum_width,
+                  .min_height =
+                      ModelFormLayoutMetrics::header_action_minimum_height},
+            Padding(EdgeInsets::Symmetric(12.0F, 0.0F)),
             Align(HorizontalAlignment::Center, VerticalAlignment::Center),
             Enabled{enabled}, Opacity(enabled ? 1.0F : 0.45F), Focusable(),
             PointerCursor(enabled ? PointerCursorKind::Hand
                                   : PointerCursorKind::Default));
 }
 
-View SectionLabel(StringVariant text) {
+View SectionLabel(StringVariant text, float bottom = 8.0F) {
   return Text(std::move(text))
       .Style(Label(14.0F, FontWeight::Medium, colors::secondary))
       .With(Padding(EdgeInsets{
-          .top = 16.0F, .right = 0.0F, .bottom = 8.0F, .left = 0.0F}));
+          .top = 16.0F, .right = 0.0F, .bottom = bottom, .left = 0.0F}));
 }
 
 View SupportingText(StringVariant text, float top = 8.0F) {
@@ -175,29 +299,12 @@ View SupportingText(StringVariant text, float top = 8.0F) {
 }
 
 StringVariant BaseUrlPlaceholder(domain::ModelProtocol protocol) {
-  switch (protocol) {
-  case domain::ModelProtocol::codex_responses:
-    return "https://api.example.com/codex";
-  case domain::ModelProtocol::anthropic_messages:
-    return "https://api.example.com/anthropic";
-  case domain::ModelProtocol::openai_compatible:
-  case domain::ModelProtocol::local_gguf:
-    return "https://api.example.com/v1";
-  }
-  return "https://api.example.com/v1";
+  return std::string{
+      ModelProtocolPresentationFor(protocol).base_url_placeholder};
 }
 
 StringVariant BaseUrlHint(domain::ModelProtocol protocol) {
-  switch (protocol) {
-  case domain::ModelProtocol::codex_responses:
-    return app::strings::model_form_base_url_hint_codex;
-  case domain::ModelProtocol::anthropic_messages:
-    return app::strings::model_form_base_url_hint_anthropic;
-  case domain::ModelProtocol::openai_compatible:
-  case domain::ModelProtocol::local_gguf:
-    return app::strings::model_form_base_url_hint;
-  }
-  return app::strings::model_form_base_url_hint;
+  return ModelProtocolPresentationFor(protocol).base_url_hint;
 }
 
 View FormField(TextEditingValue value, StringVariant label,
@@ -225,37 +332,41 @@ View FormField(TextEditingValue value, StringVariant label,
   return secure ? std::move(field).Secure() : std::move(field);
 }
 
-View ProtocolSelector(State<ModelFormState> state) {
-  constexpr std::array protocols{
-      domain::ModelProtocol::openai_compatible,
-      domain::ModelProtocol::codex_responses,
-      domain::ModelProtocol::anthropic_messages,
-      domain::ModelProtocol::local_gguf,
-  };
+View ProtocolSelector(State<ModelFormState> state, ToastHandle toast) {
   std::vector<View> items;
-  items.reserve(protocols.size());
-  for (const auto protocol : protocols) {
+  items.reserve(model_protocol_presentations.size());
+  for (const auto &presentation : model_protocol_presentations) {
+    const auto protocol = presentation.protocol;
     const bool selected = state->protocol == protocol;
-    const bool enabled = !state->protocol_locked && !state->local &&
-                         protocol != domain::ModelProtocol::local_gguf;
+    const auto decision = ResolveProtocolTabDecision(
+        state->protocol, protocol, state->protocol_locked);
     items.push_back(
         Stack{
-            Text(ProtocolName(protocol))
+            Text(presentation.name)
                 .Style(Label(16.0F, FontWeight::Bold,
                              selected ? colors::text_on_color
                                       : colors::secondary))
                 .Align(TextAlign::Center),
         }
-            .OnClick([state, protocol, enabled] {
-              if (!enabled)
+            .OnClick([state, toast, protocol, decision] {
+              if (decision.action == ProtocolTabAction::prompt_local_entry) {
+                toast.Show(app::strings::model_form_open_local_form);
+                return;
+              }
+              if (decision.action == ProtocolTabAction::prompt_custom_entry) {
+                toast.Show(app::strings::model_form_open_custom_form);
+                return;
+              }
+              if (decision.action != ProtocolTabAction::select_protocol)
                 return;
               auto next = state.Get();
               next.protocol = protocol;
               next.provider_label =
                   std::string{domain::ModelProtocolLabel(protocol)};
-              next.model_id = TextEditingValue::FromText("");
-              next.compression_id = TextEditingValue::FromText("");
-              next.compression_enabled = false;
+              next.primary_id.ClearAll();
+              next.compression_id.ClearCatalog();
+              if (!domain::SupportsDedicatedCompression(protocol))
+                next.compression_enabled = false;
               next.primary_catalog.clear();
               next.compression_catalog.clear();
               next.error.clear();
@@ -264,10 +375,10 @@ View ProtocolSelector(State<ModelFormState> state) {
             .With(Frame{.min_height = 46.0F}, Grow(),
                   Align(HorizontalAlignment::Center, VerticalAlignment::Center),
                   Background(selected ? colors::accent : colors::surface_light),
-                  CornerRadius(12.0F), Enabled{enabled || selected},
-                  Opacity(enabled || selected ? 1.0F : 0.45F),
-                  PointerCursor(enabled ? PointerCursorKind::Hand
-                                        : PointerCursorKind::Default)));
+                  CornerRadius(12.0F), Enabled{decision.enabled},
+                  Opacity(decision.enabled ? 1.0F : 0.45F),
+                  PointerCursor(decision.enabled ? PointerCursorKind::Hand
+                                                 : PointerCursorKind::Default)));
   }
   return Row(std::move(items)).With(Spacing(8.0F));
 }
@@ -334,33 +445,51 @@ View QueryButton(bool enabled, bool busy, std::function<void()> action) {
 
 void SelectCatalogItem(State<ModelFormState> state, CatalogTarget target,
                        std::string model, bool custom) {
+  const auto& policy = CatalogPolicyFor(target);
   auto next = state.Get();
-  if (target == CatalogTarget::primary) {
-    next.custom_model = custom;
-    next.model_id = TextEditingValue::FromText(
-        custom ? std::string{} : std::move(model));
-    if (!custom && next.preset_mode && next.name.text.empty()) {
-      next.name = TextEditingValue::FromText(next.model_id.text);
-    }
-  } else {
-    next.compression_custom = custom;
-    next.compression_id = TextEditingValue::FromText(
-        custom ? std::string{} : std::move(model));
-  }
+  auto &selection = next.*policy.selection;
+  if (custom)
+    selection.ChooseCustom();
+  else
+    selection.ChooseCatalog(TextEditingValue::FromText(std::move(model)));
+  std::invoke(policy.after_selection, next, custom);
   next.error.clear();
   state = std::move(next);
 }
 
+enum class PickerRowKind : std::uint8_t { catalog_entry, custom_entry };
+
+struct PickerRowPresentation final {
+  PickerRowKind kind;
+  colors::Token text_color;
+  bool displays_selection;
+};
+
+constexpr std::array picker_row_presentations{
+    PickerRowPresentation{PickerRowKind::catalog_entry, colors::text, true},
+    PickerRowPresentation{PickerRowKind::custom_entry, colors::accent, false},
+};
+
+[[nodiscard]] const PickerRowPresentation&
+PickerRowVisual(PickerRowKind kind) noexcept {
+  const auto found = std::ranges::find(picker_row_presentations, kind,
+                                       &PickerRowPresentation::kind);
+  if (found != picker_row_presentations.end())
+    return *found;
+  std::unreachable();
+}
+
 View PickerRow(BottomSheetContext sheet, StringVariant label, bool selected,
-               bool custom, std::function<void()> choose) {
+               PickerRowKind kind, std::function<void()> choose) {
+  const auto& presentation = PickerRowVisual(kind);
   return Row{
       Text(std::move(label))
-          .Style(Label(16.0F, FontWeight::Regular,
-                       custom ? colors::accent : colors::text))
+          .Style(Label(16.0F, FontWeight::Regular, presentation.text_color))
           .With(Grow()),
-      selected ? Glyph(app::images::check, 16.0F, colors::accent)
-                     .With(Frame{.width = 18.0F, .height = 18.0F})
-               : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F}),
+      presentation.displays_selection && selected
+          ? Glyph(app::images::check, 16.0F, colors::accent)
+                .With(Frame{.width = 18.0F, .height = 18.0F})
+          : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F}),
   }
       .OnClick([sheet, choose = std::move(choose)] {
         sheet.Dismiss();
@@ -374,24 +503,22 @@ View PickerRow(BottomSheetContext sheet, StringVariant label, bool selected,
 
 void ShowModelPicker(const BottomSheetHandle &sheets,
                      State<ModelFormState> state, CatalogTarget target) {
-  const auto models = target == CatalogTarget::primary
-                          ? state->primary_catalog
-                          : state->compression_catalog;
-  const std::string selected = target == CatalogTarget::primary
-                                   ? state->model_id.text
-                                   : state->compression_id.text;
+  const auto& policy = CatalogPolicyFor(target);
+  const auto models = state.Get().*policy.catalog;
+  const std::string selected = (state.Get().*policy.selection).catalog.text;
   sheets.Show([models, selected, state, target](BottomSheetContext sheet) {
     std::vector<View> rows;
     rows.reserve(models.size() + 1);
     for (const auto &model : models) {
       rows.push_back(PickerRow(
-          sheet, model, model == selected, false,
+          sheet, model, model == selected, PickerRowKind::catalog_entry,
           [state, target, model] {
             SelectCatalogItem(state, target, model, false);
           }));
     }
     rows.push_back(PickerRow(
-        sheet, app::strings::model_form_custom_model_picker, false, true,
+        sheet, app::strings::model_form_custom_model_picker, false,
+        PickerRowKind::custom_entry,
         [state, target] { SelectCatalogItem(state, target, {}, true); }));
 
     View panel = Column{
@@ -421,8 +548,7 @@ void ShowModelPicker(const BottomSheetHandle &sheets,
     // inset outside the painted panel and retain the 560dp expanded-width cap.
     return Row{std::move(panel).With(Grow())}.With(
         Padding(EdgeInsets::Symmetric(16.0F, 0.0F)),
-        MainAlign(MainAxisAlignment::Center),
-        CrossAlign(CrossAxisAlignment::Stretch));
+        MainAlign(MainAxisAlignment::Center));
   });
 }
 
@@ -448,11 +574,10 @@ Task<void> QueryModels(
   } else if (result->empty()) {
     next.error.clear();
     toast.Show(app::strings::model_form_query_empty);
-  } else if (target == CatalogTarget::primary) {
-    next.primary_catalog = std::move(*result);
-    next.custom_model = false;
   } else {
-    next.compression_catalog = std::move(*result);
+    const auto& policy = CatalogPolicyFor(target);
+    next.*policy.catalog = std::move(*result);
+    std::invoke(policy.after_load, next);
   }
   state = std::move(next);
   if (has_models)
@@ -460,7 +585,8 @@ Task<void> QueryModels(
 }
 
 Task<void> ProbeModel(std::shared_ptr<application::ModelCatalogGateway> catalog,
-                      State<ModelFormState> state, ToastHandle toast) {
+                      State<ModelFormState> state, ToastHandle toast,
+                      DialogHandle dialogs) {
   const auto built =
       application::ModelFormService::BuildForProbe(MakeDraft(state.Get()));
   if (!built) {
@@ -470,17 +596,32 @@ Task<void> ProbeModel(std::shared_ptr<application::ModelCatalogGateway> catalog,
   auto next = state.Get();
   next.busy = true;
   state = std::move(next);
+  const auto started = std::chrono::steady_clock::now();
   auto result = co_await catalog->Probe(*built);
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - started)
+                           .count();
   next = state.Get();
   next.busy = false;
   if (result) {
     next.error.clear();
     state = std::move(next);
-    toast.Show(app::strings::model_form_test_ok);
+    const bool has_data = std::ranges::any_of(
+        result->response,
+        [](const unsigned char value) { return std::isspace(value) == 0; });
+    dialogs.Show(
+        app::strings::model_form_test_result_title,
+        StringVariant::Format(
+            has_data ? app::strings::model_form_test_result_success
+                     : app::strings::model_form_test_result_success_no_data,
+            elapsed, result->response),
+        app::strings::model_form_test_result_confirm,
+        app::strings::common_cancel);
   } else {
     next.error = result.error().message;
     state = std::move(next);
-    toast.Show(result.error().message);
+    toast.Show(StringVariant::Format(app::strings::model_form_test_result_error,
+                                    result.error().message, elapsed));
   }
 }
 
@@ -551,27 +692,27 @@ View ModelSelector(TextEditingValue selection, bool enabled, bool busy,
 }
 
 View LocalForm(State<ModelFormState> state, ToastHandle toast) {
-  const std::array<StringResource, 3> labels{
-      app::strings::model_form_acceleration_auto,
-      app::strings::model_form_acceleration_cpu,
-      app::strings::model_form_acceleration_npu,
-  };
   std::vector<View> acceleration;
-  acceleration.reserve(labels.size());
-  for (std::size_t index = 0; index < labels.size(); ++index) {
-    const bool selected = state->acceleration == static_cast<int>(index);
+  acceleration.reserve(local_acceleration_presentations.size());
+  for (const auto &presentation : local_acceleration_presentations) {
+    const bool selected = state->acceleration == presentation.mode;
     acceleration.push_back(
-        Text(labels[index])
-            .Style(Label(16.0F, FontWeight::Bold,
-                         selected ? colors::text_on_color : colors::secondary))
-            .Align(TextAlign::Center)
-            .VerticalAlign(TextVerticalAlign::Center)
-            .OnClick([state, index] {
+        Stack {
+          Text(presentation.label)
+              .Style(Label(16.0F, FontWeight::Bold,
+                           selected ? colors::text_on_color
+                                    : colors::secondary))
+              // Match Android TextView's optical baseline inside the 46dp
+              // toggle instead of centering only the glyph bounds.
+              .With(Padding(EdgeInsets{
+                  .top = presentation.baseline_padding})),
+        }
+            .OnClick([state, mode = presentation.mode] {
               auto next = state.Get();
-              next.acceleration = static_cast<int>(index);
+              next.acceleration = mode;
               state = std::move(next);
             })
-            .With(Frame{.height = 46.0F}, Grow(),
+            .With(Frame{.height = presentation.height}, Grow(),
                   Align(HorizontalAlignment::Center, VerticalAlignment::Center),
                   Background(selected ? colors::accent : colors::surface_light),
                   CornerRadius(12.0F), PointerCursor(PointerCursorKind::Hand)));
@@ -611,8 +752,16 @@ View LocalForm(State<ModelFormState> state, ToastHandle toast) {
                 ChangeText(state, &ModelFormState::context_size),
                 ValidationResult::None(), TextInputType::Text),
       SupportingText(app::strings::model_form_local_context_hint),
-      SectionLabel(app::strings::model_form_acceleration),
-      Row(std::move(acceleration)).With(Spacing(8.0F)),
+      // HuxerUI's label line box is 1dp taller than the legacy TextView here;
+      // trim the following gap so the 46dp toggle row keeps the same bounds.
+      SectionLabel(
+          app::strings::model_form_acceleration,
+          ModelFormLayoutMetrics::acceleration_label_bottom_padding),
+      // Android LinearLayout baseline-aligns Latin CPU/NPU toggles four pixels
+      // below the Chinese automatic toggle on the parity density. Preserve
+      // that measured geometry by bottom-aligning their shorter frames.
+      Row(std::move(acceleration))
+          .With(Spacing(8.0F), CrossAlign(CrossAxisAlignment::End)),
       SupportingText(app::strings::model_form_acceleration_hint),
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch));
@@ -630,11 +779,12 @@ ModelAddScreen(ModelAddScreenOptions options,
       editing
           ? application::ModelFormService::Edit(*options.editing)
           : application::ModelFormService::New(options.preset, options.local);
-  auto state = UseState(MakeState(
-      initial_draft, editing || options.preset.has_value() || options.local,
-      options.preset.has_value()));
+  auto state = UseState(MakeState(initial_draft,
+                                  editing || options.preset.has_value(),
+                                  options.preset.has_value()));
   const auto tasks = UseTaskScope();
   const auto toast = UseToast();
+  const auto dialogs = UseDialog();
   const auto sheets = UseBottomSheet();
 
   const auto current_draft = MakeDraft(state.Get());
@@ -651,9 +801,9 @@ ModelAddScreen(ModelAddScreenOptions options,
       co_await SaveModel(store, state, toast, actions);
     });
   };
-  auto test = [catalog, state, tasks, toast] {
-    tasks.Launch([catalog, state, toast]() -> Task<void> {
-      co_await ProbeModel(catalog, state, toast);
+  auto test = [catalog, state, tasks, toast, dialogs] {
+    tasks.Launch([catalog, state, toast, dialogs]() -> Task<void> {
+      co_await ProbeModel(catalog, state, toast, dialogs);
     });
   };
   auto query_primary = [catalog, state, tasks, toast, sheets, can_query] {
@@ -687,14 +837,14 @@ ModelAddScreen(ModelAddScreenOptions options,
   std::vector<View> form;
   form.reserve(30);
   form.push_back(SectionLabel(
-      state->protocol_locked
+      (state->protocol_locked || state->local)
           ? StringVariant::Format(app::strings::model_form_provider_named,
                                   state->local
                                       ? UseString(
                                             app::strings::model_protocol_local)
                                       : state->provider_label)
           : StringVariant{app::strings::model_form_provider}));
-  form.push_back(ProtocolSelector(state));
+  form.push_back(ProtocolSelector(state, toast));
 
   if (state->local) {
     form.push_back(SectionLabel(app::strings::model_form_name));
@@ -716,34 +866,33 @@ ModelAddScreen(ModelAddScreenOptions options,
         state->base_url, app::strings::model_form_base_url,
         options.preset ? StringVariant{options.preset->placeholder}
                        : BaseUrlPlaceholder(state->protocol),
-        ChangeText(state, &ModelFormState::base_url), ValidationResult::None(),
-        TextInputType::Url));
+        ChangeConnectionText(state, &ModelFormState::base_url),
+        ValidationResult::None(), TextInputType::Url));
     form.push_back(SupportingText(BaseUrlHint(state->protocol)));
 
     form.push_back(SectionLabel(app::strings::model_form_api_key));
     form.push_back(FormField(
         state->api_key, app::strings::model_form_api_key,
         app::strings::model_form_api_key_hint,
-        ChangeText(state, &ModelFormState::api_key), ValidationResult::None(),
-        TextInputType::Text, true));
+        ChangeConnectionText(state, &ModelFormState::api_key),
+        ValidationResult::None(), TextInputType::Text, true));
 
     form.push_back(SwitchHeader(
         app::strings::model_form_model_id,
         StringVariant{app::strings::model_form_custom_model},
-        state->custom_model, true, 16.0F, [state](bool value) {
+        state->primary_id.custom, true, 16.0F, [state](bool value) {
           auto next = state.Get();
-          next.custom_model = value;
-          next.model_id = TextEditingValue::FromText("");
+          next.primary_id.SetCustom(value);
           state = std::move(next);
         }));
-    if (state->custom_model) {
+    if (state->primary_id.custom) {
       form.push_back(FormField(
-          state->model_id, app::strings::model_form_model_id,
+          state->primary_id.manual, app::strings::model_form_model_id,
           app::strings::model_form_model_id_hint,
-          ChangeText(state, &ModelFormState::model_id)));
+          ChangeManualSelection(state, &ModelFormState::primary_id)));
     } else {
-      form.push_back(ModelSelector(state->model_id, can_query, state->busy,
-                                   query_primary));
+      form.push_back(ModelSelector(state->primary_id.catalog, can_query,
+                                   state->busy, query_primary));
     }
 
     form.push_back(SectionLabel(app::strings::model_form_tool_limit));
@@ -783,23 +932,24 @@ ModelAddScreen(ModelAddScreenOptions options,
         form.push_back(SwitchHeader(
             app::strings::model_form_compression_id,
             StringVariant{app::strings::model_form_compression_custom},
-            state->compression_custom, !state->compression_auto, 12.0F,
+            state->compression_id.custom, !state->compression_auto, 12.0F,
             [state](bool value) {
               auto next = state.Get();
-              next.compression_custom = value;
-              next.compression_id = TextEditingValue::FromText("");
+              next.compression_id.SetCustom(value);
               state = std::move(next);
             }));
         if (!state->compression_auto) {
-          if (state->compression_custom) {
+          if (state->compression_id.custom) {
             form.push_back(FormField(
-                state->compression_id,
+                state->compression_id.manual,
                 app::strings::model_form_compression_id,
                 app::strings::model_form_compression_id_hint,
-                ChangeText(state, &ModelFormState::compression_id)));
+                ChangeManualSelection(state,
+                                      &ModelFormState::compression_id)));
           } else {
-            form.push_back(ModelSelector(state->compression_id, can_query,
-                                         state->busy, query_compression));
+            form.push_back(ModelSelector(state->compression_id.catalog,
+                                         can_query, state->busy,
+                                         query_compression));
           }
         }
       }
@@ -811,6 +961,15 @@ ModelAddScreen(ModelAddScreenOptions options,
                        .Style(Label(12.0F, FontWeight::Regular, colors::danger))
                        .With(Padding(EdgeInsets{.top = 12.0F})));
   }
+
+  std::vector<View> header_actions;
+  header_actions.reserve(state->local ? 1U : 2U);
+  if (!state->local) {
+    header_actions.push_back(HeaderAction(
+        app::strings::model_form_test, !state->busy, std::move(test)));
+  }
+  header_actions.push_back(HeaderAction(app::strings::model_form_save,
+                                        can_save, std::move(save)));
 
   View screen = Column{
       LegacyScreenHeaderLayout{
@@ -828,14 +987,7 @@ ModelAddScreen(ModelAddScreenOptions options,
                     .Style(Label(17.0F, FontWeight::Bold))}
               .With(Grow(), Align(HorizontalAlignment::Center,
                                   VerticalAlignment::Center)),
-          Row{
-              state->local
-                  ? Stack{}.With(Frame{.width = 0.0F, .height = 36.0F})
-                  : HeaderAction(app::strings::model_form_test, !state->busy,
-                                 std::move(test)),
-              HeaderAction(app::strings::model_form_save, can_save,
-                           std::move(save)),
-          }
+          Row(std::move(header_actions))
               .With(Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center)),
       }
           .With(Frame{.min_height = 60.0F},
@@ -869,7 +1021,7 @@ ModelAddScreen(ModelAddScreenOptions options,
   text_field.caret = colors::accent;
   text_field.border_width = 1.0F;
   text_field.focused_border_width = 1.0F;
-  text_field.corner_radius = 12.0F;
+  text_field.outlined.corner_radii = CornerRadii{12.0F};
   text_field.padding = EdgeInsets::Symmetric(16.0F, 12.0F);
 
   auto switch_style = UseEnvironment<SwitchStyle>();

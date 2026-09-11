@@ -1,0 +1,156 @@
+#include "application/ssh_tool_registry.h"
+
+#include <algorithm>
+#include <chrono>
+#include <cstdint>
+#include <optional>
+#include <ranges>
+#include <stdexcept>
+#include <utility>
+
+#include "infrastructure/archive_json.h"
+
+namespace linecode::application {
+namespace {
+
+namespace json = infrastructure::archive_json;
+
+constexpr std::string_view kShellSchema =
+    R"({"properties":{"command":{"description":"The shell command to execute","type":"string"},"cwd":{"description":"Optional working directory; the command runs after cd into it","type":"string"},"timeoutMs":{"description":"Optional timeout in milliseconds, default 30000, max 300000","type":"number"}},"required":["command"],"type":"object"})";
+
+ToolRegistryError Error(ToolRegistryErrorCode code, std::string message) {
+  return {.code = code, .message = std::move(message)};
+}
+
+bool ShellEnabled(const domain::McpExecutionSettings &settings) {
+  const auto found = std::ranges::find(
+      settings.groups, std::string_view{"shell"},
+      [](const domain::McpToolGroupState &group) {
+        return std::string_view{group.id};
+      });
+  return found != settings.groups.end() && found->enabled &&
+         domain::SupportsMcpExecutionMode(found->supported_modes,
+                                          settings.mode);
+}
+
+std::expected<SshCommandRequest, ToolRegistryError>
+ParseArguments(std::string_view text) {
+  auto parsed = json::Parse(text);
+  const auto *object = parsed ? json::AsObject(&*parsed) : nullptr;
+  if (!object) {
+    return std::unexpected(Error(ToolRegistryErrorCode::invalid_arguments,
+                                 "shell_execute arguments must be a JSON object"));
+  }
+  const auto *command = json::AsString(json::Find(*object, "command"));
+  if (!command || command->empty()) {
+    return std::unexpected(Error(ToolRegistryErrorCode::invalid_arguments,
+                                 "shell_execute requires a non-empty command"));
+  }
+  SshCommandRequest request{
+      .command = *command,
+      .working_directory = {},
+      .timeout = std::chrono::milliseconds{30'000},
+      .maximum_output_bytes = 4U * 1024U * 1024U,
+  };
+  if (const auto *cwd = json::AsString(json::Find(*object, "cwd")))
+    request.working_directory = *cwd;
+  if (const auto *timeout = json::Find(*object, "timeoutMs")) {
+    std::optional<std::int64_t> value;
+    if (const auto *integer = std::get_if<std::int64_t>(timeout))
+      value = *integer;
+    else if (const auto *number = std::get_if<double>(timeout))
+      value = static_cast<std::int64_t>(*number);
+    if (!value) {
+      return std::unexpected(Error(
+          ToolRegistryErrorCode::invalid_arguments,
+          "shell_execute timeoutMs must be a number"));
+    }
+    request.timeout = std::chrono::milliseconds{
+        std::clamp(*value, std::int64_t{1'000}, std::int64_t{300'000})};
+  }
+  return request;
+}
+
+std::string Encode(const SshCommandOutput &output) {
+  return json::Serialize(json::Object{
+      {"exit_code", static_cast<std::int64_t>(output.exit_status)},
+      {"stdout", output.standard_output},
+      {"stderr", output.standard_error},
+  });
+}
+
+} // namespace
+
+SshToolRegistry::SshToolRegistry(
+    std::shared_ptr<McpExecutionSettingsService> settings,
+    std::shared_ptr<SshSettingsService> ssh_settings,
+    std::shared_ptr<SshExecutionService> execution)
+    : settings_(std::move(settings)), ssh_settings_(std::move(ssh_settings)),
+      execution_(std::move(execution)) {
+  if (!settings_ || !ssh_settings_ || !execution_)
+    throw std::invalid_argument(
+        "SshToolRegistry requires execution and settings services");
+}
+
+huxerui::Task<std::expected<void, ToolRegistryError>>
+SshToolRegistry::Refresh() {
+  auto settings = co_await settings_->Load();
+  if (!settings) {
+    co_return std::unexpected(
+        Error(ToolRegistryErrorCode::load_failed, settings.error().message));
+  }
+  std::optional<domain::SshConfig> next_config;
+  std::vector<RegisteredTool> next_tools;
+  if (settings->mode == domain::McpExecutionMode::ssh &&
+      ShellEnabled(*settings)) {
+    auto config = co_await ssh_settings_->Load();
+    if (!config) {
+      co_return std::unexpected(
+          Error(ToolRegistryErrorCode::load_failed, config.error().message));
+    }
+    next_config = domain::NormalizeSshConfig(std::move(*config));
+    next_tools.push_back(RegisteredTool{
+        .name = std::string{kSshShellToolName},
+        .description =
+            "Execute a shell command through the configured SSH target. The "
+            "command requires user confirmation before execution.",
+        .parameters_json = std::string{kShellSchema},
+        .allowed_in_read_only = true,
+        .permanent_grant_supported = true,
+    });
+  }
+  active_config_ = std::move(next_config);
+  tools_ = std::move(next_tools);
+  co_return std::expected<void, ToolRegistryError>{};
+}
+
+std::span<const RegisteredTool> SshToolRegistry::Tools() const noexcept {
+  return tools_;
+}
+
+huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>>
+SshToolRegistry::Invoke(std::string name, std::string arguments_json) {
+  if (name != kSshShellToolName) {
+    co_return std::unexpected(Error(ToolRegistryErrorCode::unknown_tool,
+                                    "Unknown SSH tool: " + name));
+  }
+  if (!active_config_ || !active_config_->IsConfigured()) {
+    co_return std::unexpected(Error(ToolRegistryErrorCode::unavailable,
+                                    "SSH is not configured"));
+  }
+  auto arguments = ParseArguments(arguments_json);
+  if (!arguments)
+    co_return std::unexpected(std::move(arguments.error()));
+  auto invoked =
+      co_await execution_->Execute(*active_config_, std::move(*arguments));
+  if (!invoked) {
+    co_return std::unexpected(Error(ToolRegistryErrorCode::invocation_failed,
+                                    std::move(invoked.error().message)));
+  }
+  co_return ToolInvocationResult{
+      .content = Encode(*invoked),
+      .error = invoked->exit_status != 0,
+  };
+}
+
+} // namespace linecode::application

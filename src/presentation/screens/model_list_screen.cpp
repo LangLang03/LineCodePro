@@ -12,6 +12,7 @@
 
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/line_theme.h"
+#include "presentation/model_protocol_presentation.h"
 
 namespace linecode::presentation {
 namespace {
@@ -42,21 +43,7 @@ bool Marked(const ModelListState &state, std::string_view id) {
   return std::ranges::find(state.marked, id) != state.marked.end();
 }
 
-Color ProtocolColor(domain::ModelProtocol protocol) {
-  switch (protocol) {
-  case domain::ModelProtocol::openai_compatible:
-    return Color::Rgb(16, 163, 127);
-  case domain::ModelProtocol::codex_responses:
-    return Color::Rgb(75, 139, 255);
-  case domain::ModelProtocol::anthropic_messages:
-    return Color::Rgb(184, 111, 80);
-  case domain::ModelProtocol::local_gguf:
-    return Color::Rgb(46, 125, 98);
-  }
-  return colors::accent;
-}
-
-Task<void> Reload(const std::shared_ptr<application::ModelStore> &store,
+Task<void> Reload(std::shared_ptr<application::ModelStore> store,
                   State<ModelListState> state,
                   std::function<void(bool)> selection_changed) {
   auto loaded = co_await store->List();
@@ -77,7 +64,7 @@ Task<void> Reload(const std::shared_ptr<application::ModelStore> &store,
   state = std::move(next);
 }
 
-Task<void> SelectModel(const std::shared_ptr<application::ModelStore> &store,
+Task<void> SelectModel(std::shared_ptr<application::ModelStore> store,
                        State<ModelListState> state, std::string id,
                        std::function<void(bool)> selection_changed) {
   auto result = co_await store->Select(id);
@@ -90,7 +77,7 @@ Task<void> SelectModel(const std::shared_ptr<application::ModelStore> &store,
   co_await Reload(store, state, std::move(selection_changed));
 }
 
-Task<void> DeleteMarked(const std::shared_ptr<application::ModelStore> &store,
+Task<void> DeleteMarked(std::shared_ptr<application::ModelStore> store,
                         State<ModelListState> state,
                         std::function<void(bool)> selection_changed) {
   auto ids = state->marked;
@@ -108,24 +95,41 @@ Task<void> DeleteMarked(const std::shared_ptr<application::ModelStore> &store,
   co_await Reload(store, state, std::move(selection_changed));
 }
 
-View SheetPanel(StringVariant title, std::vector<View> rows) {
+View SheetPanel(StringVariant title, std::vector<View> rows,
+                std::optional<View> description = std::nullopt) {
   rows.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 12.0F}));
-  return Column{
+  std::vector<View> content;
+  content.reserve(description.has_value() ? 5U : 4U);
+  content.push_back(
       Row{Spacer(),
           Stack{}.With(Frame{.width = 36.0F, .height = 4.0F},
                        Background(colors::tertiary), CornerRadius(2.0F)),
           Spacer()}
-          .With(Padding(EdgeInsets{.top = 8.0F, .bottom = 4.0F})),
+          .With(Padding(EdgeInsets{.top = 8.0F, .bottom = 4.0F})));
+  content.push_back(
       Text(std::move(title))
           .Style(Label(17.0F, FontWeight::Bold))
           .With(Padding(EdgeInsets{
-              .right = 24.0F, .bottom = 12.0F, .left = 24.0F})),
-      Divider(),
-      Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch)),
-  }
+              .right = 16.0F, .bottom = 12.0F, .left = 16.0F})));
+  if (description.has_value())
+    content.push_back(std::move(*description));
+  content.push_back(Divider());
+  content.push_back(
+      Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch)));
+
+  View panel = Column(std::move(content))
       .With(Frame{.max_width = 560.0F}, Background(colors::elevated),
             CornerRadius(CornerRadii::Top(16.0F)), ClipChildren(),
             CrossAlign(CrossAxisAlignment::Stretch));
+  // DialogBuilder.showBottomSheet used the inset dialog width and a 16dp
+  // bottom window offset for model actions/deletion. Keep those insets outside
+  // the painted panel while the presentation host itself remains transparent.
+  return Row{std::move(panel).With(Grow())}.With(
+      Padding(EdgeInsets{.top = 0.0F,
+                         .right = 16.0F,
+                         .bottom = 16.0F,
+                         .left = 16.0F}),
+      MainAlign(MainAxisAlignment::Center));
 }
 
 View SheetRow(StringVariant text, std::optional<StringVariant> description,
@@ -231,7 +235,8 @@ View ModelCard(const domain::ModelConfig &model, State<ModelListState> state,
       Text(model.provider_label)
           .Style(Label(11.0F, FontWeight::Bold, colors::text_on_color))
           .With(Padding(EdgeInsets::Symmetric(8.0F, 4.0F)),
-                Background(ProtocolColor(model.protocol)),
+                Background(ModelProtocolPresentationFor(model.protocol)
+                               .badge_color),
                 CornerRadius(8.0F)),
       Column{
           Text(model.name).Style(Label(16.0F, FontWeight::Medium)),
@@ -281,13 +286,6 @@ ModelListScreen(std::shared_ptr<application::ModelStore> store,
       return;
     sheets.Show([state, tasks, store, actions](BottomSheetContext sheet) {
       std::vector<View> rows;
-      rows.push_back(
-          Text::Format(app::strings::model_list_delete_message,
-                       state->marked.size())
-              .Style(Label(12.0F, FontWeight::Regular, colors::tertiary))
-              .With(Padding(EdgeInsets{.right = 24.0F,
-                                       .bottom = 12.0F,
-                                       .left = 24.0F})));
       rows.push_back(SheetRow(app::strings::common_cancel, std::nullopt,
                               colors::text,
                               [sheet] { sheet.Dismiss(); }));
@@ -300,11 +298,18 @@ ModelListScreen(std::shared_ptr<application::ModelStore> store,
                                 tasks.Launch([store, state, actions]() -> Task<void> {
                                   co_await DeleteMarked(
                                       store, state,
-                                      actions.on_selection_availability_changed);
+                                  actions.on_selection_availability_changed);
                                 });
                               }));
+      View description =
+          Text::Format(app::strings::model_list_delete_message,
+                       state->marked.size())
+              .Style(Label(13.0F, FontWeight::Regular, colors::tertiary))
+              .With(Padding(EdgeInsets{.right = 16.0F,
+                                       .bottom = 12.0F,
+                                       .left = 16.0F}));
       return SheetPanel(app::strings::model_list_delete_title,
-                        std::move(rows));
+                        std::move(rows), std::move(description));
     });
   };
 

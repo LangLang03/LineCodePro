@@ -4,6 +4,7 @@
 #include <chrono>
 #include <memory>
 
+#include <huxerui/data.h>
 #include <huxerui/file.h>
 
 #include "application/ports/archive_database.h"
@@ -25,6 +26,13 @@ public:
       application::DataArchiveResult<domain::ArchiveSummary>>
   Import(huxerui::FileReference source,
          domain::ArchiveImportMode mode) override;
+
+  // Imports an already-owned archive payload. FileReference remains the UI
+  // capability boundary; this overload keeps decode/transaction policy
+  // independently testable and reusable by non-picker application flows.
+  [[nodiscard]] huxerui::Task<
+      application::DataArchiveResult<domain::ArchiveSummary>>
+  ImportBytes(huxerui::Bytes archive, domain::ArchiveImportMode mode);
 
 private:
   std::shared_ptr<application::ArchiveDatabase> database_;

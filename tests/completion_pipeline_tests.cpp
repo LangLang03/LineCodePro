@@ -21,9 +21,9 @@ using linecode::application::GenerationPhase;
 using linecode::domain::MessageRole;
 using linecode::domain::ModelConfig;
 using linecode::domain::ModelProtocol;
+using linecode::infrastructure::BoundedTextAccumulator;
 using linecode::infrastructure::DecodeOpenAiChatResponse;
 using linecode::infrastructure::DecodeOpenAiChatStreamEvent;
-using linecode::infrastructure::BoundedTextAccumulator;
 using linecode::infrastructure::EncodeOpenAiChatRequest;
 using linecode::infrastructure::InMemoryConversationStore;
 using linecode::infrastructure::ModelUrlError;
@@ -50,27 +50,36 @@ ModelConfig FixtureModel() {
 void EncodesOpenAiRequestWithoutLosingUtf8OrControlCharacters() {
   CompletionRequest request{
       .model = FixtureModel(),
-      .messages = {
-          {.role = linecode::application::CompletionRole::user,
-           .content = "你好\n\"LineCode\""},
-          {.role = linecode::application::CompletionRole::assistant,
-           .content = "ready\\ok"},
-      },
+      .messages =
+          {
+              {.role = linecode::application::CompletionRole::user,
+               .content = "你好\n\"LineCode\"",
+               .tool_calls = {},
+               .tool_result = std::nullopt},
+              {.role = linecode::application::CompletionRole::assistant,
+               .content = "ready\\ok",
+               .tool_calls = {},
+               .tool_result = std::nullopt},
+          },
+      .tools = {},
       .stream = true,
+      .permission_scope = {},
   };
   const auto json = EncodeOpenAiChatRequest(request);
-  assert(json ==
-         "{\"model\":\"linecode-test-model\",\"messages\":["
-         "{\"role\":\"user\",\"content\":\"你好\\n\\\"LineCode\\\"\"},"
-         "{\"role\":\"assistant\",\"content\":\"ready\\\\ok\"}],"
-         "\"temperature\":0.2,\"stream\":true}");
+  assert(json == "{\"model\":\"linecode-test-model\",\"messages\":["
+                 "{\"role\":\"user\",\"content\":\"你好\\n\\\"LineCode\\\"\"},"
+                 "{\"role\":\"assistant\",\"content\":\"ready\\\\ok\"}],"
+                 "\"temperature\":0.2,"
+                 "\"reasoning\":{\"effort\":\"medium\"},"
+                 "\"stream\":true}");
 }
 
 void DecodesBufferedFixtureAndUnicodeEscapes() {
   const auto response = DecodeOpenAiChatResponse(
-      R"json({"choices":[{"message":{"content":"固定\u56de\u590d \ud83c\udf0d"}}],"usage":{"prompt_tokens":2,"completion_tokens":3}})json");
+      R"json({"choices":[{"message":{"content":"固定\u56de\u590d \ud83c\udf0d","reasoning_content":"先思考"}}],"usage":{"prompt_tokens":2,"completion_tokens":3}})json");
   assert(response.has_value());
   assert(response->text == "固定回复 🌍");
+  assert(response->reasoning_content == "先思考");
   assert(response->input_tokens == 2);
   assert(response->output_tokens == 3);
 
@@ -87,9 +96,10 @@ void DecodesOpenAiSsePayloadsAndDoneSentinel() {
   assert(role->text_delta == "");
 
   const auto delta = DecodeOpenAiChatStreamEvent(
-      R"json({"choices":[{"delta":{"content":"固定回复"},"finish_reason":null}]})json");
+      R"json({"choices":[{"delta":{"content":"固定回复","reasoning_content":"思考"},"finish_reason":null}]})json");
   assert(delta.has_value());
   assert(delta->text_delta == "固定回复");
+  assert(delta->reasoning_delta == "思考");
 
   const auto stopped = DecodeOpenAiChatStreamEvent(
       R"json({"choices":[{"delta":{},"finish_reason":"stop"}]})json");
@@ -131,8 +141,7 @@ void BoundsAggregateStreamTextAcrossManySmallDeltas() {
 void JoinsEndpointExactlyOnce() {
   assert(OpenAiChatEndpoint(" https://api.example.test/v1/ ") ==
          "https://api.example.test/v1/chat/completions");
-  assert(OpenAiChatEndpoint(
-             "https://api.example.test/v1/chat/completions/") ==
+  assert(OpenAiChatEndpoint("https://api.example.test/v1/chat/completions/") ==
          "https://api.example.test/v1/chat/completions");
 }
 
@@ -166,6 +175,9 @@ void GenerationControllerRejectsStaleResultsAndPersistsAssistant() {
   assert(first->messages[0].content == "history");
   assert(first->messages[1].content == "first");
   assert(controller.State().phase == GenerationPhase::running);
+  assert(controller.AppendTextDelta(first->generation_id, "流"));
+  assert(controller.AppendTextDelta(first->generation_id, "式"));
+  assert(controller.State().streamed_text == "流式");
   const auto concurrent = controller.Begin("must not run concurrently");
   assert(!concurrent.has_value());
   assert(concurrent.error() ==
@@ -174,8 +186,14 @@ void GenerationControllerRejectsStaleResultsAndPersistsAssistant() {
 
   controller.Cancel();
   assert(controller.State().phase == GenerationPhase::cancelled);
+  assert(controller.State().streamed_text.empty());
+  assert(!controller.AppendTextDelta(first->generation_id, "stale"));
   assert(!controller.Complete(first->generation_id,
-                              CompletionResponse{.text = "stale"}));
+                              CompletionResponse{.text = "stale",
+                                                 .reasoning_content = {},
+                                                 .tool_calls = {},
+                                                 .input_tokens = 0,
+                                                 .output_tokens = 0}));
   assert(recording->Messages().size() == 2U);
 
   auto second = controller.Begin("second");
@@ -183,23 +201,42 @@ void GenerationControllerRejectsStaleResultsAndPersistsAssistant() {
   assert(second->generation_id > first->generation_id);
   assert(controller.Complete(
       second->generation_id,
-      CompletionResponse{.text = "这是 LineCode 自动化测试的固定回复。"}));
+      CompletionResponse{.text = "这是 LineCode 自动化测试的固定回复。",
+                         .reasoning_content = {},
+                         .tool_calls = {},
+                         .input_tokens = 0,
+                         .output_tokens = 0}));
   assert(controller.State().phase == GenerationPhase::completed);
   assert(recording->Messages().back().role == MessageRole::assistant);
   assert(recording->Messages().back().content ==
          "这是 LineCode 自动化测试的固定回复。");
+  const auto completed_message_count = recording->Messages().size();
+  assert(!controller.Complete(
+      second->generation_id,
+      CompletionResponse{.text = "同一 generation 不应重复落盘",
+                         .reasoning_content = {},
+                         .tool_calls = {},
+                         .input_tokens = 0,
+                         .output_tokens = 0}));
+  assert(recording->Messages().size() == completed_message_count);
 
   auto third = controller.Begin("third");
   assert(third.has_value());
-  assert(controller.Fail(
-      third->generation_id,
-      CompletionError{.code = CompletionErrorCode::transport,
-                      .message = "fixture unavailable"}));
+  assert(controller.Fail(third->generation_id,
+                         CompletionError{.code = CompletionErrorCode::transport,
+                                         .message = "fixture unavailable"}));
   assert(controller.State().phase == GenerationPhase::failed);
   assert(controller.State().error == "fixture unavailable");
   controller.Reset();
   assert(controller.State().phase == GenerationPhase::idle);
   assert(controller.State().error.empty());
+
+  auto attachment_only =
+      controller.Begin("", {{"notes.md", "/workspace/notes.md", "local"}});
+  assert(attachment_only.has_value());
+  assert(recording->Messages().back().content.empty());
+  assert(recording->Messages().back().attachments.size() == 1U);
+  controller.Cancel();
 }
 
 } // namespace

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <expected>
+#include <cstddef>
 #include <span>
 #include <string>
 #include <vector>
@@ -8,6 +9,8 @@
 #include <huxerui/data.h>
 
 namespace linecode::infrastructure {
+
+inline constexpr std::size_t kMaximumArchivePathDepth = 64;
 
 struct ZipEntryData final {
   std::string name;

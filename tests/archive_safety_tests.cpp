@@ -9,6 +9,7 @@
 
 #include <zlib.h>
 
+#include "infrastructure/archive_json.h"
 #include "infrastructure/archive_validation.h"
 #include "infrastructure/linecode_zip.h"
 
@@ -20,6 +21,7 @@ using linecode::infrastructure::ValidateArchiveManifest;
 using linecode::infrastructure::ValidateDatabaseSnapshot;
 using linecode::infrastructure::WriteLineCodeZip;
 using linecode::infrastructure::ZipEntryData;
+namespace json = linecode::infrastructure::archive_json;
 
 void Put16(Bytes &bytes, std::uint16_t value) {
   bytes.push_back(static_cast<std::byte>(value & 0xFFU));
@@ -157,6 +159,15 @@ void TestZipRejectsTraversalAndTampering() {
   assert(!linecode::infrastructure::IsSafeArchivePath("C:/escape"));
   assert(!linecode::infrastructure::IsSafeArchivePath("home/C:/escape"));
 
+  std::string maximum_depth{"home"};
+  for (std::size_t depth = 1; depth <
+                              linecode::infrastructure::kMaximumArchivePathDepth;
+       ++depth) {
+    maximum_depth += "/d";
+  }
+  assert(linecode::infrastructure::IsSafeArchivePath(maximum_depth));
+  assert(!linecode::infrastructure::IsSafeArchivePath(maximum_depth + "/d"));
+
   auto encoded = WriteLineCodeZip(
       std::vector{ZipEntryData{"home/a.txt", Text("alpha")}});
   assert(encoded);
@@ -237,6 +248,146 @@ void TestTypedDatabaseCells() {
   })", 4));
 }
 
+json::Value StorageEntry(std::string key, std::string value) {
+  return json::Object{{"key", std::move(key)}, {"value", std::move(value)}};
+}
+
+std::vector<ZipEntryData> LegacyFixture() {
+  json::Array models{
+      json::Object{{"id", "m-openai"},
+                   {"name", "OpenAI"},
+                   {"protocolType", "openai"},
+                   {"baseUrl", "https://example.test/v1"},
+                   {"apiKey", "legacy-secret"},
+                   {"modelId", "gpt-test"},
+                   {"tool_call_limit", std::int64_t{18}},
+                   {"compression_model_enabled", true},
+                   {"compression_model_auto", false},
+                   {"compression_model_id", " compact "},
+                   {"context_size", std::int64_t{32000}}},
+      json::Object{{"id", ""}, {"name", "ignored"}},
+  };
+  json::Array messages{
+      json::Object{{"id", "m1"},
+                   {"role", "assistant"},
+                   {"content", "answer"},
+                   {"reasoning", "legacy reasoning"},
+                   {"timestamp", std::int64_t{102}},
+                   {"hidden", false}},
+      json::Object{{"role", "unexpected"},
+                   {"content", "question"},
+                   {"timestamp", std::int64_t{103}}},
+  };
+  json::Value conversation = json::Object{
+      {"id", "c1"},          {"title", "Legacy chat"},
+      {"projectId", "p1"},  {"createdAt", std::int64_t{100}},
+      {"updatedAt", std::int64_t{110}},
+      {"messages", std::move(messages)},
+  };
+  json::Array list{json::Object{{"id", "c1"}}};
+  json::Array storage{
+      StorageEntry("@lineai_models", json::Serialize(models)),
+      StorageEntry("@lineai_selected_model", "m-openai"),
+      StorageEntry("@lineai_current_conversation", "c1"),
+      StorageEntry("@lineai_conversation_list", json::Serialize(list)),
+      StorageEntry("@lineai_conv_c1",
+                   json::Serialize(json::Object{{"storage", "file"},
+                                                {"fileName", "../escape"}})),
+      StorageEntry("@linecode_chat_mode", "agent"),
+      StorageEntry("unrelated", "ignored"),
+  };
+  return {
+      ZipEntryData{"async-storage.json", Text(json::Serialize(storage))},
+      ZipEntryData{"conversations/c1.json.bak",
+                   Text(json::Serialize(conversation))},
+  };
+}
+
+void TestLegacyAsyncStorageFixture() {
+  const auto decoded = linecode::infrastructure::DecodeLegacyArchive(
+      LegacyFixture(), 999);
+  assert(decoded);
+  assert(decoded->models.size() == 1);
+  const auto &model = decoded->models.front().config;
+  assert(model.id == "m-openai");
+  assert(model.api_key == "legacy-secret");
+  assert(model.tool_call_limit == 18);
+  assert(model.compression_model_enabled);
+  assert(!model.compression_model_auto);
+  assert(model.compression_model_id == "compact");
+  assert(model.context_size == 32000);
+  assert(decoded->selected_model_id == "m-openai");
+  assert(decoded->settings.size() == 1);
+  assert(decoded->settings.at("@linecode_chat_mode") == "agent");
+  assert(decoded->conversations.size() == 1);
+  const auto &conversation = decoded->conversations.front();
+  assert(conversation.id == "c1");
+  assert(conversation.title == "Legacy chat");
+  assert(conversation.created_at == 100);
+  assert(conversation.messages.size() == 2);
+  assert(conversation.messages[0].id == "c1:m1");
+  assert(conversation.messages[0].role == "assistant");
+  assert(conversation.messages[0].reasoning_content == "legacy reasoning");
+  assert(conversation.messages[1].id == "imported_1");
+  assert(conversation.messages[1].role == "user");
+  assert(decoded->current_conversation_id == "c1");
+}
+
+void TestLegacyChunkedConversationFixture() {
+  const std::string conversation = json::Serialize(json::Object{
+      {"id", "chunked"},
+      {"messages", json::Array{json::Object{{"content", "joined"}}}},
+  });
+  const auto midpoint = conversation.size() / 2U;
+  json::Array storage{
+      StorageEntry("@lineai_conv_chunked",
+                   json::Serialize(json::Object{{"chunked", true},
+                                                {"chunks", std::int64_t{2}}})),
+      StorageEntry("@lineai_conv_chunk_chunked_0",
+                   conversation.substr(0, midpoint)),
+      StorageEntry("@lineai_conv_chunk_chunked_1", conversation.substr(midpoint)),
+  };
+  const std::vector entries{
+      ZipEntryData{"async-storage.json", Text(json::Serialize(storage))}};
+  const auto decoded =
+      linecode::infrastructure::DecodeLegacyArchive(entries, 777);
+  assert(decoded && decoded->conversations.size() == 1);
+  assert(decoded->conversations.front().created_at == 777);
+  assert(decoded->conversations.front().messages.front().content == "joined");
+}
+
+void TestInvalidLegacyArchiveDoesNotReachDatabaseBoundary() {
+  struct RecordingDatabase final {
+    bool mutated{};
+    void Import(const linecode::application::LegacyArchiveData &) {
+      mutated = true;
+    }
+  } database;
+  json::Array storage{
+      StorageEntry("@lineai_conv_broken",
+                   json::Serialize(json::Object{{"storage", "file"},
+                                                {"fileName", "missing.json"}})),
+  };
+  const std::vector entries{
+      ZipEntryData{"async-storage.json", Text(json::Serialize(storage))}};
+  const auto staged =
+      linecode::infrastructure::DecodeLegacyArchive(entries, 123);
+  if (staged)
+    database.Import(*staged);
+  assert(!staged);
+  assert(!database.mutated);
+
+  json::Array chunked{
+      StorageEntry("@lineai_conv_broken",
+                   json::Serialize(json::Object{{"chunked", true},
+                                                {"chunks", std::int64_t{1}}})),
+  };
+  const std::vector missing_chunk{
+      ZipEntryData{"async-storage.json", Text(json::Serialize(chunked))}};
+  assert(!linecode::infrastructure::DecodeLegacyArchive(missing_chunk, 123));
+  assert(!database.mutated);
+}
+
 } // namespace
 
 int main() {
@@ -244,4 +395,7 @@ int main() {
   TestZipRejectsTraversalAndTampering();
   TestManifestValidation();
   TestTypedDatabaseCells();
+  TestLegacyAsyncStorageFixture();
+  TestLegacyChunkedConversationFixture();
+  TestInvalidLegacyArchiveDoesNotReachDatabaseBoundary();
 }

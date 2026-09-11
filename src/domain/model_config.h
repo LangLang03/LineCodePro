@@ -1,10 +1,13 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace linecode::domain {
 
@@ -15,10 +18,71 @@ enum class ModelProtocol : std::uint8_t {
   local_gguf,
 };
 
+enum class ModelProviderPresetKind : std::uint8_t {
+  deepseek,
+  glm,
+  mimo,
+  mimo_token_plan,
+  kimi,
+  qwen,
+  openai,
+  claude,
+  gemini,
+  openrouter,
+  groq,
+  together,
+  siliconflow,
+  minimax,
+  ollama,
+  lmstudio,
+  codex,
+  count,
+};
+
+inline constexpr std::size_t model_provider_preset_count =
+    static_cast<std::size_t>(std::to_underlying(ModelProviderPresetKind::count));
+
+[[nodiscard]] constexpr std::size_t
+ModelProviderPresetIndex(ModelProviderPresetKind kind) noexcept {
+  return static_cast<std::size_t>(std::to_underlying(kind));
+}
+
+struct ModelProtocolDescriptor final {
+  ModelProtocol protocol;
+  std::string_view label;
+  std::string_view default_base_url;
+  bool supports_dedicated_compression;
+
+  bool operator==(const ModelProtocolDescriptor &) const = default;
+};
+
+inline constexpr std::array model_protocol_catalog{
+    ModelProtocolDescriptor{ModelProtocol::openai_compatible, "OpenAI",
+                            "https://api.openai.com/v1", true},
+    ModelProtocolDescriptor{ModelProtocol::codex_responses, "Codex",
+                            "https://api.openai.com/v1", true},
+    ModelProtocolDescriptor{ModelProtocol::anthropic_messages, "Anthropic",
+                            "https://api.anthropic.com", false},
+    ModelProtocolDescriptor{ModelProtocol::local_gguf, "Local", "", false},
+};
+
+[[nodiscard]] constexpr const ModelProtocolDescriptor &
+ModelProtocolInfo(ModelProtocol protocol) noexcept {
+  for (const auto &descriptor : model_protocol_catalog) {
+    if (descriptor.protocol == protocol)
+      return descriptor;
+  }
+  std::unreachable();
+}
+
 [[nodiscard]] constexpr bool
 SupportsDedicatedCompression(ModelProtocol protocol) noexcept {
-  return protocol == ModelProtocol::openai_compatible ||
-         protocol == ModelProtocol::codex_responses;
+  return ModelProtocolInfo(protocol).supports_dedicated_compression;
+}
+
+[[nodiscard]] constexpr std::string_view
+DefaultModelBaseUrl(ModelProtocol protocol) noexcept {
+  return ModelProtocolInfo(protocol).default_base_url;
 }
 
 [[nodiscard]] std::string_view
@@ -52,7 +116,9 @@ struct ModelConfig final {
 };
 
 struct ModelProviderPreset final {
+  ModelProviderPresetKind kind;
   std::string_view id;
+  std::string_view provider_label;
   ModelProtocol protocol;
   std::string_view base_url;
   std::string_view placeholder;
@@ -60,8 +126,11 @@ struct ModelProviderPreset final {
   bool operator==(const ModelProviderPreset &) const = default;
 };
 
-[[nodiscard]] const std::array<ModelProviderPreset, 17> &
+[[nodiscard]] const std::array<ModelProviderPreset,
+                               model_provider_preset_count> &
 ModelProviderPresets() noexcept;
+[[nodiscard]] const ModelProviderPreset &
+ModelProviderPresetFor(ModelProviderPresetKind kind);
 [[nodiscard]] std::optional<ModelProviderPreset>
 FindModelProviderPreset(std::string_view id) noexcept;
 

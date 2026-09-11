@@ -76,6 +76,8 @@ public:
   [[nodiscard]] virtual std::uint64_t AllocateMessageId() noexcept = 0;
   virtual void Append(domain::ChatMessage message) = 0;
   virtual void Clear() = 0;
+  [[nodiscard]] virtual std::optional<domain::ChatMessage>
+  RecallUserMessage(std::uint64_t message_id) = 0;
 
   // Implementations expose a UI-thread cache here. Persistent adapters may
   // fulfill the commands asynchronously, then notify their owner to render the

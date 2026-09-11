@@ -1,0 +1,52 @@
+{
+  "settle_seconds": 1.0,
+  "launch_settle_seconds": 0.8,
+  "locale": "zh-CN",
+  "pixel_masks": [[0, 0, 180, 90]],
+  "setup": [
+    {"type": "sleep", "seconds": 1.0},
+    {"type": "tap_text", "value": "同意", "optional": true},
+    {"type": "sleep", "seconds": 1.0}
+  ],
+  "scenarios": [
+    {
+      "name": "termux_integration",
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "工作区工具开关、SSH 执行和本地执行目标"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "SSH Shell"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "Termux 对接"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "expect_text", "value": "把 Termux 作为 SSH Shell"},
+        {"type": "expect_text", "value": "对接步骤"},
+        {"type": "expect_text", "value": "Termux intent 授权指令"},
+        {"type": "expect_text", "value": "自动配置 OpenSSH"}
+      ]
+    },
+    {
+      "name": "termux_copy_command",
+      "compare_pixels": false,
+      "actions": [
+        {"type": "tap", "x": 1005, "y": 205},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "tap_text", "value": "设置"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "工作区工具开关、SSH 执行和本地执行目标"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "SSH Shell"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "Termux 对接"},
+        {"type": "sleep", "seconds": 0.8},
+        {"type": "tap_text", "value": "复制授权指令"},
+        {"type": "sleep", "seconds": 0.5},
+        {"type": "expect_text", "value": "已复制"},
+        {"type": "expect_text", "value": "打开 Termux 粘贴执行授权指令"}
+      ]
+    }
+  ]
+}

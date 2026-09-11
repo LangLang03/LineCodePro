@@ -92,6 +92,7 @@ Inflate(std::span<const std::byte> compressed, std::size_t output_size) {
 
 struct CentralEntry final {
   std::string name;
+  bool directory{};
   std::uint16_t flags{};
   std::uint16_t method{};
   std::uint32_t checksum{};
@@ -108,7 +109,11 @@ bool IsSafeArchivePath(std::string_view name) noexcept {
       name.find('\\') != std::string_view::npos) {
     return false;
   }
+  std::size_t depth{};
   for (std::size_t start = 0; start <= name.size();) {
+    if (++depth > kMaximumArchivePathDepth) {
+      return false;
+    }
     const std::size_t slash = name.find('/', start);
     const auto part = name.substr(start, slash == std::string_view::npos
                                             ? name.size() - start
@@ -168,6 +173,7 @@ WriteLineCodeZip(std::span<const ZipEntryData> entries) {
     PutText(output, entry.name);
     PutBytes(output, entry.content);
     central.push_back(CentralEntry{.name = entry.name,
+                                   .directory = false,
                                    .flags = 0x0800,
                                    .method = 0,
                                    .checksum = checksum,
@@ -284,15 +290,21 @@ ZipResult ReadLineCodeZip(std::span<const std::byte> archive) {
       name.push_back(static_cast<char>(
           std::to_integer<unsigned char>(archive[cursor + 46 + n])));
     }
-    if (!IsSafeArchivePath(name) || !names.insert(name).second) {
+    const bool is_directory = name.ends_with('/');
+    const auto safe_name = is_directory
+                               ? std::string_view{name}.substr(0, name.size() - 1)
+                               : std::string_view{name};
+    if (!IsSafeArchivePath(safe_name) || !names.insert(name).second ||
+        (is_directory &&
+         (method != 0 || size != 0 || compressed_size != 0))) {
       return std::unexpected(ZipError{"unsafe or duplicate ZIP path"});
     }
     total_size += size;
     if (total_size > kMaximumArchiveBytes) {
       return std::unexpected(ZipError{"expanded .linecode is too large"});
     }
-    central.push_back({name, flags, method, checksum, compressed_size, size,
-                       local_offset});
+    central.push_back({name, is_directory, flags, method, checksum,
+                       compressed_size, size, local_offset});
     cursor += record_size;
   }
   if (cursor != static_cast<std::size_t>(directory_offset) + directory_size) {
@@ -348,6 +360,8 @@ ZipResult ReadLineCodeZip(std::span<const std::byte> archive) {
       return std::unexpected(content ? ZipError{"ZIP checksum mismatch"}
                                      : std::move(content.error()));
     }
+    if (entry.directory)
+      continue;
     entries.push_back({entry.name, std::move(*content)});
   }
   return entries;

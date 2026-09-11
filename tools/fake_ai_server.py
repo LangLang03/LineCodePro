@@ -11,10 +11,12 @@ import argparse
 import json
 import signal
 import socket
+import threading
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+from pathlib import Path
 from urllib.parse import urlsplit
 
 
@@ -22,6 +24,8 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 18080
 DEFAULT_REPLY = "这是 LineCode 自动化测试的固定回复。"
 MODEL_ID = "linecode-test-model"
+SHELL_TOOL_TRIGGER = "__LINECODE_TEST_SHELL__"
+SHELL_TOOL_COMMAND = "printf linecode-tool-ok"
 MAX_REQUEST_BODY_BYTES = 1024 * 1024
 REQUEST_READ_TIMEOUT_SECONDS = 5.0
 
@@ -51,11 +55,23 @@ class FixtureServer(ThreadingHTTPServer):
         reply: str = DEFAULT_REPLY,
         log_requests: bool = True,
         read_timeout: float = REQUEST_READ_TIMEOUT_SECONDS,
+        request_log: Path | None = None,
     ) -> None:
         super().__init__(address, FakeAiHandler)
         self.reply = reply
         self.log_requests = log_requests
         self.read_timeout = read_timeout
+        self.request_log = request_log
+        self.request_log_lock = threading.Lock()
+
+    def record_request(self, path: str, request: dict[str, Any]) -> None:
+        if self.request_log is None:
+            return
+        record = compact_json({"path": path, "body": request}) + b"\n"
+        with self.request_log_lock:
+            self.request_log.parent.mkdir(parents=True, exist_ok=True)
+            with self.request_log.open("ab") as output:
+                output.write(record)
 
 
 class FakeAiHandler(BaseHTTPRequestHandler):
@@ -229,8 +245,9 @@ class FakeAiHandler(BaseHTTPRequestHandler):
             return
 
         path = self.route_path()
+        self.fixture_server.record_request(path, request)
         if path in {"/v1/chat/completions", "/chat/completions"}:
-            self.handle_chat_completions(request.get("stream") is True)
+            self.handle_chat_completions(request, request.get("stream") is True)
             return
         if path in {"/v1/responses", "/responses"}:
             self.handle_responses(request.get("stream") is True)
@@ -241,13 +258,111 @@ class FakeAiHandler(BaseHTTPRequestHandler):
             return
         self.send_not_found()
 
-    def handle_chat_completions(self, stream: bool) -> None:
+    @staticmethod
+    def requests_shell_tool(request: dict[str, Any]) -> bool:
+        messages = request.get("messages")
+        tools = request.get("tools")
+        if not isinstance(messages, list) or not isinstance(tools, list):
+            return False
+        if any(isinstance(message, dict) and message.get("role") == "tool"
+               for message in messages):
+            return False
+        trigger_present = any(
+            isinstance(message, dict)
+            and message.get("role") == "user"
+            and SHELL_TOOL_TRIGGER in str(message.get("content", ""))
+            for message in messages
+        )
+        shell_available = any(
+            isinstance(tool, dict)
+            and isinstance(tool.get("function"), dict)
+            and tool["function"].get("name") == "shell_execute"
+            for tool in tools
+        )
+        return trigger_present and shell_available
+
+    def handle_chat_completions(
+        self, request: dict[str, Any], stream: bool
+    ) -> None:
         response_id = "chatcmpl-linecode-test"
         common = {
             "id": response_id,
             "created": 0,
             "model": MODEL_ID,
         }
+        if self.requests_shell_tool(request):
+            call = {
+                "index": 0,
+                "id": "call_linecode_shell_test",
+                "type": "function",
+                "function": {
+                    "name": "shell_execute",
+                    "arguments": compact_json(
+                        {"command": SHELL_TOOL_COMMAND}
+                    ).decode("utf-8"),
+                },
+            }
+            if stream:
+                self.send_sse(
+                    [
+                        (
+                            None,
+                            common
+                            | {
+                                "object": "chat.completion.chunk",
+                                "choices": [
+                                    {
+                                        "index": 0,
+                                        "delta": {
+                                            "role": "assistant",
+                                            "tool_calls": [call],
+                                        },
+                                        "finish_reason": None,
+                                    }
+                                ],
+                            },
+                        ),
+                        (
+                            None,
+                            common
+                            | {
+                                "object": "chat.completion.chunk",
+                                "choices": [
+                                    {
+                                        "index": 0,
+                                        "delta": {},
+                                        "finish_reason": "tool_calls",
+                                    }
+                                ],
+                            },
+                        ),
+                        (None, "[DONE]"),
+                    ]
+                )
+                return
+            self.send_json(
+                common
+                | {
+                    "object": "chat.completion",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": None,
+                                "tool_calls": [call],
+                            },
+                            "finish_reason": "tool_calls",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 1,
+                        "completion_tokens": 1,
+                        "total_tokens": 2,
+                    },
+                }
+            )
+            return
         if stream:
             self.send_sse(
                 [
@@ -491,6 +606,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--reply", default=DEFAULT_REPLY)
     parser.add_argument("--quiet", action="store_true", help="disable per-request logs")
+    parser.add_argument(
+        "--request-log",
+        type=Path,
+        help="append each parsed POST body as one JSON line for integration assertions",
+    )
     return parser.parse_args()
 
 
@@ -506,7 +626,8 @@ def exposure_warning(host: str) -> str | None:
 def main() -> None:
     args = parse_args()
     server = FixtureServer(
-        (args.host, args.port), reply=args.reply, log_requests=not args.quiet
+        (args.host, args.port), reply=args.reply, log_requests=not args.quiet,
+        request_log=args.request_log,
     )
 
     def request_shutdown(signum: int, _frame: object) -> None:

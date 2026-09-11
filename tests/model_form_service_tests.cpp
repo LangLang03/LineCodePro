@@ -22,6 +22,21 @@ ModelDraft ValidDraft() {
 } // namespace
 
 int main() {
+  const auto &protocols = linecode::domain::model_protocol_catalog;
+  static_assert(protocols.size() == 4);
+  assert(linecode::domain::ModelProtocolInfo(ModelProtocol::codex_responses)
+             .label == "Codex");
+  assert(linecode::domain::DefaultModelBaseUrl(
+             ModelProtocol::codex_responses) == "https://api.openai.com/v1");
+  assert(linecode::domain::DefaultModelBaseUrl(
+             ModelProtocol::anthropic_messages) == "https://api.anthropic.com");
+  assert(linecode::domain::DefaultModelBaseUrl(ModelProtocol::local_gguf)
+             .empty());
+  assert(linecode::domain::SupportsDedicatedCompression(
+      ModelProtocol::openai_compatible));
+  assert(!linecode::domain::SupportsDedicatedCompression(
+      ModelProtocol::anthropic_messages));
+
   const auto &presets = linecode::domain::ModelProviderPresets();
   assert(presets.size() == 17);
   const auto deepseek = linecode::domain::FindModelProviderPreset("deepseek");
@@ -40,6 +55,11 @@ int main() {
   anthropic.protocol = ModelProtocol::anthropic_messages;
   assert(ModelFormService::EffectiveBaseUrl(anthropic) ==
          "https://api.anthropic.com");
+
+  auto codex = custom;
+  codex.protocol = ModelProtocol::codex_responses;
+  assert(ModelFormService::EffectiveBaseUrl(codex) ==
+         "https://api.openai.com/v1");
 
   assert(ModelFormService::ParseContextSize("") == 0);
   assert(ModelFormService::ParseContextSize("128k") == 128000);

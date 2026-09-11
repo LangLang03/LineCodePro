@@ -34,44 +34,6 @@ std::optional<int> ParseToolLimit(std::string_view text) noexcept {
   return result;
 }
 
-std::string PresetLabel(std::string_view id) {
-  if (id == "deepseek")
-    return "DeepSeek";
-  if (id == "glm")
-    return "GLM";
-  if (id == "mimo")
-    return "Mimo";
-  if (id == "mimo-token-plan")
-    return "Mimo Token Plan";
-  if (id == "kimi")
-    return "Kimi";
-  if (id == "qwen")
-    return "Qwen";
-  if (id == "openai")
-    return "OpenAI";
-  if (id == "claude")
-    return "Claude";
-  if (id == "gemini")
-    return "Gemini";
-  if (id == "openrouter")
-    return "OpenRouter";
-  if (id == "groq")
-    return "Groq";
-  if (id == "together")
-    return "Together AI";
-  if (id == "siliconflow")
-    return "SiliconFlow";
-  if (id == "minimax")
-    return "MiniMax";
-  if (id == "ollama")
-    return "Ollama";
-  if (id == "lmstudio")
-    return "LM Studio";
-  if (id == "codex")
-    return "Codex";
-  return std::string{id};
-}
-
 bool IsLocal(const ModelDraft &draft) noexcept {
   return draft.local || draft.protocol == domain::ModelProtocol::local_gguf;
 }
@@ -87,7 +49,7 @@ ModelFormService::New(std::optional<domain::ModelProviderPreset> preset,
   ModelDraft draft;
   draft.protocol = protocol;
   draft.provider_label =
-      preset ? PresetLabel(preset->id)
+      preset ? std::string{preset->provider_label}
              : std::string{domain::ModelProtocolLabel(protocol)};
   draft.base_url = preset ? std::string{preset->base_url} : std::string{};
   draft.tool_call_limit =
@@ -253,9 +215,7 @@ std::string ModelFormService::EffectiveBaseUrl(const ModelDraft &draft) {
   if (!explicit_url.empty()) {
     return explicit_url;
   }
-  return draft.protocol == domain::ModelProtocol::anthropic_messages
-             ? "https://api.anthropic.com"
-             : "https://api.openai.com/v1";
+  return std::string{domain::DefaultModelBaseUrl(draft.protocol)};
 }
 
 } // namespace linecode::application

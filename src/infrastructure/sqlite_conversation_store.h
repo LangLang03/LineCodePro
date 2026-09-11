@@ -37,6 +37,8 @@ public:
   [[nodiscard]] std::uint64_t AllocateMessageId() noexcept override;
   void Append(domain::ChatMessage message) override;
   void Clear() override;
+  [[nodiscard]] std::optional<domain::ChatMessage>
+  RecallUserMessage(std::uint64_t message_id) override;
   [[nodiscard]] std::span<const application::ConversationSummary>
   Conversations() const noexcept override;
   [[nodiscard]] std::string_view

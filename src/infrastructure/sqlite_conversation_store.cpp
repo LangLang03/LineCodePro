@@ -6,12 +6,14 @@
 #include <exception>
 #include <iterator>
 #include <limits>
+#include <map>
 #include <optional>
 #include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
 
+#include "infrastructure/attachment_json_codec.h"
 #include "infrastructure/legacy_conversation_schema.h"
 
 namespace linecode::infrastructure {
@@ -81,6 +83,8 @@ struct StoredMessage final {
   std::int64_t local_order{};
   std::string role;
   std::string content;
+  std::string attachments_json;
+  std::vector<domain::InputAttachment> attachments;
 };
 
 Result<StoredMessage> DecodeStoredMessage(const RowView &row) {
@@ -100,8 +104,98 @@ Result<StoredMessage> DecodeStoredMessage(const RowView &row) {
   if (!content) {
     return content.Error();
   }
-  return StoredMessage{std::move(*id), *local_order, std::move(*role),
-                       std::move(*content)};
+  auto attachments_json = row.Get<std::string>(4);
+  if (!attachments_json) {
+    return attachments_json.Error();
+  }
+  auto attachments = DecodeAttachmentJson(*attachments_json);
+  return StoredMessage{.id = std::move(*id),
+                       .local_order = *local_order,
+                       .role = std::move(*role),
+                       .content = std::move(*content),
+                       .attachments_json = std::move(*attachments_json),
+                       .attachments = std::move(attachments)};
+}
+
+struct StoredAttachment final {
+  std::string message_id;
+  domain::InputAttachment attachment;
+};
+
+Result<StoredAttachment> DecodeStoredAttachment(const RowView &row) {
+  auto message_id = row.Get<std::string>(0);
+  if (!message_id) {
+    return message_id.Error();
+  }
+  auto name = row.Get<std::string>(1);
+  if (!name) {
+    return name.Error();
+  }
+  auto path = row.Get<std::string>(2);
+  if (!path) {
+    return path.Error();
+  }
+  auto source = row.Get<std::string>(3);
+  if (!source) {
+    return source.Error();
+  }
+  return StoredAttachment{
+      .message_id = std::move(*message_id),
+      .attachment = domain::InputAttachment{
+          std::move(*name), std::move(*path), std::move(*source)},
+  };
+}
+
+void AppendAttachmentIfMissing(
+    std::vector<domain::InputAttachment> &attachments,
+    domain::InputAttachment attachment) {
+  if (attachments.size() >= max_attachments_per_message ||
+      attachment.Path().empty() ||
+      attachment.Path().size() > max_attachment_path_bytes ||
+      attachment.Name().size() > max_attachment_name_bytes) {
+    return;
+  }
+  const bool duplicate = std::ranges::any_of(
+      attachments, [&attachment](const domain::InputAttachment &current) {
+        return current.Matches(attachment.Path(), attachment.Source());
+      });
+  if (!duplicate) {
+    attachments.push_back(std::move(attachment));
+  }
+}
+
+huxerui::Task<Result<std::vector<StoredMessage>>>
+LoadStoredMessagesAsync(const Database &database,
+                        const std::string &conversation_id) {
+  auto messages = co_await database.QueryAsync<StoredMessage>(
+      std::string{legacy_schema::load_visible_messages}, DecodeStoredMessage,
+      conversation_id);
+  if (!messages) {
+    co_return messages.Error();
+  }
+  auto attachment_rows = co_await database.QueryAsync<StoredAttachment>(
+      "SELECT a.message_id, a.name, a.path, a.source "
+      "FROM attachments AS a "
+      "JOIN messages AS m ON m.id = a.message_id "
+      "WHERE m.conversation_id = ? ORDER BY m.local_order, a.id",
+      DecodeStoredAttachment, conversation_id);
+  if (!attachment_rows) {
+    co_return attachment_rows.Error();
+  }
+
+  std::map<std::string_view, std::size_t, std::less<>> message_indexes;
+  for (std::size_t index = 0; index < messages->size(); ++index) {
+    message_indexes.emplace((*messages)[index].id, index);
+  }
+  for (auto &row : *attachment_rows) {
+    const auto found = message_indexes.find(row.message_id);
+    if (found == message_indexes.end()) {
+      continue;
+    }
+    AppendAttachmentIfMissing((*messages)[found->second].attachments,
+                              std::move(row.attachment));
+  }
+  co_return std::move(*messages);
 }
 
 Result<std::int64_t> ReadUserVersion(Transaction &transaction) {
@@ -213,7 +307,13 @@ DecodeConversationSummary(const RowView &row) {
 
 struct SqliteConversationStore::State final {
   enum class Phase : std::uint8_t { waiting, hydrating, ready, failed };
-  enum class Operation : std::uint8_t { append, clear, select, erase };
+  enum class Operation : std::uint8_t {
+    append,
+    clear,
+    recall,
+    select,
+    erase,
+  };
 
   struct Event final {
     Operation operation{Operation::append};
@@ -221,7 +321,7 @@ struct SqliteConversationStore::State final {
     std::string conversation_title{"New conversation"};
     std::int64_t conversation_created_at{};
     std::uint64_t selection_generation{};
-    domain::ChatMessage message;
+    domain::ChatMessage message{};
     std::int64_t local_order{-1};
     std::int64_t timestamp{NowMilliseconds()};
   };
@@ -326,9 +426,8 @@ SqliteConversationStore::InitializeAsync(huxerui::File database_file) {
 
   std::vector<StoredMessage> stored;
   if (!current->empty()) {
-    auto loaded = co_await opened->QueryAsync<StoredMessage>(
-        std::string{legacy_schema::load_visible_messages},
-        DecodeStoredMessage, current->front().first);
+    auto loaded =
+        co_await LoadStoredMessagesAsync(*opened, current->front().first);
     if (!loaded) {
       state_->Fail(loaded.Error());
       co_return loaded.Error();
@@ -349,6 +448,7 @@ SqliteConversationStore::InitializeAsync(huxerui::File database_file) {
         .id = message_id,
         .role = ParseRole(row.role),
         .content = row.content,
+        .attachments = row.attachments,
     });
     if (message_id >= state_->next_message_id &&
         message_id != std::numeric_limits<std::uint64_t>::max()) {
@@ -454,9 +554,8 @@ huxerui::Task<Result<void>> SqliteConversationStore::ReloadAsync() {
 
   std::vector<StoredMessage> stored;
   if (!current->empty()) {
-    auto loaded = co_await state_->database->QueryAsync<StoredMessage>(
-        std::string{legacy_schema::load_visible_messages}, DecodeStoredMessage,
-        current->front().first);
+    auto loaded = co_await LoadStoredMessagesAsync(*state_->database,
+                                                   current->front().first);
     if (!loaded) {
       co_return loaded.Error();
     }
@@ -477,6 +576,7 @@ huxerui::Task<Result<void>> SqliteConversationStore::ReloadAsync() {
         .id = message_id,
         .role = ParseRole(row.role),
         .content = row.content,
+        .attachments = row.attachments,
     });
     if (message_id >= next_message_id &&
         message_id != std::numeric_limits<std::uint64_t>::max()) {
@@ -569,6 +669,30 @@ void SqliteConversationStore::Clear() {
   }
   state_->NotifyChanged();
   ScheduleFlush(state_);
+}
+
+std::optional<domain::ChatMessage>
+SqliteConversationStore::RecallUserMessage(std::uint64_t message_id) {
+  const auto found = std::ranges::find(state_->messages, message_id,
+                                       &domain::ChatMessage::id);
+  if (found == state_->messages.end() ||
+      found->role != domain::MessageRole::user ||
+      state_->conversation_id.empty()) {
+    return std::nullopt;
+  }
+  const auto cutoff = static_cast<std::int64_t>(
+      std::distance(state_->messages.begin(), found));
+  auto recalled = *found;
+  state_->messages.erase(found, state_->messages.end());
+  state_->next_local_order = cutoff;
+  state_->pending.push_back(State::Event{
+      .operation = State::Operation::recall,
+      .conversation_id = state_->conversation_id,
+      .local_order = cutoff,
+  });
+  state_->NotifyChanged();
+  ScheduleFlush(state_);
+  return recalled;
 }
 
 std::span<const application::ConversationSummary>
@@ -717,11 +841,11 @@ SqliteConversationStore::ProcessNextAsync(std::shared_ptr<State> state) {
               "reasoning_content, timestamp, streaming, hidden, "
               "exclude_from_context, tool_call_id, tool_name, is_error, "
               "raw_json) VALUES (?, ?, ?, ?, '', NULL, ?, 0, 0, 0, NULL, "
-              "NULL, 0, NULL) "
+              "NULL, 0, '') "
               "ON CONFLICT(id) DO UPDATE SET "
               "conversation_id = excluded.conversation_id, "
               "local_order = excluded.local_order, role = excluded.role, "
-              "content = '', timestamp = excluded.timestamp",
+              "content = '', timestamp = excluded.timestamp, raw_json = ''",
               message_id, event.conversation_id, local_order,
               RoleName(event.message.role), event.timestamp);
           if (!message) {
@@ -729,7 +853,7 @@ SqliteConversationStore::ProcessNextAsync(std::shared_ptr<State> state) {
           }
           auto old_chunks = transaction.Execute(
               "DELETE FROM message_text_chunks "
-              "WHERE message_id = ? AND field_name = 'content'",
+              "WHERE message_id = ? AND field_name IN ('content', 'raw_json')",
               message_id);
           if (!old_chunks) {
             return old_chunks.Error();
@@ -747,6 +871,37 @@ SqliteConversationStore::ProcessNextAsync(std::shared_ptr<State> state) {
               return chunk.Error();
             }
           }
+          const auto attachments_json =
+              EncodeAttachmentJson(event.message.attachments);
+          const auto raw_chunks =
+              legacy_schema::SplitMessageText(attachments_json);
+          for (std::size_t index = 0; index < raw_chunks.size(); ++index) {
+            auto chunk = transaction.Execute(
+                "INSERT INTO message_text_chunks "
+                "(message_id, field_name, chunk_order, content) "
+                "VALUES (?, 'raw_json', ?, ?)",
+                message_id, static_cast<std::int64_t>(index),
+                std::string{raw_chunks[index]});
+            if (!chunk) {
+              return chunk.Error();
+            }
+          }
+          auto old_attachments = transaction.Execute(
+              "DELETE FROM attachments WHERE message_id = ?", message_id);
+          if (!old_attachments) {
+            return old_attachments.Error();
+          }
+          for (const auto &attachment : event.message.attachments) {
+            auto inserted = transaction.Execute(
+                "INSERT INTO attachments "
+                "(message_id, name, path, source, raw_json) "
+                "VALUES (?, ?, ?, ?, '')",
+                message_id, attachment.Name(), attachment.Path(),
+                attachment.Source());
+            if (!inserted) {
+              return inserted.Error();
+            }
+          }
           return {};
         });
   } else if (event.operation == State::Operation::clear) {
@@ -754,6 +909,20 @@ SqliteConversationStore::ProcessNextAsync(std::shared_ptr<State> state) {
         "DELETE FROM messages WHERE conversation_id = ?",
         event.conversation_id);
     result = cleared ? Result<void>{} : Result<void>{cleared.Error()};
+  } else if (event.operation == State::Operation::recall) {
+    result = co_await state->database->TransactionAsync(
+        [event](Transaction &transaction) -> Result<void> {
+          auto removed = transaction.Execute(
+              "DELETE FROM messages WHERE conversation_id = ? "
+              "AND local_order >= ?",
+              event.conversation_id, event.local_order);
+          if (!removed)
+            return removed.Error();
+          auto touched = transaction.Execute(
+              "UPDATE conversations SET updated_at = ? WHERE id = ?",
+              event.timestamp, event.conversation_id);
+          return touched ? Result<void>{} : Result<void>{touched.Error()};
+        });
   } else if (event.operation == State::Operation::erase) {
     result = co_await state->database->TransactionAsync(
         [id = event.conversation_id](Transaction &transaction)
@@ -817,9 +986,8 @@ SqliteConversationStore::ProcessNextAsync(std::shared_ptr<State> state) {
       result = Error{ErrorCode::NotFound, "conversation no longer exists",
                      "select conversation"};
     } else {
-      auto stored = co_await state->database->QueryAsync<StoredMessage>(
-          std::string{legacy_schema::load_visible_messages},
-          DecodeStoredMessage, event.conversation_id);
+      auto stored = co_await LoadStoredMessagesAsync(*state->database,
+                                                     event.conversation_id);
       if (!stored) {
         result = stored.Error();
       } else if (!state->selection_barrier.Matches(
@@ -855,6 +1023,7 @@ SqliteConversationStore::ProcessNextAsync(std::shared_ptr<State> state) {
                 .id = ParseOwnedMessageId(row.id).value_or(fallback_id),
                 .role = ParseRole(row.role),
                 .content = row.content,
+                .attachments = row.attachments,
             });
             next_order = std::max(next_order, row.local_order + 1);
           }

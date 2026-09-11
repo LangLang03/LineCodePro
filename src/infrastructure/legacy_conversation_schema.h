@@ -52,6 +52,19 @@ SELECT m.id, m.local_order, m.role,
          ), ''),
          m.content,
          ''
+       ),
+       COALESCE(
+         NULLIF((
+           SELECT group_concat(ordered_chunk.content, '')
+           FROM (
+             SELECT content
+             FROM message_text_chunks
+             WHERE message_id = m.id AND field_name = 'raw_json'
+             ORDER BY chunk_order
+           ) AS ordered_chunk
+         ), ''),
+         m.raw_json,
+         ''
        )
 FROM messages AS m
 WHERE m.conversation_id = ? AND m.hidden = 0

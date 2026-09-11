@@ -125,7 +125,7 @@ View StorageRow(ImageResource icon, StringResource title,
 }
 
 Task<void> LoadStats(
-    const std::shared_ptr<application::StorageStatsRepository> &repository,
+    std::shared_ptr<application::StorageStatsRepository> repository,
     State<StorageViewState> state) {
   if (!repository) {
     state = StorageViewState{.loaded = true};

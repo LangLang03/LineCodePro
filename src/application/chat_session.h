@@ -2,8 +2,10 @@
 
 #include <expected>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
+#include <vector>
 
 #include "application/send_message.h"
 
@@ -16,7 +18,11 @@ public:
   [[nodiscard]] std::span<const domain::ChatMessage> Messages() const noexcept;
   [[nodiscard]] std::expected<domain::ChatMessage, SendMessageError>
   Send(std::string text);
+  [[nodiscard]] std::expected<domain::ChatMessage, SendMessageError>
+  Send(std::string text, std::vector<domain::InputAttachment> attachments);
   [[nodiscard]] domain::ChatMessage AppendAssistant(std::string text);
+  [[nodiscard]] std::optional<domain::ChatMessage>
+  RecallUserMessage(std::uint64_t message_id);
   void Clear();
   [[nodiscard]] std::span<const ConversationSummary>
   Conversations() const noexcept;

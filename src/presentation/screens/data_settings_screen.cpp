@@ -77,8 +77,8 @@ View ActionRow(ImageResource icon, StringResource title,
 }
 
 Task<void> ExportArchive(
-    const std::shared_ptr<application::DataArchiveService> &service,
-    const std::shared_ptr<FilePicker> &picker, DataSettingsCallbacks callbacks,
+    std::shared_ptr<application::DataArchiveService> service,
+    std::shared_ptr<FilePicker> picker, DataSettingsCallbacks callbacks,
     ToastHandle toast, std::string failure_prefix) {
   if (callbacks.persist_before_export) {
     auto persisted = co_await callbacks.persist_before_export();
@@ -105,7 +105,7 @@ Task<void> ExportArchive(
 }
 
 Task<void> ImportArchive(
-    const std::shared_ptr<application::DataArchiveService> &service,
+    std::shared_ptr<application::DataArchiveService> service,
     FileReference source, DataSettingsCallbacks callbacks, ToastHandle toast,
     std::string failure_prefix) {
   if (callbacks.before_import) {

@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "application/ports/completion_gateway.h"
 
@@ -20,12 +21,19 @@ struct OpenAiCodecError final {
 struct OpenAiStreamChunk final {
   bool done{};
   std::optional<std::string> text_delta;
+  std::optional<std::string> reasoning_delta{};
+  struct ToolCallDelta final {
+    std::size_t index{};
+    std::optional<std::string> id;
+    std::optional<std::string> name;
+    std::string arguments_delta;
+  };
+  std::vector<ToolCallDelta> tool_call_deltas;
 
   bool operator==(const OpenAiStreamChunk &) const = default;
 };
 
-[[nodiscard]] std::string
-OpenAiChatEndpoint(std::string_view base_url);
+[[nodiscard]] std::string OpenAiChatEndpoint(std::string_view base_url);
 [[nodiscard]] std::string
 EncodeOpenAiChatRequest(const application::CompletionRequest &request);
 [[nodiscard]] std::expected<application::CompletionResponse, OpenAiCodecError>

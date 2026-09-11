@@ -5,6 +5,7 @@
 
 #include <huxerui/task.h>
 
+#include "application/legacy_data_archive.h"
 #include "application/ports/data_archive.h"
 
 namespace linecode::application {
@@ -21,6 +22,8 @@ public:
   ExportRedacted() = 0;
   [[nodiscard]] virtual huxerui::Task<DataArchiveResult<domain::ArchiveSummary>>
   ReplaceFromSnapshot(std::string json) = 0;
+  [[nodiscard]] virtual huxerui::Task<DataArchiveResult<domain::ArchiveSummary>>
+  ImportLegacy(LegacyArchiveData data, domain::ArchiveImportMode mode) = 0;
 };
 
 } // namespace linecode::application

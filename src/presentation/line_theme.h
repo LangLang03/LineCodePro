@@ -4,6 +4,7 @@
 
 #include <huxerui/environment.h>
 #include <huxerui/paint.h>
+#include <huxerui/presentation.h>
 #include <huxerui/theme.h>
 
 #include "domain/theme_palette.h"
@@ -53,6 +54,8 @@ LineColorsForPalette(const domain::ThemePalette &palette);
 
 huxerui::ThemeSpec LineLightTheme();
 huxerui::ThemeSpec LineTheme(const LineColors &colors);
+huxerui::DialogStyle LineDialogStyle(const LineColors &colors);
+huxerui::BottomSheetStyle LineBottomSheetStyle();
 huxerui::ThemeDefinition LineLightThemeDefinition();
 huxerui::ThemeDefinition LineThemeDefinition(const LineColors &colors);
 

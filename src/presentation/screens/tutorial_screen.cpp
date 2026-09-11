@@ -132,8 +132,10 @@ View Intro(TutorialMode mode, State<TutorialMode> selected_mode,
 std::shared_ptr<const domain::TutorialDocument> ParseDocument(
     RawAsset resource, std::string fallback) {
   infrastructure::TutorialMarkdownParser parser;
+  const auto source =
+      resource.HasValue() ? resource.ReadString(true) : std::move(fallback);
   return std::make_shared<const domain::TutorialDocument>(
-      parser.Parse(resource.HasValue() ? resource.AsStringView() : fallback));
+      parser.Parse(source));
 }
 
 } // namespace

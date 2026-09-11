@@ -1,6 +1,6 @@
 # LineCode C++ 迁移清单
 
-最后更新：2026-09-10，分支 `hui-cpp`。
+最后更新：2026-09-11，分支 `hui-cpp`。
 
 本文件是剩余工作清单，不是完成声明。只有同时通过功能、数据安全、旧版/新版同机截图和真机交互验证的项目，才可以勾选为完成。
 
@@ -21,7 +21,7 @@
 
 ## 当前可复现验证基线
 
-- [x] 原生测试：15/15 通过；已包含归档安全与教程 Markdown 测试。
+- [x] 原生测试：49/49 通过；已包含归档安全、真实 SQLite 导出脱敏、旧功能 schema、MCP/工具设置、Slash 命令、待发送队列、附件、Skill、SSH 真实协议 fixture、Memory 与 Extension SQLite 契约测试。
 - [x] Android Release：arm64-v8a、x86_64、Lint、签名打包通过。
 - [x] 假 AI 服务脚本与协议测试已可固定回复，相关测试 10/10 通过。
 - [x] 设置重点页面 v27：4/4 页面均成功导航，无功能回放失败。
@@ -63,17 +63,18 @@ python3 tools/ui_parity_test.py \
 - [ ] Android 错误日志已改为脱敏缓存文件 + 只读 `content://` + `ACTION_VIEW text/plain`；仍需真机点击验证目标应用选择器和 URI 生命周期。
 - [ ] Windows 错误日志已实现只读临时文件 + 默认程序打开；仍需 Windows 构建/运行验证。
 - [ ] UI 几何的本轮修正需要再次截图验收：设置分区高度、AI 行为行高、输出页开关/选项/Markdown 表格、存储卡高度与“0项”间距。
+- [x] API 27/29 主题覆盖显式继承 `LineCodeBaseTheme`，API 35 实机层级确认系统 ActionBar 不再出现，主页标题恢复到 `y=181`；仍须纳入全量截图回归。
 
-## 尚未接线的现有路由
+## 已接线但仍未验收的路由
 
-以下路由目前仍会落入 `PendingScreen`，不能视为已迁移：
+以下路由已离开 `PendingScreen`，但“可打开”不等于完成迁移：
 
-- [ ] `mcp`
-- [ ] `tool_settings`
-- [ ] `extensions`
-- [ ] `memory`
+- [ ] `mcp`：设置加载/保存和平台能力裁剪已接线；仍需完整执行链与像素验收。
+- [ ] `tool_settings`：设置持久化、模型选择已接线；仍需全状态和像素验收。
+- [ ] `extensions`：首页/详情/编辑路由已接线，Agent/MCP 已实现 SQLite 真实加载、新增、编辑、启停、单删和批量删除；MCP `tools/list` 已支持 JSON/SSE。Agent AI 起草、Skills/LineCode/Terminal/SkillHub 功能仍未完成。
+- [ ] `memory`：列表、空态、详情、新增/编辑/删除/多选已接入 SQLite；RAG 索引写入、自动提取与调用链仍未完成。
 
-`tutorial` 和 `data` 已接入 `NavigationStack`，不再落入 `PendingScreen`；两页仍须完成旧版同机像素测试。`data` 尚未通过旧版互导、跨数据库/工作区原子回滚和破坏性导入真机测试。
+`tutorial` 和 `data` 也已接入 `NavigationStack`。所有上述页面仍须完成旧版同机像素测试；`data` 尚未通过旧版互导、跨数据库/工作区原子回滚和破坏性导入真机测试。
 
 ## 数据管理与 `.linecode`
 
@@ -81,13 +82,14 @@ python3 tools/ui_parity_test.py \
 - [x] 将 `AppRoute::data` 接到 `DataSettingsScreen`。
 - [x] 导出前持久化当前会话；导入确认后先停止当前生成；成功后重载会话、模型选择和工作区状态。Android 保活租约释放仍需真机验证。
 - [x] 严格校验 `manifest.json`：`format=linecode`、版本、容器、数据库标志和 roots。
-- [ ] 完整支持旧版 `async-storage.json` 与 `conversations/*.json` 兼容归档；当前 async-storage-only 导入仍明确不支持。
-- [ ] 导入必须先完整校验并暂存，再执行覆盖；数据库与工作区恢复要具备原子性或可验证回滚，任何失败不得留下半导入状态。
-- [ ] REPLACE 模式正确清理 `home/project/skills`，同时支持旧 `.linecode/{root}` 路径。
+- [x] 支持旧版 `async-storage.json` 与 `conversations/*.json` 的解析、schema 转换和 async-storage-only 导入，并有契约测试。
+- [ ] 用旧版真实导出物覆盖更多历史 schema/异常 fixture，不得只依赖构造数据。
+- [x] 导入先完整校验并暂存，再执行覆盖；数据库使用 SQLite 事务，工作区保留同文件系统备份并在数据库失败时回滚，已有注入失败测试证明原文件不变且临时事务目录被清理。
+- [x] REPLACE 模式正确清理 `home/project/skills`，同时支持旧 `.linecode/{root}` 路径，并有三根目录的替换测试。
 - [x] 拒绝 zip-slip、绝对路径、重复条目、CRC/元数据不一致、缺失 tables 和更高 schema 版本；旧版 conversation fixture 与递归深度仍需补测。
 - [x] 为容器/解压后总大小、条目数和单文件大小设置上限；工作区递归深度仍需明确上限和测试。
-- [ ] 导出脱敏模型 `api_key`、SSH/Web Search secret、敏感 setting key、MCP headers/raw JSON secrets，并增加反向测试证明秘密不在归档中。
-- [ ] 增加 ZIP codec、JSON typed cell、SQLite 事务、导入失败不破坏原数据、旧版 fixture、文件选择取消和确认框状态测试。
+- [x] 导出脱敏模型 `api_key`、SSH/Web Search secret、敏感 setting key、MCP headers/raw JSON secrets；除递归规则测试外，真实 SQLite 导出反向测试也证明上述秘密及旧消息分块 `raw_json` 秘密不在 `database.json` 中。
+- [ ] ZIP codec、JSON typed cell、SQLite 事务、导入失败不破坏原数据已有测试；旧版真实 fixture、文件选择取消和确认框状态仍需补齐。
 - [ ] 用旧版和新版实际互导 `.linecode`，逐项核对会话、模型、设置和工作区文件。
 - [ ] 按旧版 60dp header、68dp 行、16/12dp padding、12dp 圆角完成同机像素截图。
 
@@ -104,7 +106,7 @@ python3 tools/ui_parity_test.py \
 
 这些旧版目的地尚需逐一证明“已等价折叠到现有页面”或单独迁移；不得因 C++ 中没有路由就遗漏：
 
-- [ ] 高级功能（保留非无障碍部分）、SSH、Termux 集成。
+- [ ] 高级功能（保留非无障碍部分）、SSH、Termux 集成：真实 libssh2/mbedTLS 运输、SFTP 工作区、SSH/local 独立目录与运行时切换已经接线，仍缺完整真机成功连接 fixture 和像素验收。
 - [ ] 图像理解模型、图像生成模型及对应调用链。
 - [ ] 模型添加选项、自定义/本地/预设添加、模型编辑的全部字段、校验和错误态。
 - [ ] 扩展列表、终端提供者、Agent 编辑、MCP 编辑、扩展详情。
@@ -120,12 +122,25 @@ python3 tools/ui_parity_test.py \
 
 ## UI 像素级验收
 
+最新切片证据（均为 1080×2400、420 dpi、zh-CN、旧/新同模拟器）：
+
+- Memory 首页：功能回放 0 失败，MAE `1.6860`，差异像素 `4.2183%`。
+- Memory 新增弹窗：功能回放 0 失败；遮罩与系统导航栏问题修正后 MAE `2.1475`；外框、输入框、操作行关键 bounds 已对齐，仍有字体栅格与 1 色阶差异。
+- SSH 设置：功能回放 0 失败，MAE `2.6620`，差异像素 `6.9152%`；真实 SSH 运输/测试器仍未接入。
+- 扩展页 6 场景：导航/文案功能回放 0 失败；首页 MAE `2.7087`、Agent 详情 `1.4496`、MCP 详情 `1.4814`。Agent/MCP 编辑器尚有明显高度差，正按旧 `FormTextFieldView` 收口，不得标记像素完成。
+
 - [ ] 每个页面至少覆盖默认、选中、展开、弹层、滚动后、空态、加载态、错误态。
 - [ ] 固定同一设备、分辨率、密度、语言、主题、字体缩放、系统栏和动画设置。
 - [ ] 同时比较截图、UI hierarchy bounds、点击目标和滚动位置；动态时间/容量只屏蔽文字像素，不屏蔽容器几何。
 - [ ] 逐项清零用户已反馈的问题：标题/按钮文字居中、输入字垂直居中、设置卡间距/圆角、模型选择抽屉顶部、侧栏两页高度、文件名横向偏移、本地模型 CPU/NPU/自动、测试/保存按钮、许可列表。
 - [ ] 重跑全量场景，任何功能失败为 0；所有可稳定区域达到逐像素一致，无法由跨渲染器消除的字体抗锯齿差异必须单独记录证据，不能用整页 mask 掩盖。
 - [ ] 在连接的真实 Android 设备上重复关键流程：首次启动、抽屉、真实模型请求、取消生成、文件树、导入导出、日志外部查看、保活设置、重启恢复。
+
+当前 Android 中间验证（2026-09-11，API 35 x86_64 模拟器）：
+
+- Release APK 包名 `cn.lineai`、versionCode `32`、versionName `1.2.8-max`，包含 arm64-v8a/x86_64，签名 SHA-256 与旧版一致。
+- SSH 模式切换后进程存活；SSH 设置调用真实连接测试并返回真实网络错误，不再返回 unavailable/假成功。
+- 聊天页 Slash 状态机、长按操作、引用、召回与持久化截断已经实现；assistant 正文已经切换到 Markdown block renderer。消息工具时间线、推理折叠块、导出格式选择器和滚动尾随仍未完成。
 
 ## 最终交付门槛
 

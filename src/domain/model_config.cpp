@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <utility>
 
 namespace linecode::domain {
 namespace {
@@ -58,17 +59,7 @@ ModelProtocol ParseModelProtocol(std::string_view value) noexcept {
 }
 
 std::string_view ModelProtocolLabel(ModelProtocol protocol) noexcept {
-  switch (protocol) {
-  case ModelProtocol::openai_compatible:
-    return "OpenAI";
-  case ModelProtocol::codex_responses:
-    return "Codex";
-  case ModelProtocol::anthropic_messages:
-    return "Anthropic";
-  case ModelProtocol::local_gguf:
-    return "Local";
-  }
-  return "OpenAI";
+  return ModelProtocolInfo(protocol).label;
 }
 
 std::string ModelConfig::EffectiveCompressionModelId() const {
@@ -100,62 +91,95 @@ void ModelConfig::Normalize() {
   }
 }
 
-const std::array<ModelProviderPreset, 17> &ModelProviderPresets() noexcept {
+const std::array<ModelProviderPreset, model_provider_preset_count> &
+ModelProviderPresets() noexcept {
   static constexpr std::array presets{
-      ModelProviderPreset{"deepseek", ModelProtocol::openai_compatible,
+      ModelProviderPreset{ModelProviderPresetKind::deepseek, "deepseek",
+                          "DeepSeek", ModelProtocol::openai_compatible,
                           "https://api.deepseek.com/v1",
                           "https://api.deepseek.com/v1"},
-      ModelProviderPreset{"glm", ModelProtocol::openai_compatible,
+      ModelProviderPreset{ModelProviderPresetKind::glm, "glm", "GLM",
+                          ModelProtocol::openai_compatible,
                           "https://open.bigmodel.cn/api/paas/v4",
                           "https://open.bigmodel.cn/api/paas/v4"},
-      ModelProviderPreset{"mimo", ModelProtocol::openai_compatible,
+      ModelProviderPreset{ModelProviderPresetKind::mimo, "mimo", "Mimo",
+                          ModelProtocol::openai_compatible,
                           "https://api.xiaomimimo.com/v1",
                           "https://api.xiaomimimo.com/v1"},
-      ModelProviderPreset{"mimo-token-plan", ModelProtocol::openai_compatible,
+      ModelProviderPreset{ModelProviderPresetKind::mimo_token_plan,
+                          "mimo-token-plan", "Mimo Token Plan",
+                          ModelProtocol::openai_compatible,
                           "https://token-plan-cn.xiaomimimo.com/v1",
                           "https://token-plan-cn.xiaomimimo.com/v1"},
-      ModelProviderPreset{"kimi", ModelProtocol::openai_compatible,
+      ModelProviderPreset{ModelProviderPresetKind::kimi, "kimi", "Kimi",
+                          ModelProtocol::openai_compatible,
                           "https://api.moonshot.cn/v1",
                           "https://api.moonshot.cn/v1"},
-      ModelProviderPreset{"qwen", ModelProtocol::openai_compatible,
+      ModelProviderPreset{ModelProviderPresetKind::qwen, "qwen", "Qwen",
+                          ModelProtocol::openai_compatible,
                           "https://dashscope.aliyuncs.com/compatible-mode/v1",
                           "https://dashscope.aliyuncs.com/compatible-mode/v1"},
-      ModelProviderPreset{"openai", ModelProtocol::openai_compatible,
+      ModelProviderPreset{ModelProviderPresetKind::openai, "openai", "OpenAI",
+                          ModelProtocol::openai_compatible,
                           "https://api.openai.com/v1",
                           "https://api.openai.com/v1"},
-      ModelProviderPreset{"claude", ModelProtocol::anthropic_messages,
+      ModelProviderPreset{ModelProviderPresetKind::claude, "claude", "Claude",
+                          ModelProtocol::anthropic_messages,
                           "https://api.anthropic.com",
                           "https://api.anthropic.com"},
       ModelProviderPreset{
-          "gemini", ModelProtocol::openai_compatible,
+          ModelProviderPresetKind::gemini, "gemini", "Gemini",
+          ModelProtocol::openai_compatible,
           "https://generativelanguage.googleapis.com/v1beta/openai",
           "https://generativelanguage.googleapis.com/v1beta/openai"},
-      ModelProviderPreset{"openrouter", ModelProtocol::openai_compatible,
+      ModelProviderPreset{ModelProviderPresetKind::openrouter, "openrouter",
+                          "OpenRouter", ModelProtocol::openai_compatible,
                           "https://openrouter.ai/api/v1",
                           "https://openrouter.ai/api/v1"},
-      ModelProviderPreset{"groq", ModelProtocol::openai_compatible,
+      ModelProviderPreset{ModelProviderPresetKind::groq, "groq", "Groq",
+                          ModelProtocol::openai_compatible,
                           "https://api.groq.com/openai/v1",
                           "https://api.groq.com/openai/v1"},
-      ModelProviderPreset{"together", ModelProtocol::openai_compatible,
+      ModelProviderPreset{ModelProviderPresetKind::together, "together",
+                          "Together AI", ModelProtocol::openai_compatible,
                           "https://api.together.xyz/v1",
                           "https://api.together.xyz/v1"},
-      ModelProviderPreset{"siliconflow", ModelProtocol::openai_compatible,
+      ModelProviderPreset{ModelProviderPresetKind::siliconflow, "siliconflow",
+                          "SiliconFlow", ModelProtocol::openai_compatible,
                           "https://api.siliconflow.cn/v1",
                           "https://api.siliconflow.cn/v1"},
-      ModelProviderPreset{"minimax", ModelProtocol::openai_compatible,
+      ModelProviderPreset{ModelProviderPresetKind::minimax, "minimax",
+                          "MiniMax", ModelProtocol::openai_compatible,
                           "https://api.minimax.chat/v1",
                           "https://api.minimax.chat/v1"},
-      ModelProviderPreset{"ollama", ModelProtocol::openai_compatible,
+      ModelProviderPreset{ModelProviderPresetKind::ollama, "ollama", "Ollama",
+                          ModelProtocol::openai_compatible,
                           "http://127.0.0.1:11434/v1",
                           "http://127.0.0.1:11434/v1"},
-      ModelProviderPreset{"lmstudio", ModelProtocol::openai_compatible,
+      ModelProviderPreset{ModelProviderPresetKind::lmstudio, "lmstudio",
+                          "LM Studio", ModelProtocol::openai_compatible,
                           "http://127.0.0.1:1234/v1",
                           "http://127.0.0.1:1234/v1"},
-      ModelProviderPreset{"codex", ModelProtocol::codex_responses,
+      ModelProviderPreset{ModelProviderPresetKind::codex, "codex", "Codex",
+                          ModelProtocol::codex_responses,
                           "https://api.openai.com/v1",
                           "https://api.openai.com/v1"},
   };
+  static_assert(presets.size() == model_provider_preset_count);
+  static_assert([](const auto &values) consteval {
+    for (std::size_t index = 0; index < values.size(); ++index) {
+      if (ModelProviderPresetIndex(values[index].kind) != index) {
+        return false;
+      }
+    }
+    return true;
+  }(presets));
   return presets;
+}
+
+const ModelProviderPreset &
+ModelProviderPresetFor(ModelProviderPresetKind kind) {
+  return ModelProviderPresets().at(ModelProviderPresetIndex(kind));
 }
 
 std::optional<ModelProviderPreset>

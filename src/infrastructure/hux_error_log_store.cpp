@@ -22,23 +22,23 @@ using application::ErrorLogResult;
 // application redactor applies its tighter 1 MiB disclosure bound afterwards.
 constexpr std::uint64_t kMaximumStoredLogBytes = 2U << 20U;
 
-ErrorLogError TranslateFileError(const huxerui::FileError &error,
+ErrorLogError TranslateFileError(const huxerui::IoError &error,
                                  ErrorLogErrorCode fallback) {
   ErrorLogErrorCode code = fallback;
   switch (error.code) {
-  case huxerui::FileErrorCode::NotFound:
+  case huxerui::IoErrorCode::NotFound:
     code = ErrorLogErrorCode::not_found;
     break;
-  case huxerui::FileErrorCode::TooLarge:
+  case huxerui::IoErrorCode::TooLarge:
     code = ErrorLogErrorCode::too_large;
     break;
-  case huxerui::FileErrorCode::InvalidEncoding:
+  case huxerui::IoErrorCode::InvalidEncoding:
     code = ErrorLogErrorCode::invalid_text;
     break;
   default:
     break;
   }
-  // Deliberately discard FileError::message: it commonly contains a private
+  // Deliberately discard IoError::message: it commonly contains a private
   // application path and must not cross the repository boundary.
   return ErrorLogError{.code = code, .detail = "file operation failed"};
 }

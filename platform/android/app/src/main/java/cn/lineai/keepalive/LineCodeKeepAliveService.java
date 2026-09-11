@@ -59,7 +59,8 @@ public final class LineCodeKeepAliveService extends Service {
             if (!foreground) {
                 startForeground(NOTIFICATION_ID, buildNotification());
                 foreground = true;
-            } else if (notificationManager.areNotificationsEnabled()) {
+            } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N
+                    || notificationManager.areNotificationsEnabled()) {
                 notificationManager.notify(NOTIFICATION_ID, buildNotification());
             }
         } else if (foreground) {

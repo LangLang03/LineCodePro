@@ -4,10 +4,18 @@
 #include "app/app_root.h"
 #if defined(__ANDROID__)
 #include "infrastructure/android_keep_alive.h"
+#include "infrastructure/android_storage_permission.h"
+#include "infrastructure/android_terminal_provider.h"
+#include "infrastructure/android_termux_integration.h"
 #endif
 #if defined(__ANDROID__) || defined(_WIN32)
 #include "infrastructure/error_log_platform.h"
 #include "infrastructure/external_link.h"
+#include "infrastructure/skill_hub_platform.h"
+#include "infrastructure/share_text.h"
+#endif
+#if defined(_WIN32)
+#include "infrastructure/unavailable_termux_integration.h"
 #endif
 
 using namespace huxerui;
@@ -23,14 +31,24 @@ const Application application{
                 .content_mode = WindowContentMode::EdgeToEdge,
             },
 #if defined(__ANDROID__)
-        .root_hooks = {linecode::infrastructure::InstallAndroidKeepAlive,
-                       linecode::infrastructure::InstallExternalLink,
-                       linecode::infrastructure::InstallErrorLogPlatformActions,
-                       huxerui::InstallWebView},
+        .root_hooks =
+            {linecode::infrastructure::InstallAndroidKeepAlive,
+             linecode::infrastructure::InstallAndroidStoragePermission,
+             linecode::infrastructure::InstallAndroidTerminalProvider,
+             linecode::infrastructure::InstallAndroidTermuxIntegration,
+             linecode::infrastructure::InstallExternalLink,
+             linecode::infrastructure::InstallSkillHubPlatform,
+             linecode::infrastructure::InstallShareText,
+             linecode::infrastructure::InstallErrorLogPlatformActions,
+             huxerui::InstallWebView},
 #elif defined(_WIN32)
-        .root_hooks = {linecode::infrastructure::InstallExternalLink,
-                       linecode::infrastructure::InstallErrorLogPlatformActions,
-                       huxerui::InstallWebView},
+        .root_hooks =
+            {linecode::infrastructure::InstallUnavailableTermuxIntegration,
+             linecode::infrastructure::InstallExternalLink,
+             linecode::infrastructure::InstallSkillHubPlatform,
+             linecode::infrastructure::InstallShareText,
+             linecode::infrastructure::InstallErrorLogPlatformActions,
+             huxerui::InstallWebView},
 #endif
     },
 };

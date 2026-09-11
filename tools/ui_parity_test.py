@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import json
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -35,6 +37,25 @@ class Config:
 
 class TestFailure(RuntimeError):
     pass
+
+
+@contextlib.contextmanager
+def exclusive_device_session(serial: str):
+    """Serialize suites that mutate the same emulator/device foreground state."""
+    try:
+        import fcntl
+    except ImportError:
+        yield
+        return
+
+    safe_serial = re.sub(r"[^A-Za-z0-9_.-]", "_", serial)
+    lock_path = Path(os.getenv("TMPDIR", "/tmp")) / f"linecode-ui-{safe_serial}.lock"
+    with lock_path.open("a+", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def run(command: Iterable[str], *, binary: bool = False, check: bool = True) -> bytes | str:
@@ -146,19 +167,125 @@ def all_visible_text(xml: str) -> str:
     return "\n".join(values)
 
 
-def find_text_center(xml: str, value: str, contains: bool) -> tuple[int, int] | None:
+def find_text_center(
+    xml: str,
+    value: str,
+    contains: bool,
+    occurrence: int = 0,
+    after: str | None = None,
+) -> tuple[int, int] | None:
     try:
         root = ET.fromstring(xml)
     except ET.ParseError:
         return None
+    matches: list[tuple[int, int]] = []
+    after_seen = after is None
     for node in root.iter():
         labels = (node.attrib.get("text", ""), node.attrib.get("content-desc", ""))
+        if not after_seen:
+            after_seen = any(after == label for label in labels)
+            continue
         if not any(value in label if contains else value == label for label in labels):
             continue
         match = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.attrib.get("bounds", ""))
         if match:
             left, top, right, bottom = (int(part) for part in match.groups())
-            return (left + right) // 2, (top + bottom) // 2
+            matches.append(((left + right) // 2, (top + bottom) // 2))
+    if not matches or occurrence >= len(matches) or occurrence < -len(matches):
+        return None
+    return matches[occurrence]
+
+
+def find_editable_center(xml: str, ordinal: int) -> tuple[int, int] | None:
+    """Return the center of the Nth visible editable control in UI order."""
+    if ordinal < 0:
+        return None
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError:
+        return None
+    editables = [
+        node
+        for node in root.iter()
+        if node.attrib.get("class") == "android.widget.EditText"
+        and node.attrib.get("enabled") != "false"
+    ]
+    if ordinal >= len(editables):
+        return None
+    match = re.fullmatch(
+        r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", editables[ordinal].attrib.get("bounds", "")
+    )
+    if not match:
+        return None
+    left, top, right, bottom = (int(part) for part in match.groups())
+    return (left + right) // 2, (top + bottom) // 2
+
+
+def find_editable_text(xml: str, ordinal: int) -> str | None:
+    """Return the text of the Nth enabled editable control in UI order."""
+    if ordinal < 0:
+        return None
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError:
+        return None
+    editables = [
+        node
+        for node in root.iter()
+        if node.attrib.get("class") == "android.widget.EditText"
+        and node.attrib.get("enabled") != "false"
+    ]
+    if ordinal >= len(editables):
+        return None
+    return editables[ordinal].attrib.get("text", "")
+
+
+def find_labeled_editable(xml: str, label: str) -> ET.Element | None:
+    """Return the first enabled EditText following an exact visible field label."""
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError:
+        return None
+    matched_label = False
+    for node in root.iter():
+        if not matched_label:
+            matched_label = node.attrib.get("text") == label
+            continue
+        if (
+            node.attrib.get("class") == "android.widget.EditText"
+            and node.attrib.get("enabled") != "false"
+        ):
+            return node
+    return None
+
+
+def element_center(node: ET.Element | None) -> tuple[int, int] | None:
+    if node is None:
+        return None
+    match = re.fullmatch(
+        r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.attrib.get("bounds", "")
+    )
+    if not match:
+        return None
+    left, top, right, bottom = (int(part) for part in match.groups())
+    return (left + right) // 2, (top + bottom) // 2
+
+
+def find_control_after_text(
+    xml: str, label: str, class_name: str
+) -> ET.Element | None:
+    """Return the first control class following an exact visible text node."""
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError:
+        return None
+    matched_label = False
+    for node in root.iter():
+        if not matched_label:
+            matched_label = node.attrib.get("text") == label
+            continue
+        if node.attrib.get("class") == class_name:
+            return node
     return None
 
 
@@ -192,12 +319,143 @@ def execute_action(config: Config, action: dict[str, Any], label: str) -> list[s
     elif kind == "tap_text":
         xml, _ = dump_ui(config)
         value = str(action["value"])
-        center = find_text_center(xml, value, bool(action.get("contains")))
+        center = find_text_center(
+            xml,
+            value,
+            bool(action.get("contains")),
+            int(action.get("occurrence", 0)),
+            str(action["after"]) if "after" in action else None,
+        )
         if center is None:
             if not action.get("optional", False):
                 failures.append(f"tap_text could not find {value!r}")
         else:
             adb(config, "shell", "input", "tap", str(center[0]), str(center[1]))
+    elif kind == "long_press_text":
+        xml, _ = dump_ui(config)
+        value = str(action["value"])
+        center = find_text_center(
+            xml,
+            value,
+            bool(action.get("contains")),
+            int(action.get("occurrence", 0)),
+            str(action["after"]) if "after" in action else None,
+        )
+        if center is None:
+            if not action.get("optional", False):
+                failures.append(f"long_press_text could not find {value!r}")
+        else:
+            duration = str(action.get("duration_ms", 800))
+            adb(
+                config,
+                "shell",
+                "input",
+                "swipe",
+                str(center[0]),
+                str(center[1]),
+                str(center[0]),
+                str(center[1]),
+                duration,
+            )
+    elif kind == "tap_editable":
+        xml, _ = dump_ui(config)
+        ordinal = int(action["index"])
+        center = find_editable_center(xml, ordinal)
+        if center is None:
+            if not action.get("optional", False):
+                failures.append(f"tap_editable could not find index {ordinal}")
+        else:
+            adb(config, "shell", "input", "tap", str(center[0]), str(center[1]))
+    elif kind == "expect_editable_text":
+        xml, _ = dump_ui(config)
+        ordinal = int(action["index"])
+        actual = find_editable_text(xml, ordinal)
+        expected = str(action["value"])
+        if actual is None:
+            failures.append(f"expect_editable_text could not find index {ordinal}")
+        elif actual != expected:
+            failures.append(
+                f"expect_editable_text failed for index {ordinal}: "
+                f"expected {expected!r}, got {actual!r}"
+            )
+    elif kind == "replace_editable_text":
+        xml, _ = dump_ui(config)
+        ordinal = int(action["index"])
+        center = find_editable_center(xml, ordinal)
+        current = find_editable_text(xml, ordinal)
+        if center is None or current is None:
+            failures.append(f"replace_editable_text could not find index {ordinal}")
+        else:
+            adb(config, "shell", "input", "tap", str(center[0]), str(center[1]))
+            adb(config, "shell", "input", "keyevent", "KEYCODE_MOVE_END")
+            for _ in current:
+                adb(config, "shell", "input", "keyevent", "KEYCODE_DEL")
+            value = str(action["value"]).replace(" ", "%s")
+            if value:
+                adb(config, "shell", "input", "text", value)
+    elif kind == "tap_labeled_editable":
+        xml, _ = dump_ui(config)
+        label_text = str(action["label"])
+        center = element_center(find_labeled_editable(xml, label_text))
+        if center is None:
+            failures.append(f"tap_labeled_editable could not find {label_text!r}")
+        else:
+            adb(config, "shell", "input", "tap", str(center[0]), str(center[1]))
+    elif kind == "expect_labeled_editable_text":
+        xml, _ = dump_ui(config)
+        label_text = str(action["label"])
+        node = find_labeled_editable(xml, label_text)
+        expected = str(action["value"])
+        if node is None:
+            failures.append(f"expect_labeled_editable_text could not find {label_text!r}")
+        else:
+            actual = node.attrib.get("text", "")
+            if actual != expected:
+                failures.append(
+                    f"expect_labeled_editable_text failed for {label_text!r}: "
+                    f"expected {expected!r}, got {actual!r}"
+                )
+    elif kind == "replace_labeled_editable_text":
+        xml, _ = dump_ui(config)
+        label_text = str(action["label"])
+        node = find_labeled_editable(xml, label_text)
+        center = element_center(node)
+        if node is None or center is None:
+            failures.append(
+                f"replace_labeled_editable_text could not find {label_text!r}"
+            )
+        else:
+            current = node.attrib.get("text", "")
+            adb(config, "shell", "input", "tap", str(center[0]), str(center[1]))
+            adb(config, "shell", "input", "keyevent", "KEYCODE_MOVE_END")
+            for _ in current:
+                adb(config, "shell", "input", "keyevent", "KEYCODE_DEL")
+            value = str(action["value"]).replace(" ", "%s")
+            if value:
+                adb(config, "shell", "input", "text", value)
+    elif kind in {"tap_control_after_text", "expect_control_checked"}:
+        xml, _ = dump_ui(config)
+        label_text = str(action["label"])
+        class_name = str(action["class"])
+        node = find_control_after_text(xml, label_text, class_name)
+        if node is None:
+            failures.append(f"{kind} could not find {class_name!r} after {label_text!r}")
+        elif kind == "tap_control_after_text":
+            center = element_center(node)
+            if center is None:
+                failures.append(
+                    f"tap_control_after_text has invalid bounds after {label_text!r}"
+                )
+            else:
+                adb(config, "shell", "input", "tap", str(center[0]), str(center[1]))
+        else:
+            expected = bool(action["value"])
+            actual = node.attrib.get("checked") == "true"
+            if actual != expected:
+                failures.append(
+                    f"expect_control_checked failed after {label_text!r}: "
+                    f"expected {expected}, got {actual}"
+                )
     elif kind in {"expect_text", "expect_no_text", "expect_activity"}:
         xml, activities = dump_ui(config)
         haystack = activities if kind == "expect_activity" else all_visible_text(xml)
@@ -347,20 +605,62 @@ def parse_args() -> Config:
     )
 
 
+def select_scenarios(
+    scenarios: list[dict[str, Any]], requested_names: tuple[str, ...]
+) -> list[dict[str, Any]]:
+    """Select scenarios together with their transitive ordered prerequisites."""
+    by_name: dict[str, dict[str, Any]] = {}
+    for scenario in scenarios:
+        name = str(scenario["name"])
+        if name in by_name:
+            raise TestFailure(f"duplicate scenario name: {name}")
+        by_name[name] = scenario
+
+    requested = set(requested_names)
+    missing = requested - by_name.keys()
+    if missing:
+        raise TestFailure(f"unknown scenario(s): {', '.join(sorted(missing))}")
+
+    selected: set[str] = set()
+    visiting: set[str] = set()
+
+    def select(name: str) -> None:
+        if name in selected:
+            return
+        if name in visiting:
+            raise TestFailure(f"cyclic scenario dependency involving {name!r}")
+        visiting.add(name)
+        dependencies = by_name[name].get("depends_on", [])
+        if not isinstance(dependencies, list) or not all(
+            isinstance(dependency, str) for dependency in dependencies
+        ):
+            raise TestFailure(f"scenario {name!r} has invalid depends_on")
+        for dependency in dependencies:
+            if dependency not in by_name:
+                raise TestFailure(
+                    f"scenario {name!r} depends on unknown scenario {dependency!r}"
+                )
+            select(dependency)
+        visiting.remove(name)
+        selected.add(name)
+
+    for name in requested_names:
+        select(name)
+    return [scenario for scenario in scenarios if str(scenario["name"]) in selected]
+
+
 def main() -> int:
     config = parse_args()
+    with exclusive_device_session(config.serial):
+        return run_locked(config)
+
+
+def run_locked(config: Config) -> int:
     suite = json.loads(config.scenario_file.read_text(encoding="utf-8"))
     if config.scenario_names:
-        requested = set(config.scenario_names)
-        available = {str(scenario["name"]) for scenario in suite["scenarios"]}
-        missing = requested - available
-        if missing:
-            raise TestFailure(f"unknown scenario(s): {', '.join(sorted(missing))}")
-        suite["scenarios"] = [
-            scenario
-            for scenario in suite["scenarios"]
-            if str(scenario["name"]) in requested
-        ]
+        suite["scenarios"] = select_scenarios(
+            suite["scenarios"], config.scenario_names
+        )
     config.output.mkdir(parents=True, exist_ok=True)
     wait_for_device(config)
     stabilize_device(config)

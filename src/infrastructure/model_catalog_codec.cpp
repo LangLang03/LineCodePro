@@ -1,6 +1,7 @@
 #include "infrastructure/model_catalog_codec.h"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cstdint>
 #include <cstdio>
@@ -55,8 +56,8 @@ private:
     case '"': {
       auto text = ParseString();
       return text.has_value()
-                 ? std::expected<JsonValue, ModelCatalogCodecError>{
-                       JsonValue{.value = std::move(*text)}}
+                 ? std::expected<JsonValue, ModelCatalogCodecError>{JsonValue{
+                       .value = std::move(*text)}}
                  : std::unexpected(text.error());
     }
     case '[':
@@ -298,8 +299,8 @@ private:
       }
     }
     double value{};
-    const auto [end, error] = std::from_chars(
-        source_.data() + start, source_.data() + cursor_, value);
+    const auto [end, error] = std::from_chars(source_.data() + start,
+                                              source_.data() + cursor_, value);
     if (error != std::errc{} || end != source_.data() + cursor_) {
       return Error("Invalid JSON number");
     }
@@ -323,8 +324,8 @@ private:
   }
 
   std::unexpected<ModelCatalogCodecError> Error(std::string message) const {
-    return std::unexpected(ModelCatalogCodecError{
-        .message = std::move(message), .offset = cursor_});
+    return std::unexpected(ModelCatalogCodecError{.message = std::move(message),
+                                                  .offset = cursor_});
   }
 
   std::string_view source_;
@@ -345,7 +346,8 @@ const JsonValue *Member(const JsonValue &value, const std::string_view key) {
 }
 
 const JsonValue::Array *ArrayValue(const JsonValue *value) {
-  return value == nullptr ? nullptr : std::get_if<JsonValue::Array>(&value->value);
+  return value == nullptr ? nullptr
+                          : std::get_if<JsonValue::Array>(&value->value);
 }
 
 const std::string *StringValue(const JsonValue *value) {
@@ -436,7 +438,8 @@ std::string OpenAiProbeBody(const std::string_view model_id) {
 std::string AnthropicProbeBody(const std::string_view model_id) {
   std::string result = "{\"model\":";
   AppendEscaped(result, model_id);
-  result += ",\"max_tokens\":4096,\"messages\":[{\"role\":\"user\",\"content\":";
+  result +=
+      ",\"max_tokens\":4096,\"messages\":[{\"role\":\"user\",\"content\":";
   AppendEscaped(result, kModelProbePrompt);
   result += "}]}";
   return result;
@@ -459,27 +462,26 @@ std::string JavaHex(const std::uint32_t value) {
 bool IsAzureResponsesEndpoint(const std::string_view base_url) {
   std::string normalized{base_url};
   std::ranges::transform(normalized, normalized.begin(), [](const char value) {
-    return value >= 'A' && value <= 'Z'
-               ? static_cast<char>(value - 'A' + 'a')
-               : value;
+    return value >= 'A' && value <= 'Z' ? static_cast<char>(value - 'A' + 'a')
+                                        : value;
   });
   return normalized.contains("openai.azure.") ||
          normalized.contains("cognitiveservices.azure.") ||
          normalized.contains("aoai.azure.") ||
-         normalized.contains("azure-api.") ||
-         normalized.contains("azurefd.") ||
+         normalized.contains("azure-api.") || normalized.contains("azurefd.") ||
          normalized.contains("windows.net/openai");
 }
 
-std::string CodexProbeBody(const std::string_view model_id,
-                           const bool store) {
+std::string CodexProbeBody(const std::string_view model_id, const bool store) {
   constexpr std::string_view kInstallation =
       "21effb47-cc47-3fbd-a17c-31b0d3a0675e";
   std::string result = "{\"model\":";
   AppendEscaped(result, model_id);
-  result += ",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":";
+  result += ",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{"
+            "\"type\":\"input_text\",\"text\":";
   AppendEscaped(result, kModelProbePrompt);
-  result += "}]}],\"tools\":[],\"tool_choice\":\"auto\",\"parallel_tool_calls\":true,\"store\":";
+  result += "}]}],\"tools\":[],\"tool_choice\":\"auto\",\"parallel_tool_"
+            "calls\":true,\"store\":";
   result += store ? "true" : "false";
   result += ",\"include\":[],\"prompt_cache_key\":\"linecode-codex-";
   result += JavaHex(JavaStringHash(model_id));
@@ -497,13 +499,15 @@ CommonHeaders(const std::string_view api_key) {
           {"Authorization", "Bearer " + std::string{api_key}}};
 }
 
-std::expected<JsonValue, ModelCatalogCodecError> Parse(const std::string_view json) {
+std::expected<JsonValue, ModelCatalogCodecError>
+Parse(const std::string_view json) {
   return JsonParser(json).Parse();
 }
 
 std::optional<ModelCatalogCodecError> ApiError(const JsonValue &root) {
   const auto *error = Member(root, "error");
-  if (error == nullptr || std::holds_alternative<std::nullptr_t>(error->value)) {
+  if (error == nullptr ||
+      std::holds_alternative<std::nullptr_t>(error->value)) {
     return std::nullopt;
   }
   if (const auto *message = StringValue(Member(*error, "message"));
@@ -516,43 +520,201 @@ std::optional<ModelCatalogCodecError> ApiError(const JsonValue &root) {
   return ModelCatalogCodecError{.message = "Model API returned an error"};
 }
 
+std::expected<ModelHttpRequestDescriptor, ModelCatalogCodecError>
+OpenAiCatalog(const std::string_view base_url, const std::string_view api_key) {
+  return ModelHttpRequestDescriptor{.url = AppendEndpoint(base_url, "/models"),
+                                    .headers = CommonHeaders(api_key),
+                                    .body = {}};
+}
+
+std::expected<ModelHttpRequestDescriptor, ModelCatalogCodecError>
+CodexCatalog(const std::string_view base_url, const std::string_view api_key) {
+  auto headers = CommonHeaders(api_key);
+  headers.emplace_back("version", kCodexProtocolVersion);
+  headers.emplace_back("originator", kCodexOriginator);
+  headers.emplace_back("User-Agent",
+                       "codex_cli_rs/0.120.0 (Android; LineCode)");
+  return ModelHttpRequestDescriptor{.url = AppendEndpoint(base_url, "/models") +
+                                           "?client_version=0.120.0",
+                                    .headers = std::move(headers),
+                                    .body = {}};
+}
+
+std::expected<ModelHttpRequestDescriptor, ModelCatalogCodecError>
+AnthropicCatalog(const std::string_view base_url,
+                 const std::string_view api_key) {
+  auto root = RootOrigin(base_url);
+  if (!root.has_value()) {
+    return std::unexpected(root.error());
+  }
+  return ModelHttpRequestDescriptor{
+      .url = AppendEndpoint(*root, "/v1/models"),
+      .headers = {{"Accept", "application/json"},
+                  {"x-api-key", std::string{api_key}},
+                  {"anthropic-version", "2023-06-01"}},
+      .body = {}};
+}
+
+std::expected<ModelHttpRequestDescriptor, ModelCatalogCodecError>
+LocalCatalog(std::string_view, std::string_view) {
+  return std::unexpected(ModelCatalogCodecError{
+      .message = "Local GGUF models do not expose an HTTP catalog"});
+}
+
+std::expected<ModelHttpRequestDescriptor, ModelCatalogCodecError>
+OpenAiProbe(const domain::ModelConfig &model) {
+  auto headers = CommonHeaders(model.api_key);
+  headers.emplace_back("Content-Type", "application/json");
+  return ModelHttpRequestDescriptor{
+      .url = AppendEndpoint(model.base_url, "/chat/completions"),
+      .headers = std::move(headers),
+      .body = OpenAiProbeBody(model.model_id)};
+}
+
+std::expected<ModelHttpRequestDescriptor, ModelCatalogCodecError>
+CodexProbe(const domain::ModelConfig &model) {
+  auto headers = CommonHeaders(model.api_key);
+  headers.emplace_back("Content-Type", "application/json");
+  auto endpoint = AppendEndpoint(model.base_url, "/responses");
+  constexpr std::string_view chat_suffix = "/chat/completions";
+  const auto trimmed = Trim(model.base_url);
+  if (trimmed.ends_with(chat_suffix)) {
+    endpoint =
+        std::string{trimmed.substr(0U, trimmed.size() - chat_suffix.size())} +
+        "/responses";
+  }
+  headers.emplace_back("version", kCodexProtocolVersion);
+  headers.emplace_back("originator", kCodexOriginator);
+  headers.emplace_back("User-Agent",
+                       "codex_cli_rs/0.120.0 (Android; LineCode)");
+  return ModelHttpRequestDescriptor{
+      .url = std::move(endpoint),
+      .headers = std::move(headers),
+      .body = CodexProbeBody(model.model_id,
+                             IsAzureResponsesEndpoint(model.base_url))};
+}
+
+std::expected<ModelHttpRequestDescriptor, ModelCatalogCodecError>
+AnthropicProbe(const domain::ModelConfig &model) {
+  return ModelHttpRequestDescriptor{
+      .url = AppendEndpoint(model.base_url, "/v1/messages"),
+      .headers = {{"Accept", "application/json"},
+                  {"Content-Type", "application/json"},
+                  {"x-api-key", model.api_key},
+                  {"anthropic-version", "2023-06-01"}},
+      .body = AnthropicProbeBody(model.model_id)};
+}
+
+std::expected<ModelHttpRequestDescriptor, ModelCatalogCodecError>
+LocalProbe(const domain::ModelConfig &) {
+  return std::unexpected(ModelCatalogCodecError{
+      .message = "Local GGUF model probing is unavailable"});
+}
+
+std::expected<std::string, ModelCatalogCodecError>
+DecodeOpenAiProbe(const JsonValue &root) {
+  const auto *choices = ArrayValue(Member(root, "choices"));
+  const auto *message = choices == nullptr || choices->empty()
+                            ? nullptr
+                            : Member(choices->front(), "message");
+  const auto *content =
+      message == nullptr ? nullptr : StringValue(Member(*message, "content"));
+  if (content != nullptr) {
+    return *content;
+  }
+  return std::unexpected(ModelCatalogCodecError{
+      .message = "Model probe response does not contain text"});
+}
+
+std::expected<std::string, ModelCatalogCodecError>
+DecodeCodexProbe(const JsonValue &root) {
+  if (const auto *output = StringValue(Member(root, "output_text"));
+      output != nullptr) {
+    return *output;
+  }
+  const auto *items = ArrayValue(Member(root, "output"));
+  std::string text;
+  if (items != nullptr) {
+    for (const auto &item : *items) {
+      const auto *content = ArrayValue(Member(item, "content"));
+      if (content == nullptr) {
+        continue;
+      }
+      for (const auto &part : *content) {
+        if (const auto *value = StringValue(Member(part, "text"));
+            value != nullptr) {
+          text += *value;
+        }
+      }
+    }
+  }
+  if (!text.empty()) {
+    return text;
+  }
+  return std::unexpected(ModelCatalogCodecError{
+      .message = "Model probe response does not contain text"});
+}
+
+std::expected<std::string, ModelCatalogCodecError>
+DecodeAnthropicProbe(const JsonValue &root) {
+  const auto *content = ArrayValue(Member(root, "content"));
+  std::string text;
+  if (content != nullptr) {
+    for (const auto &part : *content) {
+      const auto *type = StringValue(Member(part, "type"));
+      const auto *value = StringValue(Member(part, "text"));
+      if (value != nullptr && (type == nullptr || *type == "text")) {
+        text += *value;
+      }
+    }
+  }
+  return text;
+}
+
+std::expected<std::string, ModelCatalogCodecError>
+DecodeLocalProbe(const JsonValue &) {
+  return std::unexpected(ModelCatalogCodecError{
+      .message = "Local GGUF model probing is unavailable"});
+}
+
+struct ModelProtocolStrategy final {
+  domain::ModelProtocol protocol;
+  std::expected<ModelHttpRequestDescriptor, ModelCatalogCodecError> (*catalog)(
+      std::string_view, std::string_view);
+  std::expected<ModelHttpRequestDescriptor, ModelCatalogCodecError> (*probe)(
+      const domain::ModelConfig &);
+  std::expected<std::string, ModelCatalogCodecError> (*decode_probe)(
+      const JsonValue &);
+};
+
+constexpr std::array kProtocolStrategies{
+    ModelProtocolStrategy{domain::ModelProtocol::openai_compatible,
+                          &OpenAiCatalog, &OpenAiProbe, &DecodeOpenAiProbe},
+    ModelProtocolStrategy{domain::ModelProtocol::codex_responses, &CodexCatalog,
+                          &CodexProbe, &DecodeCodexProbe},
+    ModelProtocolStrategy{domain::ModelProtocol::anthropic_messages,
+                          &AnthropicCatalog, &AnthropicProbe,
+                          &DecodeAnthropicProbe},
+    ModelProtocolStrategy{domain::ModelProtocol::local_gguf, &LocalCatalog,
+                          &LocalProbe, &DecodeLocalProbe},
+};
+
+const ModelProtocolStrategy *
+FindStrategy(const domain::ModelProtocol protocol) noexcept {
+  const auto found = std::ranges::find(kProtocolStrategies, protocol,
+                                       &ModelProtocolStrategy::protocol);
+  return found == kProtocolStrategies.end() ? nullptr : &*found;
+}
+
 } // namespace
 
 std::expected<ModelHttpRequestDescriptor, ModelCatalogCodecError>
 BuildModelCatalogRequest(const domain::ModelProtocol protocol,
                          const std::string_view base_url,
                          const std::string_view api_key) {
-  auto headers = CommonHeaders(api_key);
-  switch (protocol) {
-  case domain::ModelProtocol::openai_compatible:
-    return ModelHttpRequestDescriptor{
-        .url = AppendEndpoint(base_url, "/models"),
-        .headers = std::move(headers),
-        .body = {}};
-  case domain::ModelProtocol::codex_responses:
-    headers.emplace_back("version", kCodexProtocolVersion);
-    headers.emplace_back("originator", kCodexOriginator);
-    headers.emplace_back("User-Agent", "codex_cli_rs/0.120.0 (Android; LineCode)");
-    return ModelHttpRequestDescriptor{
-        .url = AppendEndpoint(base_url, "/models") +
-               "?client_version=0.120.0",
-        .headers = std::move(headers),
-        .body = {}};
-  case domain::ModelProtocol::anthropic_messages: {
-    auto root = RootOrigin(base_url);
-    if (!root.has_value()) {
-      return std::unexpected(root.error());
-    }
-    return ModelHttpRequestDescriptor{
-        .url = AppendEndpoint(*root, "/v1/models"),
-        .headers = {{"Accept", "application/json"},
-                    {"x-api-key", std::string{api_key}},
-                    {"anthropic-version", "2023-06-01"}},
-        .body = {}};
-  }
-  case domain::ModelProtocol::local_gguf:
-    return std::unexpected(ModelCatalogCodecError{
-        .message = "Local GGUF models do not expose an HTTP catalog"});
+  const auto *strategy = FindStrategy(protocol);
+  if (strategy != nullptr) {
+    return strategy->catalog(base_url, api_key);
   }
   return std::unexpected(
       ModelCatalogCodecError{.message = "Unsupported model protocol"});
@@ -560,43 +722,9 @@ BuildModelCatalogRequest(const domain::ModelProtocol protocol,
 
 std::expected<ModelHttpRequestDescriptor, ModelCatalogCodecError>
 BuildModelProbeRequest(const domain::ModelConfig &model) {
-  auto headers = CommonHeaders(model.api_key);
-  headers.emplace_back("Content-Type", "application/json");
-  switch (model.protocol) {
-  case domain::ModelProtocol::openai_compatible:
-    return ModelHttpRequestDescriptor{
-        .url = AppendEndpoint(model.base_url, "/chat/completions"),
-        .headers = std::move(headers),
-        .body = OpenAiProbeBody(model.model_id)};
-  case domain::ModelProtocol::codex_responses: {
-    auto endpoint = AppendEndpoint(model.base_url, "/responses");
-    constexpr std::string_view kChatSuffix = "/chat/completions";
-    const auto trimmed = Trim(model.base_url);
-    if (trimmed.ends_with(kChatSuffix)) {
-      endpoint = std::string{trimmed.substr(0U, trimmed.size() - kChatSuffix.size())} +
-                 "/responses";
-    }
-    headers.emplace_back("version", kCodexProtocolVersion);
-    headers.emplace_back("originator", kCodexOriginator);
-    headers.emplace_back("User-Agent", "codex_cli_rs/0.120.0 (Android; LineCode)");
-    return ModelHttpRequestDescriptor{.url = std::move(endpoint),
-                                      .headers = std::move(headers),
-                                      .body = CodexProbeBody(
-                                          model.model_id,
-                                          IsAzureResponsesEndpoint(
-                                              model.base_url))};
-  }
-  case domain::ModelProtocol::anthropic_messages:
-    return ModelHttpRequestDescriptor{
-        .url = AppendEndpoint(model.base_url, "/v1/messages"),
-        .headers = {{"Accept", "application/json"},
-                    {"Content-Type", "application/json"},
-                    {"x-api-key", model.api_key},
-                    {"anthropic-version", "2023-06-01"}},
-        .body = AnthropicProbeBody(model.model_id)};
-  case domain::ModelProtocol::local_gguf:
-    return std::unexpected(ModelCatalogCodecError{
-        .message = "Local GGUF model probing is unavailable"});
+  const auto *strategy = FindStrategy(model.protocol);
+  if (strategy != nullptr) {
+    return strategy->probe(model);
   }
   return std::unexpected(
       ModelCatalogCodecError{.message = "Unsupported model protocol"});
@@ -636,63 +764,9 @@ DecodeModelProbeResponse(const domain::ModelProtocol protocol,
   if (const auto error = ApiError(*root); error.has_value()) {
     return std::unexpected(*error);
   }
-  switch (protocol) {
-  case domain::ModelProtocol::openai_compatible: {
-    const auto *choices = ArrayValue(Member(*root, "choices"));
-    const auto *message = choices == nullptr || choices->empty()
-                              ? nullptr
-                              : Member(choices->front(), "message");
-    const auto *content = message == nullptr
-                              ? nullptr
-                              : StringValue(Member(*message, "content"));
-    if (content != nullptr) {
-      return *content;
-    }
-    break;
-  }
-  case domain::ModelProtocol::codex_responses: {
-    if (const auto *output = StringValue(Member(*root, "output_text"));
-        output != nullptr) {
-      return *output;
-    }
-    const auto *items = ArrayValue(Member(*root, "output"));
-    std::string text;
-    if (items != nullptr) {
-      for (const auto &item : *items) {
-        const auto *content = ArrayValue(Member(item, "content"));
-        if (content == nullptr) {
-          continue;
-        }
-        for (const auto &part : *content) {
-          if (const auto *value = StringValue(Member(part, "text"));
-              value != nullptr) {
-            text += *value;
-          }
-        }
-      }
-    }
-    if (!text.empty()) {
-      return text;
-    }
-    break;
-  }
-  case domain::ModelProtocol::anthropic_messages: {
-    const auto *content = ArrayValue(Member(*root, "content"));
-    std::string text;
-    if (content != nullptr) {
-      for (const auto &part : *content) {
-        const auto *type = StringValue(Member(part, "type"));
-        const auto *value = StringValue(Member(part, "text"));
-        if (value != nullptr && (type == nullptr || *type == "text")) {
-          text += *value;
-        }
-      }
-    }
-    return text;
-  }
-  case domain::ModelProtocol::local_gguf:
-    return std::unexpected(ModelCatalogCodecError{
-        .message = "Local GGUF model probing is unavailable"});
+  const auto *strategy = FindStrategy(protocol);
+  if (strategy != nullptr) {
+    return strategy->decode_probe(*root);
   }
   return std::unexpected(ModelCatalogCodecError{
       .message = "Model probe response does not contain text"});

@@ -17,6 +17,7 @@ namespace {
 
 constexpr std::size_t kMaximumCatalogResponseBytes = 4U * 1024U * 1024U;
 constexpr std::size_t kMaximumErrorBodyBytes = 4U * 1024U;
+constexpr std::size_t kHttpReadChunkBytes = 64U * 1024U;
 constexpr auto kCatalogTimeout = std::chrono::seconds{30};
 constexpr auto kProbeTimeout = std::chrono::minutes{10};
 
@@ -73,14 +74,14 @@ huxerui::Task<std::expected<std::string, application::ModelStoreError>>
 ReadBoundedBody(huxerui::HttpResponseStream &stream) {
   std::string body;
   while (true) {
-    auto read = co_await stream.Read();
-    if (read.HasError()) {
+    auto read = co_await stream.Body().ReadAsync(kHttpReadChunkBytes);
+    if (!read.Succeeded()) {
       co_return std::unexpected(Error(read.Error().message));
     }
-    if (read.IsComplete()) {
+    auto chunk = std::move(read).Value();
+    if (chunk.empty()) {
       co_return body;
     }
-    const auto &chunk = read.Data();
     const auto remaining =
         kMaximumCatalogResponseBytes -
         std::min(kMaximumCatalogResponseBytes, body.size());
@@ -98,15 +99,15 @@ huxerui::Task<DrainedErrorBody>
 DrainErrorBody(huxerui::HttpResponseStream &stream) {
   DrainedErrorBody result;
   while (true) {
-    auto read = co_await stream.Read();
-    if (read.HasError()) {
+    auto read = co_await stream.Body().ReadAsync(kHttpReadChunkBytes);
+    if (!read.Succeeded()) {
       result.read_error = read.Error().message;
       co_return result;
     }
-    if (read.IsComplete()) {
+    auto chunk = std::move(read).Value();
+    if (chunk.empty()) {
       co_return result;
     }
-    const auto &chunk = read.Data();
     const auto remaining = kMaximumErrorBodyBytes -
                            std::min(kMaximumErrorBodyBytes,
                                     result.retained.size());
@@ -119,11 +120,11 @@ DrainErrorBody(huxerui::HttpResponseStream &stream) {
 }
 
 huxerui::Task<std::expected<std::string, application::ModelStoreError>>
-ReadResponse(huxerui::HttpStreamResult opened) {
-  if (!opened.HasResponse()) {
+ReadResponse(huxerui::HttpResult<huxerui::HttpResponseStream> opened) {
+  if (!opened.Succeeded()) {
     co_return std::unexpected(Error(opened.Error().message));
   }
-  auto stream = std::move(opened).Response();
+  auto stream = std::move(opened).Value();
   const auto status = stream.StatusCode();
   if (status < 200 || status >= 300) {
     auto error_body = co_await DrainErrorBody(stream);
@@ -164,7 +165,7 @@ HuxModelCatalogGateway::Fetch(const domain::ModelProtocol protocol,
   if (!descriptor.has_value()) {
     co_return std::unexpected(Error(descriptor.error().message));
   }
-  auto opened = co_await http_->SendStream(
+  auto opened = co_await http_->SendStreamAsync(
       ToRequest(std::move(*descriptor), huxerui::HttpMethod::Get,
                 kCatalogTimeout));
   auto body = co_await ReadResponse(std::move(opened));
@@ -201,7 +202,7 @@ HuxModelCatalogGateway::Probe(domain::ModelConfig model) {
     co_return std::unexpected(Error(descriptor.error().message));
   }
   const auto started = std::chrono::steady_clock::now();
-  auto opened = co_await http_->SendStream(
+  auto opened = co_await http_->SendStreamAsync(
       ToRequest(std::move(*descriptor), huxerui::HttpMethod::Post,
                 kProbeTimeout));
   auto body = co_await ReadResponse(std::move(opened));

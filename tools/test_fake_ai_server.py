@@ -117,6 +117,55 @@ class FakeAiServerTest(unittest.TestCase):
         self.assertEqual(CUSTOM_REPLY, chunks[1]["choices"][0]["delta"]["content"])
         self.assertEqual("stop", chunks[2]["choices"][0]["finish_reason"])
 
+    def test_openai_shell_tool_fixture_is_explicit_and_one_shot(self) -> None:
+        tool = {
+            "type": "function",
+            "function": {"name": "shell_execute", "parameters": {}},
+        }
+        request = {
+            "model": "ignored",
+            "stream": True,
+            "messages": [
+                {"role": "user", "content": fake_ai_server.SHELL_TOOL_TRIGGER}
+            ],
+            "tools": [tool],
+        }
+        status, _, body = self.request("POST", "/v1/chat/completions", request)
+        self.assertEqual(200, status)
+        chunks = [
+            json.loads(data)
+            for _, data in self.sse_events(body)
+            if data != "[DONE]"
+        ]
+        call = chunks[0]["choices"][0]["delta"]["tool_calls"][0]
+        self.assertEqual("shell_execute", call["function"]["name"])
+        self.assertEqual(
+            fake_ai_server.SHELL_TOOL_COMMAND,
+            json.loads(call["function"]["arguments"])["command"],
+        )
+        self.assertEqual("tool_calls", chunks[1]["choices"][0]["finish_reason"])
+
+        request["messages"].extend(
+            [
+                {"role": "assistant", "content": None, "tool_calls": [call]},
+                {
+                    "role": "tool",
+                    "tool_call_id": call["id"],
+                    "content": "linecode-tool-ok",
+                },
+            ]
+        )
+        status, _, body = self.request("POST", "/v1/chat/completions", request)
+        self.assertEqual(200, status)
+        chunks = [
+            json.loads(data)
+            for _, data in self.sse_events(body)
+            if data != "[DONE]"
+        ]
+        self.assertEqual(
+            CUSTOM_REPLY, chunks[1]["choices"][0]["delta"]["content"]
+        )
+
     def test_responses_non_streaming(self) -> None:
         status, _, body = self.request("POST", "/v1/responses", {})
         self.assertEqual(200, status)
@@ -151,6 +200,27 @@ class FakeAiServerTest(unittest.TestCase):
         status, _, body = self.request("POST", "/anthropic/v1/messages", {})
         self.assertEqual(200, status)
         self.assertEqual(CUSTOM_REPLY, json.loads(body)["content"][0]["text"])
+
+    def test_anthropic_streaming_event_sequence(self) -> None:
+        status, headers, body = self.request(
+            "POST", "/v1/messages", {"stream": True}
+        )
+        self.assertEqual(200, status)
+        self.assertIn("text/event-stream", headers["content-type"])
+        events = self.sse_events(body)
+        decoded = [json.loads(data) for _, data in events]
+        self.assertEqual(
+            [
+                "message_start",
+                "content_block_start",
+                "content_block_delta",
+                "content_block_stop",
+                "message_delta",
+                "message_stop",
+            ],
+            [event["type"] for event in decoded],
+        )
+        self.assertEqual(CUSTOM_REPLY, decoded[2]["delta"]["text"])
 
     def test_errors_are_json(self) -> None:
         status, _, body = self.request("POST", "/v1/chat/completions", b"[")
