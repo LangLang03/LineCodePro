@@ -21,6 +21,8 @@ public:
   [[nodiscard]] std::expected<domain::ChatMessage, SendMessageError>
   Send(std::string text, std::vector<domain::InputAttachment> attachments);
   [[nodiscard]] domain::ChatMessage AppendAssistant(std::string text);
+  [[nodiscard]] domain::ChatMessage
+  AppendAssistant(domain::ChatMessage message);
   [[nodiscard]] std::optional<domain::ChatMessage>
   RecallUserMessage(std::uint64_t message_id);
   void Clear();

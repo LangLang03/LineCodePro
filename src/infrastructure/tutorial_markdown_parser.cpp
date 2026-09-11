@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <utility>
@@ -13,6 +16,10 @@ namespace {
 
 using domain::TutorialInline;
 using domain::TutorialInlineLine;
+
+constexpr std::size_t kMaximumImageBytes = 10U * 1024U * 1024U;
+constexpr std::uint32_t kMaximumImageDimension = 16'384U;
+constexpr std::uint64_t kMaximumImagePixels = 64U * 1024U * 1024U;
 
 std::string_view Trim(std::string_view value) {
   while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())))
@@ -38,6 +45,189 @@ std::vector<std::string_view> Lines(std::string_view markdown) {
     start = end + 1;
   }
   return result;
+}
+
+int Base64Digit(char value) noexcept {
+  if (value >= 'A' && value <= 'Z')
+    return value - 'A';
+  if (value >= 'a' && value <= 'z')
+    return value - 'a' + 26;
+  if (value >= '0' && value <= '9')
+    return value - '0' + 52;
+  if (value == '+')
+    return 62;
+  if (value == '/')
+    return 63;
+  return -1;
+}
+
+std::optional<std::vector<std::byte>> DecodeImageBase64(
+    std::string_view payload) {
+  constexpr std::size_t kMaximumPayload =
+      ((kMaximumImageBytes + 2U) / 3U) * 4U;
+  if (payload.empty() || payload.size() > kMaximumPayload ||
+      payload.size() % 4U != 0U)
+    return std::nullopt;
+  std::vector<std::byte> bytes;
+  bytes.reserve(payload.size() / 4U * 3U);
+  for (std::size_t index{}; index < payload.size(); index += 4U) {
+    const bool last = index + 4U == payload.size();
+    const bool pad_two = payload[index + 2U] == '=';
+    const bool pad_one = payload[index + 3U] == '=';
+    if ((!last && (pad_one || pad_two)) || (pad_two && !pad_one))
+      return std::nullopt;
+    const int a = Base64Digit(payload[index]);
+    const int b = Base64Digit(payload[index + 1U]);
+    const int c = pad_two ? 0 : Base64Digit(payload[index + 2U]);
+    const int d = pad_one ? 0 : Base64Digit(payload[index + 3U]);
+    if (a < 0 || b < 0 || c < 0 || d < 0)
+      return std::nullopt;
+    if ((pad_two && (b & 0x0f) != 0) ||
+        (pad_one && !pad_two && (c & 0x03) != 0))
+      return std::nullopt;
+    const auto bits = static_cast<std::uint32_t>(
+        (a << 18) | (b << 12) | (c << 6) | d);
+    bytes.push_back(static_cast<std::byte>((bits >> 16) & 0xffU));
+    if (!pad_two)
+      bytes.push_back(static_cast<std::byte>((bits >> 8) & 0xffU));
+    if (!pad_one)
+      bytes.push_back(static_cast<std::byte>(bits & 0xffU));
+    if (bytes.size() > kMaximumImageBytes)
+      return std::nullopt;
+  }
+  return bytes;
+}
+
+std::uint32_t BigEndian32(const std::vector<std::byte> &bytes,
+                          std::size_t offset) noexcept {
+  return (std::to_integer<std::uint32_t>(bytes[offset]) << 24U) |
+         (std::to_integer<std::uint32_t>(bytes[offset + 1U]) << 16U) |
+         (std::to_integer<std::uint32_t>(bytes[offset + 2U]) << 8U) |
+         std::to_integer<std::uint32_t>(bytes[offset + 3U]);
+}
+
+std::uint16_t BigEndian16(const std::vector<std::byte> &bytes,
+                          std::size_t offset) noexcept {
+  return static_cast<std::uint16_t>(
+      (std::to_integer<std::uint16_t>(bytes[offset]) << 8U) |
+      std::to_integer<std::uint16_t>(bytes[offset + 1U]));
+}
+
+struct ImageMetadata final {
+  std::string mime_type;
+  std::uint32_t width{};
+  std::uint32_t height{};
+};
+
+std::optional<ImageMetadata>
+ReadPngMetadata(const std::vector<std::byte> &bytes) {
+  constexpr std::array signature{
+      std::byte{0x89}, std::byte{0x50}, std::byte{0x4e}, std::byte{0x47},
+      std::byte{0x0d}, std::byte{0x0a}, std::byte{0x1a}, std::byte{0x0a}};
+  if (bytes.size() < 24U ||
+      !std::ranges::equal(signature,
+                          std::span<const std::byte>{bytes}.first(8U)) ||
+      bytes[12] != std::byte{'I'} || bytes[13] != std::byte{'H'} ||
+      bytes[14] != std::byte{'D'} || bytes[15] != std::byte{'R'})
+    return std::nullopt;
+  return ImageMetadata{.mime_type = "image/png",
+                       .width = BigEndian32(bytes, 16U),
+                       .height = BigEndian32(bytes, 20U)};
+}
+
+bool IsJpegStartOfFrame(std::uint8_t marker) noexcept {
+  constexpr std::array<std::uint8_t, 12> markers{
+      0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6,
+      0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce};
+  return std::ranges::contains(markers, marker) || marker == 0xcf;
+}
+
+std::optional<ImageMetadata>
+ReadJpegMetadata(const std::vector<std::byte> &bytes) {
+  if (bytes.size() < 4U || bytes[0] != std::byte{0xff} ||
+      bytes[1] != std::byte{0xd8})
+    return std::nullopt;
+  std::size_t cursor = 2U;
+  while (cursor + 3U < bytes.size()) {
+    if (bytes[cursor] != std::byte{0xff})
+      return std::nullopt;
+    while (cursor < bytes.size() && bytes[cursor] == std::byte{0xff})
+      ++cursor;
+    if (cursor >= bytes.size())
+      return std::nullopt;
+    const auto marker = std::to_integer<std::uint8_t>(bytes[cursor++]);
+    if (marker == 0xd9 || marker == 0xda)
+      return std::nullopt;
+    if (marker == 0x01 || (marker >= 0xd0 && marker <= 0xd7))
+      continue;
+    if (cursor + 2U > bytes.size())
+      return std::nullopt;
+    const auto length = BigEndian16(bytes, cursor);
+    if (length < 2U || cursor + length > bytes.size())
+      return std::nullopt;
+    if (IsJpegStartOfFrame(marker)) {
+      if (length < 7U)
+        return std::nullopt;
+      return ImageMetadata{.mime_type = "image/jpeg",
+                           .width = BigEndian16(bytes, cursor + 5U),
+                           .height = BigEndian16(bytes, cursor + 3U)};
+    }
+    cursor += length;
+  }
+  return std::nullopt;
+}
+
+bool ValidImageDimensions(const ImageMetadata &metadata) noexcept {
+  return metadata.width > 0U && metadata.height > 0U &&
+         metadata.width <= kMaximumImageDimension &&
+         metadata.height <= kMaximumImageDimension &&
+         static_cast<std::uint64_t>(metadata.width) * metadata.height <=
+             kMaximumImagePixels;
+}
+
+bool LooksLikeStandaloneImage(std::string_view line) noexcept {
+  line = Trim(line);
+  return line.starts_with("![") && line.ends_with(')') &&
+         line.find("](data:image/") != std::string_view::npos;
+}
+
+std::optional<domain::TutorialImageBlock>
+ParseDataImage(std::string_view line) {
+  line = Trim(line);
+  if (!LooksLikeStandaloneImage(line))
+    return std::nullopt;
+  const auto label_end = line.find("](", 2U);
+  if (label_end == std::string_view::npos)
+    return std::nullopt;
+  const auto target = line.substr(label_end + 2U,
+                                  line.size() - label_end - 3U);
+  constexpr std::string_view prefix{"data:"};
+  constexpr std::string_view delimiter{";base64,"};
+  if (!target.starts_with(prefix))
+    return std::nullopt;
+  const auto delimiter_at = target.find(delimiter, prefix.size());
+  if (delimiter_at == std::string_view::npos)
+    return std::nullopt;
+  auto declared = target.substr(prefix.size(), delimiter_at - prefix.size());
+  if (declared == "image/jpg")
+    declared = "image/jpeg";
+  if (declared != "image/png" && declared != "image/jpeg")
+    return std::nullopt;
+  auto decoded = DecodeImageBase64(target.substr(delimiter_at + delimiter.size()));
+  if (!decoded)
+    return std::nullopt;
+  auto metadata = declared == "image/png" ? ReadPngMetadata(*decoded)
+                                            : ReadJpegMetadata(*decoded);
+  if (!metadata || metadata->mime_type != declared ||
+      !ValidImageDimensions(*metadata))
+    return std::nullopt;
+  return domain::TutorialImageBlock{
+      .alternative_text = std::string{line.substr(2U, label_end - 2U)},
+      .mime_type = std::move(metadata->mime_type),
+      .encoded = std::move(*decoded),
+      .pixel_width = metadata->width,
+      .pixel_height = metadata->height,
+  };
 }
 
 void AppendInline(TutorialInlineLine& output, std::string_view text,
@@ -235,6 +425,19 @@ domain::TutorialDocument TutorialMarkdownParser::Parse(
       continue;
     }
 
+    if (LooksLikeStandaloneImage(line)) {
+      if (auto image = ParseDataImage(line)) {
+        document.blocks.emplace_back(std::move(*image));
+      } else {
+        // Never expose a rejected data URI as a clickable link or keep its
+        // base64 payload in the presentation tree.
+        document.blocks.emplace_back(
+            domain::TutorialParagraph{ParseInline("Image unavailable")});
+      }
+      ++index;
+      continue;
+    }
+
     if (const auto heading = Heading(line)) {
       const std::size_t block_index = document.blocks.size();
       auto content = ParseInline(heading->second);
@@ -305,6 +508,7 @@ domain::TutorialDocument TutorialMarkdownParser::Parse(
            !Heading(lines[index]) && !IsThematicBreak(lines[index]) &&
            !Trim(lines[index]).starts_with("```") &&
            !Trim(lines[index]).starts_with('>') &&
+           !LooksLikeStandaloneImage(lines[index]) &&
            !ParseListPrefix(lines[index]) &&
            !(lines[index].contains('|') && index + 1 < lines.size() &&
              IsTableSeparator(lines[index + 1]))) {

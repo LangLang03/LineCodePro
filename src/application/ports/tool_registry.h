@@ -19,6 +19,11 @@ struct RegisteredTool final {
   // Exact permanent grants are intentionally limited to implementations that
   // can derive a stable, narrow action key (currently shell commands).
   bool permanent_grant_supported{};
+  // Editor metadata is supplied by each registry. The Agent editor projects
+  // this catalog directly instead of switching on tool names or families.
+  std::string category{"tool"};
+  bool agent_selectable{true};
+  bool agent_selected_by_default{};
 
   bool operator==(const RegisteredTool &) const = default;
 };

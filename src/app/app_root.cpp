@@ -11,16 +11,21 @@
 #include <huxerui/huxerui.h>
 
 #include "app/bootstrap.h"
+#include "application/agent_extension_draft.h"
 #include "application/behavior_settings_repository.h"
 #include "application/chat_mode_service.h"
 #include "application/composite_tool_registry.h"
 #include "application/error_log_service.h"
 #include "application/execution_mode_project_workspace.h"
+#include "application/image_generation_tool_registry.h"
+#include "application/image_understanding_tool_registry.h"
 #include "application/legacy_attachment_prompt_renderer.h"
 #include "application/mcp_completion_loop.h"
 #include "application/mcp_execution_settings.h"
 #include "application/mcp_extension_tool_registry.h"
+#include "application/mode_workspace_image_reader.h"
 #include "application/output_settings.h"
+#include "application/ports/workspace_directory_share.h"
 #include "application/project_workspace_service.h"
 #include "application/prompt_request_composer.h"
 #include "application/prompt_template_repository.h"
@@ -30,6 +35,7 @@
 #include "application/ssh_runtime_service.h"
 #include "application/ssh_tool_registry.h"
 #include "application/ssh_workspace_service.h"
+#include "application/skill_hub_reading_settings.h"
 #include "application/terminal_provider_tool_registry.h"
 #include "application/theme_settings.h"
 #include "application/tool_permission_service.h"
@@ -42,6 +48,8 @@
 #include "infrastructure/hux_completion_gateway.h"
 #include "infrastructure/hux_data_archive_service.h"
 #include "infrastructure/hux_error_log_store.h"
+#include "infrastructure/hux_image_generation_gateway.h"
+#include "infrastructure/hux_image_understanding_gateway.h"
 #include "infrastructure/hux_known_hosts_store.h"
 #include "infrastructure/hux_mcp_tool_catalog.h"
 #include "infrastructure/hux_mcp_tool_invoker.h"
@@ -51,7 +59,10 @@
 #include "infrastructure/hux_skill_hub_session_gateway.h"
 #include "infrastructure/hux_storage_stats_repository.h"
 #include "infrastructure/hux_workspace_file_store.h"
+#include "infrastructure/image_generation_codec.h"
+#include "infrastructure/image_understanding_codec.h"
 #include "infrastructure/json_mcp_tool_schema_policy.h"
+#include "infrastructure/json_agent_extension_draft_codec.h"
 #include "infrastructure/libssh2_transport.h"
 #include "infrastructure/persisted_ssh_settings.h"
 #include "infrastructure/sqlite_archive_database.h"
@@ -63,6 +74,7 @@
 #include "infrastructure/sqlite_skill_record_store.h"
 #include "infrastructure/theme_file_settings_store.h"
 #include "infrastructure/tool_settings_repository.h"
+#include "infrastructure/workspace_image_readers.h"
 #include "presentation/components/drawer.h"
 #include "presentation/line_theme.h"
 #include "presentation/main_screen.h"
@@ -126,6 +138,8 @@ huxerui::View PlatformServicesHost() {
       huxerui::UseService<application::SkillHubPlatformService>();
   auto share_text = huxerui::UseService<application::ShareTextService>();
   std::shared_ptr<application::StoragePermissionService> storage_permission;
+  std::shared_ptr<application::WorkspaceDirectoryShareService>
+      workspace_directory_share;
   std::shared_ptr<application::TerminalProviderGateway>
       terminal_provider_gateway;
   std::shared_ptr<application::TerminalProviderDiscovery>
@@ -141,6 +155,12 @@ huxerui::View PlatformServicesHost() {
     terminal_provider_gateway =
         huxerui::UseService<application::TerminalProviderGateway>();
     terminal_provider_discovery = terminal_provider_gateway;
+  }
+  if constexpr (presentation::FeatureAvailable<
+                    presentation::PlatformFeature::
+                        workspace_directory_share>) {
+    workspace_directory_share = huxerui::UseService<
+        application::WorkspaceDirectoryShareService>();
   }
   const bool host_is_dark = IsDark(huxerui::UseTheme().colors.background);
   auto system_theme =
@@ -207,6 +227,9 @@ huxerui::View PlatformServicesHost() {
       huxerui::UseState(std::shared_ptr<application::AsyncSettingsStore>{
           std::make_shared<infrastructure::SQLiteSettingsStore>(
               database_file)});
+  auto skill_hub_reading =
+      huxerui::UseState(std::make_shared<application::SkillHubReadingSettings>(
+          settings_store.Get()));
   auto ai_behavior_settings = huxerui::UseState(
       std::make_shared<application::AiBehaviorSettingsRepository>(
           settings_store.Get()));
@@ -271,8 +294,16 @@ huxerui::View PlatformServicesHost() {
       huxerui::UseState(std::make_shared<application::McpExtensionToolRegistry>(
           mcp_extensions.Get(), mcp_tool_invoker.Get(),
           std::make_shared<infrastructure::JsonMcpToolSchemaPolicy>()));
+  auto image_generation_tools =
+      huxerui::UseState(std::shared_ptr<application::ToolRegistry>{
+          std::make_shared<application::ImageGenerationToolRegistry>(
+              mcp_settings.Get(), tool_settings.Get(), model_store.Get(),
+              std::make_shared<
+                  infrastructure::JsonImageGenerationToolCodec>(),
+              std::make_shared<
+                  infrastructure::HuxImageGenerationGateway>(http))});
   std::vector<std::shared_ptr<application::ToolRegistry>> tool_sources{
-      mcp_extension_tools.Get()};
+      mcp_extension_tools.Get(), image_generation_tools.Get()};
   tool_sources.push_back(std::make_shared<application::SshToolRegistry>(
       mcp_settings.Get(), ssh_settings.Get(), ssh_runtime.Get()));
   if (terminal_provider_gateway) {
@@ -281,14 +312,6 @@ huxerui::View PlatformServicesHost() {
             mcp_settings.Get(), terminal_providers.Get(),
             terminal_provider_gateway));
   }
-  auto runtime_tools =
-      huxerui::UseState(std::shared_ptr<application::ToolRegistry>{
-          std::make_shared<application::CompositeToolRegistry>(
-              std::move(tool_sources))});
-  auto completion_loop =
-      huxerui::UseState(std::make_shared<application::McpCompletionLoop>(
-          completion_gateway.Get(), runtime_tools.Get(), tool_permissions.Get(),
-          prompt_request_composer.Get()));
   auto storage_stats =
       huxerui::UseState(std::shared_ptr<application::StorageStatsRepository>{
           std::make_shared<infrastructure::HuxStorageStatsRepository>(
@@ -357,6 +380,52 @@ huxerui::View PlatformServicesHost() {
                   {.mode = domain::McpExecutionMode::terminal_provider,
                    .controller = local_project_workspace.Get()},
               })});
+  std::vector<application::WorkspaceImageReaderRoute> image_reader_routes{
+      {.mode = domain::McpExecutionMode::local,
+       .reader = std::make_shared<
+           infrastructure::LocalWorkspaceImageReader>(
+           local_project_workspace.Get())},
+      {.mode = domain::McpExecutionMode::ssh,
+       .reader =
+           std::make_shared<infrastructure::SshWorkspaceImageReader>(
+               ssh_settings.Get(), ssh_project_workspace.Get(),
+               ssh_workspace.Get())},
+  };
+  if (terminal_provider_gateway) {
+    image_reader_routes.push_back(
+        {.mode = domain::McpExecutionMode::terminal_provider,
+         .reader = std::make_shared<
+             infrastructure::TerminalProviderWorkspaceImageReader>(
+             terminal_providers.Get(), terminal_provider_gateway)});
+  }
+  auto workspace_images =
+      huxerui::UseState(std::shared_ptr<application::WorkspaceImageReader>{
+          std::make_shared<application::ModeWorkspaceImageReader>(
+              mcp_settings.Get(), std::move(image_reader_routes))});
+  auto image_understanding_tools =
+      huxerui::UseState(std::shared_ptr<application::ToolRegistry>{
+          std::make_shared<application::ImageUnderstandingToolRegistry>(
+              mcp_settings.Get(), tool_settings.Get(), model_store.Get(),
+              prompt_templates.Get(), workspace_images.Get(),
+              std::make_shared<
+                  infrastructure::JsonImageUnderstandingToolCodec>(),
+              std::make_shared<
+                  infrastructure::HuxImageUnderstandingGateway>(http))});
+  tool_sources.push_back(image_understanding_tools.Get());
+  auto runtime_tools =
+      huxerui::UseState(std::shared_ptr<application::ToolRegistry>{
+          std::make_shared<application::CompositeToolRegistry>(
+              std::move(tool_sources))});
+  auto agent_drafts = huxerui::UseState(
+      std::shared_ptr<application::AgentExtensionDraftGenerator>{
+          std::make_shared<application::CompletionAgentExtensionDraftGenerator>(
+              model_store.Get(), completion_gateway.Get(), runtime_tools.Get(),
+              mcp_extensions.Get(),
+              std::make_shared<infrastructure::JsonAgentExtensionDraftCodec>())});
+  auto completion_loop =
+      huxerui::UseState(std::make_shared<application::McpCompletionLoop>(
+          completion_gateway.Get(), runtime_tools.Get(), tool_permissions.Get(),
+          prompt_request_composer.Get()));
   const auto line_colors =
       presentation::LineColorsForPalette(theme_settings->palette);
   auto theme = presentation::LineThemeDefinition(line_colors);
@@ -380,6 +449,7 @@ huxerui::View PlatformServicesHost() {
        agent_extensions = agent_extensions.Get(),
        mcp_extensions = mcp_extensions.Get(),
        mcp_tool_catalog = mcp_tool_catalog.Get(),
+       agent_drafts = agent_drafts.Get(),
        linecode_root = linecode_directory.Path(),
        skill_hub_services =
            presentation::SkillHubScreenServices{
@@ -389,12 +459,14 @@ huxerui::View PlatformServicesHost() {
                .management = skill_management.Get(),
                .platform = std::move(skill_hub_platform),
                .share = std::move(share_text),
+               .reading = skill_hub_reading.Get(),
                .roots = {.app = linecode_directory.Child("skills")}},
        mcp_capabilities, platform_capabilities,
        termux_integration = std::move(termux_integration),
        terminal_providers = terminal_providers.Get(),
        terminal_provider_discovery = std::move(terminal_provider_discovery),
        storage_permission = std::move(storage_permission),
+       workspace_directory_share = std::move(workspace_directory_share),
        storage_stats = storage_stats.Get(), error_logs = error_logs.Get(),
        data_archive = data_archive.Get(),
        data_callbacks = presentation::DataSettingsCallbacks{
@@ -409,10 +481,12 @@ huxerui::View PlatformServicesHost() {
             completion_loop, output_settings_service, theme_service,
             theme_settings, mcp_settings, tool_settings, tool_permissions,
             chat_modes, ssh_settings, memory_store, agent_extensions,
-            mcp_extensions, mcp_tool_catalog, linecode_root, skill_hub_services,
-            mcp_capabilities, platform_capabilities, termux_integration,
-            terminal_providers, terminal_provider_discovery, storage_permission,
-            storage_stats, error_logs, data_archive, data_callbacks);
+            mcp_extensions, mcp_tool_catalog, agent_drafts, linecode_root,
+            skill_hub_services, mcp_capabilities, platform_capabilities,
+            termux_integration, terminal_providers,
+            terminal_provider_discovery, storage_permission,
+            workspace_directory_share, storage_stats, error_logs,
+            data_archive, data_callbacks);
       });
   return huxerui::Stack{
       huxerui::ProvideEnvironment(

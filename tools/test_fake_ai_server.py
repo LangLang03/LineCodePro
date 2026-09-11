@@ -166,12 +166,138 @@ class FakeAiServerTest(unittest.TestCase):
             CUSTOM_REPLY, chunks[1]["choices"][0]["delta"]["content"]
         )
 
+    def test_openai_image_tool_fixture_is_explicit_and_one_shot(self) -> None:
+        tool = {
+            "type": "function",
+            "function": {"name": "image_generation", "parameters": {}},
+        }
+        request = {
+            "model": "ignored",
+            "stream": True,
+            "messages": [
+                {"role": "user", "content": fake_ai_server.IMAGE_TOOL_TRIGGER}
+            ],
+            "tools": [tool],
+        }
+        status, _, body = self.request("POST", "/v1/chat/completions", request)
+        self.assertEqual(200, status)
+        chunks = [
+            json.loads(data)
+            for _, data in self.sse_events(body)
+            if data != "[DONE]"
+        ]
+        call = chunks[0]["choices"][0]["delta"]["tool_calls"][0]
+        self.assertEqual("image_generation", call["function"]["name"])
+        self.assertEqual(
+            fake_ai_server.IMAGE_TOOL_PROMPT,
+            json.loads(call["function"]["arguments"])["prompt"],
+        )
+        request["messages"].extend(
+            [
+                {"role": "assistant", "content": None, "tool_calls": [call]},
+                {
+                    "role": "tool",
+                    "tool_call_id": call["id"],
+                    "content": "image generated",
+                },
+            ]
+        )
+        status, _, body = self.request("POST", "/v1/chat/completions", request)
+        self.assertEqual(200, status)
+        chunks = [
+            json.loads(data)
+            for _, data in self.sse_events(body)
+            if data != "[DONE]"
+        ]
+        self.assertEqual(CUSTOM_REPLY, chunks[1]["choices"][0]["delta"]["content"])
+
+    def test_openai_image_understanding_fixture_is_explicit_and_one_shot(self) -> None:
+        tool = {
+            "type": "function",
+            "function": {"name": "image_understanding", "parameters": {}},
+        }
+        request = {
+            "model": "ignored",
+            "stream": True,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": fake_ai_server.IMAGE_UNDERSTANDING_TRIGGER,
+                }
+            ],
+            "tools": [tool],
+        }
+        status, _, body = self.request("POST", "/v1/chat/completions", request)
+        self.assertEqual(200, status)
+        chunks = [
+            json.loads(data)
+            for _, data in self.sse_events(body)
+            if data != "[DONE]"
+        ]
+        call = chunks[0]["choices"][0]["delta"]["tool_calls"][0]
+        self.assertEqual("image_understanding", call["function"]["name"])
+        arguments = json.loads(call["function"]["arguments"])
+        self.assertEqual(fake_ai_server.IMAGE_UNDERSTANDING_PATH, arguments["path"])
+        self.assertEqual(
+            fake_ai_server.IMAGE_UNDERSTANDING_PROMPT, arguments["prompt"]
+        )
+
+        request["messages"].extend(
+            [
+                {"role": "assistant", "content": None, "tool_calls": [call]},
+                {
+                    "role": "tool",
+                    "tool_call_id": call["id"],
+                    "content": "fixture image understood",
+                },
+            ]
+        )
+        status, _, body = self.request("POST", "/v1/chat/completions", request)
+        self.assertEqual(200, status)
+        chunks = [
+            json.loads(data)
+            for _, data in self.sse_events(body)
+            if data != "[DONE]"
+        ]
+        self.assertEqual(CUSTOM_REPLY, chunks[1]["choices"][0]["delta"]["content"])
+
     def test_responses_non_streaming(self) -> None:
         status, _, body = self.request("POST", "/v1/responses", {})
         self.assertEqual(200, status)
         decoded = json.loads(body)
         self.assertEqual("completed", decoded["status"])
         self.assertEqual(CUSTOM_REPLY, decoded["output"][0]["content"][0]["text"])
+
+    def test_openai_and_codex_image_generation(self) -> None:
+        status, _, body = self.request(
+            "POST",
+            "/v1/images/generations",
+            {"model": fake_ai_server.MODEL_ID, "prompt": "LineCode icon"},
+        )
+        self.assertEqual(200, status)
+        decoded = json.loads(body)
+        self.assertEqual(
+            fake_ai_server.FIXTURE_IMAGE_BASE64,
+            decoded["data"][0]["b64_json"],
+        )
+        self.assertEqual("LineCode icon", decoded["data"][0]["revised_prompt"])
+
+        status, _, body = self.request(
+            "POST",
+            "/v1/responses",
+            {
+                "model": fake_ai_server.MODEL_ID,
+                "input": "LineCode icon",
+                "tools": [{"type": "image_generation", "action": "generate"}],
+            },
+        )
+        self.assertEqual(200, status)
+        decoded = json.loads(body)
+        self.assertEqual("image_generation_call", decoded["output"][0]["type"])
+        self.assertEqual(
+            fake_ai_server.FIXTURE_IMAGE_BASE64,
+            decoded["output"][0]["result"],
+        )
 
     def test_responses_streaming_event_sequence(self) -> None:
         status, headers, body = self.request("POST", "/v1/responses", {"stream": True})

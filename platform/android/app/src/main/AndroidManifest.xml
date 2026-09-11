@@ -62,5 +62,15 @@
             android:authorities="${applicationId}.errorlogs"
             android:exported="false"
             android:grantUriPermissions="true" />
+        <provider
+            android:name=".platform.LineCodeChatExportProvider"
+            android:authorities="${applicationId}.chat-exports"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+        <provider
+            android:name=".platform.WorkspaceDirectoryProvider"
+            android:authorities="${applicationId}.workspace"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

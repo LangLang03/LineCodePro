@@ -141,6 +141,7 @@ TerminalProviderToolRegistry::Refresh() {
           // terminal-provider target, while local mutation tools remain denied.
           .allowed_in_read_only = true,
           .permanent_grant_supported = true,
+          .category = "shell",
       });
     }
   }

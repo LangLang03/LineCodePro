@@ -258,7 +258,7 @@ SkillCard(const domain::SkillHubSummary &skill,
   std::vector<View> title_children{
       Text(skill.name)
           .Style(SkillHubLabel(16.0F, FontWeight::Medium))
-          .With(Grow()),
+          .With(Frame{.max_height = 20.0F}, ClipChildren(), Grow()),
   };
   if (skill.verified)
     title_children.push_back(SkillHubTag(app::strings::skillhub_verified,
@@ -282,7 +282,8 @@ SkillCard(const domain::SkillHubSummary &skill,
   }
   labels.push_back(
       Text(skill.description)
-          .Style(SkillHubLabel(13.0F, FontWeight::Regular, colors::secondary)));
+          .Style(SkillHubLabel(13.0F, FontWeight::Regular, colors::secondary))
+          .With(Frame{.max_height = 34.0F}, ClipChildren()));
   const std::string version =
       skill.version.empty() ? std::string{} : "  ·  v" + skill.version;
   labels.push_back(
@@ -292,13 +293,16 @@ SkillCard(const domain::SkillHubSummary &skill,
 
   return Row{
       artwork,
-      Column(std::move(labels)).With(Spacing(4.0F), Grow()),
-      SkillHubGlyph(app::images::chevron_right, 16.0F, colors::tertiary),
+      Column(std::move(labels))
+          .With(Spacing(4.0F),
+                Padding(EdgeInsets{.right = 4.0F, .left = 12.0F}), Grow()),
+      SkillHubIconSlot(app::images::chevron_right, 16.0F, 24.0F,
+                       colors::tertiary),
   }
       .OnClick(std::move(open))
       .With(Padding(EdgeInsets{
                 .top = 12.0F, .right = 8.0F, .bottom = 12.0F, .left = 12.0F}),
-            Spacing(12.0F), CrossAlign(CrossAxisAlignment::Center),
+            CrossAlign(CrossAxisAlignment::Center),
             Background(colors::elevated),
             Border{.color = colors::border, .width = 1.0F}, CornerRadius(12.0F),
             Focusable(), PointerCursor(PointerCursorKind::Hand));
@@ -406,7 +410,8 @@ SkillStoreScreen(const SkillHubScreenServices &services) {
   ImageResource account_action = app::images::external_link;
   if (!state->account_loading && !state->account_error.empty()) {
     account_title = app::strings::skillhub_account_check_failed;
-    account_subtitle = state->account_error;
+    account_subtitle = UseString(app::strings::skillhub_retry_here) + " · " +
+                       state->account_error;
     account_action = app::images::refresh_cw;
   } else if (state->session && state->session->authenticated) {
     account_title = state->session->account.display_name;
@@ -434,8 +439,8 @@ SkillStoreScreen(const SkillHubScreenServices &services) {
                   .Style(SkillHubLabel(11.0F, FontWeight::Regular,
                                        colors::tertiary)),
           }
-              .With(Spacing(2.0F), Grow()),
-          SkillHubGlyph(account_action, 16.0F, colors::tertiary),
+              .With(Spacing(2.0F), Padding(EdgeInsets{.left = 8.0F}), Grow()),
+          SkillHubIconSlot(account_action, 16.0F, 28.0F, colors::tertiary),
       }
           .OnClick([services, state, tasks, navigation, dialogs, toast] {
             if (state->account_loading)
@@ -448,7 +453,7 @@ SkillStoreScreen(const SkillHubScreenServices &services) {
               navigation.Push(domain::AppRoute::skill_hub_login);
             }
           })
-          .With(Padding(EdgeInsets::Symmetric(12.0F, 8.0F)), Spacing(8.0F),
+          .With(Padding(EdgeInsets::Symmetric(12.0F, 8.0F)),
                 CrossAlign(CrossAxisAlignment::Center),
                 Background(colors::elevated), CornerRadius(12.0F),
                 Enabled(!state->account_loading), Focusable(),

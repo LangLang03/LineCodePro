@@ -15,6 +15,7 @@ namespace linecode::application {
 class ChatSession;
 class ChatModeService;
 class AiBehaviorSettingsRepository;
+class AgentExtensionDraftGenerator;
 class AgentExtensionStore;
 class McpCompletionLoop;
 class DataArchiveService;
@@ -32,6 +33,7 @@ class PromptTemplateRepository;
 class SshSettingsService;
 class StorageStatsRepository;
 class StoragePermissionService;
+class WorkspaceDirectoryShareService;
 class ToolSettingsService;
 class ToolPermissionService;
 class TermuxIntegrationGateway;
@@ -65,6 +67,7 @@ huxerui::View MainScreen(
     std::shared_ptr<application::AgentExtensionStore> agent_extensions,
     std::shared_ptr<application::McpExtensionStore> mcp_extensions,
     std::shared_ptr<application::McpToolCatalog> mcp_tool_catalog,
+    std::shared_ptr<application::AgentExtensionDraftGenerator> agent_drafts,
     std::string linecode_root, SkillHubScreenServices skill_hub_services,
     domain::McpExecutionCapabilities mcp_capabilities,
     PlatformCapabilities platform_capabilities,
@@ -73,6 +76,8 @@ huxerui::View MainScreen(
     std::shared_ptr<application::TerminalProviderDiscovery>
         terminal_provider_discovery,
     std::shared_ptr<application::StoragePermissionService> storage_permission,
+    std::shared_ptr<application::WorkspaceDirectoryShareService>
+        workspace_share,
     std::shared_ptr<application::StorageStatsRepository> storage_stats = {},
     std::shared_ptr<application::ErrorLogService> error_logs = {},
     std::shared_ptr<application::DataArchiveService> data_archive = {},

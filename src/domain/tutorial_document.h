@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <variant>
@@ -61,6 +62,19 @@ struct TutorialCodeBlock final {
   bool operator==(const TutorialCodeBlock&) const = default;
 };
 
+// A validated, bounded standalone Markdown data image. Keeping immutable
+// encoded bytes in the document avoids retaining the original data URI and
+// lets the platform renderer defer pixel decoding.
+struct TutorialImageBlock final {
+  std::string alternative_text;
+  std::string mime_type;
+  std::vector<std::byte> encoded;
+  std::uint32_t pixel_width{};
+  std::uint32_t pixel_height{};
+
+  bool operator==(const TutorialImageBlock &) const = default;
+};
+
 struct TutorialTable final {
   std::vector<TutorialInlineLine> header;
   std::vector<std::vector<TutorialInlineLine>> rows;
@@ -74,7 +88,7 @@ struct TutorialThematicBreak final {
 
 using TutorialBlock =
     std::variant<TutorialHeading, TutorialParagraph, TutorialQuote,
-                 TutorialList, TutorialCodeBlock, TutorialTable,
+                 TutorialList, TutorialCodeBlock, TutorialImageBlock, TutorialTable,
                  TutorialThematicBreak>;
 
 struct TutorialSection final {

@@ -321,6 +321,7 @@ DecodeOpenAiEvent(std::string_view data) {
   };
   if (decoded->reasoning_delta && !decoded->reasoning_delta->empty()) {
     chunk.reasoning_deltas.push_back(application::CompletionReasoningDelta{
+        .turn_index = 0,
         .text = std::move(*decoded->reasoning_delta),
         .kind = application::CompletionReasoningKind::thinking,
     });

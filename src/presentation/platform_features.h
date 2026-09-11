@@ -18,6 +18,7 @@ enum class PlatformFeature : std::uint8_t {
   termux,
   terminal_provider,
   android_storage_permission,
+  workspace_directory_share,
 };
 
 consteval HostPlatform CurrentHostPlatform() noexcept {
@@ -63,6 +64,10 @@ void IfFeatureAvailable(Factory&& factory) {
 
 static_assert(!FeatureAvailability<PlatformFeature::keep_alive, HostPlatform::windows>::value);
 static_assert(FeatureAvailability<PlatformFeature::keep_alive, HostPlatform::android>::value);
+static_assert(!FeatureAvailability<PlatformFeature::workspace_directory_share,
+                                   HostPlatform::windows>::value);
+static_assert(FeatureAvailability<PlatformFeature::workspace_directory_share,
+                                  HostPlatform::android>::value);
 static_assert(
     !FeatureAvailability<PlatformFeature::termux, HostPlatform::windows>::value);
 static_assert(

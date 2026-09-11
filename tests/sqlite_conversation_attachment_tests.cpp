@@ -185,6 +185,21 @@ void CreateLegacyFixture(const std::filesystem::path &path) {
   const auto column_attachment =
       linecode::infrastructure::EncodeAttachmentJson(column_attachments);
   database.InsertMessage("legacy-column", 2, "column", column_attachment);
+  database.Execute(
+      "INSERT INTO messages "
+      "(id, conversation_id, local_order, role, content, reasoning_content, "
+      "timestamp, raw_json) VALUES "
+      "('legacy-assistant', 'legacy-conversation', 3, 'assistant', '', "
+      "'legacy thought', 100, "
+      "'{\"tool_calls\":[{\"id\":\"legacy-call\",\"name\":\"read_file\","
+      "\"arguments\":\"{}\"}],\"processing_started_at\":90,"
+      "\"processing_finished_at\":110}')");
+  database.Execute(
+      "INSERT INTO messages "
+      "(id, conversation_id, local_order, role, content, timestamp, "
+      "tool_call_id, tool_name, is_error, raw_json) VALUES "
+      "('legacy-tool', 'legacy-conversation', 4, 'tool', 'legacy result', "
+      "111, 'legacy-call', 'read_file', 0, '')");
 }
 
 struct Scenario final {
@@ -210,14 +225,27 @@ huxerui::View ConversationStoreProbe() {
         co_return;
       }
       const auto loaded = store->Messages();
-      bool passed = loaded.size() == 3U &&
+      bool passed = loaded.size() == 5U &&
                     loaded[0].attachments.size() == 1U &&
                     loaded[0].attachments[0].Path() == "/legacy/raw.txt" &&
                     loaded[1].attachments.size() == 1U &&
                     loaded[1].attachments[0].Source() ==
                         "terminal_provider" &&
                     loaded[2].attachments.size() == 1U &&
-                    loaded[2].attachments[0].Name() == "column.txt";
+                    loaded[2].attachments[0].Name() == "column.txt" &&
+                    loaded[3].reasoning_content == "legacy thought" &&
+                    loaded[3].processing_started_at == 90 &&
+                    loaded[3].processing_finished_at == 110 &&
+                    loaded[3].timeline.size() == 1U;
+      if (loaded.size() == 5U && loaded[3].timeline.size() == 1U) {
+        const auto *legacy_tool =
+            std::get_if<linecode::domain::AssistantToolEvent>(
+                &loaded[3].timeline.front());
+        passed = passed && legacy_tool && legacy_tool->result &&
+                 legacy_tool->result->content == "legacy result" &&
+                 legacy_tool->call.status ==
+                     linecode::domain::ToolCallStatus::completed;
+      }
 
       store->Append({
           .id = store->AllocateMessageId(),
@@ -258,11 +286,72 @@ huxerui::View ConversationStoreProbe() {
       }
       const auto after_recall = store->Messages();
       passed = passed && recalled && recalled->content == "retry" &&
-               recall_reloaded && after_recall.size() == 4U &&
+               recall_reloaded && after_recall.size() == 6U &&
                std::ranges::none_of(after_recall, [](const auto &message) {
                  return message.content == "retry" ||
                         message.content == "discard";
                });
+
+      linecode::domain::ChatMessage assistant{};
+      assistant.id = store->AllocateMessageId();
+      assistant.role = linecode::domain::MessageRole::assistant;
+      assistant.content = "final answer";
+      assistant.reasoning_content = "final thought";
+      assistant.processing_started_at = 1'000;
+      assistant.processing_finished_at = 1'025;
+      assistant.timeline.push_back(
+          linecode::domain::AssistantReasoningEvent{
+              .turn_index = 0,
+              .text = "inspect",
+              .kind = linecode::domain::ReasoningKind::thinking,
+              .starts_new_segment = true});
+      assistant.timeline.push_back(linecode::domain::AssistantTextEvent{
+          .turn_index = 0, .text = "running tool"});
+      linecode::domain::AssistantToolEvent tool{};
+      tool.turn_index = 0;
+      tool.call = linecode::domain::ChatToolCall{
+          .id = "call-restore",
+          .name = "read_file",
+          .arguments_json = R"({"path":"/workspace/a.cpp"})",
+          .status = linecode::domain::ToolCallStatus::completed,
+          .created_at_millis = 1'005,
+          .duration_millis = 20,
+          .error_message = {}};
+      linecode::domain::ChatToolResult tool_result{};
+      tool_result.call_id = "call-restore";
+      tool_result.name = "read_file";
+      tool_result.content = "contents";
+      tool.result = std::move(tool_result);
+      assistant.timeline.push_back(std::move(tool));
+      store->Append(std::move(assistant));
+      const auto timeline_flushed = co_await store->FlushPendingAsync();
+      bool timeline_reloaded{};
+      if (timeline_flushed)
+        timeline_reloaded = static_cast<bool>(co_await store->ReloadAsync());
+      const auto restored = store->Messages();
+      const auto restored_assistant = std::ranges::find(
+          restored, std::string_view{"final answer"},
+          &linecode::domain::ChatMessage::content);
+      passed = passed && timeline_reloaded &&
+               restored_assistant != restored.end() &&
+               restored_assistant->reasoning_content == "final thought" &&
+               restored_assistant->timeline.size() == 3U;
+      if (restored_assistant != restored.end() &&
+          restored_assistant->timeline.size() == 3U) {
+        const auto *restored_reasoning =
+            std::get_if<linecode::domain::AssistantReasoningEvent>(
+                &restored_assistant->timeline[0]);
+        const auto *restored_tool =
+            std::get_if<linecode::domain::AssistantToolEvent>(
+                &restored_assistant->timeline[2]);
+        passed = passed && restored_reasoning &&
+                 restored_reasoning->starts_new_segment && restored_tool &&
+                 restored_tool->call.name == "read_file" &&
+                 restored_tool->call.status ==
+                     linecode::domain::ToolCallStatus::completed &&
+                 restored_tool->result &&
+                 restored_tool->result->content == "contents";
+      }
       scenario->passed = passed;
       scenario->done = true;
     });
@@ -304,13 +393,20 @@ void StorePersistsAndRestoresBothLegacyRepresentations() {
   const auto raw_json = persisted.Text(
       "SELECT group_concat(c.content, '') FROM message_text_chunks AS c "
       "JOIN messages AS m ON m.id = c.message_id "
-      "WHERE c.field_name = 'raw_json' AND m.local_order = 3 "
+      "WHERE c.field_name = 'raw_json' AND m.local_order = 5 "
       "ORDER BY c.chunk_order");
   const auto decoded =
       linecode::infrastructure::DecodeAttachmentJson(raw_json);
   assert(decoded.size() == 2U);
   assert(decoded[0].Path() == "/new.txt");
   assert(decoded[1].Path() == "/remote.txt");
+  assert(persisted.Integer("SELECT COUNT(*) FROM message_blocks") == 3);
+  assert(persisted.Integer(
+             "SELECT COUNT(*) FROM tool_calls WHERE id = 'call-restore' AND "
+             "name = 'read_file' AND duration_ms = 20") == 1);
+  assert(persisted.Integer(
+             "SELECT COUNT(*) FROM tool_results WHERE "
+             "tool_call_id = 'call-restore' AND content = 'contents'") == 1);
 
   active_scenario.reset();
   std::error_code ignored;

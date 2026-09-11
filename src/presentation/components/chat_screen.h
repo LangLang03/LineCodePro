@@ -23,6 +23,7 @@ class GenerationController;
 class McpCompletionLoop;
 class MemoryContextService;
 class ModelStore;
+class OutputSettingsService;
 class PendingMessageQueue;
 class StoragePermissionService;
 class ToolPermissionService;
@@ -47,6 +48,7 @@ namespace linecode::presentation {
     const std::shared_ptr<application::MemoryContextService> &memory_context,
     const std::shared_ptr<application::AiBehaviorSettingsRepository>
         &behavior_settings,
+    const std::shared_ptr<application::OutputSettingsService> &output_settings,
     const std::shared_ptr<application::ToolPermissionService>
         &tool_permissions,
     const std::shared_ptr<application::ChatModeService> &chat_modes,

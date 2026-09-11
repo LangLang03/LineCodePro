@@ -24,12 +24,15 @@ ChatSession::Send(std::string text,
 }
 
 domain::ChatMessage ChatSession::AppendAssistant(std::string text) {
-  domain::ChatMessage message{
-      .id = store_->AllocateMessageId(),
-      .role = domain::MessageRole::assistant,
-      .content = std::move(text),
-      .attachments = {},
-  };
+  domain::ChatMessage message{};
+  message.content = std::move(text);
+  return AppendAssistant(std::move(message));
+}
+
+domain::ChatMessage
+ChatSession::AppendAssistant(domain::ChatMessage message) {
+  message.id = store_->AllocateMessageId();
+  message.role = domain::MessageRole::assistant;
   store_->Append(message);
   return message;
 }

@@ -129,6 +129,23 @@ bool HasSuffix(std::string_view path, std::span<const std::string_view> suffixes
                             [&](std::string_view value) { return lower.ends_with(value); });
 }
 
+struct FileKindRule final {
+  std::span<const std::string_view> suffixes;
+  SkillHubFileKind kind;
+};
+
+constexpr std::array kTextSuffixes{std::string_view{".md"},
+                                   std::string_view{".txt"}};
+constexpr std::array kCodeSuffixes{
+    std::string_view{".json"}, std::string_view{".js"},
+    std::string_view{".java"}, std::string_view{".py"},
+    std::string_view{".sh"}, std::string_view{".xml"},
+    std::string_view{".yml"}, std::string_view{".yaml"}};
+constexpr std::array kFileKindRules{
+    FileKindRule{kTextSuffixes, SkillHubFileKind::text},
+    FileKindRule{kCodeSuffixes, SkillHubFileKind::code},
+};
+
 } // namespace
 
 std::span<const SkillHubDestinationPresentation>
@@ -190,16 +207,10 @@ bool IsAllowedSkillHubUrl(const std::string_view value) noexcept {
 }
 
 SkillHubFileKind SkillHubFileKindForPath(const std::string_view path) noexcept {
-  constexpr std::array text{std::string_view{".md"}, std::string_view{".txt"}};
-  constexpr std::array code{std::string_view{".json"}, std::string_view{".js"},
-                            std::string_view{".java"}, std::string_view{".py"},
-                            std::string_view{".sh"}, std::string_view{".xml"},
-                            std::string_view{".yml"}, std::string_view{".yaml"}};
-  if (HasSuffix(path, text))
-    return SkillHubFileKind::text;
-  if (HasSuffix(path, code))
-    return SkillHubFileKind::code;
-  return SkillHubFileKind::other;
+  const auto rule = std::ranges::find_if(kFileKindRules, [&](const auto &entry) {
+    return HasSuffix(path, entry.suffixes);
+  });
+  return rule == kFileKindRules.end() ? SkillHubFileKind::other : rule->kind;
 }
 
 bool IsSkillHubMarkdownPath(const std::string_view path) noexcept {

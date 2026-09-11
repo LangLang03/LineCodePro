@@ -9,6 +9,7 @@
 #include "application/ports/skill_hub_platform.h"
 #include "application/ports/share_text.h"
 #include "application/skill_management_service.h"
+#include "application/skill_hub_reading_settings.h"
 #include "application/skill_repository.h"
 #include "domain/skill_hub_route.h"
 
@@ -21,6 +22,7 @@ struct SkillHubScreenServices final {
   std::shared_ptr<application::SkillManagementService> management;
   std::shared_ptr<application::SkillHubPlatformService> platform;
   std::shared_ptr<application::ShareTextService> share;
+  std::shared_ptr<application::SkillHubReadingSettings> reading;
   application::SkillRoots roots;
 };
 

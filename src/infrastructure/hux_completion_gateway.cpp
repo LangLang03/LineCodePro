@@ -173,11 +173,9 @@ CompleteStreaming(const std::shared_ptr<huxerui::HttpClient> &http,
     }
     if (observer.on_event) {
       const application::CompletionEvent event =
-          application::CompletionTextDelta{.text = std::string{delta}};
+          application::CompletionTextDelta{.turn_index = 0,
+                                           .text = std::string{delta}};
       observer.on_event(event);
-    }
-    if (observer.on_text_delta) {
-      observer.on_text_delta(std::string{delta});
     }
     return {};
   };
@@ -196,6 +194,7 @@ CompleteStreaming(const std::shared_ptr<huxerui::HttpClient> &http,
       if (observer.on_event) {
         const application::CompletionEvent event =
             application::CompletionReasoningDelta{
+                .turn_index = 0,
                 .text = std::string{separator},
                 .kind = delta.kind,
                 .starts_new_segment = true,

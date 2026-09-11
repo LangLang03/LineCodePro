@@ -23,9 +23,11 @@ namespace {
 
 using namespace huxerui;
 
-View Notice(const StringVariant &text) {
+View Notice(const StringVariant &text, const float icon_size = 17.0F,
+            const float slot_size = 28.0F) {
   return Row{
-      SkillHubGlyph(app::images::shield_check, 17.0F, colors::accent),
+      SkillHubIconSlot(app::images::shield_check, icon_size, slot_size,
+                       colors::accent),
       Text(text).Style(
           SkillHubLabel(11.0F, FontWeight::Regular, colors::secondary)),
   }
@@ -46,7 +48,8 @@ View CenterEntry(
                   SkillHubLabel(11.0F, FontWeight::Regular, colors::tertiary)),
       }
           .With(Spacing(2.0F), Grow()),
-      SkillHubGlyph(app::images::chevron_right, 16.0F, colors::tertiary),
+      SkillHubIconSlot(app::images::chevron_right, 16.0F, 26.0F,
+                       colors::tertiary),
   }
       .OnClick([navigation, destination = item.destination] {
         navigation.Push(domain::AppRoute::SkillHubSite(destination));
@@ -58,19 +61,22 @@ View CenterEntry(
             PointerCursor(PointerCursorKind::Hand));
 }
 
-Task<void>
-CheckLogin(const SkillHubScreenServices services,
-           const State<bool> authenticated,
-           const State<std::string> account_name,
-           const RouteNavigationController<domain::AppRoute> navigation,
-           const ToastHandle toast, std::string cookie) {
-  if (authenticated.Get())
+Task<void> CheckLogin(
+    const SkillHubScreenServices services, const State<bool> authenticated,
+    const State<std::string> account_name, const State<bool> check_in_flight,
+    const RouteNavigationController<domain::AppRoute> navigation,
+    const ToastHandle toast, std::string cookie) {
+  if (authenticated.Get()) {
+    check_in_flight = false;
     co_return;
+  }
   auto session = co_await services.session->CurrentSession(std::move(cookie));
+  check_in_flight = false;
   if (session && session->authenticated) {
     authenticated = true;
     account_name = session->account.display_name;
     toast.Show(app::strings::skillhub_login_success);
+    co_await Delay(std::chrono::milliseconds{150});
     navigation.Pop();
   }
 }
@@ -78,23 +84,41 @@ CheckLogin(const SkillHubScreenServices services,
 void RequestLoginCheck(
     const SkillHubScreenServices &services, const TaskScope &tasks,
     const State<bool> authenticated, const State<std::string> account_name,
-    const State<std::string> bridge_error,
+    const State<std::string> bridge_error, const State<bool> check_in_flight,
     const RouteNavigationController<domain::AppRoute> &navigation,
     const ToastHandle &toast, std::string unavailable_message) {
-  if (authenticated.Get())
+  if (authenticated.Get() || check_in_flight.Get())
     return;
+  check_in_flight = true;
   services.platform->ReadSessionCookie(
-      [services, tasks, authenticated, account_name, bridge_error, navigation,
-       toast, unavailable_message = std::move(unavailable_message)](
+      [services, tasks, authenticated, account_name, bridge_error,
+       check_in_flight, navigation, toast,
+       unavailable_message = std::move(unavailable_message)](
           application::SkillHubCookieResult result) mutable {
         if (!result.Succeeded()) {
+          check_in_flight = false;
           bridge_error = std::move(unavailable_message);
           return;
         }
         bridge_error = std::string{};
         tasks.Launch(CheckLogin(services, authenticated, account_name,
-                                navigation, toast, std::move(result.cookie)));
+                                check_in_flight, navigation, toast,
+                                std::move(result.cookie)));
       });
+}
+
+Task<void> PollLogin(
+    const SkillHubScreenServices services, const TaskScope tasks,
+    const State<bool> authenticated, const State<std::string> account_name,
+    const State<std::string> bridge_error, const State<bool> check_in_flight,
+    const RouteNavigationController<domain::AppRoute> navigation,
+    const ToastHandle toast, std::string unavailable_message) {
+  while (!authenticated.Get() && bridge_error->empty()) {
+    RequestLoginCheck(services, tasks, authenticated, account_name,
+                      bridge_error, check_in_flight, navigation, toast,
+                      unavailable_message);
+    co_await Delay(std::chrono::seconds{1});
+  }
 }
 
 struct PublishState final {
@@ -272,7 +296,8 @@ SkillHubWebScreen(const domain::SkillHubSiteRoute &route) {
   return Column{
       SkillHubHeader(std::move(title), [navigation] { navigation.Pop(); }),
       Divider(),
-      SkillHubMargin(Notice(app::strings::skillhub_official_notice),
+      SkillHubMargin(Notice(app::strings::skillhub_official_notice, 16.0F,
+                            26.0F),
                      EdgeInsets::Symmetric(12.0F, 8.0F)),
       WebView({.url = requested_url.Get(), .java_script_enabled = true},
               controller)
@@ -300,14 +325,16 @@ SkillHubLoginScreen(const SkillHubScreenServices &services) {
   auto authenticated = UseState(false);
   auto account_name = UseState(std::string{});
   auto bridge_error = UseState(std::string{});
+  auto check_in_flight = UseState(false);
   auto requested_url = UseState(std::string{"https://skillhub.cn/"});
   const auto controller = UseWebViewController();
   const std::string session_unavailable =
       UseString(app::strings::skillhub_session_bridge_unavailable);
   Lifecycle([services, tasks, authenticated, account_name, bridge_error,
-             navigation, toast, session_unavailable] {
-    RequestLoginCheck(services, tasks, authenticated, account_name,
-                      bridge_error, navigation, toast, session_unavailable);
+             check_in_flight, navigation, toast, session_unavailable] {
+    tasks.Launch(PollLogin(services, tasks, authenticated, account_name,
+                           bridge_error, check_in_flight, navigation, toast,
+                           session_unavailable));
   });
 
   const StringVariant status =
@@ -343,11 +370,11 @@ SkillHubLoginScreen(const SkillHubScreenServices &services) {
               })
           .On<WebViewEvents::LoadFinished>(
               [services, tasks, authenticated, account_name, bridge_error,
-               navigation, toast,
+               check_in_flight, navigation, toast,
                session_unavailable](const WebViewNavigationState &) {
                 RequestLoginCheck(services, tasks, authenticated, account_name,
-                                  bridge_error, navigation, toast,
-                                  session_unavailable);
+                                  bridge_error, check_in_flight, navigation,
+                                  toast, session_unavailable);
               })
           .With(Grow(), Frame{.min_height = 1.0F}, ClipChildren(),
                 Semantics{.label = app::strings::skillhub_login_page_desc}),
@@ -395,7 +422,6 @@ SkillHubPublishScreen(const SkillHubScreenServices &services) {
             Text(selected)
                 .Style(SkillHubLabel(16.0F, FontWeight::Medium))
                 .With(Grow()),
-            SkillHubGlyph(app::images::chevron_right, 16.0F, colors::tertiary),
         }
             .OnClick([state, slug, display_name, version] {
               if (state->skills.empty())

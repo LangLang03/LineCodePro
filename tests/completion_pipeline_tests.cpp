@@ -1,4 +1,5 @@
 #include <cassert>
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -175,8 +176,12 @@ void GenerationControllerRejectsStaleResultsAndPersistsAssistant() {
   assert(first->messages[0].content == "history");
   assert(first->messages[1].content == "first");
   assert(controller.State().phase == GenerationPhase::running);
-  assert(controller.AppendTextDelta(first->generation_id, "流"));
-  assert(controller.AppendTextDelta(first->generation_id, "式"));
+  assert(controller.Observe(
+      first->generation_id,
+      linecode::application::CompletionTextDelta{.text = "流"}));
+  assert(controller.Observe(
+      first->generation_id,
+      linecode::application::CompletionTextDelta{.text = "式"}));
   assert(controller.State().streamed_text == "流式");
   const auto concurrent = controller.Begin("must not run concurrently");
   assert(!concurrent.has_value());
@@ -187,18 +192,50 @@ void GenerationControllerRejectsStaleResultsAndPersistsAssistant() {
   controller.Cancel();
   assert(controller.State().phase == GenerationPhase::cancelled);
   assert(controller.State().streamed_text.empty());
-  assert(!controller.AppendTextDelta(first->generation_id, "stale"));
+  assert(recording->Messages().size() == 3U);
+  assert(recording->Messages().back().content == "流式");
+  assert(!recording->Messages().back().error);
+  assert(!controller.Observe(
+      first->generation_id,
+      linecode::application::CompletionTextDelta{.text = "stale"}));
   assert(!controller.Complete(first->generation_id,
                               CompletionResponse{.text = "stale",
                                                  .reasoning_content = {},
                                                  .tool_calls = {},
                                                  .input_tokens = 0,
                                                  .output_tokens = 0}));
-  assert(recording->Messages().size() == 2U);
+  assert(recording->Messages().size() == 3U);
 
   auto second = controller.Begin("second");
   assert(second.has_value());
   assert(second->generation_id > first->generation_id);
+  assert(controller.Observe(
+      second->generation_id,
+      linecode::application::CompletionReasoningDelta{
+          .turn_index = 0,
+          .text = "先读取文件",
+          .kind = linecode::application::CompletionReasoningKind::thinking,
+          .starts_new_segment = true}));
+  assert(controller.Observe(
+      second->generation_id,
+      linecode::application::CompletionToolCallEvent{
+          .turn_index = 0,
+          .call = {.id = "call-1",
+                   .name = "read_file",
+                   .arguments_json = "{}"},
+          .status = linecode::application::CompletionToolCallStatus::completed,
+          .result = linecode::application::CompletionToolResult{
+              .call_id = "call-1",
+              .name = "read_file",
+              .content = "fixture",
+              .error = false},
+          .display = {},
+          .created_at_millis = 1,
+          .duration_millis = 2}));
+  assert(controller.Observe(
+      second->generation_id,
+      linecode::application::CompletionTextDelta{.turn_index = 1,
+                                                 .text = "这是 LineCode 自动化测试的固定回复。"}));
   assert(controller.Complete(
       second->generation_id,
       CompletionResponse{.text = "这是 LineCode 自动化测试的固定回复。",
@@ -210,6 +247,7 @@ void GenerationControllerRejectsStaleResultsAndPersistsAssistant() {
   assert(recording->Messages().back().role == MessageRole::assistant);
   assert(recording->Messages().back().content ==
          "这是 LineCode 自动化测试的固定回复。");
+  assert(recording->Messages().back().timeline.size() == 2U);
   const auto completed_message_count = recording->Messages().size();
   assert(!controller.Complete(
       second->generation_id,
@@ -222,21 +260,124 @@ void GenerationControllerRejectsStaleResultsAndPersistsAssistant() {
 
   auto third = controller.Begin("third");
   assert(third.has_value());
+  assert(std::ranges::any_of(third->messages, [](const auto &message) {
+    return message.role == linecode::application::CompletionRole::tool &&
+           message.tool_result && message.tool_result->call_id == "call-1" &&
+           message.tool_result->content == "fixture";
+  }));
+  assert(controller.Observe(
+      third->generation_id,
+      linecode::application::CompletionReasoningDelta{
+          .turn_index = 0,
+          .text = "partial reasoning",
+          .kind = linecode::application::CompletionReasoningKind::summary,
+          .starts_new_segment = false}));
+  assert(controller.Observe(
+      third->generation_id,
+      linecode::application::CompletionToolCallEvent{
+          .turn_index = 0,
+          .call = {.id = "call-fail", .name = "shell_execute", .arguments_json = "{}"},
+          .status = linecode::application::CompletionToolCallStatus::running,
+          .result = std::nullopt,
+          .display = {},
+          .created_at_millis = 4,
+          .duration_millis = 0}));
   assert(controller.Fail(third->generation_id,
                          CompletionError{.code = CompletionErrorCode::transport,
                                          .message = "fixture unavailable"}));
   assert(controller.State().phase == GenerationPhase::failed);
   assert(controller.State().error == "fixture unavailable");
+  assert(recording->Messages().back().error);
+  assert(recording->Messages().back().error_message == "fixture unavailable");
+  assert(recording->Messages().back().reasoning_content ==
+         "partial reasoning");
+  const auto *failed_tool =
+      std::get_if<linecode::domain::AssistantToolEvent>(
+          &recording->Messages().back().timeline.back());
+  assert(failed_tool && failed_tool->result && failed_tool->result->error &&
+         failed_tool->call.status ==
+             linecode::domain::ToolCallStatus::failed);
   controller.Reset();
   assert(controller.State().phase == GenerationPhase::idle);
   assert(controller.State().error.empty());
+
+  auto image = controller.Begin("generate an image");
+  assert(image.has_value());
+  const std::string raw_image_result =
+      R"json({"linecode_image_generation":true,"display_markdown":"![fixture](data:image/png;base64,AAAA)","model_content":"Generated image for: fixture"})json";
+  const auto image_display =
+      linecode::application::DefaultToolResultDisplayProjector()->Project(
+          "image_generation", raw_image_result, false);
+  assert(controller.Observe(
+      image->generation_id,
+      linecode::application::CompletionToolCallEvent{
+          .turn_index = 0,
+          .call = {.id = "call-image",
+                   .name = "image_generation",
+                   .arguments_json = R"({"prompt":"fixture"})"},
+          .status =
+              linecode::application::CompletionToolCallStatus::completed,
+          .result = linecode::application::CompletionToolResult{
+              .call_id = "call-image",
+              .name = "image_generation",
+              .content = raw_image_result,
+              .error = false},
+          .display = image_display,
+          .created_at_millis = 8,
+          .duration_millis = 9}));
+  assert(controller.Observe(
+      image->generation_id,
+      linecode::application::CompletionTextDelta{
+          .turn_index = 1, .text = "Image complete."}));
+  assert(controller.Complete(
+      image->generation_id,
+      CompletionResponse{.text = "Image complete.",
+                         .reasoning_content = {},
+                         .tool_calls = {},
+                         .input_tokens = 0,
+                         .output_tokens = 0}));
+  const auto &image_message = recording->Messages().back();
+  assert(image_message.content ==
+         "![fixture](data:image/png;base64,AAAA)\n\nImage complete.");
+
+  auto after_image = controller.Begin("continue after image");
+  assert(after_image.has_value());
+  for (const auto &message : after_image->messages) {
+    assert(!message.content.contains("data:image/"));
+    if (message.tool_result)
+      assert(!message.tool_result->content.contains("data:image/"));
+  }
+  assert(std::ranges::any_of(after_image->messages, [](const auto &message) {
+    return message.tool_result &&
+           message.tool_result->call_id == "call-image" &&
+           message.tool_result->content == "Generated image for: fixture";
+  }));
+  controller.Cancel();
 
   auto attachment_only =
       controller.Begin("", {{"notes.md", "/workspace/notes.md", "local"}});
   assert(attachment_only.has_value());
   assert(recording->Messages().back().content.empty());
   assert(recording->Messages().back().attachments.size() == 1U);
+  assert(controller.Observe(
+      attachment_only->generation_id,
+      linecode::application::CompletionToolCallEvent{
+          .turn_index = 0,
+          .call = {.id = "call-cancel",
+                   .name = "shell_execute",
+                   .arguments_json = "{}"},
+          .status = linecode::application::CompletionToolCallStatus::running,
+          .result = std::nullopt,
+          .display = {},
+          .created_at_millis = 5,
+          .duration_millis = 0}));
   controller.Cancel();
+  const auto *cancelled_tool =
+      std::get_if<linecode::domain::AssistantToolEvent>(
+          &recording->Messages().back().timeline.back());
+  assert(cancelled_tool && cancelled_tool->result &&
+         cancelled_tool->call.status ==
+             linecode::domain::ToolCallStatus::rejected);
 }
 
 } // namespace

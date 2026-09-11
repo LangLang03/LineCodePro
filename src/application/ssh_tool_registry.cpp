@@ -117,6 +117,7 @@ SshToolRegistry::Refresh() {
         .parameters_json = std::string{kShellSchema},
         .allowed_in_read_only = true,
         .permanent_grant_supported = true,
+        .category = "shell",
     });
   }
   active_config_ = std::move(next_config);

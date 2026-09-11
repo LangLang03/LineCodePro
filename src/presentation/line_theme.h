@@ -55,7 +55,7 @@ LineColorsForPalette(const domain::ThemePalette &palette);
 huxerui::ThemeSpec LineLightTheme();
 huxerui::ThemeSpec LineTheme(const LineColors &colors);
 huxerui::DialogStyle LineDialogStyle(const LineColors &colors);
-huxerui::BottomSheetStyle LineBottomSheetStyle();
+huxerui::BottomSheetStyle LineBottomSheetStyle(const LineColors &colors);
 huxerui::ThemeDefinition LineLightThemeDefinition();
 huxerui::ThemeDefinition LineThemeDefinition(const LineColors &colors);
 

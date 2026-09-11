@@ -6,4 +6,6 @@
     <string name="keep_alive_notification_title">编码任务保活</string>
     <string name="notification_keep_alive_text">正在编码</string>
     <string name="notification_keep_alive_ticker">LineCode</string>
+    <string name="workspace_provider_open_title">LineCode 工作区</string>
+    <string name="workspace_provider_open_failed">无法打开工作区目录</string>
 </resources>

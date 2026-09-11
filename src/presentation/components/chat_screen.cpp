@@ -20,9 +20,12 @@
 
 #include "application/behavior_settings_repository.h"
 #include "application/chat_session.h"
+#include "application/chat_export.h"
 #include "application/generation_controller.h"
 #include "application/memory_context_service.h"
 #include "application/mcp_completion_loop.h"
+#include "application/output_settings.h"
+#include "application/ports/external_link.h"
 #include "application/pending_message_queue.h"
 #include "application/ports/model_store.h"
 #include "application/ports/share_text.h"
@@ -34,6 +37,7 @@
 #include "presentation/components/chat_overlays.h"
 #include "presentation/components/tutorial_markdown.h"
 #include "presentation/components/tool_approval_view.h"
+#include "presentation/chat_timeline_presentation.h"
 #include "presentation/line_theme.h"
 #include "presentation/platform_features.h"
 
@@ -458,18 +462,590 @@ void ToggleMessageSelection(State<std::vector<std::uint64_t>> selected,
   });
 }
 
-View AssistantMarkdown(std::string_view markdown) {
+struct ChatTimelineSettings final {
+  bool code_wrap_enabled{};
+  bool process_auto_expand{};
+  bool thinking_auto_expand{};
+  bool thinking_scroll{true};
+  application::BrowserMode browser_mode{application::BrowserMode::builtin};
+  bool browser_javascript_enabled{};
+};
+
+// Legacy `ShareController.showFormatPicker` presented the export formats as a
+// simple titled list of choices. The panel below keeps that shape while the
+// actual formats stay behind `application::ChatExportService`.
+View ExportFormatRow(DialogContext dialog, StringVariant label,
+                     std::function<void()> on_select) {
+  return Text(std::move(label))
+      .Style(ChatTextStyle(16.0F))
+      .VerticalAlign(TextVerticalAlign::Center)
+      .OnClick([dialog, on_select = std::move(on_select)] {
+        dialog.Dismiss();
+        std::invoke(on_select);
+      })
+      .With(Frame{.min_height = 52.0F},
+            Padding(EdgeInsets::Symmetric(16.0F, 0.0F)), Focusable(),
+            PointerCursor(PointerCursorKind::Hand));
+}
+
+View ExportFormatDialog(DialogContext dialog, StringVariant title,
+                        std::vector<application::ChatExportOption> options,
+                        std::function<void(std::string)> on_select) {
+  std::vector<View> children;
+  children.reserve(options.size() + 1);
+  children.emplace_back(
+      Text(std::move(title))
+          .Style(ChatTextStyle(17.0F, FontWeight::Medium))
+          .With(Padding(EdgeInsets{.bottom = 4.0F})));
+  for (auto &option : options) {
+    auto id = option.id;
+    children.emplace_back(ExportFormatRow(
+        dialog, std::move(option.display_name),
+        [on_select, id = std::move(id)] { std::invoke(on_select, id); }));
+  }
+  return Column(std::move(children))
+      .With(Frame{.min_width = 280.0F, .max_width = 560.0F},
+            Padding(EdgeInsets{.top = 8.0F, .bottom = 8.0F}),
+            CrossAlign(CrossAxisAlignment::Stretch),
+            Background(colors::elevated), CornerRadius(16.0F), ClipChildren());
+}
+
+bool ToggleState(std::span<const std::string> toggled,
+                 std::string_view key, bool default_value) {
+  return std::ranges::contains(toggled, key) ? !default_value : default_value;
+}
+
+void ToggleKey(State<std::vector<std::string>> toggled, std::string key) {
+  toggled.Update([key = std::move(key)](auto &keys) {
+    const auto found = std::ranges::find(keys, key);
+    if (found == keys.end())
+      keys.push_back(key);
+    else
+      keys.erase(found);
+  });
+}
+
+struct ToolStatusPolicy final {
+  domain::ToolCallStatus status;
+  StringResource label;
+};
+
+const std::array kToolStatusPolicies{
+    ToolStatusPolicy{domain::ToolCallStatus::requested,
+                     app::strings::chat_tool_requested},
+    ToolStatusPolicy{domain::ToolCallStatus::awaiting_review,
+                     app::strings::chat_tool_awaiting_review},
+    ToolStatusPolicy{domain::ToolCallStatus::running,
+                     app::strings::chat_tool_running},
+    ToolStatusPolicy{domain::ToolCallStatus::completed,
+                     app::strings::chat_tool_completed},
+    ToolStatusPolicy{domain::ToolCallStatus::failed,
+                     app::strings::chat_tool_failed},
+    ToolStatusPolicy{domain::ToolCallStatus::rejected,
+                     app::strings::chat_tool_rejected},
+};
+
+StringResource ToolStatusLabel(domain::ToolCallStatus status) {
+  const auto found = std::ranges::find(kToolStatusPolicies, status,
+                                       &ToolStatusPolicy::status);
+  return found == kToolStatusPolicies.end() ? app::strings::chat_tool_failed
+                                             : found->label;
+}
+
+View LegacyToolHeader(const ToolTimelinePresentation &presentation,
+                      ImageResource icon, bool expanded,
+                      std::function<void()> toggle) {
+  const auto metrics = ToolTimelineMetrics(presentation.visual);
+  const auto color = presentation.failed ? colors::danger : colors::secondary;
+  std::vector<View> children;
+  children.reserve(presentation.expandable ? 5U : 4U);
+  children.push_back(
+      Stack{Image(std::move(icon))
+                .Tint(color)
+                .With(Frame{.width = metrics.icon_width,
+                            .height = metrics.icon_height})}
+          .With(Frame{.width = metrics.icon_slot_width,
+                      .height = metrics.icon_slot_height},
+                Align(HorizontalAlignment::Center,
+                      VerticalAlignment::Center)));
+  children.push_back(
+      Text(ToolStatusLabel(presentation.status))
+          .Style(ChatTextStyle(metrics.title_size, FontWeight::Regular,
+                               color)));
+  children.push_back(
+      Text(presentation.title)
+          .Style(ChatTextStyle(metrics.title_size, FontWeight::Regular,
+                               color))
+          .With(Grow()));
+  if (presentation.visual == ToolTimelineVisualKind::remove &&
+      presentation.item_count > 0) {
+    children.push_back(
+        Text("· " + std::to_string(presentation.item_count))
+            .Style(ChatTextStyle(metrics.title_size, FontWeight::Regular,
+                                 color)));
+  }
+  if (presentation.expandable) {
+    children.push_back(
+        Stack{Image(expanded ? app::images::chevron_down
+                             : app::images::chevron_right)
+                  .Tint(colors::secondary)
+                  .With(Frame{.width = 24.0F, .height = 14.0F})}
+            .With(Frame{.width = 24.0F, .height = 32.0F},
+                  Align(HorizontalAlignment::Center,
+                        VerticalAlignment::Center)));
+  }
+  View header = Row(std::move(children))
+                    .With(Frame{.min_height = metrics.header_height},
+                          Spacing(metrics.title_leading_margin));
+  if (presentation.expandable) {
+    header = std::move(header)
+                 .OnClick(std::move(toggle))
+                 .With(Focusable(), PointerCursor(PointerCursorKind::Hand));
+  }
+  return header;
+}
+
+View ToolCodeCard(std::string text, const ToolTimelinePresentation &presentation,
+                  float maximum_height) {
+  const auto metrics = ToolTimelineMetrics(presentation.visual);
+  return ScrollView(
+             SelectionArea(
+                 Text(std::move(text))
+                     .Style(TextStyle{Font::Monospace(metrics.detail_text_size),
+                                      presentation.failed ? colors::danger
+                                                          : colors::secondary})
+                     .With(Padding(EdgeInsets{
+                         .top = metrics.detail_vertical_padding,
+                         .right = metrics.detail_horizontal_padding,
+                         .bottom = metrics.detail_vertical_padding,
+                         .left = metrics.detail_horizontal_padding}))))
+      .ScrollAxis(Axis::Vertical)
+      .With(Frame{.max_height = maximum_height}, Background(colors::code),
+            Border(colors::code_border, 1.0F),
+            CornerRadius(metrics.detail_radius), ClipChildren(), ScrollBar());
+}
+
+View AssistantMarkdown(std::string_view markdown, bool code_wrap,
+                       const TutorialMarkdownLinkHandler &on_link = {});
+
+View ShellToolRenderer(const ToolTimelinePresentation &presentation,
+                       bool expanded, std::function<void()> toggle,
+                       const TutorialMarkdownLinkHandler &) {
+  std::vector<View> rows;
+  rows.push_back(LegacyToolHeader(presentation, app::images::terminal,
+                                  expanded, std::move(toggle)));
+  if (expanded && !presentation.detail.empty())
+    rows.push_back(ToolCodeCard(presentation.detail, presentation, 240.0F));
+  return Column(std::move(rows))
+      .With(CrossAlign(CrossAxisAlignment::Stretch));
+}
+
+View ReadToolRenderer(const ToolTimelinePresentation &presentation,
+                      bool expanded, std::function<void()> toggle,
+                      const TutorialMarkdownLinkHandler &) {
+  std::vector<View> rows;
+  rows.push_back(LegacyToolHeader(presentation, app::images::file_text,
+                                  expanded, std::move(toggle)));
+  if (presentation.failed && !presentation.detail.empty())
+    rows.push_back(ToolCodeCard(presentation.detail, presentation, 240.0F));
+  return Column(std::move(rows))
+      .With(CrossAlign(CrossAxisAlignment::Stretch));
+}
+
+View WriteToolRenderer(const ToolTimelinePresentation &presentation,
+                       bool expanded, std::function<void()> toggle,
+                       const TutorialMarkdownLinkHandler &) {
+  std::vector<View> rows;
+  rows.push_back(LegacyToolHeader(presentation, app::images::file_pen_line,
+                                  expanded, std::move(toggle)));
+  if (expanded) {
+    const auto detail = presentation.detail.empty()
+                            ? std::string{"Diff unavailable"}
+                            : presentation.detail;
+    rows.push_back(
+        Column{
+            Row{Text(presentation.title)
+                    .Style(ChatTextStyle(13.0F, FontWeight::Regular,
+                                         colors::secondary)),
+                Spacer(),
+                Stack{Image(app::images::copy)
+                          .Tint(colors::secondary)
+                          .With(Frame{.width = 16.0F, .height = 16.0F})}
+                    .With(Frame{.width = 44.0F, .height = 44.0F},
+                          Align(HorizontalAlignment::Center,
+                                VerticalAlignment::Center))}
+                .With(Padding(EdgeInsets{.left = 12.0F})),
+            ScrollView(SelectionArea(
+                           Text(detail)
+                               .Style(TextStyle{Font::Monospace(13.0F),
+                                                presentation.failed
+                                                    ? colors::danger
+                                                    : colors::secondary})
+                               .With(Padding(EdgeInsets{
+                                   .top = 10.0F,
+                                   .right = 14.0F,
+                                   .bottom = 10.0F,
+                                   .left = 14.0F}))))
+                .ScrollAxis(Axis::Vertical)
+                .With(Frame{.max_height = 224.0F}, ScrollBar()),
+        }.With(CrossAlign(CrossAxisAlignment::Stretch),
+               Background(colors::code), Border(colors::code_border, 1.0F),
+               CornerRadius(12.0F), ClipChildren()));
+  }
+  return Column(std::move(rows))
+      .With(CrossAlign(CrossAxisAlignment::Stretch));
+}
+
+View DeleteToolRenderer(const ToolTimelinePresentation &presentation,
+                        bool expanded, std::function<void()> toggle,
+                        const TutorialMarkdownLinkHandler &) {
+  std::vector<View> rows;
+  rows.push_back(LegacyToolHeader(presentation, app::images::trash_2,
+                                  expanded, std::move(toggle)));
+  if (expanded && !presentation.detail.empty())
+    rows.push_back(ToolCodeCard(presentation.detail, presentation, 200.0F));
+  return Column(std::move(rows))
+      .With(CrossAlign(CrossAxisAlignment::Stretch));
+}
+
+View TodoIndicator(ToolTimelineTodoItem::State state) {
+  using State = ToolTimelineTodoItem::State;
+  if (state == State::completed) {
+    return Image(app::images::check)
+        .Tint(colors::success)
+        .With(Frame{.width = 14.0F, .height = 14.0F});
+  }
+  return Stack{}.With(Frame{.width = 14.0F, .height = 14.0F},
+                      Border(state == State::in_progress
+                                 ? static_cast<Color>(colors::accent)
+                                 : static_cast<Color>(colors::tertiary),
+                             2.0F),
+                      CornerRadius(7.0F));
+}
+
+View TodoToolRenderer(const ToolTimelinePresentation &presentation, bool,
+                      std::function<void()>,
+                      const TutorialMarkdownLinkHandler &) {
+  if (presentation.failed && !presentation.detail.empty())
+    return ToolCodeCard(presentation.detail, presentation, 240.0F);
+  std::vector<View> rows;
+  rows.reserve(presentation.todo_items.size());
+  for (const auto &item : presentation.todo_items) {
+    TextStyle style = ChatTextStyle(
+        14.0F, FontWeight::Regular,
+        item.state == ToolTimelineTodoItem::State::completed
+            ? static_cast<Color>(colors::tertiary)
+            : static_cast<Color>(colors::text));
+    if (item.state == ToolTimelineTodoItem::State::completed)
+      style.decoration = TextDecoration::StrikeThrough;
+    rows.push_back(Row{TodoIndicator(item.state), Text(item.content).Style(style)}
+                       .With(Frame{.min_height = 44.0F}, Spacing(8.0F),
+                             Padding(EdgeInsets::Symmetric(0.0F, 4.0F))));
+  }
+  if (rows.empty()) {
+    rows.push_back(Text("No TODO items")
+                       .Style(ChatTextStyle(12.0F, FontWeight::Regular,
+                                            colors::tertiary))
+                       .With(Padding(EdgeInsets{.top = 8.0F,
+                                                .right = 16.0F,
+                                                .bottom = 16.0F,
+                                                .left = 16.0F})));
+  }
+  return Column(std::move(rows))
+      .With(CrossAlign(CrossAxisAlignment::Stretch),
+            Padding(EdgeInsets::Symmetric(0.0F, 12.0F)));
+}
+
+View AgentToolRenderer(const ToolTimelinePresentation &presentation,
+                       bool expanded, std::function<void()> toggle,
+                       const TutorialMarkdownLinkHandler &on_link) {
+  std::vector<View> title_rows;
+  title_rows.push_back(
+      Row{Text(presentation.title)
+              .Style(ChatTextStyle(14.0F, FontWeight::Bold, colors::text)),
+          Spacer(),
+          presentation.running
+              ? View{ProgressCircle().With(
+                    Frame{.width = 18.0F, .height = 18.0F})}
+              : View{Image(presentation.failed ? app::images::x
+                                               : app::images::check)
+                         .Tint(presentation.failed ? colors::danger
+                                                   : colors::success)
+                         .With(Frame{.width = 18.0F, .height = 13.0F})},
+          Image(expanded ? app::images::chevron_down
+                         : app::images::chevron_right)
+              .Tint(colors::tertiary)
+              .With(Frame{.width = 16.0F, .height = 12.0F})}
+          .OnClick(std::move(toggle))
+          .With(Frame{.min_height = 48.0F}, Spacing(8.0F),
+                Padding(EdgeInsets::Symmetric(16.0F, 8.0F)),
+                PointerCursor(PointerCursorKind::Hand)));
+  if (expanded) {
+    std::vector<View> content;
+    if (!presentation.input_detail.empty())
+      content.push_back(Text(presentation.input_detail)
+                            .Style(ChatTextStyle(13.0F, FontWeight::Regular,
+                                                 colors::tertiary)));
+    if (!presentation.output_detail.empty())
+      content.push_back(
+          AssistantMarkdown(presentation.output_detail, true, on_link));
+    if (content.empty())
+      content.push_back(Text(presentation.running ? "Running…" : "Done")
+                            .Style(ChatTextStyle(12.0F, FontWeight::Regular,
+                                                 colors::tertiary)));
+    title_rows.push_back(
+        ScrollView(Column(std::move(content))
+                       .With(CrossAlign(CrossAxisAlignment::Stretch),
+                             Spacing(8.0F), Padding(EdgeInsets{
+                                               .top = 8.0F,
+                                               .right = 16.0F,
+                                               .bottom = 16.0F,
+                                               .left = 16.0F})))
+            .ScrollAxis(Axis::Vertical)
+            .With(Frame{.max_height = 400.0F},
+                  Border(colors::code_border, 1.0F), ScrollBar()));
+  }
+  return Column(std::move(title_rows))
+      .With(CrossAlign(CrossAxisAlignment::Stretch),
+            Background(colors::elevated), Border(colors::border_light, 1.0F),
+            CornerRadius(8.0F), ClipChildren());
+}
+
+View PipelineToolRenderer(const ToolTimelinePresentation &presentation,
+                          bool expanded, std::function<void()> toggle,
+                          const TutorialMarkdownLinkHandler &on_link) {
+  auto copy = presentation;
+  copy.title += "  " + std::to_string(copy.completed_count) + "/" +
+                std::to_string(copy.item_count);
+  return AgentToolRenderer(copy, expanded, std::move(toggle), on_link);
+}
+
+View GenericToolRenderer(const ToolTimelinePresentation &presentation,
+                         bool expanded, std::function<void()> toggle,
+                         const TutorialMarkdownLinkHandler &) {
+  std::vector<View> rows;
+  rows.push_back(LegacyToolHeader(presentation, app::images::mcp, expanded,
+                                  std::move(toggle)));
+  if (expanded &&
+      (!presentation.input_detail.empty() || !presentation.output_detail.empty())) {
+    std::vector<View> sections;
+    const auto add_section = [&](std::string heading, const std::string &body,
+                                 Color color) {
+      if (body.empty())
+        return;
+      sections.push_back(
+          Column{Text(std::move(heading))
+                     .Style(ChatTextStyle(12.0F, FontWeight::Bold,
+                                          colors::tertiary)),
+                 SelectionArea(Text(body).Style(
+                     TextStyle{Font::Monospace(14.0F), color}))}
+              .With(CrossAlign(CrossAxisAlignment::Stretch), Spacing(4.0F),
+                    Padding(EdgeInsets{.top = 12.0F,
+                                       .right = 14.0F,
+                                       .bottom = 12.0F,
+                                       .left = 14.0F})));
+    };
+    add_section("Input", presentation.input_detail, colors::secondary);
+    add_section("Output", presentation.output_detail,
+                presentation.failed ? static_cast<Color>(colors::danger)
+                                    : static_cast<Color>(colors::secondary));
+    rows.push_back(ScrollView(Column(std::move(sections))
+                                  .With(CrossAlign(
+                                      CrossAxisAlignment::Stretch)))
+                       .ScrollAxis(Axis::Vertical)
+                       .With(Frame{.max_height = 240.0F},
+                             Background(colors::code),
+                             Border(colors::code_border, 1.0F),
+                             CornerRadius(12.0F), ClipChildren(), ScrollBar()));
+  }
+  return Column(std::move(rows))
+      .With(CrossAlign(CrossAxisAlignment::Stretch));
+}
+
+using ToolRenderer = View (*)(const ToolTimelinePresentation &, bool,
+                              std::function<void()>,
+                              const TutorialMarkdownLinkHandler &);
+
+struct ToolRendererPolicy final {
+  ToolTimelineVisualKind visual;
+  ToolRenderer renderer;
+};
+
+const std::array kToolRendererPolicies{
+    ToolRendererPolicy{ToolTimelineVisualKind::shell, &ShellToolRenderer},
+    ToolRendererPolicy{ToolTimelineVisualKind::read, &ReadToolRenderer},
+    ToolRendererPolicy{ToolTimelineVisualKind::write, &WriteToolRenderer},
+    ToolRendererPolicy{ToolTimelineVisualKind::remove, &DeleteToolRenderer},
+    ToolRendererPolicy{ToolTimelineVisualKind::todo, &TodoToolRenderer},
+    ToolRendererPolicy{ToolTimelineVisualKind::agent, &AgentToolRenderer},
+    ToolRendererPolicy{ToolTimelineVisualKind::agent_pipeline,
+                       &PipelineToolRenderer},
+    ToolRendererPolicy{ToolTimelineVisualKind::generic, &GenericToolRenderer},
+};
+
+ToolRenderer RendererFor(ToolTimelineVisualKind visual) {
+  const auto found = std::ranges::find(kToolRendererPolicies, visual,
+                                       &ToolRendererPolicy::visual);
+  return found == kToolRendererPolicies.end() ? &GenericToolRenderer
+                                               : found->renderer;
+}
+
+View AssistantMarkdown(std::string_view markdown, bool code_wrap,
+                       const TutorialMarkdownLinkHandler &on_link) {
   infrastructure::TutorialMarkdownParser parser;
   const auto document = parser.Parse(markdown);
-  return TutorialMarkdownDocumentView(document, true)
+  return TutorialMarkdownDocumentView(document, code_wrap, 1.0F, on_link)
       .With(Frame{.max_width = 684.0F});
+}
+
+View ReasoningTimelineBlock(
+    const domain::AssistantReasoningEvent &reasoning,
+    std::string key, const ChatTimelineSettings &settings,
+    State<std::vector<std::string>> toggled) {
+  const bool expanded = ToggleState(toggled.Get(), key,
+                                    settings.thinking_auto_expand);
+  View header = Row{
+      Text(reasoning.kind == domain::ReasoningKind::summary
+               ? app::strings::chat_reasoning_summary
+               : app::strings::chat_reasoning_thinking)
+          .Style(ChatTextStyle(13.0F, FontWeight::Medium, colors::secondary)),
+      Spacer(),
+      Image(expanded ? app::images::chevron_down
+                     : app::images::chevron_right)
+          .Tint(colors::tertiary)
+          .With(Frame{.width = 14.0F, .height = 14.0F}),
+  };
+  header = std::move(header)
+               .OnClick([toggled, key] { ToggleKey(toggled, key); })
+               .With(Frame{.height = 48.0F},
+                     Align(HorizontalAlignment::Stretch,
+                           VerticalAlignment::Center),
+                     PointerCursor(PointerCursorKind::Hand));
+  if (!expanded)
+    return header;
+  View body = SelectionArea(
+      Text(reasoning.text)
+          .Style(ChatTextStyle(14.0F, FontWeight::Regular, colors::tertiary)));
+  if (settings.thinking_scroll) {
+    body = ScrollView(std::move(body))
+               .ScrollAxis(Axis::Vertical)
+               .With(Frame{.max_height = 180.0F}, ScrollBar());
+  }
+  return Column{std::move(header), std::move(body)}
+      .With(CrossAlign(CrossAxisAlignment::Stretch),
+            Padding(EdgeInsets{.right = 4.0F, .bottom = 8.0F, .left = 4.0F}));
+}
+
+View ToolTimelineCard(const domain::AssistantToolEvent &event,
+                      std::string key,
+                      State<std::vector<std::string>> toggled,
+                      const TutorialMarkdownLinkHandler &on_link) {
+  const auto presentation = PresentToolTimeline(event);
+  if (!presentation.visible)
+    return Stack{}.With(Frame{.height = 0.0F});
+  const bool expanded = ToggleState(toggled.Get(), key,
+                                    presentation.initially_expanded);
+  return RendererFor(presentation.visual)(
+      presentation, expanded,
+      [toggled, key = std::move(key)] { ToggleKey(toggled, key); }, on_link);
+}
+
+View AssistantTimeline(
+    const domain::ChatMessage &message, bool live,
+    const ChatTimelineSettings &settings,
+    State<std::vector<std::string>> toggled,
+    const TutorialMarkdownLinkHandler &on_link) {
+  const auto presentation = PresentAssistantProcess(
+      message, live, settings.process_auto_expand);
+  if (!presentation.visible)
+    return Stack{}.With(Frame{.height = 0.0F});
+  const auto stable_turn_id = message.processing_started_at > 0
+                                  ? message.processing_started_at
+                                  : static_cast<std::int64_t>(message.id);
+  const auto process_key = std::to_string(stable_turn_id) + ":process";
+  const bool expanded = ToggleState(toggled.Get(), process_key,
+                                    presentation.initially_expanded);
+  const auto label = presentation.failed
+                         ? app::strings::chat_process_failed
+                     : presentation.running
+                         ? app::strings::chat_process_working
+                         : app::strings::chat_process_completed;
+  std::string duration;
+  if (presentation.duration_millis > 0) {
+    duration = "  " +
+               std::to_string(presentation.duration_millis / 1'000) + "." +
+               std::to_string((presentation.duration_millis % 1'000) / 100) +
+               "s";
+  }
+  View process_icon = presentation.running
+                          ? ProgressCircle().With(
+                                Frame{.width = 16.0F, .height = 16.0F})
+                          : Image(app::images::brain)
+                                .Tint(presentation.failed ? colors::danger
+                                                          : colors::secondary)
+                                .With(Frame{.width = 17.0F, .height = 17.0F});
+  View header = Row{
+      std::move(process_icon),
+      Text(label).Style(ChatTextStyle(14.0F, FontWeight::Medium)),
+      Text(duration).Style(ChatTextStyle(12.0F, FontWeight::Regular,
+                                         colors::tertiary)),
+      Spacer(),
+      Image(expanded ? app::images::chevron_down
+                     : app::images::chevron_right)
+          .Tint(colors::tertiary)
+          .With(Frame{.width = 15.0F, .height = 15.0F}),
+  };
+  header = std::move(header)
+               .OnClick([toggled, process_key] {
+                 ToggleKey(toggled, process_key);
+               })
+               .With(Frame{.min_height = 48.0F}, Spacing(8.0F),
+                     PointerCursor(PointerCursorKind::Hand));
+  std::vector<View> rows{std::move(header)};
+  if (expanded) {
+    for (std::size_t index = 0; index < message.timeline.size(); ++index) {
+      const auto key = std::to_string(stable_turn_id) + ":" +
+                       std::to_string(index);
+      std::visit(
+          Overloaded{
+              [&](const domain::AssistantReasoningEvent &reasoning) {
+                rows.push_back(ReasoningTimelineBlock(reasoning, key,
+                                                      settings, toggled));
+              },
+              [&](const domain::AssistantTextEvent &text) {
+                if (!text.text.empty())
+                  rows.push_back(AssistantMarkdown(
+                      text.text, settings.code_wrap_enabled, on_link));
+              },
+              [&](const domain::AssistantToolEvent &tool) {
+                rows.push_back(ToolTimelineCard(tool, key, toggled, on_link));
+              }},
+          message.timeline[index]);
+    }
+    if (message.timeline.empty() && !message.reasoning_content.empty()) {
+      rows.push_back(ReasoningTimelineBlock(
+          domain::AssistantReasoningEvent{.turn_index = 0,
+                                          .text = message.reasoning_content},
+          process_key + ":legacy", settings, toggled));
+    }
+  }
+  return Column(std::move(rows))
+      .With(CrossAlign(CrossAxisAlignment::Stretch),
+            Padding(EdgeInsets{.right = 2.0F, .bottom = 12.0F, .left = 2.0F}),
+            Border(colors::border_light, 0.5F), CornerRadius(10.0F));
 }
 
 View MessageBubble(const domain::ChatMessage &message,
                    State<std::optional<std::uint64_t>> action_message,
                    bool multi_select,
                    State<std::vector<std::uint64_t>> selected_messages,
-                   MessageActionCallbacks callbacks) {
+                   MessageActionCallbacks callbacks,
+                   const ChatTimelineSettings &timeline_settings,
+                   State<std::vector<std::string>> toggled_timeline,
+                   const TutorialMarkdownLinkHandler &on_link,
+                   bool live = false) {
+  if (message.role == domain::MessageRole::tool)
+    return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
   const bool user = message.role == domain::MessageRole::user;
   const bool selected = std::ranges::contains(selected_messages.Get(),
                                               message.id);
@@ -479,16 +1055,32 @@ View MessageBubble(const domain::ChatMessage &message,
                           bubble_color.blue * 0.0722F;
   const Color user_text = luminance > 0.55F ? static_cast<Color>(colors::text)
                                             : Color::Rgb(237, 240, 242);
-  View bubble = message.content.empty()
-                    ? Stack{}.With(Frame{.height = 0.0F})
-                : user
+  View assistant_text = message.content.empty()
+                            ? Stack{}.With(Frame{.height = 0.0F})
+                            : AssistantMarkdown(
+                                  message.content,
+                                  timeline_settings.code_wrap_enabled,
+                                  on_link);
+  View assistant_error = Stack{}.With(Frame{.height = 0.0F});
+  if (message.error && !message.error_message.empty()) {
+    assistant_error = Text(message.error_message)
+                          .Style(ChatTextStyle(12.0F, FontWeight::Regular,
+                                               colors::danger));
+  }
+  View assistant = Column{
+      AssistantTimeline(message, live, timeline_settings, toggled_timeline,
+                        on_link),
+      std::move(assistant_text),
+      std::move(assistant_error),
+  }.With(CrossAlign(CrossAxisAlignment::Stretch));
+  View bubble = user
                     ? Text(message.content)
                           .With(FontSize(16.0F), Foreground(user_text),
                                 Padding(EdgeInsets::Symmetric(15.0F, 10.0F)),
                                 Background(colors::user_bubble),
                                 CornerRadius(18.0F),
                                 Frame{.max_width = 684.0F})
-                    : AssistantMarkdown(message.content);
+                    : std::move(assistant);
   View aligned_bubble =
       user ? Row{Spacer(), bubble} : Row{bubble, Spacer()};
   std::vector<View> content{aligned_bubble,
@@ -529,7 +1121,10 @@ View Conversation(
     const RouteNavigationController<domain::AppRoute> &navigation,
     State<std::optional<std::uint64_t>> action_message, bool multi_select,
     State<std::vector<std::uint64_t>> selected_messages,
-    MessageActionCallbacks callbacks) {
+    MessageActionCallbacks callbacks,
+    const ChatTimelineSettings &timeline_settings,
+    State<std::vector<std::string>> toggled_timeline,
+    const TutorialMarkdownLinkHandler &on_link) {
   static_cast<void>(revision);
   const auto messages = session->Messages();
   if (messages.empty()) {
@@ -537,25 +1132,38 @@ View Conversation(
   }
 
   const auto &generation_state = generation->State();
-  View streaming =
-      generation_state.phase == application::GenerationPhase::running &&
-              !generation_state.streamed_text.empty()
-          ? MessageBubble(domain::ChatMessage{
-                .id = generation_state.generation_id,
-                .role = domain::MessageRole::assistant,
-                .content = generation_state.streamed_text,
-                .attachments = {},
-            }, action_message, false, selected_messages, {})
-          : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
+  domain::ChatMessage streaming_message{};
+  streaming_message.id = generation_state.generation_id;
+  streaming_message.role = domain::MessageRole::assistant;
+  streaming_message.content = generation_state.promoted_content;
+  if (!generation_state.streamed_text.empty()) {
+    if (!streaming_message.content.empty())
+      streaming_message.content += "\n\n";
+    streaming_message.content += generation_state.streamed_text;
+  }
+  streaming_message.reasoning_content = generation_state.streamed_reasoning;
+  streaming_message.timeline = generation_state.timeline;
+  streaming_message.streaming = true;
+  streaming_message.processing_started_at = generation_state.started_at_millis;
+  View streaming = generation_state.phase ==
+                           application::GenerationPhase::running
+                       ? MessageBubble(streaming_message, action_message, false,
+                                       selected_messages, {}, timeline_settings,
+                                       toggled_timeline, on_link, true)
+                       : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
   View list = ScrollView(Column{
                              ForEach(messages,
                                      [action_message, multi_select,
                                       selected_messages,
-                                      callbacks](const auto &message) {
+                                      callbacks, timeline_settings,
+                                      toggled_timeline,
+                                      on_link](const auto &message) {
                                        return MessageBubble(
                                                   message, action_message,
                                                   multi_select,
-                                                  selected_messages, callbacks)
+                                                  selected_messages, callbacks,
+                                                  timeline_settings,
+                                                  toggled_timeline, on_link)
                                            .Key(message.id);
                                      }),
                              std::move(streaming),
@@ -789,19 +1397,18 @@ private:
             .model = std::move(**selected_model),
             .messages = std::move(work.messages),
             .tools = {},
-            .reasoning_effort = domain::ReasoningEffort::medium,
-            .preserve_reasoning = false,
+            .reasoning_effort = behavior->reasoning,
+            .preserve_reasoning = behavior->preserve_reasoning,
             .stream = true,
             .permission_scope = current_project_id_,
         },
         std::move(prompt_context),
         application::CompletionObserver{
-            .on_text_delta =
+            .on_event =
                 [generation = dependencies_.generation,
                  generation_id = work.generation_id,
-                 revision = revision_](std::string delta) {
-                  if (generation->AppendTextDelta(generation_id,
-                                                  std::move(delta)))
+                 revision = revision_](const application::CompletionEvent &event) {
+                  if (generation->Observe(generation_id, event))
                     revision += 1;
                 },
             .on_tool_review =
@@ -1401,6 +2008,7 @@ View GenerationError(const application::GenerationController &generation,
     const std::shared_ptr<application::MemoryContextService> &memory_context,
     const std::shared_ptr<application::AiBehaviorSettingsRepository>
         &behavior_settings,
+    const std::shared_ptr<application::OutputSettingsService> &output_settings,
     const std::shared_ptr<application::ToolPermissionService>
         &tool_permissions,
     const std::shared_ptr<application::ChatModeService> &chat_modes,
@@ -1415,6 +2023,8 @@ View GenerationError(const application::GenerationController &generation,
   const auto dialogs = UseDialog();
   const auto clipboard = UseApplication().Clipboard();
   const auto share_text = UseService<application::ShareTextService>();
+  const auto external_link = UseService<application::ExternalLinkService>();
+  const auto export_service = UseService<application::ChatExportService>();
   auto attachment_visible = UseState(false);
   auto more_visible = UseState(false);
   auto permission_visible = UseState(false);
@@ -1433,6 +2043,8 @@ View GenerationError(const application::GenerationController &generation,
   auto selected_messages = UseState(std::vector<std::uint64_t>{});
   auto slash_models = UseState(std::vector<domain::ModelConfig>{});
   auto slash_selected_model_id = UseState(std::string{});
+  auto timeline_settings = UseState(ChatTimelineSettings{});
+  auto toggled_timeline = UseState(std::vector<std::string>{});
   const auto tasks = UseTaskScope();
   const auto toast = UseToast();
 
@@ -1443,6 +2055,34 @@ View GenerationError(const application::GenerationController &generation,
         permission_state = *loaded;
       else
         toast.Show(loaded.error().message);
+    });
+  });
+  Lifecycle([tasks, behavior_settings, output_settings, timeline_settings,
+             toast] {
+    tasks.Launch([behavior_settings, timeline_settings, toast]() -> Task<void> {
+      auto loaded = co_await behavior_settings->Load();
+      if (!loaded) {
+        toast.Show(loaded.error().message);
+        co_return;
+      }
+      timeline_settings.Update([&loaded](auto &settings) {
+        settings.thinking_auto_expand = loaded->thinking_auto_expand;
+        settings.thinking_scroll = loaded->thinking_scroll;
+      });
+    });
+    tasks.Launch([output_settings, timeline_settings, toast]() -> Task<void> {
+      auto loaded = co_await output_settings->Load();
+      if (!loaded) {
+        toast.Show(loaded.error().message);
+        co_return;
+      }
+      timeline_settings.Update([&loaded](auto &settings) {
+        settings.code_wrap_enabled = loaded->code_wrap_enabled;
+        settings.process_auto_expand = loaded->process_auto_expand_enabled;
+        settings.browser_mode = loaded->browser_mode;
+        settings.browser_javascript_enabled =
+            loaded->browser_javascript_enabled;
+      });
     });
   });
   Lifecycle([tasks, model_store, slash_models, slash_selected_model_id,
@@ -1644,17 +2284,20 @@ View GenerationError(const application::GenerationController &generation,
   };
 
   auto show_more = [more_sheet, navigation, session, generation,
-                    pending_messages, active_generation, revision] {
+                    pending_messages, active_generation, revision, dialogs, toast,
+                    export_service] {
     more_sheet.Show([navigation, session, generation, pending_messages,
-                     active_generation, revision](
-                        bool visible, std::function<void()> dismiss) {
+                     active_generation, revision, dialogs, toast,
+                     export_service](bool visible,
+                                     std::function<void()> dismiss) {
       return ChatMoreMenu(
           ChatMoreMenuState{.visible = visible, .available = {}},
           ChatOverlayCallbacks<ChatMoreAction>{
               .on_dismiss_request = std::move(dismiss),
               .on_action =
                   [navigation, session, generation, pending_messages,
-                   active_generation, revision](ChatMoreAction action) {
+                   active_generation, revision, dialogs, toast,
+                   export_service](ChatMoreAction action) {
                     switch (action) {
                     case ChatMoreAction::tutorial:
                       navigation.Push(domain::AppRoute::tutorial);
@@ -1669,7 +2312,29 @@ View GenerationError(const application::GenerationController &generation,
                       session->Clear();
                       revision += 1;
                       break;
-                    case ChatMoreAction::export_chat:
+                    case ChatMoreAction::export_chat: {
+                      const auto messages = session->Messages();
+                      if (messages.empty()) {
+                        toast.Show(app::strings::toast_chat_empty_export);
+                        break;
+                      }
+                      dialogs.Show(
+                          ExportFormatDialog,
+                          StringVariant{app::strings::dialog_export_format_title},
+                          export_service->Options(),
+                          [export_service, messages, toast](std::string id) {
+                            const auto result = export_service->Export(
+                                id, std::span<const domain::ChatMessage>{
+                                        messages});
+                            if (!result.Succeeded()) {
+                              toast.Show(app::strings::toast_chat_export_failed);
+                              return;
+                            }
+                            if (result.warn_large_clipboard)
+                              toast.Show(app::strings::toast_clipboard_large);
+                          });
+                      break;
+                    }
                     case ChatMoreAction::select_messages_to_export:
                     case ChatMoreAction::compact_context:
                       // These typed actions are ready for their
@@ -1765,21 +2430,35 @@ View GenerationError(const application::GenerationController &generation,
         action_message = std::nullopt;
         revision += 1;
       },
-      .export_selected = [session, selected_messages, share_text, toast] {
-        std::string text;
+      .export_selected = [session, selected_messages, dialogs, toast,
+                          export_service] {
+        std::vector<domain::ChatMessage> messages;
         for (const auto &message : session->Messages()) {
-          if (!std::ranges::contains(selected_messages.Get(), message.id))
-            continue;
-          if (!text.empty())
-            text += "\n\n";
-          text += message.role == domain::MessageRole::user ? "User:\n"
-                                                            : "Assistant:\n";
-          text += message.content;
+          if (std::ranges::contains(selected_messages.Get(), message.id))
+            messages.push_back(message);
         }
-        if (text.empty())
+        if (messages.empty()) {
+          toast.Show(app::strings::toast_chat_empty_export);
           return;
-        if (!share_text || !share_text->Share(text))
-          toast.Show(app::strings::toast_share_failed);
+        }
+        // Legacy `ShareController.showFormatPicker` served both the whole-chat
+        // export and the multi-select export, so both entry points share the
+        // same format list.
+        dialogs.Show(
+            ExportFormatDialog,
+            StringVariant{app::strings::dialog_export_format_title},
+            export_service->Options(),
+            [export_service, messages,
+             toast](std::string id) {
+              const auto result = export_service->Export(
+                  id, std::span<const domain::ChatMessage>{messages});
+              if (!result.Succeeded()) {
+                toast.Show(app::strings::toast_chat_export_failed);
+                return;
+              }
+              if (result.warn_large_clipboard)
+                toast.Show(app::strings::toast_clipboard_large);
+            });
       },
   };
 
@@ -1831,13 +2510,27 @@ View GenerationError(const application::GenerationController &generation,
         std::move(prompt_context), permission_state->mode, toast);
   }
 
+  const TutorialMarkdownLinkHandler open_markdown_link =
+      [navigation, external_link,
+       browser_mode = timeline_settings->browser_mode,
+       javascript_enabled = timeline_settings->browser_javascript_enabled](
+          const Uri &target) {
+        if (browser_mode == application::BrowserMode::external) {
+          external_link->Open(target.ToString());
+          return;
+        }
+        navigation.Push(domain::AppRoute::Browser(target.ToString(),
+                                                  javascript_enabled));
+      };
+
   return Column{
       Header(std::move(open_drawer), session, generation, pending_messages,
              active_generation, revision, show_permission, show_more,
              std::move(project_label), std::move(show_project_picker)),
       Conversation(session, generation, revision.Get(), navigation,
                    action_message, multi_select.Get(), selected_messages,
-                   message_actions),
+                   message_actions, timeline_settings.Get(),
+                   toggled_timeline, open_markdown_link),
       GenerationError(*generation, revision.Get()),
       std::move(composer_or_review),
   }

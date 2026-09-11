@@ -17,6 +17,7 @@ import cn.lineai.ipc.terminal.ITerminalProviderService;
 import org.huxerui.HuxerUIPlatformChannel;
 import org.huxerui.HuxerUIPlatformModule;
 import org.huxerui.PlatformPayload;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -83,6 +84,33 @@ public final class LineCodeTerminalProviderModule
             invocations.put("listDirectory", (arguments, result) ->
                     remote(arguments, result, service -> PlatformPayload.string(
                             service.listDirDetailed(
+                                    arguments.requireField("path").requireString()))));
+            invocations.put("providerInfo", (arguments, result) ->
+                    remote(arguments, result, Module::providerInfo));
+            invocations.put("fileExists", (arguments, result) ->
+                    remote(arguments, result, service -> PlatformPayload.booleanValue(
+                            service.fileExists(
+                                    arguments.requireField("path").requireString()))));
+            invocations.put("fileSize", (arguments, result) ->
+                    remote(arguments, result, service -> PlatformPayload.int64(
+                            service.fileSize(
+                                    arguments.requireField("path").requireString()))));
+            invocations.put("readFileChunk", (arguments, result) ->
+                    remote(arguments, result, service -> PlatformPayload.bytes(
+                            service.readFileChunk(
+                                    arguments.requireField("path").requireString(),
+                                    arguments.requireField("offset").requireInt64(),
+                                    Math.toIntExact(arguments.requireField("size").requireInt64())))));
+            invocations.put("writeFileChunk", (arguments, result) ->
+                    remote(arguments, result, service -> requireTrue(
+                            service.writeFileChunk(
+                                    arguments.requireField("path").requireString(),
+                                    arguments.requireField("offset").requireInt64(),
+                                    arguments.requireField("data").requireBytes()),
+                            "Terminal provider could not write the file chunk")));
+            invocations.put("getFileSize", (arguments, result) ->
+                    remote(arguments, result, service -> PlatformPayload.int64(
+                            service.getFileSize(
                                     arguments.requireField("path").requireString()))));
         }
 
@@ -202,6 +230,28 @@ public final class LineCodeTerminalProviderModule
                     callbackExit == null ? exitCode : callbackExit));
             fields.put("stdout", PlatformPayload.string(stdout.toString()));
             fields.put("stderr", PlatformPayload.string(stderr.toString()));
+            return PlatformPayload.object(fields);
+        }
+
+        private static PlatformPayload providerInfo(ITerminalProviderService service)
+                throws RemoteException {
+            String providerType = service.getProviderType();
+            String rawJson = service.getProviderInfo();
+            String home = "";
+            if (rawJson != null && !rawJson.isEmpty()) {
+                try {
+                    home = new JSONObject(rawJson).optString("home", "");
+                } catch (Exception ignored) {
+                    // Keep the raw provider response available to C++ even when
+                    // an older third-party implementation returns non-JSON text.
+                }
+            }
+            Map<String, PlatformPayload> fields = new HashMap<>();
+            fields.put("providerType", PlatformPayload.string(
+                    providerType == null ? "" : providerType));
+            fields.put("rawJson", PlatformPayload.string(
+                    rawJson == null ? "" : rawJson));
+            fields.put("home", PlatformPayload.string(home));
             return PlatformPayload.object(fields);
         }
 

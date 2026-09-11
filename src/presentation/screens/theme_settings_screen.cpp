@@ -344,12 +344,18 @@ View StarterPanel(
                                   palette, active.Get(), active, draft, editing)
                           .Key(std::to_underlying(starter.id)));
     }
-    grid.push_back(Row(std::move(tiles)).With(Spacing(8.0F)));
+    // Legacy code adds an 8dp right margin to every grid cell, including the
+    // last column, so the three columns share the width left over from that
+    // trailing margin.
+    grid.push_back(Row(std::move(tiles)).With(
+        Spacing(8.0F), Padding(EdgeInsets{.right = 8.0F})));
   }
   return Column{
       Text(app::strings::screen_theme_starter_section)
           .Style(Label(13.0F, FontWeight::Medium, colors::secondary)),
-      Column(std::move(grid)).With(Spacing(8.0F)),
+      // Legacy grid carries its own 8dp top margin on top of the cell margin.
+      Column(std::move(grid))
+          .With(Spacing(8.0F), Padding(EdgeInsets{.top = 8.0F})),
   }
       .With(Spacing(8.0F), Padding(12.0F), CornerRadius(12.0F),
             Background(colors::elevated));

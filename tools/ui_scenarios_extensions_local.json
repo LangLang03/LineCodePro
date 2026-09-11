@@ -111,7 +111,7 @@
       "actions": [
         {"type": "long_press_text", "value": "ParitySkill"},
         {"type": "sleep", "seconds": 0.5},
-        {"type": "expect_text", "value": "已选择 1 项"},
+        {"type": "expect_text", "value": "已选 1 项"},
         {"type": "tap_text", "value": "删除"},
         {"type": "sleep", "seconds": 0.5},
         {"type": "expect_text", "value": "删除所选"},
@@ -143,6 +143,17 @@
         {"type": "expect_text", "value": "导入 LIP 扩展"},
         {"type": "expect_text", "value": "LineCode 扩展后续接入。"},
         {"type": "expect_text", "value": "已安装"}
+      ]
+    },
+    {
+      "name": "extensions_linecode_unavailable",
+      "depends_on": ["extensions_linecode_detail"],
+      "compare_pixels": false,
+      "relaunch": false,
+      "actions": [
+        {"type": "tap_text", "value": "导入 LIP 扩展"},
+        {"type": "sleep", "seconds": 0.2},
+        {"type": "expect_text", "value": "LineCode 扩展后续接入。"}
       ]
     }
   ]

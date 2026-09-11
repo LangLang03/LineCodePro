@@ -55,6 +55,7 @@
 #include "presentation/screens/output_settings_screen.h"
 #include "presentation/screens/prompt_templates_screen.h"
 #include "presentation/screens/security_settings_screen.h"
+#include "presentation/screens/shell_command_screen.h"
 #include "presentation/screens/settings_screen.h"
 #include "presentation/screens/skill_hub_screens.h"
 #include "presentation/screens/ssh_settings_screen.h"
@@ -216,6 +217,7 @@ huxerui::View HomeScreen(
     std::shared_ptr<application::MemoryContextService> memory_context,
     std::shared_ptr<application::AiBehaviorSettingsRepository>
         behavior_settings,
+    std::shared_ptr<application::OutputSettingsService> output_settings,
     std::shared_ptr<application::ToolPermissionService> tool_permissions,
     std::shared_ptr<application::ChatModeService> chat_modes,
     huxerui::State<application::ChatInteractionModeState> interaction_mode,
@@ -347,7 +349,8 @@ huxerui::View HomeScreen(
                      storage_permission, selected_model_available.Get(),
                      active_generation, revision, pending_messages,
                      drawer_model, memory_context, behavior_settings,
-                     tool_permissions, chat_modes, interaction_mode,
+                     output_settings, tool_permissions, chat_modes,
+                     interaction_mode,
                      input_settings, project_id, std::move(prompt_context),
                      visible_drawer.project_label,
                      [workspace_coordinator] {
@@ -391,6 +394,7 @@ huxerui::View MainScreen(
     std::shared_ptr<application::AgentExtensionStore> agent_extensions,
     std::shared_ptr<application::McpExtensionStore> mcp_extensions,
     std::shared_ptr<application::McpToolCatalog> mcp_tool_catalog,
+    std::shared_ptr<application::AgentExtensionDraftGenerator> agent_drafts,
     std::string linecode_root, SkillHubScreenServices skill_hub_services,
     domain::McpExecutionCapabilities mcp_capabilities,
     PlatformCapabilities platform_capabilities,
@@ -399,6 +403,8 @@ huxerui::View MainScreen(
     std::shared_ptr<application::TerminalProviderDiscovery>
         terminal_provider_discovery,
     std::shared_ptr<application::StoragePermissionService> storage_permission,
+    std::shared_ptr<application::WorkspaceDirectoryShareService>
+        workspace_share,
     std::shared_ptr<application::StorageStatsRepository> storage_stats,
     std::shared_ptr<application::ErrorLogService> error_logs,
     std::shared_ptr<application::DataArchiveService> data_archive,
@@ -446,6 +452,7 @@ huxerui::View MainScreen(
        model_store, completion_loop = std::move(completion_loop),
        storage_permission = std::move(storage_permission),
        memory_context = memory_context.Get(), ai_behavior_settings,
+       output_settings_service,
        tool_permissions, chat_modes, interaction_mode, active_input_settings,
        linecode_root, workspace_state, selected_model_available,
        generation = generation.Get(), active_generation, chat_revision,
@@ -453,7 +460,8 @@ huxerui::View MainScreen(
        workspace_revision]() -> View {
     return HomeScreen(initial_session, project_workspace, model_store,
                       completion_loop, storage_permission, memory_context,
-                      ai_behavior_settings, tool_permissions, chat_modes,
+                      ai_behavior_settings, output_settings_service,
+                      tool_permissions, chat_modes,
                       interaction_mode, active_input_settings.Get(),
                       linecode_root, workspace_state, selected_model_available,
                       generation, active_generation, pending_messages,
@@ -466,7 +474,7 @@ huxerui::View MainScreen(
        ai_behavior_settings = std::move(ai_behavior_settings),
        input_settings = std::move(input_settings), active_input_settings,
        prompt_templates = std::move(prompt_templates),
-       output_settings_service = std::move(output_settings_service),
+       output_settings_service,
        theme_service = std::move(theme_service), theme_settings,
        mcp_settings = std::move(mcp_settings),
        tool_settings = std::move(tool_settings),
@@ -474,12 +482,14 @@ huxerui::View MainScreen(
        memory_store = std::move(memory_store),
        agent_extensions = std::move(agent_extensions),
        mcp_extensions = std::move(mcp_extensions),
-       mcp_tool_catalog = std::move(mcp_tool_catalog), workspace_state,
+       mcp_tool_catalog = std::move(mcp_tool_catalog),
+       agent_drafts = std::move(agent_drafts), workspace_state,
        skill_hub_services = std::move(skill_hub_services), mcp_capabilities,
        platform_capabilities,
        termux_integration = std::move(termux_integration),
        terminal_providers = std::move(terminal_providers),
        terminal_provider_discovery = std::move(terminal_provider_discovery),
+       workspace_share = std::move(workspace_share),
        storage_stats = std::move(storage_stats),
        error_logs = std::move(error_logs),
        data_archive = std::move(data_archive),
@@ -509,9 +519,11 @@ huxerui::View MainScreen(
               .agents = agent_extensions,
               .mcps = mcp_extensions,
               .mcp_tools = mcp_tool_catalog,
+              .agent_drafts = agent_drafts,
               .skills = current_skill_hub_services.repository,
               .skill_sources = current_skill_hub_services.management,
               .skill_roots = current_skill_hub_services.roots,
+              .workspace_share = workspace_share,
               .revision = extension_revision.Get(),
               .on_changed = [extension_revision] { extension_revision += 1; }});
     }
@@ -522,9 +534,11 @@ huxerui::View MainScreen(
               .agents = agent_extensions,
               .mcps = mcp_extensions,
               .mcp_tools = mcp_tool_catalog,
+              .agent_drafts = agent_drafts,
               .skills = current_skill_hub_services.repository,
               .skill_sources = current_skill_hub_services.management,
               .skill_roots = current_skill_hub_services.roots,
+              .workspace_share = workspace_share,
               .revision = extension_revision.Get(),
               .on_changed = [extension_revision] { extension_revision += 1; }});
     }
@@ -535,9 +549,11 @@ huxerui::View MainScreen(
               .agents = agent_extensions,
               .mcps = mcp_extensions,
               .mcp_tools = mcp_tool_catalog,
+              .agent_drafts = agent_drafts,
               .skills = current_skill_hub_services.repository,
               .skill_sources = current_skill_hub_services.management,
               .skill_roots = current_skill_hub_services.roots,
+              .workspace_share = workspace_share,
               .revision = extension_revision.Get(),
               .on_changed = [extension_revision] { extension_revision += 1; }});
     }
@@ -548,6 +564,9 @@ huxerui::View MainScreen(
     }
     if (const auto *browser = route.BrowserValue()) {
       return BrowserScreen(*browser);
+    }
+    if (const auto *command = route.ShellCommandValue()) {
+      return ShellCommandScreen(*command);
     }
     if (route == domain::AppRoute::settings) {
       return SettingsScreen();

@@ -47,6 +47,22 @@ endif ()
 
 add_test(NAME linecodepro_tests COMMAND linecodepro_tests)
 
+add_executable(app_route_tests app_route_tests.cpp)
+target_include_directories(app_route_tests PRIVATE ../src)
+target_compile_features(app_route_tests PRIVATE cxx_std_23)
+set_target_properties(app_route_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(app_route_tests PRIVATE /W4 /WX /permissive-)
+else ()
+    target_compile_options(app_route_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME app_route_tests COMMAND app_route_tests)
+
 add_executable(project_workspace_presentation_tests
         project_workspace_presentation_tests.cpp
         ../src/presentation/project_workspace_path.cpp
@@ -241,6 +257,154 @@ endif ()
 
 add_test(NAME behavior_settings_tests COMMAND behavior_settings_tests)
 
+add_executable(chat_export_tests
+        chat_export_tests.cpp
+        ../src/application/chat_export.cpp
+)
+target_include_directories(chat_export_tests PRIVATE ../src)
+target_compile_features(chat_export_tests PRIVATE cxx_std_23)
+set_target_properties(chat_export_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(chat_export_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(chat_export_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME chat_export_tests COMMAND chat_export_tests)
+
+add_executable(image_generation_codec_tests
+        image_generation_codec_tests.cpp
+        ../src/infrastructure/archive_json.cpp
+        ../src/infrastructure/image_generation_codec.cpp
+        ../src/infrastructure/model_url_policy.cpp
+)
+target_include_directories(image_generation_codec_tests PRIVATE ../src)
+target_compile_features(image_generation_codec_tests PRIVATE cxx_std_23)
+set_target_properties(image_generation_codec_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(image_generation_codec_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(image_generation_codec_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME image_generation_codec_tests
+        COMMAND image_generation_codec_tests)
+
+add_executable(image_generation_tool_registry_tests
+        image_generation_tool_registry_tests.cpp
+        ../src/application/image_generation_tool_registry.cpp
+        ../src/application/tool_settings_service.cpp
+        ../src/domain/tool_settings.cpp
+        ../src/infrastructure/archive_json.cpp
+        ../src/infrastructure/image_generation_codec.cpp
+        ../src/infrastructure/model_url_policy.cpp
+)
+target_include_directories(image_generation_tool_registry_tests PRIVATE ../src)
+target_compile_features(image_generation_tool_registry_tests PRIVATE cxx_std_23)
+target_link_libraries(image_generation_tool_registry_tests PRIVATE
+        HuxerUI::testing HuxerUI::huxerui)
+set_target_properties(image_generation_tool_registry_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(image_generation_tool_registry_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(image_generation_tool_registry_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME image_generation_tool_registry_tests
+        COMMAND image_generation_tool_registry_tests)
+
+add_executable(image_understanding_codec_tests
+        image_understanding_codec_tests.cpp
+        ../src/infrastructure/archive_json.cpp
+        ../src/infrastructure/image_generation_codec.cpp
+        ../src/infrastructure/image_understanding_codec.cpp
+        ../src/infrastructure/model_url_policy.cpp
+)
+target_include_directories(image_understanding_codec_tests PRIVATE ../src)
+target_compile_features(image_understanding_codec_tests PRIVATE cxx_std_23)
+set_target_properties(image_understanding_codec_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(image_understanding_codec_tests PRIVATE
+            /W4 /WX /permissive-)
+else ()
+    target_compile_options(image_understanding_codec_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME image_understanding_codec_tests
+        COMMAND image_understanding_codec_tests)
+
+add_executable(image_understanding_tool_registry_tests
+        image_understanding_tool_registry_tests.cpp
+        ../src/application/image_understanding_tool_registry.cpp
+        ../src/application/prompt_template_repository.cpp
+        ../src/domain/prompt_template.cpp
+        ../src/domain/tool_settings.cpp
+        ../src/infrastructure/archive_json.cpp
+        ../src/infrastructure/image_generation_codec.cpp
+        ../src/infrastructure/image_understanding_codec.cpp
+        ../src/infrastructure/model_url_policy.cpp
+)
+target_include_directories(image_understanding_tool_registry_tests PRIVATE ../src)
+target_compile_features(image_understanding_tool_registry_tests PRIVATE cxx_std_23)
+target_link_libraries(image_understanding_tool_registry_tests PRIVATE
+        HuxerUI::testing)
+set_target_properties(image_understanding_tool_registry_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(image_understanding_tool_registry_tests PRIVATE
+            /W4 /WX /permissive-)
+else ()
+    target_compile_options(image_understanding_tool_registry_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME image_understanding_tool_registry_tests
+        COMMAND image_understanding_tool_registry_tests)
+
+add_executable(workspace_image_readers_tests
+        workspace_image_readers_tests.cpp
+        ../src/application/ssh_workspace_service.cpp
+        ../src/infrastructure/workspace_image_readers.cpp
+)
+target_include_directories(workspace_image_readers_tests PRIVATE ../src)
+target_compile_features(workspace_image_readers_tests PRIVATE cxx_std_23)
+target_link_libraries(workspace_image_readers_tests PRIVATE
+        HuxerUI::testing HuxerUI::huxerui)
+set_target_properties(workspace_image_readers_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(workspace_image_readers_tests PRIVATE
+            /W4 /WX /permissive-)
+else ()
+    target_compile_options(workspace_image_readers_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME workspace_image_readers_tests
+        COMMAND workspace_image_readers_tests)
+
 add_executable(sse_decoder_tests
         sse_decoder_tests.cpp
         ../src/infrastructure/sse_decoder.cpp
@@ -289,7 +453,9 @@ add_executable(completion_pipeline_tests
         ../src/application/generation_controller.cpp
         ../src/application/legacy_attachment_policy.cpp
         ../src/application/send_message.cpp
+        ../src/application/tool_result_display_policy.cpp
         ../src/domain/input_attachment.cpp
+        ../src/infrastructure/archive_json.cpp
         ../src/infrastructure/in_memory_conversation_store.cpp
         ../src/infrastructure/model_url_policy.cpp
         ../src/infrastructure/openai_chat_codec.cpp
@@ -809,6 +975,7 @@ add_executable(mcp_completion_loop_tests
         ../src/application/mcp_completion_loop.cpp
         ../src/application/mcp_extension_tool_registry.cpp
         ../src/application/tool_permission_service.cpp
+        ../src/application/tool_result_display_policy.cpp
         ../src/domain/extension_config.cpp
         ../src/infrastructure/json_mcp_tool_schema_policy.cpp
         ../src/infrastructure/archive_json.cpp
@@ -1124,6 +1291,23 @@ endif ()
 add_test(NAME sqlite_conversation_attachment_tests
         COMMAND sqlite_conversation_attachment_tests)
 
+add_executable(chat_timeline_presentation_tests
+        chat_timeline_presentation_tests.cpp
+        ../src/application/tool_result_display_policy.cpp
+        ../src/infrastructure/archive_json.cpp
+        ../src/presentation/chat_timeline_presentation.cpp)
+target_include_directories(chat_timeline_presentation_tests PRIVATE ../src)
+target_compile_features(chat_timeline_presentation_tests PRIVATE cxx_std_23)
+if (MSVC)
+    target_compile_options(chat_timeline_presentation_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(chat_timeline_presentation_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME chat_timeline_presentation_tests
+        COMMAND chat_timeline_presentation_tests)
+
 add_executable(ssh_backend_tests
         ssh_backend_tests.cpp
         ../src/application/execution_mode_project_workspace.cpp
@@ -1186,3 +1370,54 @@ if (UNIX AND NOT APPLE)
         set_tests_properties(ssh_protocol_fixture PROPERTIES TIMEOUT 45)
     endif ()
 endif ()
+
+add_executable(skill_hub_reading_settings_tests
+        skill_hub_reading_settings_tests.cpp
+        ../src/application/skill_hub_reading_settings.cpp)
+target_include_directories(skill_hub_reading_settings_tests PRIVATE ../src)
+target_compile_features(skill_hub_reading_settings_tests PRIVATE cxx_std_23)
+target_link_libraries(skill_hub_reading_settings_tests PRIVATE
+        HuxerUI::testing HuxerUI::huxerui)
+if (MSVC)
+    target_compile_options(skill_hub_reading_settings_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(skill_hub_reading_settings_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME skill_hub_reading_settings_tests
+        COMMAND skill_hub_reading_settings_tests)
+
+add_executable(markdown_link_policy_tests
+        markdown_link_policy_tests.cpp
+        ../src/presentation/markdown_link_policy.cpp)
+target_include_directories(markdown_link_policy_tests PRIVATE ../src)
+target_compile_features(markdown_link_policy_tests PRIVATE cxx_std_23)
+target_link_libraries(markdown_link_policy_tests PRIVATE HuxerUI::huxerui)
+if (MSVC)
+    target_compile_options(markdown_link_policy_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(markdown_link_policy_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME markdown_link_policy_tests COMMAND markdown_link_policy_tests)
+
+add_executable(agent_extension_draft_tests
+        agent_extension_draft_tests.cpp
+        ../src/application/agent_extension_draft.cpp
+        ../src/domain/extension_config.cpp
+        ../src/infrastructure/archive_json.cpp
+        ../src/infrastructure/json_agent_extension_draft_codec.cpp)
+target_include_directories(agent_extension_draft_tests PRIVATE ../src)
+target_compile_features(agent_extension_draft_tests PRIVATE cxx_std_23)
+target_link_libraries(agent_extension_draft_tests PRIVATE
+        HuxerUI::testing HuxerUI::huxerui)
+if (MSVC)
+    target_compile_options(agent_extension_draft_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(agent_extension_draft_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME agent_extension_draft_tests COMMAND agent_extension_draft_tests)

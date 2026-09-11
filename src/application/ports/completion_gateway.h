@@ -10,6 +10,7 @@
 
 #include <huxerui/task.h>
 
+#include "application/tool_result_display_policy.h"
 #include "domain/behavior_settings.h"
 #include "domain/model_config.h"
 
@@ -57,9 +58,11 @@ struct CompletionMessage final {
   bool operator==(const CompletionMessage &) const = default;
 
   [[nodiscard]] static CompletionMessage
-  Assistant(std::string content, std::vector<CompletionToolCall> tool_calls) {
+  Assistant(std::string content, std::vector<CompletionToolCall> tool_calls,
+            std::string reasoning_content = {}) {
     return {.role = CompletionRole::assistant,
             .content = std::move(content),
+            .reasoning_content = std::move(reasoning_content),
             .tool_calls = std::move(tool_calls),
             .tool_result = std::nullopt};
   }
@@ -98,12 +101,14 @@ enum class CompletionReasoningKind : std::uint8_t {
 };
 
 struct CompletionTextDelta final {
+  std::size_t turn_index{};
   std::string text;
 
   bool operator==(const CompletionTextDelta &) const = default;
 };
 
 struct CompletionReasoningDelta final {
+  std::size_t turn_index{};
   std::string text;
   CompletionReasoningKind kind{CompletionReasoningKind::thinking};
   bool starts_new_segment{};
@@ -121,9 +126,13 @@ enum class CompletionToolCallStatus : std::uint8_t {
 };
 
 struct CompletionToolCallEvent final {
+  std::size_t turn_index{};
   CompletionToolCall call;
   CompletionToolCallStatus status{CompletionToolCallStatus::requested};
   std::optional<CompletionToolResult> result;
+  ToolResultDisplayProjection display;
+  std::int64_t created_at_millis{};
+  std::int64_t duration_millis{};
 
   bool operator==(const CompletionToolCallEvent &) const = default;
 };
@@ -149,11 +158,8 @@ struct CompletionError final {
 };
 
 struct CompletionObserver final {
-  // One typed stream for assistant prose, reasoning and tool lifecycle.  The
-  // legacy text callback remains temporarily for source compatibility while
-  // callers migrate to on_event.
+  // One typed stream for assistant prose, reasoning and tool lifecycle.
   std::function<void(const CompletionEvent &)> on_event{};
-  std::function<void(std::string)> on_text_delta;
   enum class ToolReviewDecision : std::uint8_t {
     reject,
     allow_once,

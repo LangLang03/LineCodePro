@@ -1,6 +1,7 @@
 #include "application/mcp_completion_loop.h"
 
 #include <algorithm>
+#include <chrono>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -16,16 +17,48 @@ namespace {
           .http_status = 0};
 }
 
+[[nodiscard]] std::int64_t NowMillis() noexcept {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::system_clock::now().time_since_epoch())
+      .count();
+}
+
+void Emit(CompletionObserver &observer, CompletionToolCallEvent event) {
+  if (observer.on_event)
+    observer.on_event(CompletionEvent{std::move(event)});
+}
+
+[[nodiscard]] CompletionObserver TurnObserver(CompletionObserver &observer,
+                                              std::size_t turn_index) {
+  CompletionObserver result;
+  result.on_tool_review = observer.on_tool_review;
+  result.on_event = [&observer, turn_index](const CompletionEvent &event) {
+    if (!observer.on_event)
+      return;
+    std::visit(
+        [&observer, turn_index](const auto &source) {
+          auto stamped = source;
+          stamped.turn_index = turn_index;
+          observer.on_event(CompletionEvent{std::move(stamped)});
+        },
+        event);
+  };
+  return result;
+}
+
 } // namespace
 
 McpCompletionLoop::McpCompletionLoop(
     std::shared_ptr<CompletionGateway> completion,
     std::shared_ptr<ToolRegistry> tools,
     std::shared_ptr<ToolPermissionService> permissions,
-    std::shared_ptr<CompletionRequestComposer> request_composer)
+    std::shared_ptr<CompletionRequestComposer> request_composer,
+    std::shared_ptr<const ToolResultDisplayProjector> result_display)
     : completion_(std::move(completion)), tools_(std::move(tools)),
       permissions_(std::move(permissions)),
-      request_composer_(std::move(request_composer)) {
+      request_composer_(std::move(request_composer)),
+      result_display_(result_display ? std::move(result_display)
+                                     : DefaultToolResultDisplayProjector()) {
   if (!completion_ || !tools_)
     throw std::invalid_argument(
         "McpCompletionLoop requires completion gateway and MCP registry");
@@ -86,8 +119,10 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
   const bool unlimited =
       request.model.tool_call_limit == domain::ModelConfig::unlimited_tool_calls;
   std::size_t invoked_count{};
+  std::size_t turn_index{};
   for (;;) {
-    auto response = co_await completion_->Complete(request, observer);
+    auto response = co_await completion_->Complete(
+        request, TurnObserver(observer, turn_index));
     if (!response)
       co_return std::unexpected(std::move(response.error()));
     if (response->tool_calls.empty())
@@ -108,20 +143,43 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
     }
 
     request.messages.push_back(CompletionMessage::Assistant(
-        response->text, std::move(response->tool_calls)));
+        response->text, std::move(response->tool_calls),
+        std::move(response->reasoning_content)));
     const auto calls = request.messages.back().tool_calls;
     for (const auto &call : calls) {
+      const auto started_at = NowMillis();
+      Emit(observer, CompletionToolCallEvent{
+                         .turn_index = turn_index,
+                         .call = call,
+                         .status = CompletionToolCallStatus::requested,
+                         .result = std::nullopt,
+                         .display = {},
+                         .created_at_millis = started_at,
+                     });
       const auto descriptor = std::ranges::find(
           tools_->Tools(), std::string_view{call.name},
           [](const RegisteredTool &tool) {
             return std::string_view{tool.name};
           });
       if (descriptor == tools_->Tools().end()) {
-        request.messages.push_back(CompletionMessage::Tool(
-            CompletionToolResult{.call_id = call.id,
-                                 .name = call.name,
-                                 .content = "Unknown runtime tool: " + call.name,
-                                 .error = true}));
+        auto result = CompletionToolResult{
+            .call_id = call.id,
+            .name = call.name,
+            .content = "Unknown runtime tool: " + call.name,
+            .error = true};
+        const auto display = result_display_->Project(
+            call.name, result.content, result.error);
+        Emit(observer, CompletionToolCallEvent{
+                           .turn_index = turn_index,
+                           .call = call,
+                           .status = CompletionToolCallStatus::failed,
+                           .result = result,
+                           .display = display,
+                           .created_at_millis = started_at,
+                           .duration_millis = NowMillis() - started_at,
+                       });
+        result.content = display.model_content;
+        request.messages.push_back(CompletionMessage::Tool(std::move(result)));
         ++invoked_count;
         continue;
       }
@@ -135,17 +193,37 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
         permission = *evaluated;
       }
       if (permission == ToolPermissionDecision::deny) {
-        request.messages.push_back(CompletionMessage::Tool(
-            CompletionToolResult{
-                .call_id = call.id,
-                .name = call.name,
-                .content = "This tool is not allowed in read-only mode: " +
-                           call.name,
-                .error = true}));
+        auto result = CompletionToolResult{
+            .call_id = call.id,
+            .name = call.name,
+            .content = "This tool is not allowed in read-only mode: " +
+                       call.name,
+            .error = true};
+        const auto display = result_display_->Project(
+            call.name, result.content, result.error);
+        Emit(observer, CompletionToolCallEvent{
+                           .turn_index = turn_index,
+                           .call = call,
+                           .status = CompletionToolCallStatus::rejected,
+                           .result = result,
+                           .display = display,
+                           .created_at_millis = started_at,
+                           .duration_millis = NowMillis() - started_at,
+                       });
+        result.content = display.model_content;
+        request.messages.push_back(CompletionMessage::Tool(std::move(result)));
         ++invoked_count;
         continue;
       }
       if (permission == ToolPermissionDecision::review) {
+        Emit(observer, CompletionToolCallEvent{
+                           .turn_index = turn_index,
+                           .call = call,
+                           .status = CompletionToolCallStatus::awaiting_review,
+                           .result = std::nullopt,
+                           .display = {},
+                           .created_at_millis = started_at,
+                       });
         auto decision = CompletionObserver::ToolReviewDecision::reject;
         if (observer.on_tool_review) {
           decision = co_await observer.on_tool_review(
@@ -157,11 +235,24 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
               });
         }
         if (decision == CompletionObserver::ToolReviewDecision::reject) {
-          request.messages.push_back(CompletionMessage::Tool(
-              CompletionToolResult{.call_id = call.id,
-                                   .name = call.name,
-                                   .content = "The user rejected this tool call.",
-                                   .error = true}));
+          auto result = CompletionToolResult{
+              .call_id = call.id,
+              .name = call.name,
+              .content = "The user rejected this tool call.",
+              .error = true};
+          const auto display = result_display_->Project(
+              call.name, result.content, result.error);
+          Emit(observer, CompletionToolCallEvent{
+                             .turn_index = turn_index,
+                             .call = call,
+                             .status = CompletionToolCallStatus::rejected,
+                             .result = result,
+                             .display = display,
+                             .created_at_millis = started_at,
+                             .duration_millis = NowMillis() - started_at,
+                         });
+          result.content = display.model_content;
+          request.messages.push_back(CompletionMessage::Tool(std::move(result)));
           ++invoked_count;
           continue;
         }
@@ -174,6 +265,14 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
             co_return std::unexpected(LoopError(remembered.error().message));
         }
       }
+      Emit(observer, CompletionToolCallEvent{
+                         .turn_index = turn_index,
+                         .call = call,
+                         .status = CompletionToolCallStatus::running,
+                         .result = std::nullopt,
+                         .display = {},
+                         .created_at_millis = started_at,
+                     });
       auto invoked = co_await tools_->Invoke(call.name, call.arguments_json);
       CompletionToolResult result{.call_id = call.id,
                                   .name = call.name,
@@ -187,9 +286,24 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
         result.content = invoked.error().message;
         result.error = true;
       }
+      const auto display = result_display_->Project(
+          call.name, result.content, result.error);
+      Emit(observer, CompletionToolCallEvent{
+                         .turn_index = turn_index,
+                         .call = call,
+                         .status = result.error
+                                       ? CompletionToolCallStatus::failed
+                                       : CompletionToolCallStatus::completed,
+                         .result = result,
+                         .display = display,
+                         .created_at_millis = started_at,
+                         .duration_millis = NowMillis() - started_at,
+                     });
+      result.content = display.model_content;
       request.messages.push_back(CompletionMessage::Tool(std::move(result)));
       ++invoked_count;
     }
+    ++turn_index;
   }
 }
 

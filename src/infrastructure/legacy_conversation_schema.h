@@ -65,7 +65,14 @@ SELECT m.id, m.local_order, m.role,
          ), ''),
          m.raw_json,
          ''
-       )
+       ),
+       COALESCE(m.reasoning_content, ''),
+       m.streaming,
+       m.exclude_from_context,
+       m.is_error,
+       m.timestamp,
+       COALESCE(m.tool_call_id, ''),
+       COALESCE(m.tool_name, '')
 FROM messages AS m
 WHERE m.conversation_id = ? AND m.hidden = 0
 ORDER BY m.local_order

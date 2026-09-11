@@ -52,6 +52,14 @@ struct ProviderPayload final {
   }
 };
 
+struct ProviderOnlyPayload final {
+  domain::TerminalProviderConfig provider;
+
+  static huxerui::PlatformPayload Encode(const ProviderOnlyPayload &payload) {
+    return ProviderPayload::Fields(payload.provider);
+  }
+};
+
 struct ShellPayload final {
   domain::TerminalProviderConfig provider;
   application::TerminalShellRequest request;
@@ -89,6 +97,36 @@ struct WriteFilePayload final {
   }
 };
 
+struct ReadFileChunkPayload final {
+  domain::TerminalProviderConfig provider;
+  std::string path;
+  std::int64_t offset{};
+  std::int32_t maximum_bytes{};
+
+  static huxerui::PlatformPayload Encode(const ReadFileChunkPayload &payload) {
+    auto fields = ProviderPayload::Fields(payload.provider);
+    fields.emplace("path", payload.path);
+    fields.emplace("offset", payload.offset);
+    fields.emplace("size", static_cast<std::int64_t>(payload.maximum_bytes));
+    return fields;
+  }
+};
+
+struct WriteFileChunkPayload final {
+  domain::TerminalProviderConfig provider;
+  std::string path;
+  std::int64_t offset{};
+  std::vector<std::byte> data;
+
+  static huxerui::PlatformPayload Encode(const WriteFileChunkPayload &payload) {
+    auto fields = ProviderPayload::Fields(payload.provider);
+    fields.emplace("path", payload.path);
+    fields.emplace("offset", payload.offset);
+    fields.emplace("data", huxerui::Bytes{payload.data});
+    return fields;
+  }
+};
+
 struct ShellResultPayload final {
   application::TerminalShellResult value;
 
@@ -100,6 +138,19 @@ struct ShellResultPayload final {
             std::string{fields.at("stdout").AsString()},
         .standard_error =
             std::string{fields.at("stderr").AsString()},
+    }};
+  }
+};
+
+struct ProviderInfoPayload final {
+  application::TerminalProviderInfo value;
+
+  static ProviderInfoPayload Decode(const huxerui::PlatformPayload &payload) {
+    const auto &fields = payload.AsObject();
+    return {{
+        .provider_type = std::string{fields.at("providerType").AsString()},
+        .raw_json = std::string{fields.at("rawJson").AsString()},
+        .home_path = std::string{fields.at("home").AsString()},
     }};
   }
 };
@@ -186,6 +237,70 @@ public:
                         FilePayload{.provider = std::move(provider),
                                     .path = std::move(path)},
                         std::move(completion));
+  }
+
+  void GetProviderInfo(domain::TerminalProviderConfig provider,
+                       InfoCompletion completion) override {
+    Invoke<ProviderInfoPayload>(
+        "providerInfo", ProviderOnlyPayload{.provider = std::move(provider)},
+        [completion = std::move(completion)](
+            application::TerminalProviderResult<ProviderInfoPayload> result) mutable {
+          if (!result) {
+            completion(std::unexpected(std::move(result.error())));
+            return;
+          }
+          completion(std::move(result->value));
+        });
+  }
+
+  void FileExists(domain::TerminalProviderConfig provider, std::string path,
+                  BooleanCompletion completion) override {
+    Invoke<bool>("fileExists",
+                 FilePayload{.provider = std::move(provider),
+                             .path = std::move(path)},
+                 std::move(completion));
+  }
+
+  void FileSize(domain::TerminalProviderConfig provider, std::string path,
+                SizeCompletion completion) override {
+    Invoke<std::int64_t>("fileSize",
+                         FilePayload{.provider = std::move(provider),
+                                     .path = std::move(path)},
+                         std::move(completion));
+  }
+
+  void ReadFileChunk(domain::TerminalProviderConfig provider,
+                     std::string path, std::int64_t offset,
+                     std::int32_t maximum_bytes,
+                     BytesCompletion completion) override {
+    Invoke<huxerui::Bytes>(
+        "readFileChunk",
+        ReadFileChunkPayload{.provider = std::move(provider),
+                             .path = std::move(path),
+                             .offset = offset,
+                             .maximum_bytes = maximum_bytes},
+        std::move(completion));
+  }
+
+  void WriteFileChunk(domain::TerminalProviderConfig provider,
+                      std::string path, std::int64_t offset,
+                      std::vector<std::byte> data,
+                      VoidCompletion completion) override {
+    Invoke<std::monostate>(
+        "writeFileChunk",
+        WriteFileChunkPayload{.provider = std::move(provider),
+                              .path = std::move(path),
+                              .offset = offset,
+                              .data = std::move(data)},
+        std::move(completion));
+  }
+
+  void GetFileSize(domain::TerminalProviderConfig provider, std::string path,
+                   SizeCompletion completion) override {
+    Invoke<std::int64_t>("getFileSize",
+                         FilePayload{.provider = std::move(provider),
+                                     .path = std::move(path)},
+                         std::move(completion));
   }
 
 private:

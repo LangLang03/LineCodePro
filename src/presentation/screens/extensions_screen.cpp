@@ -16,6 +16,7 @@
 #include <app_resources.h>
 #include <huxerui/huxerui.h>
 
+#include "application/ports/agent_extension_draft.h"
 #include "application/ports/extension_store.h"
 #include "application/ports/mcp_tool_catalog.h"
 #include "domain/app_state.h"
@@ -74,6 +75,7 @@ using DetailPrimaryAction = void (*)(
 using DetailSupplementAction = void (*)(
     const ExtensionScreenServices &,
     RouteNavigationController<domain::AppRoute>, ToastHandle);
+using DetailSupplementAvailable = bool (*)(const ExtensionScreenServices &);
 using InstalledItemLongPress = void (*)(
     const ExtensionPresentation *, ExtensionScreenServices,
     State<DetailState>, TaskScope, BottomSheetHandle,
@@ -84,6 +86,8 @@ struct DetailSupplementPresentation final {
   StringResource title;
   StringResource description;
   ImageResource icon;
+  float minimum_height;
+  DetailSupplementAvailable available;
   DetailSupplementAction action;
 };
 
@@ -98,6 +102,7 @@ struct ExtensionPresentation final {
   StringResource section_title;
   StringResource inline_title;
   StringResource inline_description;
+  float inline_minimum_height;
   StringResource empty_message;
   std::span<const DetailSupplementPresentation> supplements;
   LoadItems load_items;
@@ -136,6 +141,8 @@ void OpenSkillStore(const ExtensionScreenServices &services,
 void ShareSkillWorkspace(
     const ExtensionScreenServices &services,
     RouteNavigationController<domain::AppRoute> navigation, ToastHandle toast);
+bool AlwaysSupplementAvailable(const ExtensionScreenServices &services);
+bool WorkspaceShareAvailable(const ExtensionScreenServices &services);
 void OpenEditableItemMenu(
     const ExtensionPresentation *presentation,
     ExtensionScreenServices services, State<DetailState> detail,
@@ -152,11 +159,6 @@ Task<void> ReloadDetail(const ExtensionPresentation *presentation,
                         ExtensionScreenServices services,
                         State<DetailState> state);
 
-struct ToolPresentation final {
-  std::string_view name;
-  std::string_view description;
-};
-
 struct AgentEditorState final {
   domain::AgentExtension original;
   TextEditingValue name;
@@ -165,9 +167,15 @@ struct AgentEditorState final {
   TextEditingValue trigger;
   std::vector<std::string> selected_tools;
   std::vector<std::string> selected_mcps;
-  std::vector<domain::McpExtension> available_mcps;
+  std::vector<application::AgentToolOption> available_tools;
+  std::vector<application::AgentMcpOption> available_mcps;
   std::string error;
   bool loading{true};
+  bool busy{};
+};
+
+struct AgentWriterState final {
+  TextEditingValue description;
   bool busy{};
 };
 
@@ -190,24 +198,6 @@ struct McpEditorState final {
   bool querying{};
   bool saving{};
   bool queried{};
-};
-
-constexpr std::array kToolPresentations{
-    ToolPresentation{"file_read", "file · read files"},
-    ToolPresentation{"file_write", "file · write files"},
-    ToolPresentation{"file_edit", "file · edit files"},
-    ToolPresentation{"file_delete", "file · delete files"},
-    ToolPresentation{"glob", "file · search files"},
-    ToolPresentation{"list_dir", "file · list directories"},
-    ToolPresentation{"shell_execute", "shell · execute commands"},
-    ToolPresentation{"agent", "agent · delegate a task"},
-    ToolPresentation{"agent_pipeline", "agent · run an agent pipeline"},
-    ToolPresentation{"todo_update", "session · update the todo list"},
-    ToolPresentation{"web_search", "web · search the internet"},
-    ToolPresentation{"web_fetch", "web · fetch a web page"},
-    ToolPresentation{"image_understanding", "image · understand an image"},
-    ToolPresentation{"image_generation", "image · generate an image"},
-    ToolPresentation{"memory_update", "memory · update long-term memory"},
 };
 
 Task<ExtensionStoreResult<std::vector<InstalledExtension>>>
@@ -356,12 +346,14 @@ const std::array kSkillSupplements{
     DetailSupplementPresentation{app::strings::extension_online_store,
                                  app::strings::extension_skillhub_store,
                                  app::strings::extension_skillhub_store_desc,
-                                 app::images::archive, OpenSkillStore},
+                                 app::images::archive, 68.0F,
+                                 AlwaysSupplementAvailable, OpenSkillStore},
     DetailSupplementPresentation{
         app::strings::screen_extension_detail_workspace_share,
         app::strings::screen_extension_detail_workspace_share,
         app::strings::screen_extension_detail_workspace_share_desc,
-        app::images::folder_open, ShareSkillWorkspace},
+        app::images::folder_open, 83.0F, WorkspaceShareAvailable,
+        ShareSkillWorkspace},
 };
 
 const std::array<DetailSupplementPresentation, 0> kNoSupplements{};
@@ -381,6 +373,7 @@ const std::array kExtensionPresentations{
             app::strings::screen_extension_detail_inline_title_agent,
         .inline_description =
             app::strings::screen_extension_detail_inline_desc_agent,
+        .inline_minimum_height = 68.0F,
         .empty_message = app::strings::screen_extension_detail_empty_agent,
         .supplements = kNoSupplements,
         .load_items = LoadAgents,
@@ -404,6 +397,7 @@ const std::array kExtensionPresentations{
         .inline_title = app::strings::screen_extension_detail_inline_title_mcp,
         .inline_description =
             app::strings::screen_extension_detail_inline_desc_mcp,
+        .inline_minimum_height = 68.0F,
         .empty_message = app::strings::screen_extension_detail_empty_mcp,
         .supplements = kNoSupplements,
         .load_items = LoadMcps,
@@ -428,6 +422,7 @@ const std::array kExtensionPresentations{
             app::strings::screen_extension_detail_inline_title_skills,
         .inline_description =
             app::strings::screen_extension_detail_inline_desc_skills,
+        .inline_minimum_height = 83.0F,
         .empty_message = app::strings::screen_extension_detail_empty_skills,
         .supplements = kSkillSupplements,
         .load_items = LoadSkills,
@@ -451,6 +446,7 @@ const std::array kExtensionPresentations{
             app::strings::screen_extension_detail_inline_title_linecode,
         .inline_description =
             app::strings::screen_extension_detail_inline_desc_linecode,
+        .inline_minimum_height = 68.0F,
         .empty_message = app::strings::screen_extension_detail_empty_linecode,
         .supplements = kNoSupplements,
         .load_items = LoadUnavailable,
@@ -471,6 +467,7 @@ const std::array kExtensionPresentations{
             app::strings::screen_extensions_section_terminal_provider,
         .inline_description =
             app::strings::screen_extensions_desc_terminal_provider,
+        .inline_minimum_height = 68.0F,
         .empty_message = app::strings::screen_extension_unavailable,
         .supplements = kNoSupplements,
         .load_items = LoadUnavailable,
@@ -555,7 +552,8 @@ View ExtensionCard(
 }
 
 View DetailActionRow(ImageResource icon, StringResource title,
-                     StringResource description, std::function<void()> action) {
+                     StringResource description, std::function<void()> action,
+                     const float minimum_height = 68.0F) {
   return Row{
       Stack{Glyph(icon, 20.0F, colors::accent)}.With(
           Frame{.width = 36.0F, .height = 36.0F},
@@ -571,7 +569,7 @@ View DetailActionRow(ImageResource icon, StringResource title,
           .With(Frame{.width = 20.0F, .height = 20.0F}),
   }
       .OnClick(std::move(action))
-      .With(Frame{.min_height = 68.0F},
+      .With(Frame{.min_height = minimum_height},
             Padding(EdgeInsets::Symmetric(16.0F, 12.0F)), Spacing(12.0F),
             CrossAlign(CrossAxisAlignment::Center), Focusable(),
             PointerCursor(PointerCursorKind::Hand));
@@ -585,7 +583,7 @@ View EmptyRow(StringVariant message) {
 }
 
 View SheetPanel(StringVariant title, std::vector<View> rows) {
-  rows.push_back(Stack{}.With(Frame{.height = 12.0F}));
+  rows.push_back(Stack{}.With(Frame{.height = 34.0F}));
   return Column{
       Row{Spacer(),
           Stack{}.With(Frame{.width = 36.0F, .height = 4.0F},
@@ -606,7 +604,7 @@ View SheetPanel(StringVariant title, std::vector<View> rows) {
 
 View ConfirmationSheetPanel(StringVariant title, StringVariant message,
                             std::vector<View> rows) {
-  rows.push_back(Stack{}.With(Frame{.height = 12.0F}));
+  rows.push_back(Stack{}.With(Frame{.height = 34.0F}));
   return Column{
       Row{Spacer(),
           Stack{}.With(Frame{.width = 36.0F, .height = 4.0F},
@@ -1130,11 +1128,11 @@ void OpenSkillActions(
 }
 
 void ShowUnavailableAction(
-    const ExtensionPresentation *, const ExtensionScreenServices &,
+    const ExtensionPresentation *presentation, const ExtensionScreenServices &,
     State<DetailState>, State<SkillDraftState>, TaskScope, BottomSheetHandle,
     DialogHandle, std::shared_ptr<FilePicker>,
     RouteNavigationController<domain::AppRoute>, ToastHandle toast) {
-  toast.Show(app::strings::screen_extension_unavailable);
+  toast.Show(presentation->empty_message);
 }
 
 void OpenSkillStore(const ExtensionScreenServices &,
@@ -1146,10 +1144,16 @@ void OpenSkillStore(const ExtensionScreenServices &,
 void ShareSkillWorkspace(
     const ExtensionScreenServices &services,
     RouteNavigationController<domain::AppRoute>, ToastHandle toast) {
-  if (services.on_share_workspace)
-    services.on_share_workspace();
-  else
+  if (!services.workspace_share || !services.workspace_share->OpenHome())
     toast.Show(app::strings::screen_extension_unavailable);
+}
+
+bool AlwaysSupplementAvailable(const ExtensionScreenServices &) {
+  return true;
+}
+
+bool WorkspaceShareAvailable(const ExtensionScreenServices &services) {
+  return static_cast<bool>(services.workspace_share);
 }
 
 bool Marked(const DetailState &state, std::string_view id) {
@@ -1278,7 +1282,7 @@ View SkillMultiSelectBar(const ExtensionPresentation *presentation,
                          State<DetailState> state, TaskScope tasks,
                          BottomSheetHandle sheets) {
   return Row{
-      Text::Format(app::strings::screen_extension_selected_count,
+      Text::Format(app::strings::extensions_skill_selected_count,
                    state->marked.size())
           .Style(Label(16.0F, FontWeight::Bold))
           .With(Grow()),
@@ -1354,18 +1358,14 @@ View InstalledRow(const InstalledExtension &item,
   const bool marked = Marked(state.Get(), item.id);
   if (state->multi_select) {
     return Row{
-        Stack{
-            marked ? Glyph(app::images::check, 14.0F, colors::text_on_color)
-                   : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F}),
-        }
-            .With(Frame{.width = 22.0F, .height = 22.0F},
-                  Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                  Background(marked ? colors::accent : Color::Transparent()),
-                  Border{.color = marked ? colors::accent : colors::border,
-                         .width = 1.0F},
-                  CornerRadius(11.0F)),
+        Glyph(presentation->icon, 20.0F,
+              marked ? colors::accent : colors::secondary),
         Column{
-            Text(item.name).Style(Label(16.0F, FontWeight::Medium)),
+            Text(item.name)
+                .Style(Label(16.0F,
+                             marked ? FontWeight::Medium
+                                    : FontWeight::Regular,
+                             marked ? colors::accent : colors::text)),
             Text(item.description)
                 .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
         }
@@ -1378,7 +1378,7 @@ View InstalledRow(const InstalledExtension &item,
             next.multi_select = false;
           state = std::move(next);
         })
-        .With(Frame{.min_height = 68.0F}, Spacing(12.0F),
+        .With(Frame{.min_height = 56.0F}, Spacing(12.0F),
               Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
               CrossAlign(CrossAxisAlignment::Center),
               Background(marked ? colors::accent_muted : Color::Transparent()),
@@ -1392,10 +1392,7 @@ View InstalledRow(const InstalledExtension &item,
   };
 
   return Row{
-      Stack{Glyph(presentation->icon, 19.0F, colors::accent)}.With(
-          Frame{.width = 36.0F, .height = 36.0F},
-          Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-          Background(colors::accent_muted), CornerRadius(8.0F)),
+      Glyph(presentation->icon, 20.0F, colors::secondary),
       Column{
           Text(item.name).Style(Label(16.0F, FontWeight::Medium)),
           Text(item.description)
@@ -1414,8 +1411,7 @@ View InstalledRow(const InstalledExtension &item,
   }
       .With(LongPressGesture{})
       .On<LongPressEvents::Started>(std::move(actions))
-      .With(Frame{.min_height = 68.0F},
-            Padding(EdgeInsets::Symmetric(16.0F, 12.0F)), Spacing(12.0F),
+      .With(Frame{.min_height = 68.0F}, Padding(16.0F), Spacing(12.0F),
             CrossAlign(CrossAxisAlignment::Center));
 }
 
@@ -1435,7 +1431,7 @@ View DetailHeader(const ExtensionPresentation *presentation,
       Stack{Text(presentation->title).Style(Label(17.0F, FontWeight::Bold))}
           .With(Grow(),
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
-      Stack{Glyph(app::images::plus, 20.0F, colors::text)}
+      Stack{Glyph(app::images::plus, 19.0F, colors::accent)}
           .OnClick([presentation, state, skill_draft, sheets, tasks, dialogs,
                     picker, services, navigation, toast] mutable {
             std::invoke(presentation->primary_action, presentation, services,
@@ -1444,6 +1440,7 @@ View DetailHeader(const ExtensionPresentation *presentation,
           })
           .With(Frame{.width = 36.0F, .height = 36.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+                Background(colors::accent_muted), CornerRadius(18.0F),
                 Focusable(), PointerCursor(PointerCursorKind::Hand)),
   }
       .With(Frame{.min_height = 60.0F},
@@ -1550,6 +1547,24 @@ View EditorFormSection(StringResource title, View form) {
   }.With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
+View EditorSelectionSection(StringVariant title, std::vector<View> rows) {
+  return Column{
+      Text(std::move(title))
+          .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
+          .With(Frame{.height = 47.625F},
+                Padding(EdgeInsets{.top = 20.0F,
+                                   .right = 16.0F,
+                                   .bottom = 12.0F,
+                                   .left = 16.0F})),
+      LegacySettingsCardFrame{
+          Column(std::move(rows))
+              .With(CrossAlign(CrossAxisAlignment::Stretch),
+                    Background(colors::elevated), CornerRadius(12.0F)),
+      },
+  }
+      .With(CrossAlign(CrossAxisAlignment::Stretch));
+}
+
 View SelectionRow(ImageResource icon, StringVariant title,
                   StringVariant description, bool selected,
                   std::function<void(bool)> changed) {
@@ -1589,11 +1604,20 @@ Task<void> LoadAgentEditor(std::optional<std::string> id,
       next.selected_mcps = next.original.mcp_ids;
     }
   }
-  auto mcps = co_await services.mcps->ListMcps();
-  if (!mcps) {
-    next.error = mcps.error().message;
-  } else {
-    next.available_mcps = std::move(*mcps);
+  if (services.agent_drafts) {
+    auto context = co_await services.agent_drafts->LoadContext();
+    if (!context) {
+      next.error = context.error().message;
+    } else {
+      next.available_tools = std::move(context->tools);
+      next.available_mcps = std::move(context->mcps);
+      if (!id) {
+        for (const auto &tool : next.available_tools) {
+          if (tool.selected_by_default)
+            next.selected_tools.push_back(tool.name);
+        }
+      }
+    }
   }
   next.loading = false;
   state = std::move(next);
@@ -1602,6 +1626,7 @@ Task<void> LoadAgentEditor(std::optional<std::string> id,
 Task<void> SaveAgent(ExtensionScreenServices services,
                      State<AgentEditorState> state,
                      std::string validation_message,
+                     ToastHandle toast,
                      RouteNavigationController<domain::AppRoute> navigation) {
   auto value = state->original;
   value.name = Trimmed(state->name.text);
@@ -1612,9 +1637,7 @@ Task<void> SaveAgent(ExtensionScreenServices services,
   value.tool_names = state->selected_tools;
   value.mcp_ids = state->selected_mcps;
   if (value.name.empty() || value.slug.empty() || value.prompt.empty()) {
-    auto next = state.Get();
-    next.error = std::move(validation_message);
-    state = std::move(next);
+    toast.Show(std::move(validation_message));
     co_return;
   }
   auto next = state.Get();
@@ -1632,6 +1655,132 @@ Task<void> SaveAgent(ExtensionScreenServices services,
   if (services.on_changed)
     services.on_changed();
   navigation.Pop();
+}
+
+Task<void> GenerateAgentDraft(
+    std::shared_ptr<application::AgentExtensionDraftGenerator> generator,
+    State<AgentEditorState> editor, State<AgentWriterState> writer,
+    DialogContext dialog, ToastHandle toast, std::string description) {
+  auto generated = co_await generator->Generate(std::move(description));
+  auto writer_next = writer.Get();
+  writer_next.busy = false;
+  writer = std::move(writer_next);
+  if (!generated) {
+    toast.Show(generated.error().message);
+    co_return;
+  }
+  auto next = editor.Get();
+  next.name = TextEditingValue::FromText(generated->name);
+  next.slug = TextEditingValue::FromText(generated->slug);
+  next.prompt = TextEditingValue::FromText(generated->prompt);
+  next.trigger = TextEditingValue::FromText(generated->trigger);
+  next.selected_tools = std::move(generated->tool_names);
+  next.selected_mcps = std::move(generated->mcp_ids);
+  next.error.clear();
+  editor = std::move(next);
+  dialog.Dismiss();
+  toast.Show(app::strings::screen_agent_ai_filled);
+}
+
+[[huxerui::composable]] View AgentWriterDialog(
+    DialogContext dialog,
+    std::shared_ptr<application::AgentExtensionDraftGenerator> generator,
+    State<AgentEditorState> editor, ToastHandle toast) {
+  const auto tasks = UseTaskScope();
+  auto writer = UseState(AgentWriterState{
+      .description = TextEditingValue::FromText(""),
+  });
+
+  std::vector<View> generate_content;
+  if (writer->busy) {
+    generate_content.push_back(
+        ProgressBar().With(Frame{.width = 22.0F, .height = 22.0F}));
+  } else {
+    generate_content.push_back(
+        Glyph(app::images::sparkles, 18.0F, colors::text_on_color));
+    generate_content.push_back(
+        Text(app::strings::screen_agent_let_ai_button)
+            .Style(Label(16.0F, FontWeight::Medium, colors::text_on_color)));
+  }
+  auto generate = Row(std::move(generate_content))
+                      .OnClick([generator, editor, writer, tasks, dialog,
+                                toast] {
+                        if (writer->busy)
+                          return;
+                        const auto description = Trimmed(writer->description.text);
+                        if (description.empty()) {
+                          toast.Show(
+                              app::strings::screen_agent_require_description);
+                          return;
+                        }
+                        auto next = writer.Get();
+                        next.busy = true;
+                        writer = std::move(next);
+                        tasks.Launch(GenerateAgentDraft(
+                            generator, editor, writer, dialog, toast,
+                            description));
+                      })
+                      .With(Frame{.min_height = 44.0F}, Spacing(8.0F),
+                            Padding(EdgeInsets::Symmetric(16.0F, 10.0F)),
+                            MainAlign(MainAxisAlignment::Center),
+                            CrossAlign(CrossAxisAlignment::Center),
+                            Background(colors::accent), CornerRadius(8.0F),
+                            Enabled(!writer->busy), Focusable(),
+                            PointerCursor(writer->busy
+                                              ? PointerCursorKind::Default
+                                              : PointerCursorKind::Hand));
+
+  auto panel = Column{
+      Row{
+          Column{
+              Text(app::strings::screen_agent_let_ai_dialog_title)
+                  .Style(Label(17.0F, FontWeight::Medium)),
+              Text(app::strings::screen_agent_ai_dialog_desc)
+                  .Style(Label(11.0F, FontWeight::Regular,
+                               colors::tertiary)),
+          }
+              .With(Spacing(2.0F), Grow()),
+          Stack{Glyph(app::images::x, 17.0F, colors::secondary)}
+              .OnClick([dialog, writer] {
+                if (!writer->busy)
+                  dialog.Dismiss();
+              })
+              .With(Frame{.width = 34.0F, .height = 34.0F},
+                    Align(HorizontalAlignment::Center,
+                          VerticalAlignment::Center),
+                    Background(colors::surface_light), CornerRadius(17.0F),
+                    Enabled(!writer->busy), Focusable(),
+                    PointerCursor(writer->busy ? PointerCursorKind::Default
+                                               : PointerCursorKind::Hand)),
+      }
+          .With(Spacing(12.0F), CrossAlign(CrossAxisAlignment::Center)),
+      TextField(writer->description)
+          .Placeholder(app::strings::screen_agent_ai_hint)
+          .Variant(TextFieldVariant::Outlined)
+          .LineLimits(TextFieldLineLimits::MultiLine(4, 10))
+          .InputConfiguration(TextInputConfiguration{
+              .type = TextInputType::Text,
+              .capitalization = TextCapitalization::Sentences,
+              .action = TextInputAction::Newline,
+              .multiline = true,
+              .secure = false,
+              .autocorrect = false,
+          })
+          .OnChanged([writer](const TextEditingValue &value) {
+            auto next = writer.Get();
+            next.description = value;
+            writer = std::move(next);
+          })
+          .With(Frame{.min_height = 160.0F}, Enabled(!writer->busy)),
+      std::move(generate),
+  }
+                   .With(Frame{.max_width = 560.0F}, Padding(16.0F),
+                         Spacing(12.0F), Background(colors::elevated),
+                         CornerRadius(16.0F),
+                         CrossAlign(CrossAxisAlignment::Stretch));
+  return Row{std::move(panel).With(Grow())}.With(
+      Padding(EdgeInsets::Symmetric(16.0F, 0.0F)),
+      MainAlign(MainAxisAlignment::Center));
 }
 
 Task<void> LoadMcpEditor(std::optional<std::string> id,
@@ -1680,9 +1829,7 @@ Task<void> QueryMcp(ExtensionScreenServices services,
       .request_headers = HeadersFrom(state.Get()),
   });
   if (!domain::IsHttpMcpUrl(request.url)) {
-    auto next = state.Get();
-    next.error = std::move(invalid_url_message);
-    state = std::move(next);
+    toast.Show(std::move(invalid_url_message));
     co_return;
   }
   auto next = state.Get();
@@ -1709,6 +1856,7 @@ Task<void> SaveMcp(ExtensionScreenServices services,
                    State<McpEditorState> state,
                    std::string invalid_configuration_message,
                    std::string require_query_message,
+                   ToastHandle toast,
                    RouteNavigationController<domain::AppRoute> navigation) {
   auto value = state->original;
   value.name = Trimmed(state->name.text);
@@ -1717,16 +1865,12 @@ Task<void> SaveMcp(ExtensionScreenServices services,
   value.tools = state->tools;
   value = domain::NormalizeMcpExtension(std::move(value));
   if (value.name.empty() || !domain::IsHttpMcpUrl(value.url)) {
-    auto next = state.Get();
-    next.error = std::move(invalid_configuration_message);
-    state = std::move(next);
+    toast.Show(std::move(invalid_configuration_message));
     co_return;
   }
   if (!state->queried || value.tools.empty() ||
       value.url != state->queried_url) {
-    auto next = state.Get();
-    next.error = std::move(require_query_message);
-    state = std::move(next);
+    toast.Show(std::move(require_query_message));
     co_return;
   }
   auto next = state.Get();
@@ -1853,15 +1997,19 @@ ExtensionDetailScreen(domain::ExtensionKind kind,
             std::invoke(presentation->primary_action, presentation, services,
                         state, skill_draft, tasks, sheets, dialogs, picker,
                         navigation, toast);
-          })}));
+          },
+          presentation->inline_minimum_height)}));
   for (const auto &supplement : presentation->supplements) {
+    if (!std::invoke(supplement.available, services))
+      continue;
     content.push_back(LegacySettingsSection(
         supplement.section_title,
         {DetailActionRow(
             supplement.icon, supplement.title, supplement.description,
             [action = supplement.action, services, navigation, toast] {
               std::invoke(action, services, navigation, toast);
-            })}));
+            },
+            supplement.minimum_height)}));
   }
 
   std::vector<View> installed;
@@ -1907,12 +2055,12 @@ AgentExtensionEditorScreen(std::optional<std::string> id,
   const auto navigation = UseNavigation<domain::AppRoute>();
   const auto tasks = UseTaskScope();
   const auto toast = UseToast();
+  const auto dialogs = UseDialog();
   auto state = UseState(AgentEditorState{
       .name = TextEditingValue::FromText(""),
       .slug = TextEditingValue::FromText(""),
       .prompt = TextEditingValue::FromText(""),
       .trigger = TextEditingValue::FromText(""),
-      .selected_tools = {"file_read", "glob"},
   });
   Lifecycle([tasks, id, services, state] {
     tasks.Launch([id, services, state]() mutable -> Task<void> {
@@ -1922,13 +2070,20 @@ AgentExtensionEditorScreen(std::optional<std::string> id,
 
   const std::string validation_message =
       UseString(app::strings::screen_agent_save_require);
-  auto save = [services, state, tasks, navigation, validation_message] mutable {
-    tasks.Launch([services, state, navigation,
+  auto save = [services, state, tasks, navigation, validation_message,
+               toast] mutable {
+    tasks.Launch([services, state, navigation, toast,
                   validation_message]() mutable -> Task<void> {
       co_await SaveAgent(std::move(services), state,
-                         std::move(validation_message), navigation);
+                         std::move(validation_message), toast, navigation);
     });
   };
+  const std::string agent_tools_title =
+      UseString(app::strings::screen_agent_section_tools);
+  const std::string agent_mcps_title =
+      UseString(app::strings::screen_agent_section_mcps);
+  const std::string agent_selected =
+      UseString(app::strings::screen_agent_tools_selected);
   std::vector<View> content;
   if (state->loading) {
     content.push_back(EmptyRow(app::strings::screen_extension_loading));
@@ -1937,8 +2092,13 @@ AgentExtensionEditorScreen(std::optional<std::string> id,
         app::strings::screen_agent_quick_create,
         {DetailActionRow(
             app::images::sparkles, app::strings::screen_agent_let_ai_write,
-            app::strings::screen_agent_let_ai_write_desc, [toast] {
-              toast.Show(app::strings::screen_agent_ai_unavailable);
+            app::strings::screen_agent_let_ai_write_desc,
+            [dialogs, generator = services.agent_drafts, state, toast] {
+              if (!generator) {
+                toast.Show(app::strings::screen_agent_ai_unavailable);
+                return;
+              }
+              dialogs.Show(AgentWriterDialog, generator, state, toast);
             })}));
     content.push_back(EditorFormSection(
         app::strings::screen_agent_form_basic,
@@ -1965,57 +2125,41 @@ AgentExtensionEditorScreen(std::optional<std::string> id,
                CrossAlign(CrossAxisAlignment::Stretch))));
 
     std::vector<View> tool_rows;
-    tool_rows.reserve(kToolPresentations.size() + state->selected_tools.size());
-    for (const auto &tool : kToolPresentations) {
+    tool_rows.reserve(state->available_tools.size());
+    for (const auto &tool : state->available_tools) {
       const bool selected = Contains(state->selected_tools, tool.name);
       tool_rows.push_back(
-          SelectionRow(app::images::settings, std::string{tool.name},
-                       std::string{tool.description}, selected,
-                       [state, name = std::string{tool.name}](bool) {
+          SelectionRow(app::images::settings, tool.name,
+                       std::format("{} · {}", tool.category,
+                                   tool.description),
+                       selected, [state, name = tool.name](bool) {
                          auto next = state.Get();
                          Toggle(next.selected_tools, name);
                          state = std::move(next);
                        }));
     }
-    for (const auto &selected : state->selected_tools) {
-      if (std::ranges::none_of(kToolPresentations,
-                               [&selected](const auto &tool) {
-                                 return tool.name == selected;
-                               })) {
-        tool_rows.push_back(SelectionRow(
-            app::images::settings, selected, "custom · persisted tool", true,
-            [state, selected](bool) {
-              auto next = state.Get();
-              Toggle(next.selected_tools, selected);
-              state = std::move(next);
-            }));
-      }
-    }
-    content.push_back(LegacySettingsSection(
-        app::strings::screen_agent_section_tools,
+    content.push_back(EditorSelectionSection(
+        StringVariant::Format(app::strings::screen_agent_tools_count,
+                              agent_tools_title, agent_selected,
+                              state->selected_tools.size()),
         tool_rows.empty() ? std::vector<View>{EmptyRow(
                                 app::strings::screen_agent_tools_empty)}
                           : std::move(tool_rows)));
 
     std::vector<View> mcp_rows;
     for (const auto &mcp : state->available_mcps) {
-      if (!mcp.enabled)
-        continue;
-      const std::string key = "custom:" + mcp.id;
       mcp_rows.push_back(SelectionRow(
-          app::images::mcp, mcp.name,
-          std::format("{}/{} tools · {}",
-                      std::ranges::count(mcp.tools, true,
-                                         &domain::McpToolSummary::enabled),
-                      mcp.tools.size(), mcp.url),
-          Contains(state->selected_mcps, key), [state, key](bool) {
+          app::images::mcp, mcp.name, mcp.description,
+          Contains(state->selected_mcps, mcp.id), [state, key = mcp.id](bool) {
             auto next = state.Get();
             Toggle(next.selected_mcps, key);
             state = std::move(next);
           }));
     }
-    content.push_back(LegacySettingsSection(
-        app::strings::screen_agent_section_mcps,
+    content.push_back(EditorSelectionSection(
+        StringVariant::Format(app::strings::screen_agent_tools_count,
+                              agent_mcps_title, agent_selected,
+                              state->selected_mcps.size()),
         mcp_rows.empty()
             ? std::vector<View>{EmptyRow(app::strings::screen_agent_mcps_empty)}
             : std::move(mcp_rows)));
@@ -2067,13 +2211,14 @@ McpExtensionEditorScreen(std::optional<std::string> id,
       UseString(app::strings::screen_mcp_save_require_query);
   const std::string invalid_url_message =
       UseString(app::strings::screen_mcp_url_invalid);
-  auto save = [services, state, tasks, navigation,
+  auto save = [services, state, tasks, navigation, toast,
                invalid_configuration_message, require_query_message] mutable {
-    tasks.Launch([services, state, navigation, invalid_configuration_message,
+    tasks.Launch([services, state, navigation, toast,
+                  invalid_configuration_message,
                   require_query_message]() mutable -> Task<void> {
       co_await SaveMcp(std::move(services), state,
                        std::move(invalid_configuration_message),
-                       std::move(require_query_message), navigation);
+                       std::move(require_query_message), toast, navigation);
     });
   };
   std::vector<View> content;

@@ -48,6 +48,11 @@ struct FakeRemote final {
         .path = "/home/line/readme.md",
         .kind = application::SshFileKind::regular,
         .size = 6}},
+      {"/home/line/image.bin",
+       {.name = "image.bin",
+        .path = "/home/line/image.bin",
+        .kind = application::SshFileKind::regular,
+        .size = 4}},
       {"/home/line/link",
        {.name = "link",
         .path = "/home/line/link",
@@ -56,6 +61,7 @@ struct FakeRemote final {
   std::unordered_map<std::string, std::string> contents{
       {"/home/line/src/main.cpp", "int main(){}"},
       {"/home/line/readme.md", "readme"},
+      {"/home/line/image.bin", std::string{"\x00\xFF\x80\x42", 4}},
   };
   std::optional<application::SshCommandRequest> command;
 };
@@ -366,6 +372,24 @@ huxerui::View Probe() {
       auto text = co_await scenario->workspace->ReadText(
           scenario->settings->config, "~", "readme.md");
       assert(text && *text == "readme");
+
+      auto binary = co_await scenario->workspace->ReadBytes(
+          scenario->settings->config, "~", "image.bin");
+      assert(binary);
+      assert(*binary == std::vector<std::byte>(
+                            {std::byte{0x00}, std::byte{0xFF},
+                             std::byte{0x80}, std::byte{0x42}}));
+
+      auto binary_limit = co_await scenario->workspace->ReadBytes(
+          scenario->settings->config, "~", "image.bin", 3U);
+      assert(!binary_limit);
+      assert(binary_limit.error().code == application::SshErrorCode::size_limit);
+
+      auto binary_traversal = co_await scenario->workspace->ReadBytes(
+          scenario->settings->config, "~", "../image.bin");
+      assert(!binary_traversal);
+      assert(binary_traversal.error().code ==
+             application::SshErrorCode::outside_workspace);
 
       auto traversal = co_await scenario->workspace->ReadText(
           scenario->settings->config, "~", "../secret");

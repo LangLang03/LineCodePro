@@ -417,6 +417,26 @@ huxerui::Task<SshResult<std::string>> SshWorkspaceService::ReadText(
       });
 }
 
+huxerui::Task<SshResult<std::vector<std::byte>>>
+SshWorkspaceService::ReadBytes(domain::SshConfig config, std::string root,
+                               std::string relative_path,
+                               std::size_t maximum_bytes) {
+  co_return co_await operations_.Run(
+      [transport = transport_, config = std::move(config), root = std::move(root),
+       relative_path = std::move(relative_path), maximum_bytes](std::stop_token stop) {
+        return WithSession<std::vector<std::byte>>(
+            *transport, config, 120s, stop,
+            [&](SshSession &session, std::stop_token token) {
+              auto path = Resolve(session, root, relative_path, false, false, token);
+              if (!path) {
+                return SshResult<std::vector<std::byte>>{
+                    std::unexpected(std::move(path.error()))};
+              }
+              return session.Read(*path, maximum_bytes, token);
+            });
+      });
+}
+
 huxerui::Task<SshResult<void>> SshWorkspaceService::WriteText(
     domain::SshConfig config, std::string root, std::string relative_path,
     std::string value) {

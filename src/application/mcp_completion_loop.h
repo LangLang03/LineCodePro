@@ -5,6 +5,7 @@
 #include "application/ports/completion_gateway.h"
 #include "application/ports/tool_registry.h"
 #include "application/prompt_request_composer.h"
+#include "application/tool_result_display_policy.h"
 
 namespace linecode::application {
 
@@ -15,7 +16,9 @@ public:
   McpCompletionLoop(std::shared_ptr<CompletionGateway> completion,
                     std::shared_ptr<ToolRegistry> tools,
                     std::shared_ptr<ToolPermissionService> permissions = {},
-                    std::shared_ptr<CompletionRequestComposer> request_composer = {});
+                    std::shared_ptr<CompletionRequestComposer> request_composer = {},
+                    std::shared_ptr<const ToolResultDisplayProjector>
+                        result_display = {});
 
   // Executes model turns until the assistant returns no tool calls. HuxerUI's
   // owning TaskScope provides cancellation for the complete loop.
@@ -35,6 +38,7 @@ private:
   std::shared_ptr<ToolRegistry> tools_;
   std::shared_ptr<ToolPermissionService> permissions_;
   std::shared_ptr<CompletionRequestComposer> request_composer_;
+  std::shared_ptr<const ToolResultDisplayProjector> result_display_;
 };
 
 } // namespace linecode::application

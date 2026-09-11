@@ -63,7 +63,7 @@ View LicenseCard(StringResource name, StringResource metadata,
 [[huxerui::composable]] View LicensesScreen() {
   const auto navigation = UseNavigation<domain::AppRoute>();
   std::vector<View> content;
-  content.reserve(4);
+  content.reserve(6);
   content.push_back(LicenseCard(app::strings::screen_licenses_huxerui,
                                 app::strings::screen_licenses_huxerui_meta,
                                 app::strings::screen_licenses_huxerui_desc));
@@ -76,6 +76,12 @@ View LicenseCard(StringResource name, StringResource metadata,
   content.push_back(LicenseCard(app::strings::screen_licenses_lucide,
                                 app::strings::screen_licenses_lucide_meta,
                                 app::strings::screen_licenses_lucide_desc));
+  content.push_back(LicenseCard(app::strings::screen_licenses_libssh2,
+                                app::strings::screen_licenses_libssh2_meta,
+                                app::strings::screen_licenses_libssh2_desc));
+  content.push_back(LicenseCard(app::strings::screen_licenses_mbedtls,
+                                app::strings::screen_licenses_mbedtls_meta,
+                                app::strings::screen_licenses_mbedtls_desc));
 
   return Column{
       Header(navigation),

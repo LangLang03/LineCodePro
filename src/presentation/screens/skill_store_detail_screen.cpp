@@ -15,11 +15,13 @@
 #include <huxerui/app.h>
 #include <huxerui/huxerui.h>
 
+#include "application/ports/external_link.h"
 #include "domain/app_state.h"
 #include "infrastructure/tutorial_markdown_parser.h"
 #include "presentation/components/skill_hub_components.h"
 #include "presentation/components/tutorial_markdown.h"
 #include "presentation/line_theme.h"
+#include "presentation/markdown_link_policy.h"
 #include "presentation/skill_hub_presentation.h"
 
 namespace linecode::presentation {
@@ -129,7 +131,59 @@ StringVariant FormatDate(const std::int64_t value) {
                                static_cast<int>(date.year()));
 }
 
-View MarkdownDocument(const std::string_view source) {
+Task<void> LoadReadingScale(
+    const std::shared_ptr<application::SkillHubReadingSettings> settings,
+    const State<float> scale, const std::optional<float> legacy_scale) {
+  if (settings)
+    scale = co_await settings->LoadScale(legacy_scale);
+}
+
+void RequestReadingScale(const SkillHubScreenServices &services,
+                         const State<float> scale, const TaskScope &tasks) {
+  const auto load = [settings = services.reading, scale, tasks](
+                        const std::optional<float> legacy_scale) {
+    tasks.Launch(LoadReadingScale(settings, scale, legacy_scale));
+  };
+  if (!services.platform) {
+    load(std::nullopt);
+    return;
+  }
+  services.platform->ReadLegacyMarkdownTextScale(load);
+}
+
+void PersistReadingScale(
+    const std::shared_ptr<application::SkillHubReadingSettings> &settings,
+    const TaskScope &tasks, const State<float> &scale) {
+  if (settings)
+    tasks.Launch(settings->SaveScale(scale.Get()));
+}
+
+View MarkdownDocument(
+    const std::string_view source, const State<float> scale,
+    const TaskScope tasks,
+    std::shared_ptr<application::SkillHubReadingSettings> settings,
+    TutorialMarkdownLinkHandler on_link) {
+  const infrastructure::TutorialMarkdownParser parser;
+  return TutorialMarkdownDocumentView(parser.Parse(source), true, scale.Get(),
+                                      std::move(on_link))
+      .On<TransformEvents::Changed>([scale](const TransformEvent &event) {
+        scale = application::SkillHubReadingSettings::NormalizeScale(
+            scale.Get() * event.scale);
+      })
+      .On<TransformEvents::Ended>(
+          [settings, tasks, scale](const TransformEvent &) {
+            PersistReadingScale(settings, tasks, scale);
+          })
+      .On<TransformEvents::Canceled>(
+          [settings, tasks, scale](const TransformEvent &) {
+            PersistReadingScale(settings, tasks, scale);
+          })
+      .With(TransformGesture{});
+}
+
+// The legacy preview tab renders expected answers at the normal document
+// scale. Only the main README and file-preview readers opt into pinch zoom.
+View StaticMarkdownDocument(const std::string_view source) {
   const infrastructure::TutorialMarkdownParser parser;
   return TutorialMarkdownDocumentView(parser.Parse(source), true);
 }
@@ -242,7 +296,7 @@ ToggleStar(const SkillHubScreenServices services,
 View DetailAction(ImageResource icon, StringVariant label,
                   std::function<void()> action, const bool enabled = true) {
   return Row{
-      SkillHubGlyph(icon, 16.0F, colors::accent),
+      SkillHubIconSlot(icon, 16.0F, 20.0F, colors::accent),
       Text(std::move(label))
           .Style(SkillHubLabel(13.0F, FontWeight::Medium))
           .Align(TextAlign::Center)
@@ -357,7 +411,11 @@ Hero(const domain::SkillHubDetail &detail,
             CrossAlign(CrossAxisAlignment::Stretch));
 }
 
-[[huxerui::composable]] View Overview(const domain::SkillHubDetail &detail) {
+[[huxerui::composable]] View
+Overview(const domain::SkillHubDetail &detail, const State<float> reading_scale,
+         const TaskScope tasks,
+         std::shared_ptr<application::SkillHubReadingSettings> reading,
+         const TutorialMarkdownLinkHandler &on_link) {
   std::vector<View> info{
       Row{
           MetadataCard(app::strings::skillhub_category, detail.category),
@@ -398,7 +456,8 @@ Hero(const domain::SkillHubDetail &detail,
           ? Text(app::strings::skillhub_no_public_doc)
                 .Style(
                     SkillHubLabel(13.0F, FontWeight::Regular, colors::tertiary))
-          : MarkdownDocument(detail.markdown)
+          : MarkdownDocument(detail.markdown, reading_scale, tasks,
+                             std::move(reading), on_link)
                 .With(Padding(12.0F), Background(colors::surface_light),
                       CornerRadius(10.0F));
 
@@ -424,10 +483,17 @@ Hero(const domain::SkillHubDetail &detail,
 void ShowFileDialog(const DialogHandle dialogs, const std::string &path,
                     const std::string &content,
                     const std::shared_ptr<Clipboard> &clipboard,
-                    const ToastHandle toast) {
-  dialogs.Show([path, content, clipboard, toast](DialogContext dialog) {
+                    const ToastHandle toast, const State<float> reading_scale,
+                    const TaskScope tasks,
+                    std::shared_ptr<application::SkillHubReadingSettings>
+                        reading,
+                    TutorialMarkdownLinkHandler on_link) {
+  dialogs.Show([path, content, clipboard, toast, reading_scale, tasks,
+                reading = std::move(reading),
+                on_link = std::move(on_link)](DialogContext dialog) {
     const bool markdown = IsSkillHubMarkdownPath(path);
-    View preview = markdown ? MarkdownDocument(content)
+    View preview = markdown ? MarkdownDocument(content, reading_scale, tasks,
+                                                reading, on_link)
                             : SelectionArea(Text(content).Style(TextStyle{
                                   Font::Monospace(13.0F), colors::secondary}));
     std::vector<View> dialog_content{
@@ -463,7 +529,9 @@ Task<void> LoadFile(const SkillHubScreenServices services,
                     const domain::SkillHubFileEntry file,
                     const DialogHandle dialogs,
                     const std::shared_ptr<Clipboard> clipboard,
-                    const ToastHandle toast) {
+                    const ToastHandle toast, const State<float> reading_scale,
+                    const TaskScope tasks,
+                    TutorialMarkdownLinkHandler on_link) {
   if (!IsSkillHubTextPreviewable(file.path)) {
     toast.Show(app::strings::skillhub_file_not_supported);
     co_return;
@@ -475,7 +543,8 @@ Task<void> LoadFile(const SkillHubScreenServices services,
     toast.Show(loaded.error().message);
     co_return;
   }
-  ShowFileDialog(dialogs, file.path, *loaded, clipboard, toast);
+  ShowFileDialog(dialogs, file.path, *loaded, clipboard, toast, reading_scale,
+                 tasks, services.reading, std::move(on_link));
 }
 
 [[huxerui::composable]] View Files(const SkillHubScreenServices &services,
@@ -483,7 +552,9 @@ Task<void> LoadFile(const SkillHubScreenServices services,
                                    const TaskScope &tasks,
                                    const DialogHandle &dialogs,
                                    const std::shared_ptr<Clipboard> &clipboard,
-                                   const ToastHandle &toast) {
+                                   const ToastHandle &toast,
+                                   const State<float> reading_scale,
+                                   const TutorialMarkdownLinkHandler &on_link) {
   std::vector<View> rows{
       Text(app::strings::skillhub_click_to_preview)
           .Style(SkillHubLabel(11.0F, FontWeight::Regular, colors::tertiary)),
@@ -511,19 +582,21 @@ Task<void> LoadFile(const SkillHubScreenServices services,
                   .Style(SkillHubLabel(11.0F, FontWeight::Regular,
                                        colors::tertiary)),
           }
-              .With(Spacing(2.0F), Grow()),
-          SkillHubGlyph(app::images::chevron_right, 16.0F, colors::tertiary),
+              .With(Spacing(2.0F), Padding(EdgeInsets{.left = 8.0F}), Grow()),
+          SkillHubIconSlot(app::images::chevron_right, 16.0F, 24.0F,
+                           colors::tertiary),
       }
                          .OnClick([services, detail, file, tasks, dialogs,
-                                   clipboard, toast] {
+                                   clipboard, toast, reading_scale, on_link] {
                            tasks.Launch(LoadFile(services, detail, file,
-                                                 dialogs, clipboard, toast));
+                                                 dialogs, clipboard, toast,
+                                                 reading_scale, tasks,
+                                                 on_link));
                          })
                          .With(Padding(EdgeInsets{.top = 8.0F,
                                                   .right = 8.0F,
                                                   .bottom = 8.0F,
                                                   .left = 12.0F}),
-                               Spacing(8.0F),
                                CrossAlign(CrossAxisAlignment::Center),
                                Background(colors::surface_light),
                                CornerRadius(9.0F), Focusable(),
@@ -940,7 +1013,7 @@ View Evaluation(const domain::SkillHubDetail &detail) {
               .Style(SkillHubLabel(13.0F, FontWeight::Medium))
               .With(Padding(EdgeInsets::Symmetric(12.0F, 8.0F)),
                     Background(colors::accent_muted), CornerRadius(8.0F)));
-      rows.push_back(MarkdownDocument(test.expected));
+      rows.push_back(StaticMarkdownDocument(test.expected));
     }
   }
   return SkillHubTopMargin(SkillHubSection(app::strings::skillhub_tab_preview,
@@ -1093,9 +1166,21 @@ SkillStoreDetailScreen(const SkillHubScreenServices &services,
   const auto dialogs = UseDialog();
   const auto toast = UseToast();
   const auto clipboard = UseApplication().Clipboard();
+  const auto external_link = UseService<application::ExternalLinkService>();
+  const TutorialMarkdownLinkHandler markdown_link =
+      [external_link, toast](const Uri &target) {
+        if (!IsHttpsMarkdownLink(target)) {
+          toast.Show(app::strings::skillhub_https_only);
+          return;
+        }
+        if (external_link)
+          external_link->Open(target.ToString());
+      };
   auto state = UseState(DetailState{});
+  auto reading_scale = UseState(1.0F);
   Lifecycle(
-      [services, state, tasks, slug = route.slug] {
+      [services, state, reading_scale, tasks, slug = route.slug] {
+        RequestReadingScale(services, reading_scale, tasks);
         ReadSessionCookie(
             services, [services, state, tasks,
                        slug](application::SkillHubCookieResult result) {
@@ -1140,7 +1225,7 @@ SkillStoreDetailScreen(const SkillHubScreenServices &services,
                                    (detail.canonical_name.starts_with('@')
                                         ? detail.canonical_name.substr(1)
                                         : detail.canonical_name);
-    content.push_back(Row{
+    content.push_back(SkillHubTopMargin(Row{
         DetailAction(app::images::copy, app::strings::skillhub_copy_prompt,
                      [clipboard, toast, install_prompt] {
                        if (clipboard && clipboard->WriteText(install_prompt))
@@ -1180,10 +1265,8 @@ SkillStoreDetailScreen(const SkillHubScreenServices &services,
                                                   : detail.namespace_handle,
                   detail.slug));
             }),
-    }
-                          .With(Spacing(8.0F),
-                                Padding(EdgeInsets{.top = 12.0F})));
-    content.push_back(Stack{
+    }.With(Spacing(8.0F)), 12.0F));
+    content.push_back(SkillHubTopMargin(Stack{
         Text(
             state->installed
                 ? StringVariant{app::strings::skillhub_installed}
@@ -1199,7 +1282,7 @@ SkillStoreDetailScreen(const SkillHubScreenServices &services,
                                       VerticalAlignment::Center),
                                 Background(colors::accent), CornerRadius(12.0F),
                                 Enabled(!state->installed), Focusable(),
-                                PointerCursor(PointerCursorKind::Hand)));
+                                PointerCursor(PointerCursorKind::Hand)), 16.0F));
 
     std::vector<View> tabs;
     tabs.reserve(kTabs.size());
@@ -1222,20 +1305,22 @@ SkillStoreDetailScreen(const SkillHubScreenServices &services,
                     CornerRadius(7.0F), Focusable(),
                     PointerCursor(PointerCursorKind::Hand)));
     }
-    content.push_back(
+    content.push_back(SkillHubTopMargin(
         ScrollView(Row(std::move(tabs))
                        .With(Padding(4.0F), Background(colors::surface_light),
                              CornerRadius(10.0F)))
-            .ScrollAxis(Axis::Horizontal)
-            .With(Padding(EdgeInsets{.top = 16.0F})));
+            .ScrollAxis(Axis::Horizontal), 16.0F));
 
     switch (state->tab) {
     case DetailTab::overview:
-      content.push_back(Overview(detail));
+      content.push_back(
+          Overview(detail, reading_scale, tasks, services.reading,
+                   markdown_link));
       break;
     case DetailTab::files:
       content.push_back(
-          Files(services, detail, tasks, dialogs, clipboard, toast));
+          Files(services, detail, tasks, dialogs, clipboard, toast,
+                reading_scale, markdown_link));
       break;
     case DetailTab::comments:
       content.push_back(

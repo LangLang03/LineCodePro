@@ -3,6 +3,7 @@
 #if defined(__ANDROID__)
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -56,6 +57,22 @@ public:
     channel_.Invoke<std::monostate>(
         "clearSessionCookies", std::monostate{},
         [](huxerui::PlatformResult<std::monostate>) {});
+  }
+
+  void ReadLegacyMarkdownTextScale(ReadingScaleCompletion completion) override {
+    if (!channel_.IsOpen()) {
+      completion(std::nullopt);
+      return;
+    }
+    channel_.Invoke<double>(
+        "readLegacyMarkdownTextScale", std::monostate{},
+        [completion = std::move(completion)](
+            huxerui::PlatformResult<double> result) mutable {
+          const auto *value = std::get_if<double>(&result);
+          completion(value != nullptr && *value > 0.0
+                         ? std::optional<float>{static_cast<float>(*value)}
+                         : std::nullopt);
+        });
   }
 
 private:

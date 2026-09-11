@@ -1,7 +1,9 @@
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <huxerui/task.h>
 
@@ -21,6 +23,10 @@ public:
   [[nodiscard]] huxerui::Task<SshResult<std::string>>
   ReadText(domain::SshConfig config, std::string root,
            std::string relative_path, std::size_t maximum_bytes = 8U * 1024U * 1024U);
+  [[nodiscard]] huxerui::Task<SshResult<std::vector<std::byte>>>
+  ReadBytes(domain::SshConfig config, std::string root,
+            std::string relative_path,
+            std::size_t maximum_bytes = 10U * 1024U * 1024U);
   [[nodiscard]] huxerui::Task<SshResult<void>>
   WriteText(domain::SshConfig config, std::string root,
             std::string relative_path, std::string value);

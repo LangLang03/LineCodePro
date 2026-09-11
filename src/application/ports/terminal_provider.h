@@ -2,6 +2,7 @@
 
 #include <expected>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
@@ -62,6 +63,14 @@ struct TerminalShellResult final {
   bool operator==(const TerminalShellResult &) const = default;
 };
 
+struct TerminalProviderInfo final {
+  std::string provider_type;
+  std::string raw_json;
+  std::string home_path;
+
+  bool operator==(const TerminalProviderInfo &) const = default;
+};
+
 class TerminalProviderGateway : public TerminalProviderDiscovery {
 public:
   using VoidCompletion =
@@ -72,6 +81,12 @@ public:
       void(TerminalProviderResult<std::vector<std::byte>>)>;
   using TextCompletion =
       std::function<void(TerminalProviderResult<std::string>)>;
+  using BooleanCompletion =
+      std::function<void(TerminalProviderResult<bool>)>;
+  using SizeCompletion =
+      std::function<void(TerminalProviderResult<std::int64_t>)>;
+  using InfoCompletion =
+      std::function<void(TerminalProviderResult<TerminalProviderInfo>)>;
 
   virtual void ExecuteShell(domain::TerminalProviderConfig provider,
                             TerminalShellRequest request,
@@ -85,6 +100,22 @@ public:
                           std::string path, VoidCompletion completion) = 0;
   virtual void ListDirectory(domain::TerminalProviderConfig provider,
                              std::string path, TextCompletion completion) = 0;
+  virtual void GetProviderInfo(domain::TerminalProviderConfig provider,
+                               InfoCompletion completion) = 0;
+  virtual void FileExists(domain::TerminalProviderConfig provider,
+                          std::string path, BooleanCompletion completion) = 0;
+  virtual void FileSize(domain::TerminalProviderConfig provider,
+                        std::string path, SizeCompletion completion) = 0;
+  virtual void ReadFileChunk(domain::TerminalProviderConfig provider,
+                             std::string path, std::int64_t offset,
+                             std::int32_t maximum_bytes,
+                             BytesCompletion completion) = 0;
+  virtual void WriteFileChunk(domain::TerminalProviderConfig provider,
+                              std::string path, std::int64_t offset,
+                              std::vector<std::byte> data,
+                              VoidCompletion completion) = 0;
+  virtual void GetFileSize(domain::TerminalProviderConfig provider,
+                           std::string path, SizeCompletion completion) = 0;
 };
 
 } // namespace linecode::application

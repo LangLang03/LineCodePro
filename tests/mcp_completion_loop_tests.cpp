@@ -2,7 +2,10 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <ranges>
+#include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -79,9 +82,16 @@ public:
   huxerui::Task<std::expected<application::CompletionResponse,
                               application::CompletionError>>
   Complete(application::CompletionRequest request,
-           application::CompletionObserver) override {
+           application::CompletionObserver observer) override {
     requests.push_back(std::move(request));
     if (requests.size() == 1U) {
+      if (observer.on_event) {
+        observer.on_event(application::CompletionReasoningDelta{
+            .turn_index = 99,
+            .text = "inspect",
+            .kind = application::CompletionReasoningKind::thinking,
+            .starts_new_segment = true});
+      }
       co_return application::CompletionResponse{
           .text = {},
           .reasoning_content = {},
@@ -92,12 +102,75 @@ public:
           .output_tokens = 1,
       };
     }
+    if (observer.on_event) {
+      observer.on_event(application::CompletionTextDelta{
+          .turn_index = 99, .text = "final answer"});
+    }
     co_return application::CompletionResponse{
         .text = "final answer",
         .reasoning_content = {},
         .tool_calls = {},
         .input_tokens = 2,
         .output_tokens = 3,
+    };
+  }
+
+  std::vector<application::CompletionRequest> requests;
+};
+
+constexpr std::string_view kImageResult =
+    R"json({"linecode_image_generation":true,"display_markdown":"![fixture](data:image/png;base64,AAAA)","model_content":"Generated image for: fixture"})json";
+
+class ImageToolRegistry final : public application::ToolRegistry {
+public:
+  huxerui::Task<std::expected<void, application::ToolRegistryError>>
+  Refresh() override {
+    co_return std::expected<void, application::ToolRegistryError>{};
+  }
+
+  std::span<const application::RegisteredTool> Tools() const noexcept override {
+    return tools;
+  }
+
+  huxerui::Task<std::expected<application::ToolInvocationResult,
+                              application::ToolRegistryError>>
+  Invoke(std::string name, std::string) override {
+    assert(name == "image_generation");
+    co_return application::ToolInvocationResult{
+        .content = std::string{kImageResult}, .error = false};
+  }
+
+private:
+  const std::vector<application::RegisteredTool> tools{
+      {.name = "image_generation",
+       .description = "Generate an image",
+       .parameters_json = R"({"type":"object"})",
+       .allowed_in_read_only = false,
+       .permanent_grant_supported = false}};
+};
+
+class ImageCompletion final : public application::CompletionGateway {
+public:
+  huxerui::Task<std::expected<application::CompletionResponse,
+                              application::CompletionError>>
+  Complete(application::CompletionRequest request,
+           application::CompletionObserver) override {
+    requests.push_back(std::move(request));
+    if (requests.size() == 1U) {
+      co_return application::CompletionResponse{
+          .text = {},
+          .reasoning_content = {},
+          .tool_calls = {{.id = "image-1",
+                          .name = "image_generation",
+                          .arguments_json = R"({"prompt":"fixture"})"}},
+      };
+    }
+    co_return application::CompletionResponse{
+        .text = "Image complete.",
+        .reasoning_content = {},
+        .tool_calls = {},
+        .input_tokens = 0,
+        .output_tokens = 0,
     };
   }
 
@@ -183,6 +256,9 @@ struct Scenario final {
       result;
   bool done{};
   std::size_t review_count{};
+  std::vector<application::CompletionEvent> events;
+  std::shared_ptr<ImageCompletion> image_completion;
+  std::vector<application::CompletionEvent> image_events;
 };
 
 std::shared_ptr<Scenario> active;
@@ -220,8 +296,9 @@ huxerui::View Probe() {
               .attachment_history = {},
           },
           application::CompletionObserver{
-              .on_event = {},
-              .on_text_delta = {},
+              .on_event = [scenario](const auto &event) {
+                scenario->events.push_back(event);
+              },
               .on_tool_review = [scenario](auto review)
                   -> huxerui::Task<
                       application::CompletionObserver::ToolReviewDecision> {
@@ -232,6 +309,27 @@ huxerui::View Probe() {
                     allow_once;
               },
           });
+
+      scenario->image_completion = std::make_shared<ImageCompletion>();
+      auto image_loop = std::make_shared<application::McpCompletionLoop>(
+          scenario->image_completion,
+          std::make_shared<ImageToolRegistry>());
+      application::CompletionRequest image_request;
+      image_request.model.model_id = "image-fixture";
+      image_request.model.tool_call_limit = 1;
+      image_request.messages.push_back({
+          .role = application::CompletionRole::user,
+          .content = "generate",
+      });
+      auto image_result = co_await image_loop->Complete(
+          std::move(image_request),
+          application::CompletionObserver{
+              .on_event = [scenario](const auto &event) {
+                scenario->image_events.push_back(event);
+              },
+              .on_tool_review = {},
+          });
+      assert(image_result && image_result->text == "Image complete.");
       scenario->done = true;
     });
     return [handle] { handle.Cancel(); };
@@ -281,5 +379,52 @@ int main() {
   assert(invoker->arguments_json ==
          std::vector<std::string>{R"({"text":"hello"})"});
   assert(active->review_count == 1U);
+  assert(active->events.size() == 6U);
+  const auto *reasoning =
+      std::get_if<application::CompletionReasoningDelta>(&active->events[0]);
+  assert(reasoning && reasoning->turn_index == 0U &&
+         reasoning->text == "inspect");
+  const auto *final_text =
+      std::get_if<application::CompletionTextDelta>(&active->events.back());
+  assert(final_text && final_text->turn_index == 1U &&
+         final_text->text == "final answer");
+  const std::vector<application::CompletionToolCallStatus> expected_statuses{
+      application::CompletionToolCallStatus::requested,
+      application::CompletionToolCallStatus::awaiting_review,
+      application::CompletionToolCallStatus::running,
+      application::CompletionToolCallStatus::completed};
+  for (std::size_t index = 0; index < expected_statuses.size(); ++index) {
+    const auto *event = std::get_if<application::CompletionToolCallEvent>(
+        &active->events[index + 1U]);
+    assert(event != nullptr);
+    assert(event->turn_index == 0U);
+    assert(event->status == expected_statuses[index]);
+  }
+  const auto *completed = std::get_if<application::CompletionToolCallEvent>(
+      &active->events[4]);
+  assert(completed && completed->result &&
+         completed->result->content == "fixed tool result");
+  assert(active->image_completion->requests.size() == 2U);
+  const auto &model_tool_message =
+      active->image_completion->requests[1].messages.back();
+  assert(model_tool_message.tool_result);
+  assert(model_tool_message.tool_result->content ==
+         "Generated image for: fixture");
+  assert(!model_tool_message.tool_result->content.contains("data:image/"));
+  const auto image_completed = std::ranges::find_if(
+      active->image_events, [](const auto &event) {
+        const auto *tool =
+            std::get_if<application::CompletionToolCallEvent>(&event);
+        return tool != nullptr &&
+               tool->status ==
+                   application::CompletionToolCallStatus::completed;
+      });
+  assert(image_completed != active->image_events.end());
+  const auto &image_event =
+      std::get<application::CompletionToolCallEvent>(*image_completed);
+  assert(image_event.result && image_event.result->content == kImageResult);
+  assert(image_event.display.display_markdown ==
+         "![fixture](data:image/png;base64,AAAA)");
+  assert(image_event.display.hide_success_card);
   active.reset();
 }

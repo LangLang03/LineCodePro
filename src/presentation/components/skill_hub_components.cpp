@@ -25,6 +25,13 @@ View SkillHubGlyph(ImageVariant icon, const float size, const Color tint) {
       .With(Frame{.width = size, .height = size});
 }
 
+View SkillHubIconSlot(ImageVariant icon, const float icon_size,
+                      const float slot_size, const Color tint) {
+  return Stack{SkillHubGlyph(std::move(icon), icon_size, tint)}.With(
+      Frame{.width = slot_size, .height = slot_size},
+      Align(HorizontalAlignment::Center, VerticalAlignment::Center));
+}
+
 View SkillHubHeader(StringVariant title, std::function<void()> on_back) {
   return LegacyScreenHeaderLayout{
       Stack{SkillHubGlyph(app::images::chevron_left, 22.0F, colors::text)}
@@ -84,7 +91,7 @@ View SkillHubSection(StringVariant title, const ImageResource icon,
   std::vector<View> children;
   children.reserve(content.size() + 1);
   children.push_back(Row{
-      SkillHubGlyph(icon, 17.0F, colors::accent),
+      SkillHubIconSlot(icon, 17.0F, 28.0F, colors::accent),
       Text(std::move(title)).Style(SkillHubLabel(16.0F, FontWeight::Medium)),
   }
                          .With(Frame{.min_height = 28.0F}, Spacing(8.0F),

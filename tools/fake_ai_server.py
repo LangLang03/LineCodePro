@@ -24,8 +24,18 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 18080
 DEFAULT_REPLY = "这是 LineCode 自动化测试的固定回复。"
 MODEL_ID = "linecode-test-model"
+# Valid deterministic 1x1 PNG used by image tool integration tests.
+FIXTURE_IMAGE_BASE64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8"
+    "/x8AAusB9Y9ZHz8AAAAASUVORK5CYII="
+)
 SHELL_TOOL_TRIGGER = "__LINECODE_TEST_SHELL__"
 SHELL_TOOL_COMMAND = "printf linecode-tool-ok"
+IMAGE_TOOL_TRIGGER = "__LINECODE_TEST_IMAGE__"
+IMAGE_TOOL_PROMPT = "A deterministic LineCode fixture image"
+IMAGE_UNDERSTANDING_TRIGGER = "__LINECODE_TEST_VISION__"
+IMAGE_UNDERSTANDING_PATH = "assets/linecode-test.png"
+IMAGE_UNDERSTANDING_PROMPT = "Describe the deterministic LineCode fixture"
 MAX_REQUEST_BODY_BYTES = 1024 * 1024
 REQUEST_READ_TIMEOUT_SECONDS = 5.0
 
@@ -249,8 +259,11 @@ class FakeAiHandler(BaseHTTPRequestHandler):
         if path in {"/v1/chat/completions", "/chat/completions"}:
             self.handle_chat_completions(request, request.get("stream") is True)
             return
+        if path in {"/v1/images/generations", "/images/generations"}:
+            self.handle_image_generation(request)
+            return
         if path in {"/v1/responses", "/responses"}:
-            self.handle_responses(request.get("stream") is True)
+            self.handle_responses(request, request.get("stream") is True)
             return
         # Kept for the app's Anthropic protocol option. It is also deterministic.
         if path in {"/v1/messages", "/messages", "/anthropic/v1/messages"}:
@@ -259,27 +272,66 @@ class FakeAiHandler(BaseHTTPRequestHandler):
         self.send_not_found()
 
     @staticmethod
-    def requests_shell_tool(request: dict[str, Any]) -> bool:
+    def requested_function_tool(request: dict[str, Any]) -> dict[str, Any] | None:
         messages = request.get("messages")
         tools = request.get("tools")
         if not isinstance(messages, list) or not isinstance(tools, list):
-            return False
+            return None
         if any(isinstance(message, dict) and message.get("role") == "tool"
                for message in messages):
-            return False
-        trigger_present = any(
-            isinstance(message, dict)
-            and message.get("role") == "user"
-            and SHELL_TOOL_TRIGGER in str(message.get("content", ""))
-            for message in messages
+            return None
+        strategies = (
+            (
+                SHELL_TOOL_TRIGGER,
+                "shell_execute",
+                {"command": SHELL_TOOL_COMMAND},
+                "call_linecode_shell_test",
+            ),
+            (
+                IMAGE_TOOL_TRIGGER,
+                "image_generation",
+                {"prompt": IMAGE_TOOL_PROMPT, "size": "1024x1024"},
+                "call_linecode_image_test",
+            ),
+            (
+                IMAGE_UNDERSTANDING_TRIGGER,
+                "image_understanding",
+                {
+                    "path": IMAGE_UNDERSTANDING_PATH,
+                    "prompt": IMAGE_UNDERSTANDING_PROMPT,
+                },
+                "call_linecode_vision_test",
+            ),
         )
-        shell_available = any(
-            isinstance(tool, dict)
-            and isinstance(tool.get("function"), dict)
-            and tool["function"].get("name") == "shell_execute"
-            for tool in tools
-        )
-        return trigger_present and shell_available
+        for trigger, name, arguments, call_id in strategies:
+            trigger_present = any(
+                isinstance(message, dict)
+                and message.get("role") == "user"
+                and trigger in str(message.get("content", ""))
+                for message in messages
+            )
+            available = any(
+                isinstance(tool, dict)
+                and isinstance(tool.get("function"), dict)
+                and tool["function"].get("name") == name
+                for tool in tools
+            )
+            if trigger_present and available:
+                return {
+                    "index": 0,
+                    "id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": compact_json(arguments).decode("utf-8"),
+                    },
+                }
+        return None
+
+    @classmethod
+    def requests_shell_tool(cls, request: dict[str, Any]) -> bool:
+        call = cls.requested_function_tool(request)
+        return call is not None and call["function"]["name"] == "shell_execute"
 
     def handle_chat_completions(
         self, request: dict[str, Any], stream: bool
@@ -290,18 +342,8 @@ class FakeAiHandler(BaseHTTPRequestHandler):
             "created": 0,
             "model": MODEL_ID,
         }
-        if self.requests_shell_tool(request):
-            call = {
-                "index": 0,
-                "id": "call_linecode_shell_test",
-                "type": "function",
-                "function": {
-                    "name": "shell_execute",
-                    "arguments": compact_json(
-                        {"command": SHELL_TOOL_COMMAND}
-                    ).decode("utf-8"),
-                },
-            }
+        call = self.requested_function_tool(request)
+        if call is not None:
             if stream:
                 self.send_sse(
                     [
@@ -448,7 +490,53 @@ class FakeAiHandler(BaseHTTPRequestHandler):
             "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
         }
 
-    def handle_responses(self, stream: bool) -> None:
+    def handle_image_generation(self, request: dict[str, Any]) -> None:
+        prompt = str(request.get("prompt", "")).strip()
+        if not prompt:
+            self.send_json(
+                {"error": {"message": "prompt is required", "type": "invalid_request_error"}},
+                HTTPStatus.BAD_REQUEST,
+            )
+            return
+        self.send_json(
+            {
+                "created": 0,
+                "data": [
+                    {
+                        "b64_json": FIXTURE_IMAGE_BASE64,
+                        "mime_type": "image/png",
+                        "revised_prompt": prompt,
+                    }
+                ],
+            }
+        )
+
+    @staticmethod
+    def requests_responses_image(request: dict[str, Any]) -> bool:
+        tools = request.get("tools")
+        return isinstance(tools, list) and any(
+            isinstance(tool, dict) and tool.get("type") == "image_generation"
+            for tool in tools
+        )
+
+    def handle_responses(self, request: dict[str, Any], stream: bool) -> None:
+        if self.requests_responses_image(request) and not stream:
+            self.send_json(
+                {
+                    "id": "resp_linecode_image_test",
+                    "object": "response",
+                    "status": "completed",
+                    "output": [
+                        {
+                            "id": "image_linecode_test",
+                            "type": "image_generation_call",
+                            "status": "completed",
+                            "result": FIXTURE_IMAGE_BASE64,
+                        }
+                    ],
+                }
+            )
+            return
         output_item = {
             "id": "msg_linecode_test",
             "type": "message",

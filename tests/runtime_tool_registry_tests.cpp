@@ -114,6 +114,36 @@ public:
                      TextCompletion completion) override {
     completion(std::string{"[]"});
   }
+  void GetProviderInfo(domain::TerminalProviderConfig,
+                       InfoCompletion completion) override {
+    completion(application::TerminalProviderInfo{
+        .provider_type = "terminal",
+        .raw_json = R"({"home":"/workspace"})",
+        .home_path = "/workspace",
+    });
+  }
+  void FileExists(domain::TerminalProviderConfig, std::string,
+                  BooleanCompletion completion) override {
+    completion(true);
+  }
+  void FileSize(domain::TerminalProviderConfig, std::string,
+                SizeCompletion completion) override {
+    completion(std::int64_t{0});
+  }
+  void ReadFileChunk(domain::TerminalProviderConfig, std::string,
+                     std::int64_t, std::int32_t,
+                     BytesCompletion completion) override {
+    completion(std::vector<std::byte>{});
+  }
+  void WriteFileChunk(domain::TerminalProviderConfig, std::string,
+                      std::int64_t, std::vector<std::byte>,
+                      VoidCompletion completion) override {
+    completion(application::TerminalProviderResult<void>{});
+  }
+  void GetFileSize(domain::TerminalProviderConfig, std::string,
+                   SizeCompletion completion) override {
+    completion(std::int64_t{0});
+  }
 
   std::vector<domain::ScannedTerminalProvider> scanned;
   std::optional<domain::TerminalProviderConfig> invoked_provider;

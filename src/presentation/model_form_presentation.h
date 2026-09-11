@@ -8,6 +8,9 @@
 namespace linecode::presentation {
 
 struct ModelFormLayoutMetrics final {
+  // The legacy action TextView measures 148px at 420dpi (about 56.4dp),
+  // including its horizontal content padding. Keep one fixed slot per action
+  // so both the title and the trailing group retain the measured positions.
   static constexpr float header_action_minimum_width = 56.0F;
   static constexpr float header_action_minimum_height = 39.0F;
   static constexpr float header_action_baseline_padding = 3.0F;

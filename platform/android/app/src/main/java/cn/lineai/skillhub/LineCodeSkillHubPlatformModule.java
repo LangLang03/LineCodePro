@@ -1,6 +1,7 @@
 package cn.lineai.skillhub;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.webkit.CookieManager;
 
 import org.huxerui.HuxerUIPlatformChannel;
@@ -36,12 +37,18 @@ public final class LineCodeSkillHubPlatformModule
                 () -> { };
 
         private final CookieManager cookies;
+        private final SharedPreferences legacyReading;
         private final Map<String, Invocation> invocations = new HashMap<>();
 
         Module(Context context) {
             cookies = CookieManager.getInstance();
+            legacyReading = context.getSharedPreferences(
+                    "skill_store_reading", Context.MODE_PRIVATE);
             invocations.put("readSessionCookie", this::readSessionCookie);
             invocations.put("clearSessionCookies", this::clearSessionCookies);
+            invocations.put(
+                    "readLegacyMarkdownTextScale",
+                    this::readLegacyMarkdownTextScale);
         }
 
         @Override
@@ -116,6 +123,17 @@ public final class LineCodeSkillHubPlatformModule
                         completed);
             }
             return () -> cancelled.set(true);
+        }
+
+        private HuxerUIPlatformChannel.Cancellation readLegacyMarkdownTextScale(
+                PlatformPayload arguments,
+                HuxerUIPlatformChannel.Result result) {
+            arguments.requireNull();
+            double scale = legacyReading.contains("markdown_text_scale")
+                    ? legacyReading.getFloat("markdown_text_scale", 1.0f)
+                    : -1.0;
+            result.complete(PlatformPayload.doubleValue(scale));
+            return NO_CANCELLATION;
         }
 
     }

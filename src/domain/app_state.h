@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "domain/extension_kind.h"
+#include "domain/chat_timeline.h"
 #include "domain/input_attachment.h"
 #include "domain/skill_hub_route.h"
 #include "domain/tool_settings.h"
@@ -25,6 +26,12 @@ struct ImageModelPickerRoute final {
   ImageModelPurpose purpose{ImageModelPurpose::understanding};
 
   bool operator==(const ImageModelPickerRoute &) const = default;
+};
+
+struct ShellCommandRoute final {
+  std::string command;
+
+  bool operator==(const ShellCommandRoute &) const = default;
 };
 
 class AppRoute final {
@@ -73,6 +80,10 @@ public:
     return AppRoute(ImageModelPickerRoute{.purpose = purpose});
   }
 
+  [[nodiscard]] static AppRoute ShellCommand(std::string command) {
+    return AppRoute(ShellCommandRoute{.command = std::move(command)});
+  }
+
   [[nodiscard]] static AppRoute ExtensionDetail(ExtensionKind kind) {
     return AppRoute(ExtensionDetailRoute{.kind = kind});
   }
@@ -110,6 +121,10 @@ public:
   [[nodiscard]] const ImageModelPickerRoute *
   ImageModelPickerValue() const noexcept {
     return std::get_if<ImageModelPickerRoute>(&value_);
+  }
+
+  [[nodiscard]] const ShellCommandRoute *ShellCommandValue() const noexcept {
+    return std::get_if<ShellCommandRoute>(&value_);
   }
 
   [[nodiscard]] const ExtensionDetailRoute *
@@ -153,6 +168,7 @@ public:
 
 private:
   explicit AppRoute(ImageModelPickerRoute picker) : value_(picker) {}
+  explicit AppRoute(ShellCommandRoute command) : value_(std::move(command)) {}
   explicit AppRoute(ExtensionDetailRoute detail) : value_(detail) {}
   explicit AppRoute(AgentExtensionEditorRoute editor)
       : value_(std::move(editor)) {}
@@ -164,9 +180,10 @@ private:
 
   explicit AppRoute(SkillHubSiteRoute site) : value_(std::move(site)) {}
 
-  std::variant<Page, BrowserRoute, ImageModelPickerRoute, ExtensionDetailRoute,
-               AgentExtensionEditorRoute, McpExtensionEditorRoute,
-               SkillStoreDetailRoute, SkillHubSiteRoute>
+  std::variant<Page, BrowserRoute, ImageModelPickerRoute, ShellCommandRoute,
+               ExtensionDetailRoute, AgentExtensionEditorRoute,
+               McpExtensionEditorRoute, SkillStoreDetailRoute,
+               SkillHubSiteRoute>
       value_{settings};
 };
 
@@ -211,6 +228,15 @@ struct ChatMessage final {
   MessageRole role{MessageRole::user};
   std::string content;
   std::vector<InputAttachment> attachments;
+  std::string reasoning_content{};
+  std::vector<AssistantTimelineEvent> timeline{};
+  bool streaming{};
+  bool hidden{};
+  bool exclude_from_context{};
+  bool error{};
+  std::string error_message{};
+  std::int64_t processing_started_at{};
+  std::int64_t processing_finished_at{};
 
   bool operator==(const ChatMessage &) const = default;
 };

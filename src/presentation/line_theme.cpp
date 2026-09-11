@@ -179,20 +179,21 @@ huxerui::DialogStyle LineDialogStyle(const LineColors &line_colors) {
   dialog.corner_radii = huxerui::CornerRadii{24.0F};
   dialog.maximum_width = 560.0F;
   dialog.viewport_margin = 16.0F;
+  // Legacy Android AlertDialog is static once presented.  The SDK's default
+  // scale motion can leave the Android surface transformed below 1.0 after
+  // the barrier has settled, which narrows a nominal 16dp-inset dialog and
+  // shifts every descendant.  Disable it for deterministic legacy geometry.
+  dialog.motion = std::nullopt;
   return dialog;
 }
 
-huxerui::BottomSheetStyle LineBottomSheetStyle() {
+huxerui::BottomSheetStyle LineBottomSheetStyle(const LineColors &line_colors) {
   auto bottom_sheet = huxerui::BottomSheetStyle::Default();
-  // The Android host attenuates the declared overlay alpha. Match the
-  // calibrated value so the visible sheet barrier is the legacy 60% black
-  // (about RGB 101 over the light page), instead of the palette's lighter
-  // overlay.
-#if defined(__ANDROID__)
-  bottom_sheet.scrim = huxerui::Color::Rgb(0, 0, 0, 0.68F);
-#else
-  bottom_sheet.scrim = huxerui::Color::Rgb(0, 0, 0, 0.60F);
-#endif
+  // Legacy in-app overlays paint `ThemePalette.overlay` (rgba(22, 26, 32, 0.26)
+  // in the light palette) behind their panel, which settles the page at RGB
+  // 193/194/196 over the 252/252/253 background. Dialogs keep the much darker
+  // Android AlertDialog dim instead.
+  bottom_sheet.scrim = line_colors.overlay;
   bottom_sheet.background = huxerui::Color::Transparent();
   bottom_sheet.shadow =
       huxerui::Shadow{.color = huxerui::Color::Transparent()};
@@ -273,7 +274,7 @@ huxerui::ThemeDefinition LineThemeDefinition(const LineColors &line_colors) {
   definition.Set(std::move(divider));
 
   definition.Set(LineDialogStyle(line_colors));
-  definition.Set(LineBottomSheetStyle());
+  definition.Set(LineBottomSheetStyle(line_colors));
   return definition;
 }
 

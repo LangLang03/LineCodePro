@@ -67,6 +67,8 @@ void McpExtensionToolRegistry::Update(
               .name = name,
               .description = Description(extension, tool),
               .parameters_json = schemas_->Normalize(tool.input_schema_json),
+              .category = "mcp",
+              .agent_selectable = false,
           },
           .extension = extension,
           .tool = tool,

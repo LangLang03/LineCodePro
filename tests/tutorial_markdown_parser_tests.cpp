@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <fstream>
 #include <iterator>
@@ -31,6 +32,7 @@ void AssertSanitized(std::string_view source) {
 int main() {
   using linecode::domain::TutorialCodeBlock;
   using linecode::domain::TutorialHeading;
+  using linecode::domain::TutorialImageBlock;
   using linecode::domain::TutorialList;
   using linecode::domain::TutorialTable;
   using linecode::infrastructure::TutorialMarkdownParser;
@@ -57,6 +59,42 @@ auto value = 23;
   const TutorialMarkdownParser parser;
   const auto parsed = parser.Parse(sample);
   assert(parsed.sections.size() == 1);
+
+  constexpr std::string_view image_markdown =
+      "![one pixel](data:image/png;base64,"
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8A"
+      "AQUBAScY42YAAAAASUVORK5CYII=)";
+  const auto image_document = parser.Parse(image_markdown);
+  assert(image_document.blocks.size() == 1);
+  assert(std::holds_alternative<TutorialImageBlock>(
+      image_document.blocks.front()));
+  const auto &image =
+      std::get<TutorialImageBlock>(image_document.blocks.front());
+  assert(image.alternative_text == "one pixel");
+  assert(image.mime_type == "image/png");
+  assert(image.pixel_width == 1);
+  assert(image.pixel_height == 1);
+  assert(!image.encoded.empty());
+
+  // MIME smuggling, unsupported media, malformed padding and oversized pixel
+  // metadata are rejected without retaining the data URI in the document.
+  constexpr std::array rejected{
+      "![bad](data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC)",
+      "![bad](data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==)",
+      "![bad](data:image/png;base64,AAA=AAAA)",
+      "![bad](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAQAEAAAABAQAAAAAA)",
+  };
+  for (const auto source : rejected) {
+    const auto rejected_document = parser.Parse(source);
+    assert(rejected_document.blocks.size() == 1);
+    assert(!std::holds_alternative<TutorialImageBlock>(
+        rejected_document.blocks.front()));
+    assert(!TutorialMarkdownParser::PlainText(
+                std::get<linecode::domain::TutorialParagraph>(
+                    rejected_document.blocks.front())
+                    .content)
+                .contains("data:image"));
+  }
   assert(parsed.sections.front().title == "1. 设置详解：模型管理");
   assert(TutorialMarkdownParser::ShortSectionTitle(
              parsed.sections.front().title) == "模型管理");

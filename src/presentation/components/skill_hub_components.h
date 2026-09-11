@@ -17,6 +17,11 @@ SkillHubLabel(float size,
 [[nodiscard]] huxerui::View SkillHubGlyph(huxerui::ImageVariant icon,
                                           float size, huxerui::Color tint);
 
+[[nodiscard]] huxerui::View SkillHubIconSlot(huxerui::ImageVariant icon,
+                                             float icon_size,
+                                             float slot_size,
+                                             huxerui::Color tint);
+
 [[nodiscard]] huxerui::View SkillHubHeader(huxerui::StringVariant title,
                                            std::function<void()> on_back);
 

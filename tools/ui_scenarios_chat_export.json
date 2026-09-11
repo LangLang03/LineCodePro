@@ -1,0 +1,224 @@
+{
+ "settle_seconds": 1.0,
+ "launch_settle_seconds": 2.0,
+ "locale": "zh-CN",
+ "pixel_masks": [
+  [
+   0,
+   0,
+   180,
+   90
+  ]
+ ],
+ "setup": [
+  {
+   "type": "sleep",
+   "seconds": 1.0
+  },
+  {
+   "type": "tap_text",
+   "value": "同意",
+   "optional": true
+  },
+  {
+   "type": "sleep",
+   "seconds": 1.0
+  }
+ ],
+ "scenarios": [
+  {
+   "name": "chat_export_format_sheet",
+   "actions": [
+    {
+     "type": "tap",
+     "x": 1005,
+     "y": 205
+    },
+    {
+     "type": "sleep",
+     "seconds": 0.5
+    },
+    {
+     "type": "tap_text",
+     "value": "设置"
+    },
+    {
+     "type": "sleep",
+     "seconds": 0.6
+    },
+    {
+     "type": "tap_text",
+     "value": "模型管理"
+    },
+    {
+     "type": "sleep",
+     "seconds": 0.6
+    },
+    {
+     "type": "tap",
+     "x": 1005,
+     "y": 205
+    },
+    {
+     "type": "sleep",
+     "seconds": 0.6
+    },
+    {
+     "type": "tap_text",
+     "value": "自定义模型"
+    },
+    {
+     "type": "sleep",
+     "seconds": 0.6
+    },
+    {
+     "type": "tap_labeled_editable",
+     "label": "名称"
+    },
+    {
+     "type": "text",
+     "value": "ExportModel"
+    },
+    {
+     "type": "tap_labeled_editable",
+     "label": "Base URL"
+    },
+    {
+     "type": "text",
+     "value": "http://10.0.2.2:18080/v1"
+    },
+    {
+     "type": "tap_labeled_editable",
+     "label": "API Key"
+    },
+    {
+     "type": "text",
+     "value": "test-key"
+    },
+    {
+     "type": "keyevent",
+     "key": "BACK"
+    },
+    {
+     "type": "tap_control_after_text",
+     "label": "自定义",
+     "class": "android.widget.Switch"
+    },
+    {
+     "type": "tap_labeled_editable",
+     "label": "模型 ID"
+    },
+    {
+     "type": "text",
+     "value": "linecode-test-model"
+    },
+    {
+     "type": "keyevent",
+     "key": "BACK"
+    },
+    {
+     "type": "tap_text",
+     "value": "保存"
+    },
+    {
+     "type": "sleep",
+     "seconds": 1.2
+    },
+    {
+     "type": "expect_text",
+     "value": "ExportModel"
+    },
+    {
+     "type": "keyevent",
+     "key": "BACK"
+    },
+    {
+     "type": "sleep",
+     "seconds": 0.6
+    },
+    {
+     "type": "keyevent",
+     "key": "BACK"
+    },
+    {
+     "type": "sleep",
+     "seconds": 0.8
+    },
+    {
+     "type": "tap_editable",
+     "index": 0
+    },
+    {
+     "type": "text",
+     "value": "hello export"
+    },
+    {
+     "type": "sleep",
+     "seconds": 0.4
+    },
+    {
+     "type": "keyevent",
+     "key": "BACK"
+    },
+    {
+     "type": "sleep",
+     "seconds": 0.4
+    },
+    {
+     "type": "tap_text",
+     "value": "发送",
+     "optional": true
+    },
+    {
+     "type": "sleep",
+     "seconds": 3.0
+    },
+    {
+     "type": "expect_text",
+     "value": "hello export"
+    },
+    {
+     "type": "tap",
+     "x": 1005,
+     "y": 205
+    },
+    {
+     "type": "sleep",
+     "seconds": 0.6
+    },
+    {
+     "type": "tap_text",
+     "value": "导出对话"
+    },
+    {
+     "type": "sleep",
+     "seconds": 0.8
+    },
+    {
+     "type": "expect_text",
+     "value": "导出格式"
+    },
+    {
+     "type": "expect_text",
+     "value": "Copy to clipboard"
+    },
+    {
+     "type": "expect_text",
+     "value": "Plain text share"
+    },
+    {
+     "type": "expect_text",
+     "value": "Markdown file(.md)"
+    },
+    {
+     "type": "expect_text",
+     "value": "PDF file"
+    },
+    {
+     "type": "expect_text",
+     "value": "Chat screenshot (image)"
+    }
+   ]
+  }
+ ]
+}

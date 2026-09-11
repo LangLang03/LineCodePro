@@ -23,6 +23,10 @@ public:
 
   void ClearSessionCookies() override {}
 
+  void ReadLegacyMarkdownTextScale(ReadingScaleCompletion completion) override {
+    completion(std::nullopt);
+  }
+
 };
 
 } // namespace

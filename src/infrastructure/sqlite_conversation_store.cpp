@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <chrono>
+#include <concepts>
 #include <exception>
 #include <iterator>
 #include <limits>
@@ -14,6 +15,7 @@
 #include <vector>
 
 #include "infrastructure/attachment_json_codec.h"
+#include "infrastructure/archive_json.h"
 #include "infrastructure/legacy_conversation_schema.h"
 
 namespace linecode::infrastructure {
@@ -64,6 +66,25 @@ domain::MessageRole ParseRole(std::string_view role) noexcept {
   return domain::MessageRole::assistant;
 }
 
+[[nodiscard]] std::string_view ToolStatusName(
+    domain::ToolCallStatus status) noexcept {
+  switch (status) {
+  case domain::ToolCallStatus::requested:
+    return "requested";
+  case domain::ToolCallStatus::awaiting_review:
+    return "awaiting_review";
+  case domain::ToolCallStatus::running:
+    return "running";
+  case domain::ToolCallStatus::completed:
+    return "completed";
+  case domain::ToolCallStatus::failed:
+    return "failed";
+  case domain::ToolCallStatus::rejected:
+    return "rejected";
+  }
+  return "failed";
+}
+
 std::optional<std::uint64_t> ParseOwnedMessageId(std::string_view id) noexcept {
   if (!id.starts_with(kOwnedMessagePrefix)) {
     return std::nullopt;
@@ -85,7 +106,57 @@ struct StoredMessage final {
   std::string content;
   std::string attachments_json;
   std::vector<domain::InputAttachment> attachments;
+  std::string reasoning_content;
+  bool streaming{};
+  bool exclude_from_context{};
+  bool error{};
+  std::int64_t timestamp{};
+  std::int64_t finished_at{};
+  std::string error_message;
+  std::string tool_call_id;
+  std::string tool_name;
+  std::vector<domain::AssistantTimelineEvent> timeline;
 };
+
+void DecodeLegacyMetadata(StoredMessage &message) {
+  namespace json = archive_json;
+  if (message.attachments_json.empty())
+    return;
+  auto parsed = json::Parse(message.attachments_json);
+  const auto *object = parsed ? json::AsObject(&*parsed) : nullptr;
+  if (object == nullptr)
+    return;
+  if (const auto *started = json::Find(*object, "processing_started_at")) {
+    if (const auto *value = std::get_if<std::int64_t>(started))
+      message.timestamp = *value;
+  }
+  if (const auto *finished = json::Find(*object, "processing_finished_at")) {
+    if (const auto *value = std::get_if<std::int64_t>(finished))
+      message.finished_at = *value;
+  }
+  if (const auto *error =
+          json::AsString(json::Find(*object, "error_message")))
+    message.error_message = *error;
+  const auto *calls = json::AsArray(json::Find(*object, "tool_calls"));
+  if (calls == nullptr)
+    return;
+  for (const auto &value : *calls) {
+    const auto *item = json::AsObject(&value);
+    if (item == nullptr)
+      continue;
+    const auto *id = json::AsString(json::Find(*item, "id"));
+    if (id == nullptr || id->empty())
+      continue;
+    const auto *name = json::AsString(json::Find(*item, "name"));
+    const auto *arguments = json::AsString(json::Find(*item, "arguments"));
+    domain::AssistantToolEvent event{};
+    event.call.id = *id;
+    event.call.name = name == nullptr ? std::string{} : *name;
+    event.call.arguments_json =
+        arguments == nullptr ? std::string{"{}"} : *arguments;
+    message.timeline.push_back(std::move(event));
+  }
+}
 
 Result<StoredMessage> DecodeStoredMessage(const RowView &row) {
   auto id = row.Get<std::string>(0);
@@ -109,12 +180,101 @@ Result<StoredMessage> DecodeStoredMessage(const RowView &row) {
     return attachments_json.Error();
   }
   auto attachments = DecodeAttachmentJson(*attachments_json);
-  return StoredMessage{.id = std::move(*id),
-                       .local_order = *local_order,
-                       .role = std::move(*role),
-                       .content = std::move(*content),
-                       .attachments_json = std::move(*attachments_json),
-                       .attachments = std::move(attachments)};
+  auto reasoning = row.Get<std::string>(5);
+  if (!reasoning)
+    return reasoning.Error();
+  auto streaming = row.Get<std::int64_t>(6);
+  if (!streaming)
+    return streaming.Error();
+  auto excluded = row.Get<std::int64_t>(7);
+  if (!excluded)
+    return excluded.Error();
+  auto error = row.Get<std::int64_t>(8);
+  if (!error)
+    return error.Error();
+  auto timestamp = row.Get<std::int64_t>(9);
+  if (!timestamp)
+    return timestamp.Error();
+  auto tool_call_id = row.Get<std::string>(10);
+  if (!tool_call_id)
+    return tool_call_id.Error();
+  auto tool_name = row.Get<std::string>(11);
+  if (!tool_name)
+    return tool_name.Error();
+  StoredMessage message{.id = std::move(*id),
+                        .local_order = *local_order,
+                        .role = std::move(*role),
+                        .content = std::move(*content),
+                        .attachments_json = std::move(*attachments_json),
+                        .attachments = std::move(attachments),
+                        .reasoning_content = std::move(*reasoning),
+                        .streaming = *streaming != 0,
+                        .exclude_from_context = *excluded != 0,
+                        .error = *error != 0,
+                        .timestamp = *timestamp,
+                        .finished_at = 0,
+                        .error_message = {},
+                        .tool_call_id = std::move(*tool_call_id),
+                        .tool_name = std::move(*tool_name),
+                        .timeline = {}};
+  DecodeLegacyMetadata(message);
+  return message;
+}
+
+[[nodiscard]] domain::ChatMessage HydrateMessage(const StoredMessage &row) {
+  const auto fallback_id = static_cast<std::uint64_t>(row.local_order) + 1U;
+  domain::ChatMessage message{};
+  message.id = ParseOwnedMessageId(row.id).value_or(fallback_id);
+  message.role = ParseRole(row.role);
+  message.content = row.content;
+  message.attachments = row.attachments;
+  message.reasoning_content = row.reasoning_content;
+  message.timeline = row.timeline;
+  message.streaming = row.streaming;
+  message.exclude_from_context = row.exclude_from_context;
+  message.error = row.error;
+  message.error_message = row.error_message;
+  message.processing_started_at = row.timestamp;
+  message.processing_finished_at = row.finished_at;
+  return message;
+}
+
+[[nodiscard]] std::string
+EncodeMessageRawJson(const domain::ChatMessage &message) {
+  namespace json = archive_json;
+  json::Object object;
+  if (!message.attachments.empty()) {
+    json::Array attachments;
+    attachments.reserve(message.attachments.size());
+    for (const auto &attachment : message.attachments) {
+      attachments.emplace_back(json::Object{{"name", attachment.Name()},
+                                            {"path", attachment.Path()},
+                                            {"source", attachment.Source()}});
+    }
+    object.insert_or_assign("attachments", std::move(attachments));
+  }
+  if (message.processing_started_at > 0) {
+    object.insert_or_assign("processing_started_at",
+                            message.processing_started_at);
+    object.insert_or_assign("processing_finished_at",
+                            message.processing_finished_at);
+  }
+  if (!message.error_message.empty())
+    object.insert_or_assign("error_message", message.error_message);
+
+  json::Array tool_calls;
+  for (const auto &event : message.timeline) {
+    const auto *tool = std::get_if<domain::AssistantToolEvent>(&event);
+    if (tool == nullptr)
+      continue;
+    tool_calls.emplace_back(json::Object{{"id", tool->call.id},
+                                         {"name", tool->call.name},
+                                         {"arguments",
+                                          tool->call.arguments_json}});
+  }
+  if (!tool_calls.empty())
+    object.insert_or_assign("tool_calls", std::move(tool_calls));
+  return object.empty() ? std::string{} : json::Serialize(object);
 }
 
 struct StoredAttachment final {
@@ -144,6 +304,135 @@ Result<StoredAttachment> DecodeStoredAttachment(const RowView &row) {
       .attachment = domain::InputAttachment{
           std::move(*name), std::move(*path), std::move(*source)},
   };
+}
+
+struct StoredBlock final {
+  std::string message_id;
+  std::string type;
+  std::string content;
+  std::string status;
+  std::size_t turn_index{};
+};
+
+Result<StoredBlock> DecodeStoredBlock(const RowView &row) {
+  auto message_id = row.Get<std::string>(0);
+  auto type = row.Get<std::string>(1);
+  auto content = row.Get<std::string>(2);
+  auto status = row.Get<std::string>(3);
+  auto turn = row.Get<std::string>(4);
+  if (!message_id)
+    return message_id.Error();
+  if (!type)
+    return type.Error();
+  if (!content)
+    return content.Error();
+  if (!status)
+    return status.Error();
+  if (!turn)
+    return turn.Error();
+  std::size_t turn_index{};
+  const auto [end, error] =
+      std::from_chars(turn->data(), turn->data() + turn->size(), turn_index);
+  if (error != std::errc{} || end != turn->data() + turn->size())
+    turn_index = 0;
+  return StoredBlock{.message_id = std::move(*message_id),
+                     .type = std::move(*type),
+                     .content = std::move(*content),
+                     .status = std::move(*status),
+                     .turn_index = turn_index};
+}
+
+struct StoredToolCall final {
+  std::string message_id;
+  domain::ChatToolCall call;
+};
+
+Result<StoredToolCall> DecodeStoredToolCall(const RowView &row) {
+  auto message_id = row.Get<std::string>(0);
+  auto id = row.Get<std::string>(1);
+  auto name = row.Get<std::string>(2);
+  auto arguments = row.Get<std::string>(3);
+  auto created_at = row.Get<std::int64_t>(4);
+  auto duration = row.Get<std::int64_t>(5);
+  auto error_message = row.Get<std::string>(6);
+  if (!message_id)
+    return message_id.Error();
+  if (!id)
+    return id.Error();
+  if (!name)
+    return name.Error();
+  if (!arguments)
+    return arguments.Error();
+  if (!created_at)
+    return created_at.Error();
+  if (!duration)
+    return duration.Error();
+  if (!error_message)
+    return error_message.Error();
+  return StoredToolCall{
+      .message_id = std::move(*message_id),
+      .call = domain::ChatToolCall{
+          .id = std::move(*id),
+          .name = std::move(*name),
+          .arguments_json = std::move(*arguments),
+          .status = error_message->empty() ? domain::ToolCallStatus::requested
+                                          : domain::ToolCallStatus::failed,
+          .created_at_millis = *created_at,
+          .duration_millis = *duration,
+          .error_message = std::move(*error_message),
+      }};
+}
+
+struct StoredToolResult final {
+  std::string message_id;
+  domain::ChatToolResult result;
+};
+
+Result<StoredToolResult> DecodeStoredToolResult(const RowView &row) {
+  auto message_id = row.Get<std::string>(0);
+  auto call_id = row.Get<std::string>(1);
+  auto content = row.Get<std::string>(2);
+  auto error = row.Get<std::int64_t>(3);
+  auto diff_id = row.Get<std::string>(4);
+  auto review_state = row.Get<std::string>(5);
+  if (!message_id)
+    return message_id.Error();
+  if (!call_id)
+    return call_id.Error();
+  if (!content)
+    return content.Error();
+  if (!error)
+    return error.Error();
+  if (!diff_id)
+    return diff_id.Error();
+  if (!review_state)
+    return review_state.Error();
+  domain::ChatToolResult result{};
+  result.call_id = std::move(*call_id);
+  result.content = std::move(*content);
+  result.error = *error != 0;
+  result.diff_id = std::move(*diff_id);
+  result.review_state = std::move(*review_state);
+  return StoredToolResult{.message_id = std::move(*message_id),
+                          .result = std::move(result)};
+}
+
+[[nodiscard]] domain::ToolCallStatus ParseToolStatus(
+    std::string_view status, bool has_result, bool result_error) noexcept {
+  if (status == "awaiting_review")
+    return domain::ToolCallStatus::awaiting_review;
+  if (status == "running")
+    return domain::ToolCallStatus::running;
+  if (status == "completed")
+    return domain::ToolCallStatus::completed;
+  if (status == "failed")
+    return domain::ToolCallStatus::failed;
+  if (status == "rejected")
+    return domain::ToolCallStatus::rejected;
+  if (has_result)
+    return result_error ? domain::ToolCallStatus::failed
+                        : domain::ToolCallStatus::completed;
+  return domain::ToolCallStatus::requested;
 }
 
 void AppendAttachmentIfMissing(
@@ -182,6 +471,30 @@ LoadStoredMessagesAsync(const Database &database,
   if (!attachment_rows) {
     co_return attachment_rows.Error();
   }
+  auto blocks = co_await database.QueryAsync<StoredBlock>(
+      "SELECT b.message_id, b.type, COALESCE(b.content, ''), "
+      "COALESCE(b.status, ''), COALESCE(b.raw_json, '0') "
+      "FROM message_blocks AS b JOIN messages AS m ON m.id = b.message_id "
+      "WHERE m.conversation_id = ? ORDER BY m.local_order, b.block_order",
+      DecodeStoredBlock, conversation_id);
+  if (!blocks)
+    co_return blocks.Error();
+  auto calls = co_await database.QueryAsync<StoredToolCall>(
+      "SELECT c.message_id, c.id, c.name, c.arguments, c.created_at, "
+      "c.duration_ms, COALESCE(c.error_message, '') "
+      "FROM tool_calls AS c JOIN messages AS m ON m.id = c.message_id "
+      "WHERE m.conversation_id = ? ORDER BY m.local_order, c.created_at, c.id",
+      DecodeStoredToolCall, conversation_id);
+  if (!calls)
+    co_return calls.Error();
+  auto results = co_await database.QueryAsync<StoredToolResult>(
+      "SELECT r.message_id, COALESCE(r.tool_call_id, ''), r.content, "
+      "r.is_error, COALESCE(r.diff_id, ''), COALESCE(r.review_state, '') "
+      "FROM tool_results AS r JOIN messages AS m ON m.id = r.message_id "
+      "WHERE m.conversation_id = ? ORDER BY m.local_order, r.id",
+      DecodeStoredToolResult, conversation_id);
+  if (!results)
+    co_return results.Error();
 
   std::map<std::string_view, std::size_t, std::less<>> message_indexes;
   for (std::size_t index = 0; index < messages->size(); ++index) {
@@ -194,6 +507,132 @@ LoadStoredMessagesAsync(const Database &database,
     }
     AppendAttachmentIfMissing((*messages)[found->second].attachments,
                               std::move(row.attachment));
+  }
+  std::map<std::pair<std::string, std::string>, domain::ChatToolCall>
+      calls_by_message;
+  for (auto &stored : *calls) {
+    calls_by_message.insert_or_assign(
+        std::pair{stored.message_id, stored.call.id}, std::move(stored.call));
+  }
+  std::map<std::pair<std::string, std::string>, domain::ChatToolResult>
+      results_by_message;
+  for (auto &stored : *results) {
+    results_by_message.insert_or_assign(
+        std::pair{stored.message_id, stored.result.call_id},
+        std::move(stored.result));
+  }
+  std::map<std::string, std::vector<std::string>, std::less<>> referenced_calls;
+  for (const auto &block : *blocks) {
+    const auto found = message_indexes.find(block.message_id);
+    if (found == message_indexes.end())
+      continue;
+    auto &timeline = (*messages)[found->second].timeline;
+    if (block.type == "reasoning") {
+      timeline.push_back(domain::AssistantReasoningEvent{
+          .turn_index = block.turn_index,
+          .text = block.content,
+          .kind = block.status.starts_with("summary")
+                      ? domain::ReasoningKind::summary
+                      : domain::ReasoningKind::thinking,
+          .starts_new_segment = block.status.ends_with(":new"),
+      });
+    } else if (block.type == "text") {
+      timeline.push_back(domain::AssistantTextEvent{
+          .turn_index = block.turn_index, .text = block.content});
+    } else if (block.type == "tool") {
+      const auto key = std::pair{block.message_id, block.content};
+      const auto stored_call = calls_by_message.find(key);
+      if (stored_call == calls_by_message.end())
+        continue;
+      domain::AssistantToolEvent event{};
+      event.turn_index = block.turn_index;
+      event.call = stored_call->second;
+      const auto result = results_by_message.find(key);
+      if (result != results_by_message.end()) {
+        event.result = result->second;
+        event.result->name = event.call.name;
+      }
+      event.call.status = ParseToolStatus(
+          block.status, event.result.has_value(),
+          event.result.has_value() && event.result->error);
+      std::erase_if(timeline, [&block](const auto &candidate) {
+        const auto *tool = std::get_if<domain::AssistantToolEvent>(&candidate);
+        return tool != nullptr && tool->call.id == block.content;
+      });
+      timeline.push_back(std::move(event));
+      referenced_calls[block.message_id].push_back(block.content);
+    }
+  }
+  // Legacy databases may contain tool tables without message_blocks. Recover
+  // those calls after ordered blocks instead of dropping protocol history.
+  for (const auto &[key, call] : calls_by_message) {
+    const auto found = message_indexes.find(key.first);
+    if (found == message_indexes.end())
+      continue;
+    const auto referenced = referenced_calls.find(key.first);
+    if (referenced != referenced_calls.end() &&
+        std::ranges::find(referenced->second, key.second) !=
+            referenced->second.end())
+      continue;
+    domain::AssistantToolEvent event{};
+    event.call = call;
+    const auto result = results_by_message.find(key);
+    if (result != results_by_message.end()) {
+      event.result = result->second;
+      event.result->name = event.call.name;
+    }
+    event.call.status = ParseToolStatus(
+        {}, event.result.has_value(),
+        event.result.has_value() && event.result->error);
+    (*messages)[found->second].timeline.push_back(std::move(event));
+  }
+  for (std::size_t index = 0; index < messages->size(); ++index) {
+    auto &tool_message = (*messages)[index];
+    if (tool_message.role != "tool" || tool_message.tool_call_id.empty())
+      continue;
+    for (std::size_t candidate_index = index; candidate_index > 0;
+         --candidate_index) {
+      auto &candidate = (*messages)[candidate_index - 1U];
+      if (candidate.role != "assistant")
+        continue;
+      auto found = std::ranges::find_if(
+          candidate.timeline, [&tool_message](const auto &event) {
+            const auto *tool = std::get_if<domain::AssistantToolEvent>(&event);
+            return tool != nullptr &&
+                   tool->call.id == tool_message.tool_call_id;
+          });
+      if (found == candidate.timeline.end()) {
+        domain::AssistantToolEvent event{};
+        event.call.id = tool_message.tool_call_id;
+        event.call.name = tool_message.tool_name;
+        candidate.timeline.push_back(std::move(event));
+        found = std::prev(candidate.timeline.end());
+      }
+      auto *tool = std::get_if<domain::AssistantToolEvent>(&*found);
+      if (tool == nullptr)
+        break;
+      domain::ChatToolResult result{};
+      result.call_id = tool_message.tool_call_id;
+      result.name = tool_message.tool_name.empty() ? tool->call.name
+                                                   : tool_message.tool_name;
+      result.content = tool_message.content;
+      result.error = tool_message.error;
+      tool->result = std::move(result);
+      tool->call.status = tool_message.error
+                              ? domain::ToolCallStatus::failed
+                              : domain::ToolCallStatus::completed;
+      break;
+    }
+  }
+  for (auto &message : *messages) {
+    if (message.timeline.empty() && !message.reasoning_content.empty()) {
+      message.timeline.push_back(domain::AssistantReasoningEvent{
+          .turn_index = 0,
+          .text = message.reasoning_content,
+          .kind = domain::ReasoningKind::thinking,
+          .starts_new_segment = false,
+      });
+    }
   }
   co_return std::move(*messages);
 }
@@ -442,14 +881,9 @@ SqliteConversationStore::InitializeAsync(huxerui::File database_file) {
     if (row.local_order < 0) {
       continue;
     }
-    const auto fallback_id = static_cast<std::uint64_t>(row.local_order) + 1U;
-    const auto message_id = ParseOwnedMessageId(row.id).value_or(fallback_id);
-    hydrated.push_back(domain::ChatMessage{
-        .id = message_id,
-        .role = ParseRole(row.role),
-        .content = row.content,
-        .attachments = row.attachments,
-    });
+    auto message = HydrateMessage(row);
+    const auto message_id = message.id;
+    hydrated.push_back(std::move(message));
     if (message_id >= state_->next_message_id &&
         message_id != std::numeric_limits<std::uint64_t>::max()) {
       state_->next_message_id = message_id + 1U;
@@ -570,14 +1004,9 @@ huxerui::Task<Result<void>> SqliteConversationStore::ReloadAsync() {
     if (row.local_order < 0) {
       continue;
     }
-    const auto fallback_id = static_cast<std::uint64_t>(row.local_order) + 1U;
-    const auto message_id = ParseOwnedMessageId(row.id).value_or(fallback_id);
-    hydrated.push_back(domain::ChatMessage{
-        .id = message_id,
-        .role = ParseRole(row.role),
-        .content = row.content,
-        .attachments = row.attachments,
-    });
+    auto message = HydrateMessage(row);
+    const auto message_id = message.id;
+    hydrated.push_back(std::move(message));
     if (message_id >= next_message_id &&
         message_id != std::numeric_limits<std::uint64_t>::max()) {
       next_message_id = message_id + 1U;
@@ -835,19 +1264,32 @@ SqliteConversationStore::ProcessNextAsync(std::shared_ptr<State> state) {
           const std::string message_id =
               std::string{kOwnedMessagePrefix} +
               std::to_string(event.message.id);
+          const auto message_timestamp =
+              event.message.processing_started_at > 0
+                  ? event.message.processing_started_at
+                  : event.timestamp;
           auto message = transaction.Execute(
               "INSERT INTO messages "
               "(id, conversation_id, local_order, role, content, "
               "reasoning_content, timestamp, streaming, hidden, "
               "exclude_from_context, tool_call_id, tool_name, is_error, "
-              "raw_json) VALUES (?, ?, ?, ?, '', NULL, ?, 0, 0, 0, NULL, "
-              "NULL, 0, '') "
+              "raw_json) VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, NULL, "
+              "NULL, ?, '') "
               "ON CONFLICT(id) DO UPDATE SET "
               "conversation_id = excluded.conversation_id, "
               "local_order = excluded.local_order, role = excluded.role, "
-              "content = '', timestamp = excluded.timestamp, raw_json = ''",
+              "content = '', reasoning_content = excluded.reasoning_content, "
+              "timestamp = excluded.timestamp, streaming = excluded.streaming, "
+              "hidden = excluded.hidden, "
+              "exclude_from_context = excluded.exclude_from_context, "
+              "is_error = excluded.is_error, raw_json = ''",
               message_id, event.conversation_id, local_order,
-              RoleName(event.message.role), event.timestamp);
+              RoleName(event.message.role), event.message.reasoning_content,
+              message_timestamp,
+              static_cast<std::int64_t>(event.message.streaming),
+              static_cast<std::int64_t>(event.message.hidden),
+              static_cast<std::int64_t>(event.message.exclude_from_context),
+              static_cast<std::int64_t>(event.message.error));
           if (!message) {
             return message.Error();
           }
@@ -872,7 +1314,7 @@ SqliteConversationStore::ProcessNextAsync(std::shared_ptr<State> state) {
             }
           }
           const auto attachments_json =
-              EncodeAttachmentJson(event.message.attachments);
+              EncodeMessageRawJson(event.message);
           const auto raw_chunks =
               legacy_schema::SplitMessageText(attachments_json);
           for (std::size_t index = 0; index < raw_chunks.size(); ++index) {
@@ -885,6 +1327,98 @@ SqliteConversationStore::ProcessNextAsync(std::shared_ptr<State> state) {
             if (!chunk) {
               return chunk.Error();
             }
+          }
+          auto old_results = transaction.Execute(
+              "DELETE FROM tool_results WHERE message_id = ?", message_id);
+          if (!old_results)
+            return old_results.Error();
+          auto old_calls = transaction.Execute(
+              "DELETE FROM tool_calls WHERE message_id = ?", message_id);
+          if (!old_calls)
+            return old_calls.Error();
+          auto old_blocks = transaction.Execute(
+              "DELETE FROM message_blocks WHERE message_id = ?", message_id);
+          if (!old_blocks)
+            return old_blocks.Error();
+          for (std::size_t index = 0; index < event.message.timeline.size();
+               ++index) {
+            std::optional<Error> persistence_error;
+            std::visit(
+                [&](const auto &entry) {
+                  using Entry = std::decay_t<decltype(entry)>;
+                  const auto block_order = static_cast<std::int64_t>(index);
+                  const auto turn = std::to_string(entry.turn_index);
+                  if constexpr (std::same_as<
+                                    Entry, domain::AssistantReasoningEvent>) {
+                    auto status = std::string{
+                        entry.kind == domain::ReasoningKind::summary
+                            ? "summary"
+                            : "thinking"};
+                    if (entry.starts_new_segment)
+                      status += ":new";
+                    auto inserted = transaction.Execute(
+                        "INSERT INTO message_blocks "
+                        "(message_id, block_order, type, content, status, "
+                        "raw_json) VALUES (?, ?, 'reasoning', ?, ?, ?)",
+                        message_id, block_order, entry.text, status, turn);
+                    if (!inserted)
+                      persistence_error = inserted.Error();
+                  } else if constexpr (std::same_as<
+                                           Entry, domain::AssistantTextEvent>) {
+                    auto inserted = transaction.Execute(
+                        "INSERT INTO message_blocks "
+                        "(message_id, block_order, type, content, status, "
+                        "raw_json) VALUES (?, ?, 'text', ?, '', ?)",
+                        message_id, block_order, entry.text, turn);
+                    if (!inserted)
+                      persistence_error = inserted.Error();
+                  } else {
+                    auto call = transaction.Execute(
+                        "INSERT INTO tool_calls "
+                        "(id, message_id, name, arguments, created_at, "
+                        "duration_ms, error_message, raw_json) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, '') "
+                        "ON CONFLICT(id) DO UPDATE SET "
+                        "message_id = excluded.message_id, "
+                        "name = excluded.name, arguments = excluded.arguments, "
+                        "created_at = excluded.created_at, "
+                        "duration_ms = excluded.duration_ms, "
+                        "error_message = excluded.error_message",
+                        entry.call.id, message_id, entry.call.name,
+                        entry.call.arguments_json, entry.call.created_at_millis,
+                        entry.call.duration_millis, entry.call.error_message);
+                    if (!call) {
+                      persistence_error = call.Error();
+                      return;
+                    }
+                    if (entry.result) {
+                      auto result = transaction.Execute(
+                          "INSERT INTO tool_results "
+                          "(message_id, tool_call_id, content, is_error, "
+                          "diff_id, review_state, raw_json) "
+                          "VALUES (?, ?, ?, ?, ?, ?, '')",
+                          message_id, entry.result->call_id,
+                          entry.result->content,
+                          static_cast<std::int64_t>(entry.result->error),
+                          entry.result->diff_id, entry.result->review_state);
+                      if (!result) {
+                        persistence_error = result.Error();
+                        return;
+                      }
+                    }
+                    auto inserted = transaction.Execute(
+                        "INSERT INTO message_blocks "
+                        "(message_id, block_order, type, content, status, "
+                        "raw_json) VALUES (?, ?, 'tool', ?, ?, ?)",
+                        message_id, block_order, entry.call.id,
+                        std::string{ToolStatusName(entry.call.status)}, turn);
+                    if (!inserted)
+                      persistence_error = inserted.Error();
+                  }
+                },
+                event.message.timeline[index]);
+            if (persistence_error)
+              return *persistence_error;
           }
           auto old_attachments = transaction.Execute(
               "DELETE FROM attachments WHERE message_id = ?", message_id);
@@ -1017,14 +1551,7 @@ SqliteConversationStore::ProcessNextAsync(std::shared_ptr<State> state) {
             if (row.local_order < 0) {
               continue;
             }
-            const auto fallback_id =
-                static_cast<std::uint64_t>(row.local_order) + 1U;
-            loaded.push_back(domain::ChatMessage{
-                .id = ParseOwnedMessageId(row.id).value_or(fallback_id),
-                .role = ParseRole(row.role),
-                .content = row.content,
-                .attachments = row.attachments,
-            });
+            loaded.push_back(HydrateMessage(row));
             next_order = std::max(next_order, row.local_order + 1);
           }
           for (auto pending = std::next(state->pending.begin());

@@ -8,7 +8,9 @@
 
 #include <huxerui/view.h>
 
+#include "application/ports/agent_extension_draft.h"
 #include "application/ports/skill_services.h"
+#include "application/ports/workspace_directory_share.h"
 #include "domain/extension_kind.h"
 
 namespace linecode::application {
@@ -25,12 +27,13 @@ struct ExtensionScreenServices final {
   std::shared_ptr<application::AgentExtensionStore> agents;
   std::shared_ptr<application::McpExtensionStore> mcps;
   std::shared_ptr<application::McpToolCatalog> mcp_tools;
+  std::shared_ptr<application::AgentExtensionDraftGenerator> agent_drafts;
   std::shared_ptr<application::SkillExtensionStore> skills;
   std::shared_ptr<application::SkillSourceInstaller> skill_sources;
   std::optional<application::SkillRoots> skill_roots;
+  std::shared_ptr<application::WorkspaceDirectoryShareService> workspace_share;
   std::size_t revision{};
   std::function<void()> on_changed;
-  std::function<void()> on_share_workspace;
 };
 
 [[huxerui::composable]] huxerui::View
