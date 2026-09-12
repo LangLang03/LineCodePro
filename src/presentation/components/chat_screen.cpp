@@ -42,6 +42,7 @@
 #include "application/prompt_request_composer.h"
 #include "application/ports/todo_state_store.h"
 #include "application/skill_repository.h"
+#include "application/tool_text_catalog.h"
 #include "application/slash_command_catalog.h"
 #include "application/tool_permission_service.h"
 #include "domain/compaction_progress.h"
@@ -1820,6 +1821,56 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs,
   });
 }
 
+// Legacy `GenerationFlowController.MAX_RETRIES` / `RETRY_DELAY_MS`.
+constexpr int kMaxGenerationAttempts = 3;
+constexpr auto kRetryDelay = std::chrono::milliseconds{5000};
+
+// Legacy `GenerationFlowHost.formatRetryNotice` / `formatModelFailed`.
+// A resource template can only be resolved while composing, so the two
+// templates travel into the coroutine already resolved, exactly like
+// `CompactionLabels`.
+struct RetryLabels final {
+  // `chat_retry_attempt` ("Retry {0}/{1}, error: {2}") resolved at composition
+  // time with sentinels standing in for the two runtime values, because
+  // `UseString` validates the argument count and the attempt number is only
+  // known once a request has failed. `{1}` is the constant max, so it is
+  // substituted for real.
+  std::string attempt;
+  // `chat_model_failed`: "Model communication failed: {0}".
+  std::string failed;
+};
+
+// Control characters cannot appear in a translation, so they are safe markers.
+constexpr std::string_view kAttemptMarker{"\x1f""0""\x1f"};
+constexpr std::string_view kErrorMarker{"\x1f""2""\x1f"};
+
+std::string FormatRetryNotice(const RetryLabels &labels, int attempt,
+                              std::string_view error) {
+  auto text = labels.attempt;
+  for (std::size_t at = text.find(kAttemptMarker);
+       at != std::string::npos; at = text.find(kAttemptMarker, at)) {
+    text.replace(at, kAttemptMarker.size(), std::to_string(attempt));
+    at += 1;
+  }
+  for (std::size_t at = text.find(kErrorMarker); at != std::string::npos;
+       at = text.find(kErrorMarker, at)) {
+    text.replace(at, kErrorMarker.size(), error);
+    at += error.size();
+  }
+  return text;
+}
+
+std::string FormatModelFailed(std::string_view template_text,
+                              std::string_view error) {
+  std::string text{template_text};
+  for (std::size_t at = text.find(kErrorMarker); at != std::string::npos;
+       at = text.find(kErrorMarker, at)) {
+    text.replace(at, kErrorMarker.size(), error);
+    at += error.size();
+  }
+  return text;
+}
+
 struct ComposerGenerationDependencies final {
   std::shared_ptr<application::ChatSession> session;
   std::shared_ptr<application::GenerationController> generation;
@@ -1852,8 +1903,10 @@ public:
       TaskScope tasks, State<TaskHandle> active_generation,
       State<std::size_t> revision, std::string current_project_id,
       application::PromptAssemblyContext prompt_context,
-      domain::ToolPermissionMode permission_mode, ToastHandle toast)
+      domain::ToolPermissionMode permission_mode, ToastHandle toast,
+      RetryLabels retry_labels)
       : dependencies_(std::move(dependencies)),
+        retry_labels_(std::move(retry_labels)),
         pending_review_(std::move(pending_review)),
         pending_messages_(std::move(pending_messages)), tasks_(std::move(tasks)),
         active_generation_(std::move(active_generation)),
@@ -2170,17 +2223,25 @@ private:
     prompt_context.attachment_history.assign(
         dependencies_.session->Messages().begin(),
         dependencies_.session->Messages().end());
-    auto response = co_await dependencies_.completion_loop->Complete(
-        application::CompletionRequest{
-            .model = std::move(**selected_model),
-            .messages = std::move(work.messages),
-            .tools = {},
-            .reasoning_effort = behavior->reasoning,
-            .preserve_reasoning = behavior->preserve_reasoning,
-            .stream = true,
-            .permission_scope = current_project_id_,
-        },
-        std::move(prompt_context),
+    // Legacy `retryableModelStream` reused one request snapshot for every
+    // attempt, so the retry loop below does the same.
+    const application::CompletionRequest request{
+        .model = std::move(**selected_model),
+        .messages = std::move(work.messages),
+        .tools = {},
+        .reasoning_effort = behavior->reasoning,
+        .preserve_reasoning = behavior->preserve_reasoning,
+        .stream = true,
+        .permission_scope = current_project_id_,
+    };
+    std::optional<application::CompletionResponse> response;
+    // Legacy `MAX_RETRIES = 3` / `RETRY_DELAY_MS = 5000`: the first failure
+    // announces attempt 2 of 3, the second announces 3 of 3, and the third
+    // gives up.
+    for (int attempt = 0; attempt < kMaxGenerationAttempts; ++attempt) {
+      auto current_response = co_await dependencies_.completion_loop->Complete(
+        request,
+        prompt_context,
         application::CompletionObserver{
             .on_event =
                 [generation = dependencies_.generation,
@@ -2207,13 +2268,37 @@ private:
                   co_return decision;
                 },
         });
-    if (!dependencies_.generation->IsCurrent(work.generation_id))
-      co_return;
-
-    if (!response) {
-      FailAndContinue(work.generation_id, std::move(response.error()));
-      co_return;
+      if (!dependencies_.generation->IsCurrent(work.generation_id))
+        co_return;
+      if (current_response) {
+        response = std::move(*current_response);
+        break;
+      }
+      const int next_attempt = attempt + 1;
+      if (next_attempt >= kMaxGenerationAttempts) {
+        FailAndContinue(work.generation_id, std::move(current_response.error()));
+        co_return;
+      }
+      // The failed attempt leaves nothing behind; the notice below is what the
+      // user sees while the request is re-issued.
+      static_cast<void>(
+          dependencies_.generation->ResetAttempt(work.generation_id));
+      domain::ChatMessage notice;
+      notice.role = domain::MessageRole::assistant;
+      notice.content =
+          FormatRetryNotice(retry_labels_, next_attempt + 1,
+                            current_response.error().message);
+      notice.retry_notice = true;
+      notice.processing_started_at = NowMilliseconds();
+      notice.processing_finished_at = notice.processing_started_at;
+      static_cast<void>(dependencies_.session->AppendAssistant(std::move(notice)));
+      revision_ += 1;
+      co_await Delay(kRetryDelay);
+      if (!dependencies_.generation->IsCurrent(work.generation_id))
+        co_return;
     }
+    if (!response)
+      co_return;
 
     const std::string assistant_text = response->text;
     const bool completed = dependencies_.generation->Complete(
@@ -2237,6 +2322,7 @@ private:
   }
 
   ComposerGenerationDependencies dependencies_;
+  RetryLabels retry_labels_;
   std::shared_ptr<PendingToolReview> pending_review_;
   std::shared_ptr<application::PendingMessageQueue> pending_messages_;
   TaskScope tasks_;
@@ -2548,7 +2634,8 @@ struct SlashPopupRow final {
     domain::ToolPermissionMode permission_mode, ToastHandle toast,
     const std::shared_ptr<application::ContextCompactionService>
         &compaction_service,
-    const std::shared_ptr<AutoCompactionUiState> &auto_compaction) {
+    const std::shared_ptr<AutoCompactionUiState> &auto_compaction,
+    RetryLabels retry_labels) {
   auto runner = std::make_shared<ComposerGenerationRunner>(
       ComposerGenerationDependencies{
           .session = session,
@@ -2564,7 +2651,7 @@ struct SlashPopupRow final {
       },
       pending_review, pending_messages, tasks, active_generation, revision,
       std::move(current_project_id), std::move(prompt_context), permission_mode,
-      toast);
+      toast, std::move(retry_labels));
   const auto slash_popup = UsePopup();
   auto slash_layer = UseState(std::optional<LayerId>{});
 
@@ -2766,13 +2853,14 @@ struct SlashPopupRow final {
 }
 
 View GenerationError(const application::GenerationController &generation,
-                     std::size_t revision) {
+                     std::size_t revision,
+                     const std::string &failed_label) {
   static_cast<void>(revision);
   if (generation.State().phase != application::GenerationPhase::failed ||
       generation.State().error.empty()) {
     return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
   }
-  return Text(generation.State().error)
+  return Text(FormatModelFailed(failed_label, generation.State().error))
       .Style(ChatTextStyle(12.0F, FontWeight::Regular, colors::danger))
       .With(Padding(EdgeInsets{
           .top = 4.0F, .right = 20.0F, .bottom = 0.0F, .left = 20.0F}));
@@ -2883,6 +2971,14 @@ View GenerationError(const application::GenerationController &generation,
                            std::vector<std::string>{std::move(diff_id)}));
   };
 
+  const RetryLabels retry_labels{
+      .attempt = UseString(app::strings::chat_retry_attempt,
+                           std::string{kAttemptMarker},
+                           std::to_string(kMaxGenerationAttempts),
+                           std::string{kErrorMarker}),
+      .failed = UseString(app::strings::chat_model_failed,
+                          std::string{kErrorMarker}),
+  };
   const CompactionLabels compaction_labels{
       .failed_prefix = UseString(app::strings::context_compact_failed, ""),
       .done = UseString(app::strings::context_compact_done),
@@ -3423,7 +3519,7 @@ View GenerationError(const application::GenerationController &generation,
         handle_slash_command, interaction_mode->chat_mode, slash_models,
         slash_selected_model_id, input_settings, current_project_id,
         std::move(prompt_context), permission_state->mode, toast,
-        compaction_service, auto_compaction.Get());
+        compaction_service, auto_compaction.Get(), retry_labels);
   }
 
   const TutorialMarkdownLinkHandler open_markdown_link =
@@ -3527,7 +3623,7 @@ View GenerationError(const application::GenerationController &generation,
                                        .on_request_diff = request_diff,
                                        .on_review = review_change},
                    auto_compaction.Get(), compaction_labels.progress),
-      GenerationError(*generation, revision.Get()),
+      GenerationError(*generation, revision.Get(), retry_labels.failed),
       std::move(composer_or_review),
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch),

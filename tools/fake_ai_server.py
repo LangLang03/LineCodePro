@@ -43,6 +43,10 @@ AGENT_TOOL_TRIGGER = "__LINECODE_TEST_AGENT__"
 # Keeps requesting one cheap read-only tool so a single conversation can build
 # a long tool loop; used to exercise mid-loop context compaction.
 LOOP_TOOL_TRIGGER = "__LINECODE_TEST_LOOP__"
+# Fails the first N completions so the retry path can be exercised, then
+# answers normally. N counts requests, not triggers.
+FAIL_TOOL_TRIGGER = "__LINECODE_TEST_FAIL__"
+FAIL_TOOL_ATTEMPTS = 2
 LOOP_TOOL_ROUNDS = 14
 TODO_TOOL_TRIGGER = "__LINECODE_TEST_TODO__"
 TODO_TOOL_ITEMS = (
@@ -86,6 +90,9 @@ class FixtureServer(ThreadingHTTPServer):
         self.read_timeout = read_timeout
         self.request_log = request_log
         self.request_log_lock = threading.Lock()
+        # Counts completions failed by FAIL_TOOL_TRIGGER so the retry path is
+        # deterministic and bounded.
+        self.fail_count = 0
 
     def record_request(self, path: str, request: dict[str, Any]) -> None:
         if self.request_log is None:
@@ -402,9 +409,32 @@ class FakeAiHandler(BaseHTTPRequestHandler):
         call = cls.requested_function_tool(request)
         return call is not None and call["function"]["name"] == "shell_execute"
 
+    def maybe_fail(self, request: dict[str, Any]) -> bool:
+        """Fails deterministically while a FAIL trigger asks for it."""
+        trigger = any(
+            isinstance(message, dict)
+            and message.get("role") == "user"
+            and FAIL_TOOL_TRIGGER in str(message.get("content", ""))
+            for message in (request.get("messages") or [])
+        )
+        if not trigger:
+            return False
+        self.fail_count += 1
+        if self.fail_count > FAIL_TOOL_ATTEMPTS:
+            return False
+        body = b'{"error":{"message":"deterministic test failure","type":"server_error"}}'
+        self.send_response(500)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        return True
+
     def handle_chat_completions(
         self, request: dict[str, Any], stream: bool
     ) -> None:
+        if self.maybe_fail(request):
+            return
         response_id = "chatcmpl-linecode-test"
         common = {
             "id": response_id,

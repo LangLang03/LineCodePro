@@ -56,6 +56,12 @@ public:
                              const CompletionEvent &event);
   [[nodiscard]] bool Fail(std::uint64_t generation_id,
                           CompletionError error);
+  // Drops whatever the current attempt streamed so a retry starts clean,
+  // without failing the generation. The legacy controller removed the partial
+  // assistant message before appending its retry notice; this port never
+  // persists a partial until `Fail`, so clearing the streamed state is enough
+  // and no conversation-store removal primitive is needed.
+  [[nodiscard]] bool ResetAttempt(std::uint64_t generation_id);
   void Cancel() noexcept;
   void Reset() noexcept;
 

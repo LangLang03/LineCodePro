@@ -184,8 +184,25 @@ python3 tools/ui_parity_test.py \
       `TaskScopeSubAgentLauncher`（未注入时退化为顺序执行）。
 - [ ] P1 图片输入（拍照/相册）缺失：`domain/input_attachment.h` 无图片负载；
       旧版对应 `ComposerView.java` 的 `onSendWithImage` / `onImagePickerClick`。
-- [ ] P1 生成失败自动重试（旧版 `MAX_RETRIES = 3`）、模型切换提示与
-      中断恢复提示缺失。
+- [x] P1 生成失败自动重试已迁移（模型切换/中断恢复提示仍缺）：
+      `GenerationController::ResetAttempt` 丢弃本次尝试的流式内容但**不**结束回合
+      （旧版是删除失败的 assistant 消息再补重试提示；本移植从不持久化失败内容，
+      故无需给会话加删除原语）；发送链路改为 `for attempt < 3` 的循环，
+      复用同一份请求快照（对应旧版 `retryableModelStream(..., requestMessages, ...)`），
+      失败时追加 `retry_notice` 消息、等 5 秒再试，第 3 次仍失败才
+      `Fail`。
+      文案 `chat_retry_attempt`（"正在第 {0}/{1} 次重试，错误：{2}"）与
+      `chat_model_failed`（"模型通信失败：{0}"）逐字取自旧版
+      `model_retry_attempt` / `model_retry_failed`。
+      *实现中踩的坑*：`UseString` 会**校验占位符个数**，而重试次数只有运行时
+      才知道，直接 `UseString(resource, "")` 导致启动即崩溃
+      （`HuxerUI localized string requires exactly 3 arguments`）。
+      改用控制字符哨兵在组合期解析模板、运行时替换；失败文案同理。
+      真机验证（fixture 新增 `__LINECODE_TEST_FAIL__`：前 2 次请求返回 500）：
+      UI 依次显示 `Retry 2/3, error: …` → `Retry 3/3, error: …` →
+      `Model communication failed: …`，请求数恰为 **3**，无崩溃。
+      `tests/generation_retry_tests.cpp` 固化 `ResetAttempt` 语义
+      （保持 running、清空流式、不残留气泡、拒绝过期世代）。
 - [x] todo 状态已注入提示词：`TodoStateStore` 由组合根经
       `MainScreen → HomeScreen → ChatScreen → ComposerGenerationRunner` 注入，
       每次请求前重新 `Load()` + `RenderTodoState()`，与旧版

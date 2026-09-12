@@ -377,6 +377,19 @@ bool GenerationController::Fail(const std::uint64_t generation_id,
   return true;
 }
 
+bool GenerationController::ResetAttempt(const std::uint64_t generation_id) {
+  if (!IsCurrent(generation_id))
+    return false;
+  state_.streamed_text.clear();
+  state_.streamed_reasoning.clear();
+  state_.promoted_content.clear();
+  state_.timeline.clear();
+  state_.active_turn_index = 0;
+  state_.error.clear();
+  // The generation stays `running`: the retry continues the same turn.
+  return true;
+}
+
 void GenerationController::Cancel() noexcept {
   if (state_.phase != GenerationPhase::running)
     return;

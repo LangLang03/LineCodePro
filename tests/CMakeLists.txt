@@ -1823,3 +1823,33 @@ else ()
 endif ()
 add_test(NAME tutorial_nested_blocks_tests
         COMMAND tutorial_nested_blocks_tests)
+
+add_executable(generation_retry_tests
+        generation_retry_tests.cpp
+        ../src/application/chat_session.cpp
+        ../src/application/generation_controller.cpp
+        ../src/application/legacy_attachment_policy.cpp
+        ../src/application/send_message.cpp
+        ../src/application/tool_result_display_policy.cpp
+        ../src/infrastructure/archive_json.cpp
+        ../src/infrastructure/in_memory_conversation_store.cpp
+        ../src/domain/compaction_progress.cpp
+        ../src/domain/context_usage.cpp
+        ../src/domain/input_attachment.cpp
+        ../src/domain/model_config.cpp
+)
+target_include_directories(generation_retry_tests PRIVATE ../src)
+target_compile_features(generation_retry_tests PRIVATE cxx_std_23)
+target_link_libraries(generation_retry_tests PRIVATE HuxerUI::testing)
+set_target_properties(generation_retry_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(generation_retry_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(generation_retry_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME generation_retry_tests COMMAND generation_retry_tests)
