@@ -997,8 +997,15 @@
           "value": "任务清单"
         }
       ],
-      "compare_pixels": false,
-      "pixel_comparison_reason": "the legacy page still lists the Phone Control and AccessibilityService rows that this migration deliberately removed, so every row below them is shifted and the page cannot be pixel-identical; the rows that must remain are asserted instead, and the absence of the removed ones is covered by the repository-wide search in the delivery gate"
+      "pixel_masks": [
+        [
+          0,
+          1180,
+          1080,
+          2400
+        ]
+      ],
+      "pixel_mask_reason": "from y=1180 down the legacy page lists the deliberately removed Phone Control rows, which shift every following row; the upper half is still compared and the removed entry is covered by the repository-wide search in the delivery gate"
     },
     {
       "name": "data",

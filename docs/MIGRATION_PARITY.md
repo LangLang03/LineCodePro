@@ -92,8 +92,14 @@ difference remains". None of them changes a surface's status, and each is
 tracked with its evidence in `TODO.md`:
 
 - Mid-loop context compaction rewrites the in-flight request but does not
-  persist its summary or show a progress block; the legacy tool loop wrote
-  its in-flight messages into the session, which this port does not.
+  persist its summary or show a progress block. The legacy wrote its
+  in-flight assistant and tool messages into the session, so its preserved
+  tail referred to real session rows; here the loop keeps them only in the
+  request, so the excluded set and the preserved tail cannot be matched by
+  id without unifying that first. Doing it partially -- showing the block
+  without persisting the summary -- would leave a progress row claiming a
+  compaction the database never received, which is worse than the honest
+  gap. Not attempted.
 - Sub-agent tool calls do not raise their own review prompt.
 - The resume sanitizer repairs loaded messages in memory but does not write
   the repair back. The repair is idempotent, invisible to the user, and
