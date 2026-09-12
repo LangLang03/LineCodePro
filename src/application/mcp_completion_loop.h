@@ -10,6 +10,7 @@
 namespace linecode::application {
 
 class ToolPermissionService;
+class MidLoopCompactor;
 
 class McpCompletionLoop final {
 public:
@@ -18,7 +19,8 @@ public:
                     std::shared_ptr<ToolPermissionService> permissions = {},
                     std::shared_ptr<CompletionRequestComposer> request_composer = {},
                     std::shared_ptr<const ToolResultDisplayProjector>
-                        result_display = {});
+                        result_display = {},
+                    std::shared_ptr<MidLoopCompactor> mid_loop_compactor = {});
 
   // Executes model turns until the assistant returns no tool calls. HuxerUI's
   // owning TaskScope provides cancellation for the complete loop.
@@ -39,6 +41,7 @@ private:
   std::shared_ptr<ToolPermissionService> permissions_;
   std::shared_ptr<CompletionRequestComposer> request_composer_;
   std::shared_ptr<const ToolResultDisplayProjector> result_display_;
+  std::shared_ptr<MidLoopCompactor> mid_loop_compactor_;
 };
 
 } // namespace linecode::application

@@ -1,5 +1,7 @@
 #include "application/mcp_completion_loop.h"
 
+#include "application/ports/mid_loop_compactor.h"
+
 #include <algorithm>
 #include <chrono>
 #include <optional>
@@ -53,12 +55,14 @@ McpCompletionLoop::McpCompletionLoop(
     std::shared_ptr<ToolRegistry> tools,
     std::shared_ptr<ToolPermissionService> permissions,
     std::shared_ptr<CompletionRequestComposer> request_composer,
-    std::shared_ptr<const ToolResultDisplayProjector> result_display)
+    std::shared_ptr<const ToolResultDisplayProjector> result_display,
+    std::shared_ptr<MidLoopCompactor> mid_loop_compactor)
     : completion_(std::move(completion)), tools_(std::move(tools)),
       permissions_(std::move(permissions)),
       request_composer_(std::move(request_composer)),
       result_display_(result_display ? std::move(result_display)
-                                     : DefaultToolResultDisplayProjector()) {
+                                     : DefaultToolResultDisplayProjector()),
+      mid_loop_compactor_(std::move(mid_loop_compactor)) {
   if (!completion_ || !tools_)
     throw std::invalid_argument(
         "McpCompletionLoop requires completion gateway and MCP registry");
@@ -303,6 +307,12 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
       result.content = display.model_content;
       request.messages.push_back(CompletionMessage::Tool(std::move(result)));
       ++invoked_count;
+    }
+    // Legacy `continueModelAfterTools()`: before the next model turn, give the
+    // compactor a chance to shrink the history so a long tool loop cannot
+    // outgrow the window.
+    if (mid_loop_compactor_) {
+      request = co_await mid_loop_compactor_->CompactIfNeeded(std::move(request));
     }
     ++turn_index;
   }

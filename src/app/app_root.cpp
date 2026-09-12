@@ -20,6 +20,7 @@
 #include "application/chat_mode_service.h"
 #include "application/composite_tool_registry.h"
 #include "application/context_compaction.h"
+#include "application/tool_loop_compactor.h"
 #include "application/diff_review_service.h"
 #include "application/error_log_service.h"
 #include "application/execution_mode_project_workspace.h"
@@ -523,7 +524,13 @@ huxerui::View PlatformServicesHost() {
   auto completion_loop =
       huxerui::UseState(std::make_shared<application::McpCompletionLoop>(
           completion_gateway.Get(), runtime_tools.Get(), tool_permissions.Get(),
-          prompt_request_composer.Get()));
+          prompt_request_composer.Get(), nullptr,
+          std::make_shared<application::ToolLoopCompactor>(
+              compaction_service.Get(), model_store.Get(),
+              // Product default; `AiBehaviorSettings` loads asynchronously, so
+              // the loop uses the same default the legacy controller saw when
+              // the setting was untouched.
+              domain::AiBehaviorSettings{}.preserve_reasoning)));
   const auto line_colors =
       presentation::LineColorsForPalette(theme_settings->palette);
   auto theme = presentation::LineThemeDefinition(line_colors);

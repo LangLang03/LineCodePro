@@ -194,6 +194,17 @@ python3 tools/ui_parity_test.py \
       `source`，标题按 `attachment_picker_title_{local,ssh,terminal_provider}`
       三选一，文件项继承该来源；来源由 `McpExecutionSettingsService::Load()`
       的执行模式决定（对应旧版 `AttachmentPickerCoordinator` 的判定）。
+- [x] 工具循环中的压缩已插桩：新增 `application/ports/mid_loop_compactor.h`
+      端口（完成循环不持有会话，只询问端口）与 `application/tool_loop_compactor.*`。
+      `McpCompletionLoop` 在每批工具执行完、下一次模型请求前调用
+      `CompactIfNeeded`，对应旧版
+      `GenerationFlowController.continueModelAfterTools()`。压缩后请求重建为
+      `[system] + [摘要] + [在途 assistant+tool 组]`，在途组逐字保留。
+      `tests/tool_loop_compactor_tests.cpp` 覆盖长循环触发、短循环不动、
+      无压缩服务时空操作三种情形。
+      *实现中发现的坑*：`CompletionMessage` 没有 id，而保留尾部规则按 id 匹配；
+      最初把 id 赋值放在触发判定之后，导致所有 id 为 0、判定误判为"全部保留"
+      而永不触发。已改为在转换时立即赋 id（诊断输出定位）。
 - [ ] P1 Markdown 退化：裸 URL 不可点、引用/列表内代码块被压成一行、
       思考块直接输出原始 `**`；旧版有 `Linkify.WEB_URLS` 与 `ThinkingBlockView` 样式。
 - [ ] P1 回合汇总「已编辑 N 个文件 / Review」区块缺失。

@@ -1731,3 +1731,32 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME auto_compaction_tests COMMAND auto_compaction_tests)
+
+add_executable(tool_loop_compactor_tests
+        tool_loop_compactor_tests.cpp
+        ../src/application/tool_loop_compactor.cpp
+        ../src/application/auto_compaction_service.cpp
+        ../src/application/context_compaction.cpp
+        ../src/application/prompt_template_repository.cpp
+        ../src/domain/compaction_progress.cpp
+        ../src/domain/context_usage.cpp
+        ../src/domain/input_attachment.cpp
+        ../src/domain/model_config.cpp
+        ../src/domain/prompt_template.cpp
+        ../src/domain/prompt_renderer.cpp
+)
+target_include_directories(tool_loop_compactor_tests PRIVATE ../src)
+target_compile_features(tool_loop_compactor_tests PRIVATE cxx_std_23)
+target_link_libraries(tool_loop_compactor_tests PRIVATE HuxerUI::testing)
+set_target_properties(tool_loop_compactor_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(tool_loop_compactor_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(tool_loop_compactor_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME tool_loop_compactor_tests COMMAND tool_loop_compactor_tests)
