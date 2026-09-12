@@ -29,6 +29,19 @@ public final class LineCodeDatabaseBackup {
     private final Context context;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Object lock = new Object();
+    /**
+     * 全量快照导出会把整个数据库读进一个 JSONObject 并写两份文件，成本随对话长度线性增长。
+     * 而 {@code saveConversation} 在每次收发/工具批次/流式步骤后都会触发，不做限流时一次长会话
+     * 会排队数十次全量备份：后台 CPU/磁盘持续饱和、与主线程的读库争锁，同时产生大量
+     * JSON 临时对象引发 GC 卡顿——表现为长对话“加载慢 / 上滑下滑卡”。
+     *
+     * <p>备份只是损坏时的回退手段（恢复前会征询用户），因此限流到最小间隔，并且同一时刻
+     * 最多一份在途；在途期间到达的新请求合并为一次收尾备份，不丢最新状态。
+     */
+    static final long MIN_BACKUP_INTERVAL_NANOS = 3L * 60L * 1_000_000_000L;
+    private final java.util.concurrent.atomic.AtomicBoolean backupInFlight = new java.util.concurrent.atomic.AtomicBoolean();
+    private volatile boolean backupRequestedWhileRunning;
+    private volatile long lastBackupNanos;
 
     public LineCodeDatabaseBackup(Context context) {
         this.context = context.getApplicationContext();
@@ -39,16 +52,38 @@ public final class LineCodeDatabaseBackup {
     }
 
     /**
-     * 异步保存一次全量备份。重复调用由单线程 executor 串行化，避免并发写坏文件。
+     * 异步保存一次全量备份（带最小间隔限流）。重复调用由单线程 executor 串行化，避免并发写坏文件。
      */
     public void saveAsync(LineCodeDatabase database) {
-        executor.execute(() -> {
-            try {
-                save(database);
-            } catch (Throwable e) { // 备份失败绝不能影响主流程
-                Log.e(TAG, "自动备份失败（已忽略）: " + e.getMessage(), e);
+        long now = System.nanoTime();
+        if (lastBackupNanos != 0L && now - lastBackupNanos < MIN_BACKUP_INTERVAL_NANOS) {
+            return;
+        }
+        enqueue(database);
+    }
+
+    private void enqueue(final LineCodeDatabase database) {
+        if (!backupInFlight.compareAndSet(false, true)) {
+            backupRequestedWhileRunning = true;
+            return;
+        }
+        executor.execute(() -> runBackup(database));
+    }
+
+    private void runBackup(LineCodeDatabase database) {
+        try {
+            save(database);
+            lastBackupNanos = System.nanoTime();
+        } catch (Throwable e) { // 备份失败绝不能影响主流程
+            Log.e(TAG, "自动备份失败（已忽略）: " + e.getMessage(), e);
+        } finally {
+            backupInFlight.set(false);
+            if (backupRequestedWhileRunning) {
+                // 在途期间又有新写入：再补一次，保证最后几次修改也能落盘。
+                backupRequestedWhileRunning = false;
+                enqueue(database);
             }
-        });
+        }
     }
 
     void save(LineCodeDatabase database) throws Exception {

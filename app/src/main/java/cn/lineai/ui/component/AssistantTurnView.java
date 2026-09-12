@@ -21,7 +21,6 @@ import cn.lineai.ui.theme.LineTheme;
 import cn.lineai.ui.theme.ThinkingBlockView;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -48,6 +47,14 @@ public final class AssistantTurnView extends LinearLayout {
     private boolean codeWrap;
     private boolean generating;
     private boolean hasTools;
+    private ConversationTimeline.Row lastBoundRow;
+    private Map<String, Boolean> lastBoundDisclosure;
+    private ToolReviewListener lastBoundReviewer;
+    private MarkdownLinkHandler lastBoundLinks;
+    private MessageActionListener lastBoundActions;
+    private boolean lastBoundCodeWrap;
+    private boolean lastBoundGenerating;
+    private boolean lastBoundProcessAutoExpand;
     private final Runnable durationTick = this::updateProcessLabel;
 
     public AssistantTurnView(Context context) {
@@ -123,6 +130,18 @@ public final class AssistantTurnView extends LinearLayout {
     public void bind(ConversationTimeline.Row row, Map<String, Boolean> disclosure, String projectPath,
                      ToolReviewListener reviewer, MarkdownLinkHandler links, MessageActionListener actions,
                      boolean codeWrap, boolean generating, boolean processAutoExpand) {
+        if (isUnchangedBind(row, disclosure, projectPath, reviewer, links, actions, codeWrap, generating, processAutoExpand)) {
+            // 行对象不可变且被复用：滑动/流式刷新时对未变化的行直接跳过，不再重建块视图与解析 diff。
+            return;
+        }
+        lastBoundRow = row;
+        lastBoundDisclosure = disclosure;
+        lastBoundReviewer = reviewer;
+        lastBoundLinks = links;
+        lastBoundActions = actions;
+        lastBoundCodeWrap = codeWrap;
+        lastBoundGenerating = generating;
+        lastBoundProcessAutoExpand = processAutoExpand;
         String nextIdentity = row.first.getId();
         if (!identity.equals(nextIdentity)) {
             process.removeAllViews(); blocks.clear(); files.removeAllViews(); fileViews.clear();
@@ -147,6 +166,25 @@ public final class AssistantTurnView extends LinearLayout {
         } else answer.setVisibility(GONE);
         renderProcess();
         renderFiles();
+    }
+
+    private boolean isUnchangedBind(ConversationTimeline.Row row, Map<String, Boolean> disclosure, String projectPath,
+                                    ToolReviewListener reviewer, MarkdownLinkHandler links,
+                                    MessageActionListener actions, boolean codeWrap, boolean generating,
+                                    boolean processAutoExpand) {
+        return row == lastBoundRow
+                && disclosure == lastBoundDisclosure
+                && generating == lastBoundGenerating
+                && codeWrap == lastBoundCodeWrap
+                && processAutoExpand == lastBoundProcessAutoExpand
+                && reviewer == lastBoundReviewer
+                && links == lastBoundLinks
+                && actions == lastBoundActions
+                && this.projectPath.equals(safe(projectPath));
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
     }
 
     private void updateProcessLabel() {
@@ -199,8 +237,7 @@ public final class AssistantTurnView extends LinearLayout {
                 view = compact;
             } else if (block.reasoning) {
                 ThinkingBlockView thought = view instanceof ThinkingBlockView ? (ThinkingBlockView) view : new ThinkingBlockView(getContext());
-                ChatMessage owner = null;
-                for (ChatMessage message : row.messages) if (block.id.equals(message.getId() + ":reasoning")) owner = message;
+                ChatMessage owner = row.ownerOfReasoning(block.id);
                 thought.bind(identity + ":" + block.id, block.text, owner != null && owner.isStreaming() && generating, false, true);
                 view = thought;
             } else if (block.isAgent()) {
@@ -228,25 +265,13 @@ public final class AssistantTurnView extends LinearLayout {
     }
 
     private List<Operation> changedFiles() {
-        LinkedHashMap<String, Operation> edits = new LinkedHashMap<>();
-        for (Block block : row.process) for (Operation operation : block.operations) {
-            if (operation.result != null && !operation.result.getDiffId().isEmpty()) {
-                // Keep every diff reviewable, including multiple edits to the same file.
-                edits.put(operation.result.getDiffId(), operation);
-            }
-        }
-        return new ArrayList<>(edits.values());
+        return row.diffOperations();
     }
 
     private void renderFiles() {
         List<Operation> edits = changedFiles();
         changes.setVisibility(edits.isEmpty() || row.answer == null ? GONE : VISIBLE);
-        java.util.Set<String> paths = new java.util.HashSet<>();
-        for (Operation operation : edits) {
-            org.json.JSONObject input = cn.lineai.tool.ui.ToolCallUtils.parseInput(operation.call);
-            paths.add(input.optString("file_path", input.optString("path", operation.result.getDiffId())));
-        }
-        filesLabel.setText(getContext().getString(R.string.chat_files_changed, paths.size()));
+        filesLabel.setText(getContext().getString(R.string.chat_files_changed, row.changedFilePaths().size()));
         boolean expanded = isOpen(identity + ":files");
         files.setVisibility(expanded ? VISIBLE : GONE);
         filesArrow.setIconType(expanded ? IconButtonView.CHEVRON_DOWN : IconButtonView.CHEVRON_RIGHT);
@@ -317,7 +342,9 @@ public final class AssistantTurnView extends LinearLayout {
     }
 
     private void reconcile(LinearLayout parent, List<View> children, int gap) {
-        for (int i = parent.getChildCount() - 1; i >= 0; i--) if (!children.contains(parent.getChildAt(i))) parent.removeViewAt(i);
+        java.util.Set<View> keep = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<View, Boolean>());
+        keep.addAll(children);
+        for (int i = parent.getChildCount() - 1; i >= 0; i--) if (!keep.contains(parent.getChildAt(i))) parent.removeViewAt(i);
         for (int i = 0; i < children.size(); i++) {
             View child = children.get(i);
             if (i < parent.getChildCount() && parent.getChildAt(i) == child) continue;

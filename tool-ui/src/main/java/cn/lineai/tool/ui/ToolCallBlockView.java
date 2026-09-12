@@ -11,8 +11,9 @@ import cn.lineai.tool.ToolDisplayCategory;
 
 public final class ToolCallBlockView extends LinearLayout {
     private final ToolCallViewFactoryRegistry registry;
-    private String lastStructureSignature = "";
-    private String lastContentSignature = "";
+    private ToolCall lastCall;
+    private ToolResult lastResult;
+    private String lastStructureProjectPath = "";
     private ToolCallCardView childView;
     private String projectPath = "";
     private ToolReviewListener toolReviewListener;
@@ -36,21 +37,31 @@ public final class ToolCallBlockView extends LinearLayout {
         setOrientation(VERTICAL);
     }
 
+    /**
+     * 绑定一次工具调用卡片。
+     *
+     * <p>{@code ToolCall} / {@code ToolResult} 均不可变，旧实现却每次都把入参全文与结果全文
+     * （单条可达 50KB）拼接成签名串；一行包含多个卡片时，滑动与流式刷新的开销会随对话变长
+     * 而平方级增长。改为比较实例引用，只对少量结构字段做值比较。
+     */
     public void bind(ToolCall toolCall, ToolResult result) {
-        String structure = structureSignature(projectPath, toolCall, result);
-        String content = contentSignature(result);
-        if (structure.equals(lastStructureSignature) && content.equals(lastContentSignature)) {
+        boolean sameCall = toolCall == lastCall;
+        boolean sameResult = result == lastResult;
+        boolean sameProject = projectPath.equals(lastStructureProjectPath);
+        if (sameCall && sameResult && sameProject) {
             return;
         }
-        boolean structureChanged = !structure.equals(lastStructureSignature);
-        lastStructureSignature = structure;
-        lastContentSignature = content;
+        // 卡片本身只在“工具名/入参结构”变化时才重建，而这两者都由 ToolCall 实例携带。
+        boolean structureChanged = !sameCall || !sameProject || !nonContentFieldsEqual(lastResult, result);
+        lastCall = toolCall;
+        lastResult = result;
         if (!structureChanged) {
             if (childView != null) {
                 childView.updateContent(toolCall, result);
             }
             return;
         }
+        lastStructureProjectPath = projectPath;
         String name = toolCall == null ? "" : toolCall.getName();
         ToolDisplayCategory category = resolveDisplayCategory(name);
         String identity = toolCall == null ? "" : toolCall.getId() + ":" + name;
@@ -68,6 +79,22 @@ public final class ToolCallBlockView extends LinearLayout {
             addView((View) childView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
             childView.bind(toolCall, result);
         }
+    }
+
+    /** 结构签名等同于“除结果正文外的全部字段”，这里直接逐字段比较，不再拼接大段文本。 */
+    private static boolean nonContentFieldsEqual(ToolResult left, ToolResult right) {
+        if (left == right) {
+            return true;
+        }
+        if (left == null || right == null) {
+            return false;
+        }
+        return left.isError() == right.isError()
+                && left.getToolCallId().equals(right.getToolCallId())
+                && left.getToolName().equals(right.getToolName())
+                && left.getDiffId().equals(right.getDiffId())
+                && left.getReviewState().equals(right.getReviewState())
+                && left.getReviewMessage().equals(right.getReviewMessage());
     }
 
     private Class<? extends ToolCallCardView> resolveViewClass(String name) {
@@ -99,6 +126,12 @@ public final class ToolCallBlockView extends LinearLayout {
         return ToolCallUtils.getDisplayCategory(name);
     }
 
+    /**
+     * 工具调用的结构签名（不含结果正文）。
+     *
+     * <p>{@link #bind(ToolCall, ToolResult)} 已改为直接比较不可变实例引用，不再拼接签名；
+     * 本方法保留作为“哪些字段属于结构”的单一口径与测试依据。
+     */
     public static String structureSignature(String projectPath, ToolCall toolCall, ToolResult result) {
         StringBuilder builder = new StringBuilder();
         builder.append(projectPath == null ? "" : projectPath).append('|');

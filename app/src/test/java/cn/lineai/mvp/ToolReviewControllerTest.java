@@ -49,6 +49,29 @@ public final class ToolReviewControllerTest {
         assertTrue(display.get(0).getContent().contains("accepted"));
     }
 
+    @Test
+    public void repeatedDisplayApplicationReusesUnchangedMessages() {
+        ArrayList<ChatMessage> messages = messagesWithDiff("diff-1");
+        FakeDiffStore diffs = new FakeDiffStore();
+        diffs.record = new DiffRecord("diff-1", "/workspace/a.txt", "a", "b", true, 1L, false);
+        ToolReviewController controller = new ToolReviewController(
+                diffs, new ToolMessageController(new ArrayList<>(), () -> "next"),
+                new BackgroundTaskRunner(), new MainThreadDispatcher(null, true), new FakeHost());
+
+        List<ChatMessage> first = controller.applyLocalReviews(messages);
+        List<ChatMessage> second = controller.applyLocalReviews(messages);
+
+        assertEquals(first.size(), second.size());
+        assertSame(first.get(0), second.get(0));
+        assertSame(first.get(1), second.get(1));
+
+        controller.review("edit-1", "accepted", "diff-1");
+
+        List<ChatMessage> afterReview = controller.applyLocalReviews(messages);
+        assertEquals("accepted", afterReview.get(1).getReviewState());
+        assertSame("再次调用仍然复用 memo", afterReview.get(1), controller.applyLocalReviews(messages).get(1));
+    }
+
     private static ArrayList<ChatMessage> messagesWithDiff(String diffId) {
         ArrayList<ChatMessage> messages = new ArrayList<>();
         messages.add(new ChatMessage("assistant", ChatMessage.Role.ASSISTANT, "", false)

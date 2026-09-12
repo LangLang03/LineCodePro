@@ -97,41 +97,67 @@ public final class MessageRecord {
         return rawJson;
     }
 
+    /**
+     * 一次加载会话时会对每条消息调用本方法，因此整段 raw_json 只解析一次：
+     * 长对话（成百上千条消息）下重复 {@code new JSONObject(rawJson)} 是主线程加载缓慢的主要原因。
+     */
     public ChatMessage toChatMessage() {
+        RawFields fields = new RawFields(rawJson);
+        long startedAt = fields.processingStartedAt;
         return new ChatMessage(id, role, content, reasoningContent, streaming, hidden, excludeFromContext,
-                readToolCalls(rawJson), new ArrayList<>(), toolCallId, toolName, error,
-                readString(rawJson, "diff_id"),
-                readString(rawJson, "review_state"),
-                readString(rawJson, "review_message"),
-                readString(rawJson, "compact_status"),
-                readString(rawJson, "response_input_item_json"),
-                readAttachments(rawJson),
-                readString(rawJson, "model_switch_notification"),
-                readLong(rawJson, "processing_started_at"),
-                restoredProcessingFinish());
+                fields.toolCalls, new ArrayList<>(), toolCallId, toolName, error,
+                fields.diffId, fields.reviewState, fields.reviewMessage,
+                fields.compactStatus, fields.responseInputItemJson,
+                fields.attachments, fields.modelSwitchNotification,
+                startedAt, restoreProcessingFinish(startedAt, fields));
     }
 
-    private long restoredProcessingFinish() {
-        long start = readLong(rawJson, "processing_started_at");
+    private static long restoreProcessingFinish(long start, RawFields fields) {
         if (start == 0) return 0;
-        long finish = readLong(rawJson, "processing_finished_at");
-        if (finish > 0) return finish;
+        if (fields.processingFinishedAt > 0) return fields.processingFinishedAt;
         // A loaded conversation cannot keep counting an interrupted generation.
-        return Math.max(start, readLong(rawJson, "processing_observed_at"));
+        return Math.max(start, fields.processingObservedAt);
     }
 
-    private long readLong(String rawJson, String key) {
-        try { return new JSONObject(rawJson).optLong(key, 0); }
-        catch (Exception ignored) { return 0; }
-    }
+    /** Single-pass view over a stored {@code raw_json} blob. */
+    private static final class RawFields {
+        ArrayList<ToolCall> toolCalls = new ArrayList<>();
+        ArrayList<InputAttachment> attachments = new ArrayList<>();
+        String diffId = "";
+        String reviewState = "";
+        String reviewMessage = "";
+        String compactStatus = "";
+        String responseInputItemJson = "";
+        String modelSwitchNotification = "";
+        long processingStartedAt;
+        long processingFinishedAt;
+        long processingObservedAt;
 
-    private ArrayList<ToolCall> readToolCalls(String rawJson) {
-        ArrayList<ToolCall> calls = new ArrayList<>();
-        if (rawJson == null || rawJson.trim().length() == 0) {
-            return calls;
+        RawFields(String rawJson) {
+            if (rawJson == null || rawJson.trim().length() == 0) {
+                return;
+            }
+            JSONObject object;
+            try {
+                object = new JSONObject(rawJson);
+            } catch (Exception ignored) {
+                return;
+            }
+            toolCalls = readToolCalls(object);
+            attachments = readAttachments(object);
+            diffId = object.optString("diff_id");
+            reviewState = object.optString("review_state");
+            reviewMessage = object.optString("review_message");
+            compactStatus = object.optString("compact_status");
+            responseInputItemJson = object.optString("response_input_item_json");
+            modelSwitchNotification = object.optString("model_switch_notification");
+            processingStartedAt = object.optLong("processing_started_at", 0);
+            processingFinishedAt = object.optLong("processing_finished_at", 0);
+            processingObservedAt = object.optLong("processing_observed_at", 0);
         }
-        try {
-            JSONObject object = new JSONObject(rawJson);
+
+        private static ArrayList<ToolCall> readToolCalls(JSONObject object) {
+            ArrayList<ToolCall> calls = new ArrayList<>();
             JSONArray array = object.optJSONArray("tool_calls");
             if (array == null) {
                 return calls;
@@ -147,29 +173,11 @@ public final class MessageRecord {
                         item.optString("arguments", "{}")
                 ));
             }
-        } catch (Exception ignored) {
+            return calls;
         }
-        return calls;
-    }
 
-    private String readString(String rawJson, String key) {
-        if (rawJson == null || rawJson.trim().length() == 0) {
-            return "";
-        }
-        try {
-            return new JSONObject(rawJson).optString(key);
-        } catch (Exception ignored) {
-            return "";
-        }
-    }
-
-    private ArrayList<InputAttachment> readAttachments(String rawJson) {
-        ArrayList<InputAttachment> attachments = new ArrayList<>();
-        if (rawJson == null || rawJson.trim().length() == 0) {
-            return attachments;
-        }
-        try {
-            JSONObject object = new JSONObject(rawJson);
+        private static ArrayList<InputAttachment> readAttachments(JSONObject object) {
+            ArrayList<InputAttachment> attachments = new ArrayList<>();
             JSONArray array = object.optJSONArray("attachments");
             if (array == null) {
                 return attachments;
@@ -189,8 +197,7 @@ public final class MessageRecord {
                         item.optString("source")
                 ));
             }
-        } catch (Exception ignored) {
+            return attachments;
         }
-        return attachments;
     }
 }

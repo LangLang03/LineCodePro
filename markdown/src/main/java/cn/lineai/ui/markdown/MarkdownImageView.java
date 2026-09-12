@@ -78,7 +78,14 @@ public final class MarkdownImageView extends LinearLayout {
             if (!file.exists() || !file.isFile()) {
                 return null;
             }
-            return BitmapFactory.decodeFile(file.getAbsolutePath());
+            // 先只读边界再降采样：全屏聊天里遇到一张手机截图/生成图时，
+            // 整分辨率解码会同时带来主线程卡顿与 GC 抖动。
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inSampleSize = computeSampleSize(bounds.outWidth, bounds.outHeight);
+            return BitmapFactory.decodeFile(file.getAbsolutePath(), options);
         } catch (Exception ignored) {
             return null;
         }

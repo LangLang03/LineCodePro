@@ -35,9 +35,15 @@ public final class AssistantMessageView extends LinearLayout {
     private boolean lastThinkingAutoExpand;
     private boolean lastThinkingScrollable = true;
     private String lastCompactStatus = "";
-    private String lastToolSignature = "";
+    private ChatMessage lastToolSource;
+    private String lastToolProjectPath = "";
     private String lastAnimatedMessageId = "";
     private String projectPath = "";
+    private ChatMessage lastBoundMessage;
+    private String lastBoundProjectPath = "";
+    private MarkdownLinkHandler lastBoundLinkHandler;
+    private ToolReviewListener lastBoundReviewListener;
+    private boolean lastBoundCodeWrap;
     private MarkdownLinkHandler markdownLinkHandler;
     private ToolReviewListener toolReviewListener;
     private MessageActionListener actionListener;
@@ -136,6 +142,10 @@ public final class AssistantMessageView extends LinearLayout {
     }
 
     public void bind(ChatMessage message, boolean thinkingAutoExpand, boolean thinkingScrollable, boolean codeWrapEnabled) {
+        if (isUnchangedBind(message, thinkingAutoExpand, thinkingScrollable, codeWrapEnabled)) {
+            // 滑动时 ListView 会反复绑定同一行：消息不可变，实例未变则整行无需重做 Markdown/工具卡渲染。
+            return;
+        }
         currentMessage = message;
         String messageId = message.getId() == null ? "" : message.getId();
         String reasoning = message.getReasoningContent();
@@ -156,7 +166,12 @@ public final class AssistantMessageView extends LinearLayout {
             lastStreaming = message.isStreaming();
             lastError = message.isError();
             lastCompactStatus = message.getCompactStatus();
-            lastToolSignature = "";
+            lastToolSource = null;
+            lastBoundMessage = message;
+            lastBoundProjectPath = projectPath;
+            lastBoundLinkHandler = markdownLinkHandler;
+            lastBoundReviewListener = toolReviewListener;
+            lastBoundCodeWrap = codeWrapEnabled;
             return;
         }
         compactBlockView.setVisibility(GONE);
@@ -200,6 +215,23 @@ public final class AssistantMessageView extends LinearLayout {
         lastThinkingAutoExpand = thinkingAutoExpand;
         lastThinkingScrollable = thinkingScrollable;
         lastCompactStatus = "";
+        lastBoundMessage = message;
+        lastBoundProjectPath = projectPath;
+        lastBoundLinkHandler = markdownLinkHandler;
+        lastBoundReviewListener = toolReviewListener;
+        lastBoundCodeWrap = codeWrapEnabled;
+    }
+
+    private boolean isUnchangedBind(ChatMessage message, boolean thinkingAutoExpand, boolean thinkingScrollable,
+                                    boolean codeWrapEnabled) {
+        return message != null
+                && message == lastBoundMessage
+                && thinkingAutoExpand == lastThinkingAutoExpand
+                && thinkingScrollable == lastThinkingScrollable
+                && codeWrapEnabled == lastBoundCodeWrap
+                && projectPath.equals(lastBoundProjectPath)
+                && markdownLinkHandler == lastBoundLinkHandler
+                && toolReviewListener == lastBoundReviewListener;
     }
 
     private void installMessageLongPress(android.view.View view) {
@@ -262,11 +294,13 @@ public final class AssistantMessageView extends LinearLayout {
     }
 
     private void bindToolCalls(ChatMessage message) {
-        String signature = toolSignature(message);
-        if (signature.equals(lastToolSignature)) {
+        // 工具卡内容可达数十 KB，旧的“拼接全文做签名”写法在滑动重复绑定时代价很高；
+        // ChatMessage / ToolCall / ToolResult 均不可变，用实例引用判断变更即可。
+        if (message == lastToolSource && projectPath.equals(lastToolProjectPath)) {
             return;
         }
-        lastToolSignature = signature;
+        lastToolSource = message;
+        lastToolProjectPath = projectPath;
         if (!message.hasToolCalls()) {
             toolCallsContainer.setVisibility(GONE);
             toolCallsContainer.removeAllViews();
@@ -323,28 +357,5 @@ public final class AssistantMessageView extends LinearLayout {
                 && !result.isError()
                 && result.getContent().trim().length() > 0
                 && result.getReviewState().length() == 0;
-    }
-
-    private String toolSignature(ChatMessage message) {
-        if (message == null || !message.hasToolCalls()) {
-            return "";
-        }
-        StringBuilder builder = new StringBuilder();
-        builder.append(projectPath).append('\n');
-        for (ToolCall call : message.getToolCalls()) {
-            builder.append(call.getId()).append('|')
-                    .append(call.getName()).append('|')
-                    .append(call.getArguments()).append('|');
-            ToolResult result = message.getToolResult(call.getId());
-            if (result != null) {
-                builder.append(result.getContent()).append('|')
-                        .append(result.isError()).append('|')
-                        .append(result.getDiffId()).append('|')
-                        .append(result.getReviewState()).append('|')
-                        .append(result.getReviewMessage());
-            }
-            builder.append('\n');
-        }
-        return builder.toString();
     }
 }

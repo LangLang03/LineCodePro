@@ -5,6 +5,7 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import cn.lineai.data.db.LineCodeDatabase;
 import cn.lineai.model.Strings;
+import java.util.HashMap;
 
 final class MessageTextChunkStore {
     static final int CHUNK_SIZE = 64 * 1024;
@@ -17,11 +18,12 @@ final class MessageTextChunkStore {
     }
 
     void save(SQLiteDatabase db, String messageId, String fieldName, String value) {
-        db.delete("message_text_chunks", "message_id = ? AND field_name = ?", new String[] {safe(messageId), safe(fieldName)});
         String text = safe(value);
         if (text.length() == 0) {
             return;
         }
+        // 写入前由调用方按会话一次性清理旧分块（见 clearForConversation），
+        // 因此这里不再逐字段执行 DELETE：长对话持久化时每条消息可省下最多 3 次写语句。
         for (int start = 0, order = 0; start < text.length(); start += CHUNK_SIZE, order++) {
             int end = Math.min(text.length(), start + CHUNK_SIZE);
             ContentValues values = new ContentValues();
@@ -33,12 +35,55 @@ final class MessageTextChunkStore {
         }
     }
 
-    String read(SQLiteDatabase db, String messageId, String fieldName) {
-        String chunks = readChunks(db, messageId, fieldName, 0);
-        if (chunks.length() > 0) {
-            return chunks;
+    /**
+     * 重写一个会话的消息前清理它已有的全部分块文本（含孤立旧行），
+     * 用一条语句代替 {@code 每条消息 × 每个字段} 的 DELETE。
+     */
+    void clearForConversation(SQLiteDatabase db, String conversationId) {
+        db.delete("message_text_chunks",
+                "message_id IN (SELECT id FROM messages WHERE conversation_id = ?)",
+                new String[] {safe(conversationId)});
+    }
+
+    /**
+     * 一次性读出整个会话的全部分块文本，key 为 {@link #textKey}。
+     *
+     * <p>长对话（上千条消息）逐条逐字段查询会产生数千次 SQL，是切换/启动会话时主线程卡死的主因；
+     * 这里压成一条按 {@code (message_id, field_name, chunk_order)} 索引顺序扫描的查询。
+     */
+    HashMap<String, String> readAll(SQLiteDatabase db, String conversationId) {
+        HashMap<String, String> texts = new HashMap<>();
+        Cursor cursor = db.rawQuery(
+                "SELECT c.message_id, c.field_name, c.content FROM message_text_chunks c"
+                        + " JOIN messages m ON m.id = c.message_id"
+                        + " WHERE m.conversation_id = ?"
+                        + " ORDER BY c.message_id ASC, c.field_name ASC, c.chunk_order ASC",
+                new String[] {safe(conversationId)});
+        try {
+            StringBuilder builder = null;
+            String key = null;
+            while (cursor.moveToNext()) {
+                String currentKey = textKey(value(cursor, 0), value(cursor, 1));
+                if (!currentKey.equals(key)) {
+                    if (builder != null) {
+                        texts.put(key, builder.toString());
+                    }
+                    key = currentKey;
+                    builder = new StringBuilder();
+                }
+                builder.append(value(cursor, 2));
+            }
+            if (builder != null && key != null) {
+                texts.put(key, builder.toString());
+            }
+        } finally {
+            cursor.close();
         }
-        return readLegacyMessageField(db, messageId, fieldName);
+        return texts;
+    }
+
+    static String textKey(String messageId, String fieldName) {
+        return safe(messageId) + '\u0000' + safe(fieldName);
     }
 
     String readFirstChars(SQLiteDatabase db, String messageId, String fieldName, int maxChars) {
@@ -83,20 +128,6 @@ final class MessageTextChunkStore {
             }
         } finally {
             cursor.close();
-        }
-        return builder.toString();
-    }
-
-    private String readLegacyMessageField(SQLiteDatabase db, String messageId, String fieldName) {
-        int length = (int) Math.min(Integer.MAX_VALUE, queryLong(db,
-                "SELECT COALESCE(length(" + safeFieldName(fieldName) + "), 0) FROM messages WHERE id = ? LIMIT 1",
-                new String[] {safe(messageId)}));
-        if (length <= 0) {
-            return "";
-        }
-        StringBuilder builder = new StringBuilder(length);
-        for (int start = 0; start < length; start += CHUNK_SIZE) {
-            builder.append(readLegacyMessageFieldRange(db, messageId, fieldName, start, CHUNK_SIZE));
         }
         return builder.toString();
     }

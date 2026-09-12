@@ -23,6 +23,7 @@ public final class ChatUiStateAssembler {
     private final InputSettingsRepository inputSettingsRepository;
     private final OutputSettingsRepository outputSettingsRepository;
     private final ContextManager contextManager;
+    private final ContextTokenMeter tokenMeter;
 
     public ChatUiStateAssembler(
             ModelStore modelRepository,
@@ -36,6 +37,7 @@ public final class ChatUiStateAssembler {
         this.inputSettingsRepository = inputSettingsRepository;
         this.outputSettingsRepository = outputSettingsRepository;
         this.contextManager = contextManager;
+        this.tokenMeter = new ContextTokenMeter(contextManager);
     }
 
     public ChatUiState assemble(
@@ -53,8 +55,9 @@ public final class ChatUiStateAssembler {
         AiBehaviorSettings aiSettings = aiBehaviorSettingsRepository.get();
         InputSettings inputSettings = inputSettingsRepository.get();
         OutputSettings outputSettings = outputSettingsRepository.get();
-        ContextSnapshot contextSnapshot = contextManager.snapshot(messages, contextInfo.getContextTokens(),
-                aiSettings.isPreserveReasoningEnabled());
+        ContextSnapshot contextSnapshot = new ContextSnapshot(
+                tokenMeter.total(messages, aiSettings.isPreserveReasoningEnabled()),
+                contextInfo.getContextTokens());
         String modelLabel = selectedModel == null
                 ? "未选择模型"
                 : contextInfo.getApiModelId();

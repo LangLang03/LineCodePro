@@ -6,6 +6,7 @@ import android.database.sqlite.SQLiteDatabase;
 import cn.lineai.data.db.LineCodeDatabase;
 import cn.lineai.model.ChatMessage;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 public final class ConversationRepository extends BaseRepository implements ConversationStore {
@@ -27,7 +28,12 @@ public final class ConversationRepository extends BaseRepository implements Conv
             "exclude_from_context",
             "tool_call_id",
             "tool_name",
-            "is_error"
+            "is_error",
+            // 新版把正文存在 message_text_chunks，但旧行仍直接把文本存在这些列上；
+            // 一起选出即可在分块缺失时零额外查询回退，避免逐条消息的 length()/substr() 探测。
+            "content",
+            "reasoning_content",
+            "raw_json"
     };
 
     private final MessageTextChunkStore textChunks;
@@ -155,6 +161,7 @@ public final class ConversationRepository extends BaseRepository implements Conv
         db.beginTransaction();
         try {
             saveConversationOnly(db, conversation);
+            textChunks.clearForConversation(db, conversation.getId());
             db.delete("messages", "conversation_id = ?", new String[] {conversation.getId()});
             List<MessageRecord> messages = conversation.getMessages();
             for (int i = 0; i < messages.size(); i++) {
@@ -267,7 +274,10 @@ public final class ConversationRepository extends BaseRepository implements Conv
 
     private List<MessageRecord> getMessages(String conversationId) {
         ArrayList<MessageRecord> messages = new ArrayList<>();
-        Cursor cursor = database.getReadableDatabase().query(
+        SQLiteDatabase db = database.getReadableDatabase();
+        // 一次拉取整个会话的分块文本，代替“每条消息 × 每个字段”一次查询。
+        HashMap<String, String> chunkTexts = textChunks.readAll(db, conversationId);
+        Cursor cursor = db.query(
                 "messages",
                 MESSAGE_META_COLUMNS,
                 "conversation_id = ?",
@@ -278,7 +288,7 @@ public final class ConversationRepository extends BaseRepository implements Conv
         );
         try {
             while (cursor.moveToNext()) {
-                messages.add(readMessage(database.getReadableDatabase(), cursor));
+                messages.add(readMessage(cursor, chunkTexts));
             }
         } finally {
             cursor.close();
@@ -317,13 +327,13 @@ public final class ConversationRepository extends BaseRepository implements Conv
         );
     }
 
-    private MessageRecord readMessage(SQLiteDatabase db, Cursor cursor) {
+    private MessageRecord readMessage(Cursor cursor, HashMap<String, String> chunkTexts) {
         String messageId = cursor.getString(cursor.getColumnIndexOrThrow("id"));
         return new MessageRecord(
                 messageId,
                 roleFromStorage(cursor.getString(cursor.getColumnIndexOrThrow("role"))),
-                textChunks.read(db, messageId, "content"),
-                textChunks.read(db, messageId, "reasoning_content"),
+                readText(cursor, chunkTexts, messageId, "content"),
+                readText(cursor, chunkTexts, messageId, "reasoning_content"),
                 cursor.getLong(cursor.getColumnIndexOrThrow("timestamp")),
                 cursor.getInt(cursor.getColumnIndexOrThrow("streaming")) == 1,
                 cursor.getInt(cursor.getColumnIndexOrThrow("hidden")) == 1,
@@ -331,8 +341,17 @@ public final class ConversationRepository extends BaseRepository implements Conv
                 cursor.getString(cursor.getColumnIndexOrThrow("tool_call_id")),
                 cursor.getString(cursor.getColumnIndexOrThrow("tool_name")),
                 cursor.getInt(cursor.getColumnIndexOrThrow("is_error")) == 1,
-                textChunks.read(db, messageId, "raw_json")
+                readText(cursor, chunkTexts, messageId, "raw_json")
         );
+    }
+
+    private String readText(Cursor cursor, HashMap<String, String> chunkTexts, String messageId, String fieldName) {
+        String chunked = chunkTexts.get(MessageTextChunkStore.textKey(messageId, fieldName));
+        if (chunked != null) {
+            return chunked;
+        }
+        String legacy = cursor.getString(cursor.getColumnIndexOrThrow(fieldName));
+        return legacy == null ? "" : legacy;
     }
 
     private ChatMessage.Role roleFromStorage(String role) {

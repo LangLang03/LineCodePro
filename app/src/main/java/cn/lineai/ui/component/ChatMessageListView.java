@@ -46,9 +46,13 @@ public final class ChatMessageListView extends FrameLayout {
     private MessageActionListener messageActionListener;
     private boolean multiSelectMode = false;
     private final Set<String> selectedMessageIds = new HashSet<>();
+    private int scrollButtonStyleKey;
     private LinearLayout multiSelectBar;
     private TextView multiSelectCountText;
     private MultiSelectListener multiSelectListener;
+    /** 上一次已应用到 FAB 的状态，避免滚动每一帧重复 setVisibility/bringToFront。 */
+    private boolean scrollToBottomShown;
+    private boolean scrollToBottomPostPending;
 
     public interface EmptyStateListener {
         void onAddModel();
@@ -132,10 +136,19 @@ public final class ChatMessageListView extends FrameLayout {
             followTailEnabled = true;
         }
         if (followTailEnabled && adapter.getCount() > 0) {
-            listView.post(() -> scrollToBottomInternal(false));
-        } else {
-            listView.post(this::updateScrollToBottomVisibility);
+            postScrollToBottom();
+        } else if (!scrollToBottomPostPending) {
+            scrollToBottomPostPending = true;
+            listView.post(this::applyScrollToBottomVisibility);
         }
+    }
+
+    private void postScrollToBottom() {
+        if (scrollToBottomPostPending) {
+            return; // 同一帧内多次 render 只需要一滚到底
+        }
+        scrollToBottomPostPending = true;
+        listView.post(() -> scrollToBottomInternal(false));
     }
 
     public void setToolReviewListener(ToolReviewListener listener) {
@@ -297,6 +310,7 @@ public final class ChatMessageListView extends FrameLayout {
     }
 
     private void scrollToBottomInternal(boolean animated) {
+        scrollToBottomPostPending = false;
         int count = adapter.getCount();
         if (count <= 0) {
             updateScrollToBottomVisibility();
@@ -322,8 +336,17 @@ public final class ChatMessageListView extends FrameLayout {
         });
     }
 
+    private void applyScrollToBottomVisibility() {
+        scrollToBottomPostPending = false;
+        updateScrollToBottomVisibility();
+    }
+
     private void updateScrollToBottomVisibility() {
         boolean show = !multiSelectMode && adapter.getCount() > 0 && !isAtBottom();
+        if (show == scrollToBottomShown) {
+            return;
+        }
+        scrollToBottomShown = show;
         scrollToBottomButton.setVisibility(show ? VISIBLE : GONE);
         if (show) {
             scrollToBottomButton.bringToFront();
@@ -331,6 +354,11 @@ public final class ChatMessageListView extends FrameLayout {
     }
 
     private void refreshScrollToBottomButtonStyle() {
+        int styleKey = 31 * LineTheme.ACCENT + LineTheme.TEXT_ON_COLOR;
+        if (styleKey == scrollButtonStyleKey) {
+            return;
+        }
+        scrollButtonStyleKey = styleKey;
         scrollToBottomButton.setIconColor(LineTheme.TEXT_ON_COLOR);
         scrollToBottomButton.setIconSizeDp(44, 20);
         scrollToBottomButton.setBackground(LineTheme.roundedStroke(getContext(), LineTheme.ACCENT, 22, LineTheme.ACCENT));
@@ -438,7 +466,8 @@ public final class ChatMessageListView extends FrameLayout {
     }
 
     private static final class MessageAdapter extends BaseAdapter {
-        private static final int MAX_CACHED_ROWS = 140;
+        /** 缓存的是已解析完 Markdown 的整行视图，单行可达数十个 View；上限过高会直接制造 GC/卡顿。 */
+        private static final int MAX_CACHED_ROWS = 64;
         private static final int VIEW_TYPE_CONFIGURE = 0;
         private static final int VIEW_TYPE_USER = 1;
         private static final int VIEW_TYPE_ASSISTANT = 2;
@@ -447,6 +476,9 @@ public final class ChatMessageListView extends FrameLayout {
         private final Context context;
         private final ArrayList<ChatMessage> visibleMessages = new ArrayList<>();
         private final LinkedHashMap<String, View> rowCache = new LinkedHashMap<>(32, 0.75f, true);
+        private final ConversationTimeline.Builder timelineBuilder = new ConversationTimeline.Builder();
+        private final HashMap<String, ToolResultCache> toolResultCache = new HashMap<>();
+        private final HashMap<String, MergedMessageCache> mergedMessageCache = new HashMap<>();
         private boolean showConfigureState;
         private boolean generating;
         private List<ConversationTimeline.Row> timeline = java.util.Collections.emptyList();
@@ -475,15 +507,7 @@ public final class ChatMessageListView extends FrameLayout {
                 HashMap<String, ToolResult> toolResults = new HashMap<>();
                 for (ChatMessage message : messages) {
                     if (message.getRole() == ChatMessage.Role.TOOL && message.getToolCallId().length() > 0) {
-                        toolResults.put(message.getToolCallId(), ToolResult.withReview(
-                                message.getToolCallId(),
-                                message.getToolName(),
-                                message.getContent(),
-                                message.isError(),
-                                message.getDiffId(),
-                                message.getReviewState(),
-                                message.getReviewMessage()
-                        ));
+                        toolResults.put(message.getToolCallId(), toolResultOf(message));
                     }
                 }
                 for (ChatMessage message : messages) {
@@ -492,7 +516,7 @@ public final class ChatMessageListView extends FrameLayout {
                             || message.getRole() == ChatMessage.Role.TOOL) {
                         continue;
                     }
-                    nextMessages.add(message.hasToolCalls() ? message.withToolResults(toolResultsFor(message, toolResults)) : message);
+                    nextMessages.add(message.hasToolCalls() ? mergeToolResults(message, toolResults) : message);
                 }
             }
             boolean nextShowConfigureState = nextMessages.isEmpty() && state != null && !state.hasConfiguredModel();
@@ -516,13 +540,22 @@ public final class ChatMessageListView extends FrameLayout {
                 return false;
             }
 
+            boolean shrunk = nextMessages.size() < visibleMessages.size();
             if (conversationChanged) {
                 rowCache.clear();
                 disclosure.clear();
+                timelineBuilder.reset();
+                toolResultCache.clear();
+                mergedMessageCache.clear();
+            } else if (shrunk) {
+                // 压缩/清空后一次性丢弃失效缓存，避免每次 render 重建 key 集合。
+                toolResultCache.clear();
+                mergedMessageCache.clear();
+                pruneCache(nextMessages);
             }
             visibleMessages.clear();
             visibleMessages.addAll(nextMessages);
-            timeline = ConversationTimeline.build(visibleMessages);
+            timeline = timelineBuilder.build(nextMessages);
             generating = state != null && state.isStreaming();
             showConfigureState = nextShowConfigureState;
             thinkingAutoExpand = nextThinkingAutoExpand;
@@ -531,9 +564,95 @@ public final class ChatMessageListView extends FrameLayout {
             codeWrapEnabled = nextCodeWrapEnabled;
             conversationId = nextConversationId;
             projectPath = nextProjectPath;
-            pruneCache();
+            if (!conversationChanged && !shrunk) {
+                trimCache();
+            }
             notifyDataSetChanged();
             return conversationChanged;
+        }
+
+        /** 同一 TOOL 消息实例只构造一次 ToolResult，保证上游消息/视图的引用稳定性。 */
+        private ToolResult toolResultOf(ChatMessage message) {
+            String key = cacheKey(message);
+            ToolResultCache cached = toolResultCache.get(key);
+            if (cached != null && cached.source == message) {
+                return cached.result;
+            }
+            ToolResult result = ToolResult.withReview(
+                    message.getToolCallId(),
+                    message.getToolName(),
+                    message.getContent(),
+                    message.isError(),
+                    message.getDiffId(),
+                    message.getReviewState(),
+                    message.getReviewMessage()
+            );
+            toolResultCache.put(key, new ToolResultCache(message, result));
+            return result;
+        }
+
+        /**
+         * 把工具结果合入助手消息。旧实现对每条带工具调用的消息都复制一个新 {@link ChatMessage}，
+         * 导致流式时整条对话的消息实例全部失效，下游（时间线/token 估算/视图绑定）无法复用。
+         */
+        private ChatMessage mergeToolResults(ChatMessage message, Map<String, ToolResult> resultById) {
+            ArrayList<ToolResult> results = new ArrayList<>();
+            for (ToolCall call : message.getToolCalls()) {
+                ToolResult result = resultById.get(call.getId());
+                if (result != null) {
+                    results.add(result);
+                }
+            }
+            String key = cacheKey(message);
+            MergedMessageCache cached = mergedMessageCache.get(key);
+            if (cached != null && cached.source == message && sameResults(cached.results, results)) {
+                return cached.merged;
+            }
+            ChatMessage merged = resultsEqual(message.getToolResults(), results) ? message : message.withToolResults(results);
+            mergedMessageCache.put(key, new MergedMessageCache(message, results, merged));
+            return merged;
+        }
+
+        private static boolean resultsEqual(List<ToolResult> existing, List<ToolResult> next) {
+            if (existing == next) {
+                return true;
+            }
+            if (existing.size() != next.size()) {
+                return false;
+            }
+            for (int i = 0; i < next.size(); i++) {
+                ToolResult left = existing.get(i);
+                ToolResult right = next.get(i);
+                if (left == right) {
+                    continue;
+                }
+                if (left == null || right == null
+                        || !left.getToolCallId().equals(right.getToolCallId())
+                        || !left.getToolName().equals(right.getToolName())
+                        || !left.getContent().equals(right.getContent())
+                        || !left.getDiffId().equals(right.getDiffId())
+                        || !left.getReviewState().equals(right.getReviewState())
+                        || !left.getReviewMessage().equals(right.getReviewMessage())
+                        || left.isError() != right.isError()) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private boolean sameResults(List<ToolResult> left, List<ToolResult> right) {
+            if (left == right) {
+                return true;
+            }
+            if (left.size() != right.size()) {
+                return false;
+            }
+            for (int i = 0; i < left.size(); i++) {
+                if (left.get(i) != right.get(i)) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         @Override
@@ -719,9 +838,9 @@ public final class ChatMessageListView extends FrameLayout {
             return conversationId + ":" + message.getRole().name() + ":" + (message.getId() == null ? "" : message.getId());
         }
 
-        private void pruneCache() {
+        private void pruneCache(List<ChatMessage> nextMessages) {
             Set<String> currentKeys = new HashSet<>();
-            for (ChatMessage message : visibleMessages) {
+            for (ChatMessage message : nextMessages) {
                 currentKeys.add(cacheKey(message));
             }
             Iterator<Map.Entry<String, View>> iterator = rowCache.entrySet().iterator();
@@ -799,15 +918,26 @@ public final class ChatMessageListView extends FrameLayout {
             return a == null ? b == null : a.equals(b);
         }
 
-        private ArrayList<ToolResult> toolResultsFor(ChatMessage message, Map<String, ToolResult> resultById) {
-            ArrayList<ToolResult> results = new ArrayList<>();
-            for (ToolCall call : message.getToolCalls()) {
-                ToolResult result = resultById.get(call.getId());
-                if (result != null) {
-                    results.add(result);
-                }
+        private static final class ToolResultCache {
+            final ChatMessage source;
+            final ToolResult result;
+
+            ToolResultCache(ChatMessage source, ToolResult result) {
+                this.source = source;
+                this.result = result;
             }
-            return results;
+        }
+
+        private static final class MergedMessageCache {
+            final ChatMessage source;
+            final List<ToolResult> results;
+            final ChatMessage merged;
+
+            MergedMessageCache(ChatMessage source, List<ToolResult> results, ChatMessage merged) {
+                this.source = source;
+                this.results = results;
+                this.merged = merged;
+            }
         }
 
         private boolean sameToolCalls(ChatMessage a, ChatMessage b) {

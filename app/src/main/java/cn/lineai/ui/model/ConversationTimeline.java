@@ -7,6 +7,7 @@ import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ui.ToolCallUtils;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
@@ -60,6 +61,11 @@ public final class ConversationTimeline {
         public final boolean pending;
         public final long processingStartedAt;
         public final long processingFinishedAt;
+        /** reasoning 块 id -> 所属消息，避免展示层每次绑定时做 O(N) 线性查找。 */
+        private final Map<String, ChatMessage> reasoningOwners;
+        private List<Operation> diffOperations;
+        private List<String> changedFilePaths;
+
         private Row(List<ChatMessage> messages) {
             this.messages = Collections.unmodifiableList(new ArrayList<>(messages));
             first = messages.get(0);
@@ -91,6 +97,7 @@ public final class ConversationTimeline {
             ArrayList<Operation> group = new ArrayList<>();
             ArrayList<Block> steps = new ArrayList<>();
             Map<String, Integer> blockIds = new HashMap<>();
+            Map<String, ChatMessage> owners = new HashMap<>();
             for (ChatMessage message : messages) {
                 if (message.isCompactBlock()) {
                     flush(blocks, group, steps, blockIds);
@@ -103,6 +110,7 @@ public final class ConversationTimeline {
                 if (message != answer && !message.getReasoningContent().trim().isEmpty()) {
                     Block reasoning = new Block(uniqueId(message.getId() + ":reasoning", blockIds),
                             message.getReasoningContent(), true, Collections.emptyList());
+                    owners.put(reasoning.id, message);
                     // Internal reasoning is part of the work, not a new outward assistant reply.
                     if (group.isEmpty()) {
                         if (hasProse) blocks.add(reasoning);
@@ -129,6 +137,52 @@ public final class ConversationTimeline {
             }
             flush(blocks, group, steps, blockIds);
             process = Collections.unmodifiableList(blocks);
+            reasoningOwners = owners.isEmpty() ? Collections.emptyMap() : Collections.unmodifiableMap(owners);
+        }
+
+        /** 带 diff 的操作（可审阅的文件修改），按出现顺序去重。 */
+        public List<Operation> diffOperations() {
+            List<Operation> cached = diffOperations;
+            if (cached != null) {
+                return cached;
+            }
+            LinkedHashMap<String, Operation> edits = new LinkedHashMap<>();
+            for (Block block : process) {
+                for (Operation operation : block.operations) {
+                    if (operation.result != null && !operation.result.getDiffId().isEmpty()) {
+                        // Keep every diff reviewable, including multiple edits to the same file.
+                        edits.put(operation.result.getDiffId(), operation);
+                    }
+                }
+            }
+            cached = Collections.unmodifiableList(new ArrayList<>(edits.values()));
+            diffOperations = cached;
+            return cached;
+        }
+
+        /** reasoning 块属于哪条消息；块 id 在 {@link #process} 内唯一。 */
+        public ChatMessage ownerOfReasoning(String blockId) {
+            return reasoningOwners.get(blockId);
+        }
+
+        /**
+         * 变更文件列表（用于“已修改 N 个文件”展示），同一文件的多次编辑只计一次。
+         * 行实例会被复用，因此只在分组真正重建时才解析工具参数。
+         */
+        public List<String> changedFilePaths() {
+            List<String> cached = changedFilePaths;
+            if (cached != null) {
+                return cached;
+            }
+            java.util.LinkedHashSet<String> paths = new java.util.LinkedHashSet<>();
+            for (Operation operation : diffOperations()) {
+                org.json.JSONObject input = cn.lineai.tool.ui.ToolCallUtils.parseInput(operation.call);
+                paths.add(input.optString("file_path", input.optString("path",
+                        operation.result == null ? "" : operation.result.getDiffId())));
+            }
+            cached = Collections.unmodifiableList(new ArrayList<>(paths));
+            changedFilePaths = cached;
+            return cached;
         }
     }
 
@@ -146,20 +200,7 @@ public final class ConversationTimeline {
     }
 
     public static List<Row> build(List<ChatMessage> visibleMessages) {
-        ArrayList<Row> rows = new ArrayList<>();
-        ArrayList<ChatMessage> turn = new ArrayList<>();
-        for (ChatMessage message : visibleMessages) {
-            if (message.isHidden() || message.getRole() == ChatMessage.Role.TOOL || message.getRole() == ChatMessage.Role.SYSTEM) continue;
-            if (message.getRole() != ChatMessage.Role.ASSISTANT || message.isModelSwitchNotification()) {
-                flushTurn(rows, turn);
-                rows.add(new Row(Collections.singletonList(message)));
-            } else {
-                if (message.isCompactBlock() && endsWithCompletedAnswer(turn)) flushTurn(rows, turn);
-                turn.add(message);
-            }
-        }
-        flushTurn(rows, turn);
-        return rows;
+        return new Builder().build(visibleMessages);
     }
 
     private static boolean endsWithCompletedAnswer(List<ChatMessage> turn) {
@@ -170,11 +211,104 @@ public final class ConversationTimeline {
                 && (last.getProcessingStartedAt() == 0 || last.getProcessingFinishedAt() > 0);
     }
 
-    private static void flushTurn(List<Row> rows, ArrayList<ChatMessage> turn) {
-        if (turn.isEmpty()) return;
-        Row row = new Row(turn);
-        if (row.isTurn) rows.add(row);
-        else for (ChatMessage message : turn) rows.add(new Row(Collections.singletonList(message)));
-        turn.clear();
+    /**
+     * 增量时间线：按“消息分组”为单位缓存 {@link Row}。
+     *
+     * <p>{@code Row} 是其消息列表的纯函数，而 {@code ChatMessage} 不可变，所以只要一个分组内的
+     * 消息实例引用未变，它的行就无需重建。流式输出只改变尾部分组，因此长对话下每次 render
+     * 不再重新构建全部行（原本每 80ms 一次、O(全部消息 x 工具调用) 的分配是卡顿主因）。
+     */
+    public static final class Builder {
+        private final ArrayList<ChatMessage> turn = new ArrayList<>();
+        private final ArrayList<ChatMessage> single = new ArrayList<>(1);
+        private final ArrayList<ArrayList<ChatMessage>> groups = new ArrayList<>();
+        private final ArrayList<List<Row>> groupRows = new ArrayList<>();
+        private final ArrayList<Row> output = new ArrayList<>();
+        private int groupCount;
+
+        public List<Row> build(List<ChatMessage> visibleMessages) {
+            groupCount = 0;
+            output.clear();
+            turn.clear();
+            if (visibleMessages != null) {
+                for (ChatMessage message : visibleMessages) {
+                    if (message == null || message.isHidden()
+                            || message.getRole() == ChatMessage.Role.TOOL
+                            || message.getRole() == ChatMessage.Role.SYSTEM) {
+                        continue;
+                    }
+                    if (message.getRole() != ChatMessage.Role.ASSISTANT || message.isModelSwitchNotification()) {
+                        publishTurn();
+                        single.clear();
+                        single.add(message);
+                        publish(single);
+                    } else {
+                        if (message.isCompactBlock() && endsWithCompletedAnswer(turn)) publishTurn();
+                        turn.add(message);
+                    }
+                }
+            }
+            publishTurn();
+            while (groups.size() > groupCount) {
+                groups.remove(groups.size() - 1);
+                groupRows.remove(groupRows.size() - 1);
+            }
+            return output;
+        }
+
+        public void reset() {
+            groups.clear();
+            groupRows.clear();
+            output.clear();
+            turn.clear();
+            single.clear();
+            groupCount = 0;
+        }
+
+        private void publishTurn() {
+            if (turn.isEmpty()) return;
+            publish(turn);
+            turn.clear();
+        }
+
+        private void publish(List<ChatMessage> messages) {
+            int index = groupCount++;
+            ArrayList<ChatMessage> cached = groupAt(index);
+            if (cached.size() == messages.size() && sameInstances(cached, messages)) {
+                output.addAll(groupRows.get(index));
+                return;
+            }
+            cached.clear();
+            cached.addAll(messages);
+            List<Row> rows = rowsFor(cached);
+            if (index < groupRows.size()) {
+                groupRows.set(index, rows);
+            } else {
+                groupRows.add(rows);
+            }
+            output.addAll(rows);
+        }
+
+        private ArrayList<ChatMessage> groupAt(int index) {
+            while (groups.size() <= index) {
+                groups.add(new ArrayList<>());
+            }
+            return groups.get(index);
+        }
+
+        private static boolean sameInstances(List<ChatMessage> cached, List<ChatMessage> next) {
+            for (int i = 0; i < next.size(); i++) {
+                if (cached.get(i) != next.get(i)) return false;
+            }
+            return !next.isEmpty();
+        }
+
+        private static List<Row> rowsFor(List<ChatMessage> messages) {
+            Row row = new Row(messages);
+            if (row.isTurn) return Collections.singletonList(row);
+            ArrayList<Row> rows = new ArrayList<>(messages.size());
+            for (ChatMessage message : messages) rows.add(new Row(Collections.singletonList(message)));
+            return rows;
+        }
     }
 }

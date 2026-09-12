@@ -25,6 +25,15 @@ final class ToolReviewController {
     private final MainThreadDispatcher mainThread;
     private final Host host;
     private final Map<String, DiffRecord> localReviewCache = new HashMap<>();
+    /**
+     * 逐条消息的展示列表 memo：渲染热路径（流式时每 ~80ms 一次）会反复调用
+     * {@link #applyLocalReviews(List)}，而对同一不可变 {@link ChatMessage} 实例结果完全相同，
+     * 因此只在实例变化或本地评审发生变更时重算。
+     */
+    private final ArrayList<ChatMessage> displaySource = new ArrayList<>();
+    private final ArrayList<ChatMessage> displayMemo = new ArrayList<>();
+    private final ArrayList<Integer> displayReviewGeneration = new ArrayList<>();
+    private int reviewGeneration;
 
     ToolReviewController(
             DiffStore diffRepository,
@@ -99,25 +108,65 @@ final class ToolReviewController {
         if (source == null) {
             return display;
         }
-        for (ChatMessage message : source) {
-            ChatMessage next = message;
-            if (message != null && message.getRole() == ChatMessage.Role.TOOL) {
-                DiffRecord direct = localReview(message.getDiffId());
-                if (direct != null) {
-                    next = next.withToolReview(
-                            message.getDiffId(),
-                            reviewState(direct),
-                            direct.getReviewMessage()
-                    );
-                }
-                String content = applyNestedLocalReviews(next.getContent());
-                if (!content.equals(next.getContent())) {
-                    next = next.withContent(content, next.getReasoningContent(), next.isStreaming());
-                }
+        int size = source.size();
+        for (int i = 0; i < size; i++) {
+            ChatMessage message = source.get(i);
+            if (i < displayMemo.size()
+                    && displaySource.get(i) == message
+                    && displayReviewGeneration.get(i) == reviewGeneration) {
+                display.add(displayMemo.get(i));
+                continue;
             }
+            ChatMessage next = withLocalReview(message);
+            setMemo(i, message, next);
             display.add(next);
         }
+        trimMemo(size);
         return display;
+    }
+
+    private void setMemo(int index, ChatMessage source, ChatMessage result) {
+        if (index < displaySource.size()) {
+            displaySource.set(index, source);
+            displayMemo.set(index, result);
+            displayReviewGeneration.set(index, reviewGeneration);
+            return;
+        }
+        displaySource.add(source);
+        displayMemo.add(result);
+        displayReviewGeneration.add(reviewGeneration);
+    }
+
+    private void trimMemo(int size) {
+        while (displaySource.size() > size) {
+            int last = displaySource.size() - 1;
+            displaySource.remove(last);
+            displayMemo.remove(last);
+            displayReviewGeneration.remove(last);
+        }
+    }
+
+    private ChatMessage withLocalReview(ChatMessage message) {
+        ChatMessage next = message;
+        if (message != null && message.getRole() == ChatMessage.Role.TOOL) {
+            DiffRecord direct = localReview(message.getDiffId());
+            if (direct != null) {
+                next = next.withToolReview(
+                        message.getDiffId(),
+                        reviewState(direct),
+                        direct.getReviewMessage()
+                );
+            }
+            String content = next.getContent();
+            // 嵌套评审只可能出现在带 diff_id 的 JSON 封装里，先做廉价筛除，避免逐条解析工具输出。
+            if (content != null && content.indexOf("diff_id") >= 0) {
+                String reviewed = applyNestedLocalReviews(content);
+                if (!reviewed.equals(next.getContent())) {
+                    next = next.withContent(reviewed, next.getReasoningContent(), next.isStreaming());
+                }
+            }
+        }
+        return next;
     }
 
     private String applyNestedLocalReviews(String content) {
@@ -196,6 +245,8 @@ final class ToolReviewController {
         synchronized (localReviewCache) {
             localReviewCache.remove(diffId);
         }
+        // 评审结果变化后，之前 memo 的展示消息全部作废。
+        reviewGeneration++;
     }
 
     private String reviewState(DiffRecord record) {
