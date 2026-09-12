@@ -251,7 +251,20 @@ python3 tools/ui_parity_test.py \
       **双向真机验证**：窗口 600 时每轮触发（摘要请求 + 含摘要请求各一）；
       窗口 128000 时两次发送仅两个请求、**不触发**。80/80 测试、回归功能失败 0。
 
-- [ ] **mid-loop 压缩的残留语义差异**（本轮实测发现，尚未修）：
+- [ ] **mid-loop 压缩的残留语义差异**（第 23 轮做过可行性核查，结论：改动深、
+      收益窄，暂缓）：旧版 `startToolLoopContextCompaction` 会改写会话并
+      `persistCurrentConversation()`，因此摘要落库、UI 出现「压缩」进度块；
+      当前实现只重写**本次在途请求**（`MidLoopCompactor` 端口拿不到会话），
+      所以摘要不落库、无进度块，且下一轮会从**未压缩的会话**重建请求、
+      再次触发压缩（每轮多一次摘要请求，非用户可见）。
+      **为何不只是接线**：(1) `ChatSession` 由 `app::ChatSessionBootstrap` 封装
+      （`src/app/bootstrap.h:22`），`app_root` 在压缩器构造点拿不到它，需要调整
+      引导顺序；(2) 更根本的是，旧版工具循环把 assistant/tool 消息**写进会话**，
+      而候选只在 `request.messages` 里追加、完成时才落库——
+      所以"保留在途组"在旧版是会话内的真实消息，在候选是请求内的临时消息，
+      要让排除集合/保留尾部对上真实 id，需先统一这一差异。
+      收益：仅长工具循环（窗口触顶且发生在循环中途）时的一个进度块。
+      若要做，建议顺序：先让工具循环把在途组写入会话，再接会话与进度块。（本轮实测发现，尚未修）：
       旧版 `startToolLoopContextCompaction` 会改写会话并
       `persistCurrentConversation()`，因此摘要落库、UI 出现「压缩」进度块。
       当前实现只重写**本次在途请求**（`MidLoopCompactor` 端口拿不到会话），
