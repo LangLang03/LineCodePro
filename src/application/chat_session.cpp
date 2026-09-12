@@ -60,6 +60,14 @@ void ChatSession::ApplyCompaction(std::vector<std::uint64_t> excluded_ids,
 void ChatSession::ApplyCompaction(std::vector<std::uint64_t> excluded_ids,
                                   std::string summary_content,
                                   std::vector<domain::ChatMessage> trailing) {
+  ApplyCompaction(std::move(excluded_ids), std::move(summary_content),
+                  std::move(trailing), 0);
+}
+
+void ChatSession::ApplyCompaction(std::vector<std::uint64_t> excluded_ids,
+                                  std::string summary_content,
+                                  std::vector<domain::ChatMessage> trailing,
+                                  const std::uint64_t insert_after_id) {
   if (summary_content.empty())
     return;
   auto &store = RequireStore(store_);
@@ -73,7 +81,7 @@ void ChatSession::ApplyCompaction(std::vector<std::uint64_t> excluded_ids,
   // Legacy compact blocks are hidden from the transcript but stay in context,
   // which is exactly what makes them replace the summarized history.
   summary.hidden = true;
-  store.ApplyCompaction(excluded_ids, std::move(summary));
+  store.ApplyCompaction(excluded_ids, std::move(summary), insert_after_id);
   for (auto &message : trailing) {
     // The originals were handed to `ApplyCompaction` (and left the context), so
     // the tail travels as hidden copies that still render nowhere but take part

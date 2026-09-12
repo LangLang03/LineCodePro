@@ -822,6 +822,9 @@ struct SqliteConversationStore::State final {
     // The `{}` initializer keeps `-Wmissing-field-initializers` quiet for the
     // other designated-initializer call sites.
     std::vector<std::uint64_t> excluded_ids{};
+    // Populated for Operation::compact when the summary has to sit after a
+    // specific message instead of at the end; 0 means append.
+    std::uint64_t insert_after_id{};
   };
 
   explicit State(huxerui::TaskScope task_scope, std::function<void()> changed)
@@ -1194,7 +1197,7 @@ SqliteConversationStore::RecallUserMessage(std::uint64_t message_id) {
 
 void SqliteConversationStore::ApplyCompaction(
     const std::span<const std::uint64_t> excluded_ids,
-    domain::ChatMessage summary) {
+    domain::ChatMessage summary, const std::uint64_t insert_after_id) {
   if (state_->conversation_id.empty())
     return;
   for (auto &message : state_->messages) {
@@ -1203,7 +1206,19 @@ void SqliteConversationStore::ApplyCompaction(
   }
   summary.hidden = true;
   const auto local_order = state_->next_local_order++;
-  state_->messages.push_back(summary);
+  // Soft compaction summarizes only the oldest slice, so its summary belongs
+  // between that slice and the tail it left alone; the row is placed at the
+  // anchor and the flush shifts the later ones down.
+  const auto anchor =
+      insert_after_id == 0
+          ? state_->messages.end()
+          : std::ranges::find(state_->messages, insert_after_id,
+                              &domain::ChatMessage::id);
+  if (anchor == state_->messages.end()) {
+    state_->messages.push_back(summary);
+  } else {
+    state_->messages.insert(std::next(anchor), summary);
+  }
   state_->pending.push_back(State::Event{
       .operation = State::Operation::compact,
       .conversation_id = state_->conversation_id,
@@ -1211,6 +1226,7 @@ void SqliteConversationStore::ApplyCompaction(
       .local_order = local_order,
       .excluded_ids = std::vector<std::uint64_t>{excluded_ids.begin(),
                                                  excluded_ids.end()},
+      .insert_after_id = insert_after_id,
   });
   state_->NotifyChanged();
   ScheduleFlush(state_);
@@ -1549,18 +1565,53 @@ SqliteConversationStore::ProcessNextAsync(std::shared_ptr<State> state) {
           const std::string message_id =
               std::string{kOwnedMessagePrefix} +
               std::to_string(event.message.id);
+          // An inserted summary takes the anchor's slot in the ordering, so
+          // everything after the anchor moves down by one. `messages` has
+          // `UNIQUE(conversation_id, local_order)`, so a plain `+ 1` collides
+          // mid-update and aborts the whole transaction -- which silently lost
+          // both the summary and the exclusions. Shifting through a far-away
+          // offset in two passes keeps every row distinct throughout.
+          constexpr auto kOrderShift = std::int64_t{1'000'000};
+          if (event.insert_after_id != 0) {
+            const auto anchor_id = std::string{kOwnedMessagePrefix} +
+                                   std::to_string(event.insert_after_id);
+            auto parked = transaction.Execute(
+                "UPDATE messages SET local_order = local_order + ? "
+                "WHERE conversation_id = ? AND local_order > "
+                "(SELECT local_order FROM messages WHERE id = ?)",
+                kOrderShift, event.conversation_id, anchor_id);
+            if (!parked)
+              return parked.Error();
+            auto settled = transaction.Execute(
+                "UPDATE messages SET local_order = local_order - ? + 1 "
+                "WHERE conversation_id = ? AND local_order > "
+                "? + (SELECT local_order FROM messages WHERE id = ?)",
+                kOrderShift, event.conversation_id, kOrderShift, anchor_id);
+            if (!settled)
+              return settled.Error();
+          }
+          const auto order_sql =
+              event.insert_after_id == 0
+                  ? std::string{"?"}
+                  : std::string{"(SELECT local_order + 1 FROM messages "
+                                "WHERE id = ?)"};
+          const auto order_argument =
+              event.insert_after_id == 0
+                  ? std::to_string(event.local_order)
+                  : std::string{kOwnedMessagePrefix} +
+                        std::to_string(event.insert_after_id);
           auto inserted = transaction.Execute(
               "INSERT INTO messages "
               "(id, conversation_id, local_order, role, content, "
               "reasoning_content, timestamp, streaming, hidden, "
               "exclude_from_context, tool_call_id, tool_name, is_error, "
-              "raw_json) VALUES (?, ?, ?, ?, '', '', ?, 0, 1, 0, NULL, "
-              "NULL, 0, '') "
-              "ON CONFLICT(id) DO UPDATE SET "
-              "conversation_id = excluded.conversation_id, "
-              "local_order = excluded.local_order, role = excluded.role, "
-              "hidden = 1, exclude_from_context = 0",
-              message_id, event.conversation_id, event.local_order,
+              "raw_json) VALUES (?, ?, " + order_sql +
+                  ", ?, '', '', ?, 0, 1, 0, NULL, NULL, 0, '') "
+                  "ON CONFLICT(id) DO UPDATE SET "
+                  "conversation_id = excluded.conversation_id, "
+                  "local_order = excluded.local_order, role = excluded.role, "
+                  "hidden = 1, exclude_from_context = 0",
+              message_id, event.conversation_id, order_argument,
               RoleName(event.message.role), event.timestamp);
           if (!inserted)
             return inserted.Error();

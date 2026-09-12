@@ -80,13 +80,19 @@ public:
   RecallUserMessage(std::uint64_t message_id) = 0;
 
   // Context compaction: hides the summarized head from future requests and
-  // appends the summary that stands in for it. The legacy controller marked
-  // every compacted message `excludeFromContext` and pushed a hidden compact
-  // block, so both flags travel together here.
+  // places the summary that stands in for it.
+  //
+  // `insert_after_id` is the message the summary must follow, or 0 to append.
+  // Soft compaction summarizes only the oldest slice, and legacy ordered the
+  // result "summary -> recent context -> current question"
+  // (`ContextCompactionController.java:606-615`), so the summary has to land
+  // between the head and the tail it left alone rather than after everything.
   virtual void ApplyCompaction(std::span<const std::uint64_t> excluded_ids,
-                               domain::ChatMessage summary) {
+                               domain::ChatMessage summary,
+                               std::uint64_t insert_after_id = 0) {
     static_cast<void>(excluded_ids);
     static_cast<void>(summary);
+    static_cast<void>(insert_after_id);
   }
 
   // Implementations expose a UI-thread cache here. Persistent adapters may

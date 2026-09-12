@@ -42,6 +42,14 @@ public:
   void ApplyCompaction(std::vector<std::uint64_t> excluded_ids,
                        std::string summary_content,
                        std::vector<domain::ChatMessage> trailing);
+  // Same, but the summary is placed immediately after `insert_after_id`
+  // instead of at the end. Soft compaction summarizes only the oldest slice
+  // and legacy ordered the result "summary -> recent context -> current
+  // question" (`ContextCompactionController.java:606-615`).
+  void ApplyCompaction(std::vector<std::uint64_t> excluded_ids,
+                       std::string summary_content,
+                       std::vector<domain::ChatMessage> trailing,
+                       std::uint64_t insert_after_id);
   void Clear();
   [[nodiscard]] std::span<const ConversationSummary>
   Conversations() const noexcept;

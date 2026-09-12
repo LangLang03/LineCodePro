@@ -2143,10 +2143,15 @@ private:
       base.push_back(message);
     }
     std::vector<std::uint64_t> retained_ids;
+    std::uint64_t insert_after_id = 0;
     if (soft) {
       // Legacy lines 388-389: only the oldest slice is summarized.
       base =
           application::ContextCompactionService::SplitForSoftCompact(base).head;
+      // ... and its summary belongs right after that slice, before the tail
+      // the split left untouched.
+      if (!base.empty())
+        insert_after_id = base.back().id;
     } else {
       // Legacy lines 479-481: keep the recent user messages verbatim.
       retained_ids = application::RetainedUserMessageIds(base);
@@ -2201,7 +2206,8 @@ private:
       // re-appended after the summary, both verbatim.
       dependencies_.session->ApplyCompaction(std::move(excluded_ids),
                                              compacted->summary_content,
-                                             std::move(preserved));
+                                             std::move(preserved),
+                                             insert_after_id);
       // Legacy lines 517-522: the completed block closes the transcript.
       static_cast<void>(dependencies_.session->AppendAssistant(
           domain::CompactProgressMessage(0U, domain::compact_status_done)));

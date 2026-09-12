@@ -716,6 +716,61 @@ void ApplyCompactionKeepsTheTailAfterTheSummary() {
   static_cast<void>(store_view);
 }
 
+// Soft compaction summarizes only the oldest slice, and legacy ordered the
+// result "summary -> recent context -> current question"
+// (`ContextCompactionController.java:606-615`). Appending the summary would
+// put it after the very context it is supposed to precede.
+void ApplyCompactionPlacesTheSummaryAfterItsSlice() {
+  auto store = std::make_unique<infrastructure::InMemoryConversationStore>();
+  application::ChatSession session{std::move(store)};
+  static_cast<void>(session.Send("old question"));
+  static_cast<void>(session.AppendAssistant("old answer"));
+  static_cast<void>(session.Send("recent question"));
+  static_cast<void>(session.AppendAssistant("recent answer"));
+  const auto current = session.Send("current question");
+  assert(current.has_value());
+
+  const auto before = std::vector<ChatMessage>{session.Messages().begin(),
+                                               session.Messages().end()};
+  assert(before.size() == 5U);
+  const auto head_end = before[1].id;   // "old answer" closes the head
+  const auto anchor_index = 1U;
+
+  std::vector<std::uint64_t> excluded{before[0].id, before[1].id};
+  session.ApplyCompaction(std::move(excluded), "the summary",
+                          std::vector<ChatMessage>{}, head_end);
+
+  const auto after = std::vector<ChatMessage>{session.Messages().begin(),
+                                              session.Messages().end()};
+  assert(after.size() == 6U);
+  // The summary sits immediately after the anchor, not at the end.
+  assert(after[anchor_index + 1].content == "the summary");
+  assert(after[anchor_index + 1].hidden);
+  assert(!after[anchor_index + 1].exclude_from_context);
+  assert(after[anchor_index + 2].content == "recent question");
+  // The tail keeps its order and stays in context.
+  assert(after.back().content == "current question");
+  for (std::size_t index = anchor_index + 2; index < after.size(); ++index)
+    assert(!after[index].exclude_from_context);
+}
+
+// A zero anchor keeps the append behaviour the hard path relies on.
+void ApplyCompactionWithoutAnAnchorStillAppends() {
+  auto store = std::make_unique<infrastructure::InMemoryConversationStore>();
+  application::ChatSession session{std::move(store)};
+  static_cast<void>(session.Send("question"));
+  static_cast<void>(session.AppendAssistant("answer"));
+
+  const auto before = std::vector<ChatMessage>{session.Messages().begin(),
+                                               session.Messages().end()};
+  session.ApplyCompaction({before[0].id}, "the summary",
+                          std::vector<ChatMessage>{});
+  const auto after = std::vector<ChatMessage>{session.Messages().begin(),
+                                              session.Messages().end()};
+  assert(after.size() == 3U);
+  assert(after.back().content == "the summary");
+}
+
 } // namespace
 
 int main() {
@@ -747,6 +802,8 @@ int main() {
   CompactBlockProjectionMatchesLegacy();
   CompactableBaseMessageSelectionMatchesLegacy();
   ApplyCompactionKeepsTheTailAfterTheSummary();
+  ApplyCompactionPlacesTheSummaryAfterItsSlice();
+  ApplyCompactionWithoutAnAnchorStillAppends();
 
   std::cout << "auto_compaction_tests passed\n";
   return 0;

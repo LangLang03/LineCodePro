@@ -40,7 +40,8 @@ public:
   [[nodiscard]] std::optional<domain::ChatMessage>
   RecallUserMessage(std::uint64_t message_id) override;
   void ApplyCompaction(std::span<const std::uint64_t> excluded_ids,
-                       domain::ChatMessage summary) override;
+                       domain::ChatMessage summary,
+                       std::uint64_t insert_after_id = 0) override;
   [[nodiscard]] std::span<const application::ConversationSummary>
   Conversations() const noexcept override;
   [[nodiscard]] std::string_view

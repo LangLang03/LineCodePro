@@ -28,12 +28,20 @@ void InMemoryConversationStore::Clear() { messages_.clear(); }
 
 void InMemoryConversationStore::ApplyCompaction(
     const std::span<const std::uint64_t> excluded_ids,
-    domain::ChatMessage summary) {
+    domain::ChatMessage summary, const std::uint64_t insert_after_id) {
   for (auto &message : messages_) {
     if (std::ranges::contains(excluded_ids, message.id))
       message.exclude_from_context = true;
   }
   summary.hidden = true;
+  if (insert_after_id != 0) {
+    const auto anchor =
+        std::ranges::find(messages_, insert_after_id, &domain::ChatMessage::id);
+    if (anchor != messages_.end()) {
+      messages_.insert(std::next(anchor), std::move(summary));
+      return;
+    }
+  }
   Append(std::move(summary));
 }
 
