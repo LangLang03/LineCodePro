@@ -590,7 +590,18 @@ python3 tools/ui_parity_test.py \
 - [ ] `mcp`：设置加载/保存和平台能力裁剪已接线；仍需完整执行链与像素验收。
 - [ ] `tool_settings`：设置持久化、模型选择已接线；仍需全状态和像素验收。
 - [ ] `extensions`：首页/详情/编辑路由已接线，Agent/MCP 已实现 SQLite 真实加载、新增、编辑、启停、单删和批量删除；MCP `tools/list` 已支持 JSON/SSE。Agent AI 起草、Skills/LineCode/Terminal/SkillHub 功能仍未完成。
-- [ ] `memory`：列表、空态、详情、新增/编辑/删除/多选已接入 SQLite；RAG 索引写入、自动提取与调用链仍未完成。
+- [x] `memory`：列表、空态、详情、新增/编辑/删除/多选已接入 SQLite；
+      **RAG 排序、自动提取与调用链经核实均已完成**（第 39 轮，此条此前陈旧）：
+      · 旧版的 "RAG" 实为 **BM25 关键词排序**而非向量检索——
+        `MemoryRanker.java` 仅 116 行，常量 `BM25_K=1.2` / `BM25_B=0.75` /
+        `RECENCY_WEIGHT=0.15` 加短语加成；
+      · 候选 `domain/memory_rag.*` 的三个常量与旧版**逐一相同**，
+        `RankMemoryCandidates` 在 `MemoryContextService::Prepare` 中对
+        working / memories / history / skills **四个作用域**分别调用；
+      · 自动提取：`CommitTurn` → `extraction_policy_->Extract(...)` →
+        `store_->SaveExtracted(...)`（含停用词、敏感标记与提取前缀）；
+      · 调用链：`chat_screen.cpp:2335` 调 `Prepare`、`:2450` 调 `CommitTurn`。
+      另新增 `memory` 截图场景作为回归（见下）。
 
 `tutorial` 和 `data` 也已接入 `NavigationStack`。所有上述页面仍须完成旧版同机像素测试；`data` 尚未通过旧版互导、跨数据库/工作区原子回滚和破坏性导入真机测试。
 
@@ -781,6 +792,26 @@ python3 tools/ui_parity_test.py \
       `grep -rniE "accessibilityservice|phonecontrol|phone_control|无障碍服务|手机控制"`
       对 `src/`、`platform/android/app/src/`、`resources/` **零命中**；
       AndroidManifest 无相关 service/permission。
+- [x] **第 39 轮扩充截图覆盖：19 → 23 个场景**：目标点名的 **记忆 / 扩展 /
+      工具与执行 / 数据管理** 四个页面此前**完全没有截图覆盖**，现已补齐。
+      新增结果：`memory` MAE 1.60（4.16%）、`data` 1.57（2.08%）、
+      `extensions` 2.68（4.35%），均在既有页面的量级内。
+      **过程中发现并修正了场景自身的两处缺陷**（都会造成假通过）：
+      (1) `扩展` 与 `工具与执行` 位于设置页**首屏**，脚本里多出的一次滚动
+      把它们滑过，导致 `tap_text` 找不到——基线与候选**同样失败**，
+      说明是脚本问题而非产品差异；
+      (2) `工具与执行` 在设置页上**既是分区标题又是行标题**，
+      `tap_text` 默认命中第一个（分区标题）→ **不导航**，
+      而 `expect_text` 仍能找到该字串 → **假通过**。
+      改用 `occurrence: 1` 点击行本身。
+- [x] **`工具与执行` 页的像素差异已定性为有意为之**（第 39 轮）：
+      基线该页含 `手机控制` / `通过无障碍服务控制本机操作` 两行，
+      候选按约定删除，**其下所有行整体上移约 205px**
+      （基线 `任务清单` y=1481，候选 y=1276）。
+      该页因此在像素上**不可能一致**。处理：该场景保留功能断言
+      （`执行目标`/`本地工作区`/`文件操作`/`任务清单` 两边共有），
+      `compare_pixels: false` 并写明原因；被删行的"不存在"
+      由交付门槛中的全仓检索覆盖——**没有用 mask 掩盖**。
 - [x] **第 38 轮最终复核**（全部重新实测，非沿用旧结论）：
       · 18 场景截图回归 **功能失败 0**（`artifacts/ui-parity-v20`）；
       · 原生测试 **83/83**；
