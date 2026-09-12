@@ -223,7 +223,24 @@ python3 tools/ui_parity_test.py \
       fixture 侧已就绪（新增 `__LINECODE_TEST_AGENT_WRITE__`，
       返回 `sub-coding` 代理调用并让其在内部请求 `file_write`，
       已用 curl 直接确认返回 `call_linecode_agent_write_test`）。
-      下一轮补做该真机验证。
+      **第 35 轮进展与重要环境发现**：
+      (1) **查清了多轮以来"连接失败"的真正原因**：`adb root` 会重启 adbd
+      并**清除所有 `adb reverse` 隧道**。我此前一直先建隧道再 `adb root`，
+      于是隧道被静默清空——这与产品无关，却反复伪装成功能故障。
+      正确顺序是 **`adb root` → 用完 → `adb unroot` → 再建隧道**。
+      修正后审批流程一次跑通。
+      (2) **审批通道已在真机确认可用**：权限模式设为 `confirm` 后发起 `file_write`，
+      界面出现 `Waiting for approval` / `file_write` /
+      `Allow this operation in the current workspace?` / `Reject` / `Allow once`，
+      点 `Allow once` 后调用才执行（耗时 99.8s，等待用户输入）。
+      这证明界面回调→中介→等待决定的链路是活的。
+      (3) 新增 `tools/device_send.sh`：每次从当前层级**动态定位输入框**再发送。
+      输入框在 y≈1373 与 y≈2148 之间随是否配置模型/正文高度变化，
+      固定坐标会静默点空、伪装成功能失败——这是多轮设备测试反复受阻的另一原因。
+      **仍未取到**：子代理**嵌套**写调用的独立审批证据——
+      该触发下应用只发出 1 个请求（主请求），未出现子代理请求，
+      原因待查（fixture 返回的 agent 工具调用未被继续执行）。
+      下一轮继续。
 
 - [ ] 子代理的剩余部分未迁移：进度会话（`AgentProgressSession` /
       `PipelineProgressSession`）、流式 delta、子代理内的工具审批通道；
