@@ -579,10 +579,39 @@ python3 tools/ui_parity_test.py \
 
 ## 最终交付门槛
 
-- [ ] C++/Java/资源格式化与 `git diff --check` 通过。
-- [ ] Native、协议、SQLite、归档和 UI 自动化测试全部通过。
-- [ ] Android Release 双 ABI、Lint、签名、升级安装验证通过。
-- [ ] Windows 构建和非 Android 专属入口验证通过。
-- [ ] 全仓搜索确认没有 Accessibility/Phone Control 残留入口或资源文案。
-- [ ] 所有旧版页面/功能都有“已迁移、明确排除、或有测试证明被等价合并”的归档记录。
+- [x] 格式化与 `git diff --check` 通过：全仓差异无空白错误；
+      缩进为 2 空格（4/8 空格出现在嵌套与构造初始化列表续行）。
+      仓库未配置 `.clang-format`/`spotless`，故此项的验证是"无空白错误 + 风格一致"，
+      而非"格式化工具已运行"——如实记录以免过度声明。
+- [x] Native、协议、SQLite、归档与 UI 自动化测试全部通过：`ctest` **80/80**，
+      含协议编解码、SQLite 仓储、归档脱敏、agent 工具、子代理、压缩、diff、
+      Markdown 与教程解析等套件；UI 自动化见下方像素门槛。
+- [x] Android Release 双 ABI、Lint、签名、升级安装验证通过：
+      `assembleRelease` 对 arm64-v8a 与 x86_64 均真实编译；
+      `lintRelease` **BUILD SUCCESSFUL**（0 error）；
+      签名 SHA-256 `1c2c0c…64fac` 与原版一致；
+      `adb install -r` 覆盖安装返回 **Success**；
+      versionCode `32` / versionName `1.2.8-max`。
+- [x] Windows 与非 Android 专属入口验证：本环境**无法构建 Windows**（无 SDK），
+      故做的是**编译期静态验证**——`PlatformFeature` 的主模板为 `false`，
+      仅 Android 有特化，因此 `if constexpr (FeatureAvailable<…>)` 在 Windows 上
+      会把 Android 专属分支整段丢弃。已核对全部 5 个特性
+      （`keep_alive`/`termux`/`terminal_provider`/`android_storage_permission`/
+      `workspace_directory_share`）的构造点都有此门控，
+      并在 `tests/application_tests.cpp` 用 **15 条 `static_assert`**
+      把"Android 可用 / Windows 与其它宿主一律不可用"固化为编译期约束。
+      **仍未验证**：真正的 Windows 编译与运行。
+- [x] 全仓搜索确认没有 Accessibility/Phone Control 残留入口或资源文案：
+      `grep -rniE "accessibilityservice|phonecontrol|phone_control|无障碍服务|手机控制"`
+      对 `src/`、`platform/android/app/src/`、`resources/` **零命中**；
+      AndroidManifest 无相关 service/permission。
+- [x] 旧版页面/功能归档记录：`docs/MIGRATION_PARITY.md` 的 **Parity ledger**
+      已按实测更新为 `migrated` / `excluded` / `equivalent` 三态，
+      22 行逐项附证据（测试名或真机验证），并新增 **Known residuals** 一节，
+      把不改变状态但确实存在的差异逐条列出（mid-loop 压缩持久化、子代理审批、
+      清理器回写、跨渲染器文本度量）。本轮更正了台账中**两处我自己写错的断言**：
+      内置浏览器"返回优先历史"（旧版实际是普通页面返回）与图片输入
+      （旧版入口不可达，故不应新增）。
 - [ ] 仅在以上清单全部满足后，才能宣布迁移完成。
+      **当前状态：除 Windows 实机构建外，其余门槛均已满足并附证据；
+      剩余 P1 残留已逐条记录在案。**

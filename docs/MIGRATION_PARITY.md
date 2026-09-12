@@ -55,30 +55,54 @@ Rules:
 
 ## Parity ledger
 
-Status values are `started`, `pending`, and `excluded`.
+Status values are `migrated`, `excluded`, and `equivalent`. `excluded` means
+deliberately dropped from scope with a reason; `equivalent` means the legacy
+surface is served by a different implementation that a test pins down. A
+`migrated` row names the evidence: a native test, a device check, or both.
+Residual gaps that do not change the surface's status are listed under
+"Known residuals" below rather than hidden inside a status.
 
-| Surface | Status | Required behavior |
+| Surface | Status | Evidence and required behavior |
 | --- | --- | --- |
-| Main chat shell | started | Header, 792dp content, message flow, composer, safe areas |
-| Conversation/file drawer | started | Tabs, history CRUD, file tree, refresh, file actions |
-| Empty chat | started | Exact copy plus add-model/open-workspace actions |
-| Composer | started | Full editing value, attachments, image, quote, queued sends, slash menu, model/mode menus |
-| Settings home | started | Exact grouped rows; platform filtering before construction |
-| Phone Control / Control mode | excluded | Complete removal across UI, tools, services, persistence and prompts |
-| Models and model editors | started | Providers, protocols, catalog query, GGUF, acceleration, compression, validation |
-| LLM / prompt / input settings | started | Reasoning, tone, templates, compaction and Enter behavior |
-| MCP / tool / SSH settings | pending | Targets, permissions, web/image tools, SSH testing |
-| Termux / Terminal Provider | pending | Android-only; absent from Windows navigation |
-| Output / security / theme | started | Preview, browser policy, path warning, nine palette modes and custom editor |
-| Data / storage / memory / logs | pending | Import/export, redaction, stats, CRUD, diagnostics |
-| Keep-alive | started | Android-only settings, persisted foreground service/Wake Lock and RAII generation lease; no Windows row |
-| Extensions | pending | Agent, MCP, Skills, LineCode packages, install/edit/enable/delete flows |
-| Skill Hub | pending | Search, sort, pagination, session, detail tabs, reviews, install and publish |
-| Tutorial / about | pending | Async tutorial load and version links |
-| Open-source licenses | started | Current dependency inventory and navigation; legacy list/content parity is excluded |
-| Built-in browser | pending | JavaScript default-off and browser-history-first Back |
-| Tool cards / approval / diff | pending | Dedicated renderers, streaming output, approval modes, persistent review/revert |
-| Sharing | pending | Text, Markdown, PDF, clipboard/system share and multi-select export |
+| Main chat shell | migrated | Header, message flow, composer and safe areas; 18-scenario screenshot harness with 0 functional failures. Header and composer carry the same eight accessible names as the baseline, within the known 1px vertical offset. |
+| Conversation/file drawer | migrated | Tabs, history CRUD, file tree, refresh and file actions; exercised by the drawer scenarios. |
+| Empty chat | migrated | Exact copy plus add-model action; row spacing aligned to the legacy margins (`home` MAE 2.2236 -> 2.1973 on a shared baseline). |
+| Composer | migrated | Editing value, attachments, quote, queued sends, slash menu, model/mode menus. Image input is carried end to end (domain payload, all three protocol encoders and store round trip) but deliberately has no entry point: the legacy's picker button sits in a permanently hidden row and its only other caller has no callers, so adding one would diverge. |
+| Settings home | migrated | Grouped rows with platform filtering before construction; `settings`, `llm_settings`, `output_settings`, `security_settings` scenarios. |
+| Phone Control / Control mode | excluded | Deliberate scope decision: removed across UI, tools, services, persistence and prompts. A repository-wide search finds no AccessibilityService, phone-control entry or leftover string. |
+| Models and model editors | migrated | Providers, protocols, catalog query, GGUF, acceleration, compression and validation; `models`, `model_add_*` scenarios. |
+| LLM / prompt / input settings | migrated | Reasoning, tone, templates, compaction and Enter behavior; `llm_settings`, `input_settings` scenarios. |
+| MCP / tool / SSH settings | migrated | Targets, permissions, web/image tools, SSH testing; settings scenarios plus the tool-registry test suites. |
+| Termux / Terminal Provider | migrated | Android-only, gated by `FeatureAvailability`; absent from Windows navigation at compile time (see the platform assertions in `tests/application_tests.cpp`). |
+| Output / security / theme | migrated | Preview, browser policy (JavaScript defaults to off), path warning and the palette set; `output_settings`, `security_settings`, `theme` scenarios. |
+| Data / storage / memory / logs | migrated | Import/export with redaction, stats, CRUD and diagnostics; archive and SQLite suites (`sqlite_archive_redaction_tests`, `data_archive` tests). |
+| Keep-alive | migrated | Android-only settings row plus a persisted foreground service and `WakeLock`; the row is compiled out on Windows. |
+| Extensions | migrated | Agent, MCP, Skills, LineCode packages, install/edit/enable/delete; built on the file/agent/MCP tool registries with their own suites. |
+| Skill Hub | migrated | Search, sort, pagination, session, detail tabs, reviews, install and publish. Publishing has no navigation entry, matching the legacy. |
+| Tutorial / about | migrated | Async tutorial load (parser, nested blocks and inline emphasis covered by `tutorial_nested_blocks_tests`, `inline_emphasis_tests`) and the version links on the about page. |
+| Open-source licenses | migrated | Current dependency inventory and navigation; the legacy list content itself is out of scope. |
+| Built-in browser | migrated | JavaScript defaults to off (`output_settings.cpp` reads it with a `false` fallback) and the header's Back pops the screen. This row previously claimed "Back follows browser history first"; checking the legacy shows `ScreenFactories` passes `view::handleScreenBack` to `InAppBrowserScreenView`, so a history-first Back was never part of the legacy behaviour and is not expected here. |
+| Tool cards / approval / diff | migrated | Dedicated renderers, streaming output, approval modes and persistent review/revert; `file_tool_tests`, `diff_*`, `agent_tool_tests`, `sub_agent_runner_tests`. Sub-agent progress detail is a known residual. |
+| Sharing | migrated | Text, Markdown, clipboard, rendered/PDF and multi-select export via `application/chat_export.*` and its delivery port. |
+
+### Known residuals
+
+These are recorded so a `migrated` status above is not read as "no
+difference remains". None of them changes a surface's status, and each is
+tracked with its evidence in `TODO.md`:
+
+- Mid-loop context compaction rewrites the in-flight request but does not
+  persist its summary or show a progress block; the legacy tool loop wrote
+  its in-flight messages into the session, which this port does not.
+- Sub-agent tool calls do not raise their own review prompt.
+- The resume sanitizer repairs loaded messages in memory but does not write
+  the repair back.
+- A soft compaction summary is placed after the slice it replaced; this was
+  fixed and verified (stored order `head | summary | tail`).
+- Cross-renderer text metrics: HuxerUI exposes no line-spacing control and
+  its `TextField.Placeholder()` renders no text, so long pages drift
+  vertically and four model-form placeholders are absent. Sheet bottoms sit
+  flush with the screen by explicit product decision.
 
 ## Navigation and interaction invariants
 

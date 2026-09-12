@@ -89,6 +89,40 @@ int main() {
                                     HostPlatform::android>::value);
   static_assert(!FeatureAvailability<PlatformFeature::keep_alive,
                                      HostPlatform::windows>::value);
+  // "Windows hides the Android-only entries": every gated feature resolves at
+  // compile time, so on Windows (and any other host) `if constexpr` discards
+  // the Android-only service and UI branches entirely. These assertions are
+  // what keeps a newly added feature from silently defaulting to visible.
+  static_assert(FeatureAvailability<PlatformFeature::keep_alive,
+                                    HostPlatform::android>::value);
+  static_assert(FeatureAvailability<PlatformFeature::termux,
+                                    HostPlatform::android>::value);
+  static_assert(FeatureAvailability<PlatformFeature::terminal_provider,
+                                    HostPlatform::android>::value);
+  static_assert(FeatureAvailability<PlatformFeature::android_storage_permission,
+                                    HostPlatform::android>::value);
+  static_assert(FeatureAvailability<PlatformFeature::workspace_directory_share,
+                                    HostPlatform::android>::value);
+  static_assert(!FeatureAvailability<PlatformFeature::termux,
+                                     HostPlatform::windows>::value);
+  static_assert(!FeatureAvailability<PlatformFeature::terminal_provider,
+                                     HostPlatform::windows>::value);
+  static_assert(!FeatureAvailability<PlatformFeature::android_storage_permission,
+                                     HostPlatform::windows>::value);
+  static_assert(!FeatureAvailability<PlatformFeature::workspace_directory_share,
+                                     HostPlatform::windows>::value);
+  // A non-Android, non-Windows host (such as the test runner) behaves like
+  // Windows here: nothing Android-only is exposed.
+  static_assert(!FeatureAvailability<PlatformFeature::keep_alive,
+                                     HostPlatform::other>::value);
+  static_assert(!FeatureAvailability<PlatformFeature::termux,
+                                     HostPlatform::other>::value);
+  static_assert(!FeatureAvailability<PlatformFeature::terminal_provider,
+                                     HostPlatform::other>::value);
+  static_assert(!FeatureAvailability<PlatformFeature::android_storage_permission,
+                                     HostPlatform::other>::value);
+  static_assert(!FeatureAvailability<PlatformFeature::workspace_directory_share,
+                                     HostPlatform::other>::value);
   static_assert(NormalizeLegacyChatMode("control") == ChatMode::agent);
   static_assert(NormalizeLegacyChatMode("plan") == ChatMode::plan);
   static_assert(ClassifyHistoricalTool("phone_screenshot") ==
