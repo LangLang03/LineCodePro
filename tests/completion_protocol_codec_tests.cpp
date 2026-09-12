@@ -5,6 +5,7 @@
 
 #include "infrastructure/archive_json.h"
 #include "infrastructure/completion_protocol_codec.h"
+#include "infrastructure/openai_chat_codec.h"
 
 namespace {
 
@@ -12,7 +13,9 @@ namespace json = linecode::infrastructure::archive_json;
 using linecode::application::CompletionMessage;
 using linecode::application::CompletionRequest;
 using linecode::application::CompletionRole;
+using linecode::domain::ChatImage;
 using linecode::domain::ModelProtocol;
+using linecode::infrastructure::EncodeOpenAiChatRequest;
 using linecode::infrastructure::CompletionProtocolCodec;
 using linecode::infrastructure::FindCompletionProtocolCodec;
 
@@ -395,6 +398,91 @@ void UnsupportedProtocolsHaveNoRegisteredCodec() {
   assert(FindCompletionProtocolCodec(ModelProtocol::local_gguf) == nullptr);
 }
 
+// An attached image has to reach the wire in each protocol's own multimodal
+// shape; legacy carried base64 + mime through `onSendWithImage`.
+void ImagePartsFollowEachProtocolShape() {
+  ChatImage image;
+  image.name = "photo.jpg";
+  image.mime_type = "image/jpeg";
+  image.base64 = "QUJD";
+
+  const auto with_image = [&](ModelProtocol protocol) {
+    auto request = Request(protocol, false);
+    request.messages[0].content = "look";
+    request.messages[0].image = image;
+    return request;
+  };
+
+  // Anthropic: a `base64` source block next to the text.
+  const auto *anthropic =
+      FindCompletionProtocolCodec(ModelProtocol::anthropic_messages);
+  assert(anthropic != nullptr);
+  const auto anthropic_wire =
+      anthropic->encode(with_image(ModelProtocol::anthropic_messages),
+                        "https://example.test");
+  assert(anthropic_wire);
+  json::Value anthropic_storage{json::Null{}};
+  const auto &anthropic_body = BodyObject(anthropic_wire->body, anthropic_storage);
+  const auto *anthropic_messages =
+      json::AsArray(json::Find(anthropic_body, "messages"));
+  assert(anthropic_messages != nullptr && !anthropic_messages->empty());
+  const auto *first = json::AsObject(&anthropic_messages->front());
+  assert(first != nullptr);
+  const auto *parts = json::AsArray(json::Find(*first, "content"));
+  assert(parts != nullptr && parts->size() == 2U);
+  const auto *image_part = json::AsObject(&parts->at(1));
+  assert(image_part != nullptr);
+  assert(*json::AsString(json::Find(*image_part, "type")) == "image");
+  const auto *source = json::AsObject(json::Find(*image_part, "source"));
+  assert(source != nullptr);
+  assert(*json::AsString(json::Find(*source, "type")) == "base64");
+  assert(*json::AsString(json::Find(*source, "media_type")) == "image/jpeg");
+  assert(*json::AsString(json::Find(*source, "data")) == "QUJD");
+
+  // Responses: an `input_image` part whose url is the data URL.
+  const auto *codex = FindCompletionProtocolCodec(ModelProtocol::codex_responses);
+  assert(codex != nullptr);
+  const auto codex_wire = codex->encode(with_image(ModelProtocol::codex_responses),
+                                        "https://example.test");
+  assert(codex_wire);
+  json::Value codex_storage{json::Null{}};
+  const auto &codex_body = BodyObject(codex_wire->body, codex_storage);
+  const auto *codex_input = json::AsArray(json::Find(codex_body, "input"));
+  assert(codex_input != nullptr && !codex_input->empty());
+  const auto *codex_message = json::AsObject(&codex_input->front());
+  assert(codex_message != nullptr);
+  const auto *codex_parts = json::AsArray(json::Find(*codex_message, "content"));
+  assert(codex_parts != nullptr && codex_parts->size() == 2U);
+  const auto *codex_image = json::AsObject(&codex_parts->at(1));
+  assert(codex_image != nullptr);
+  assert(*json::AsString(json::Find(*codex_image, "type")) == "input_image");
+  assert(*json::AsString(json::Find(*codex_image, "image_url")) ==
+         "data:image/jpeg;base64,QUJD");
+}
+
+// The OpenAI Chat Completions body is assembled into a multimodal part array
+// only when an image is present, so a plain turn keeps its string content.
+void OpenAiImageTurnTurnsContentIntoParts() {
+  ChatImage image;
+  image.mime_type = "image/jpeg";
+  image.base64 = "QUJD";
+  auto request = Request(ModelProtocol::openai_compatible, false);
+  request.messages[0].content = "look";
+  request.messages[0].image = image;
+  const auto json_text = EncodeOpenAiChatRequest(request);
+  assert(json_text.find("\"type\":\"image_url\"") != std::string::npos);
+  assert(json_text.find("\"url\":\"data:image/jpeg;base64,QUJD\"") !=
+         std::string::npos);
+  assert(json_text.find("\"type\":\"text\",\"text\":\"look\"") !=
+         std::string::npos);
+
+  // Without an image the legacy string content is unchanged.
+  auto plain = Request(ModelProtocol::openai_compatible, false);
+  const auto plain_text = EncodeOpenAiChatRequest(plain);
+  assert(plain_text.find("image_url") == std::string::npos);
+  assert(plain_text.find("\"content\":\"question\"") != std::string::npos);
+}
+
 } // namespace
 
 int main() {
@@ -410,5 +498,7 @@ int main() {
   CodexCodecUsesInstructionsAndResponsesReasoning();
   CodexCodecDecodesReasoningSummaryEvents();
   CodexCodecSupportsToolRoundTrips();
+  ImagePartsFollowEachProtocolShape();
+  OpenAiImageTurnTurnsContentIntoParts();
   UnsupportedProtocolsHaveNoRegisteredCodec();
 }

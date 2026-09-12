@@ -9,6 +9,7 @@
 #include <string>
 #include <utility>
 
+#include "domain/chat_image.h"
 #include "infrastructure/archive_json.h"
 #include "infrastructure/openai_chat_codec.h"
 
@@ -124,6 +125,17 @@ json::Array ChatMessages(const CompletionRequest &request) {
     if (!message.content.empty())
       content.emplace_back(
           json::Object{{"text", message.content}, {"type", "text"}});
+    if (message.image.has_value() && !message.image->Empty() &&
+        message.role == CompletionRole::user) {
+      // Legacy shape reused from the image understanding path
+      // (`image_understanding_codec.cpp:152-155`).
+      content.emplace_back(json::Object{
+          {"source", json::Object{{"data", message.image->base64},
+                                   {"media_type", message.image->mime_type},
+                                   {"type", "base64"}}},
+          {"type", "image"},
+      });
+    }
     if (message.role == CompletionRole::assistant) {
       for (const auto &call : message.tool_calls) {
         content.emplace_back(json::Object{
@@ -158,12 +170,26 @@ json::Array ResponsesInput(const CompletionRequest &request) {
       continue;
     }
     const bool assistant = message.role == CompletionRole::assistant;
-    if (!message.content.empty()) {
+    const bool has_image = message.image.has_value() &&
+                           !message.image->Empty() && !assistant;
+    if (!message.content.empty() || has_image) {
+      json::Array parts;
+      if (!message.content.empty()) {
+        parts.emplace_back(json::Object{
+            {"text", message.content},
+            {"type", assistant ? "output_text" : "input_text"},
+        });
+      }
+      if (has_image) {
+        // Same shape as the image understanding path
+        // (`image_understanding_codec.cpp:124`).
+        parts.emplace_back(json::Object{
+            {"image_url", domain::ChatImageDataUrl(*message.image)},
+            {"type", "input_image"},
+        });
+      }
       input.emplace_back(json::Object{
-          {"content", json::Array{json::Object{
-                          {"text", message.content},
-                          {"type", assistant ? "output_text" : "input_text"},
-                      }}},
+          {"content", std::move(parts)},
           {"role", assistant ? "assistant" : "user"},
           {"type", "message"},
       });

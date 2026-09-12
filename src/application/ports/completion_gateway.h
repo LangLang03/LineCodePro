@@ -12,6 +12,7 @@
 
 #include "application/tool_result_display_policy.h"
 #include "domain/behavior_settings.h"
+#include "domain/chat_image.h"
 #include "domain/model_config.h"
 
 namespace linecode::application {
@@ -56,6 +57,10 @@ struct CompletionMessage final {
   std::string reasoning_content{};
   std::vector<CompletionToolCall> tool_calls{};
   std::optional<CompletionToolResult> tool_result{};
+  // An image the user attached to this message. Legacy carried it alongside
+  // the text through the whole send path (`onSendWithImage`), so each protocol
+  // encoder can emit its own multimodal part.
+  std::optional<domain::ChatImage> image{};
 
   bool operator==(const CompletionMessage &) const = default;
 

@@ -11,6 +11,8 @@
 #include <variant>
 #include <vector>
 
+#include "domain/chat_image.h"
+
 namespace linecode::infrastructure {
 namespace {
 
@@ -754,8 +756,24 @@ EncodeOpenAiChatRequest(const application::CompletionRequest &request) {
     else
       AppendEscaped(json, "user");
     json += ",\"content\":";
-    AppendEscaped(json, message.tool_result ? message.tool_result->content
-                                            : message.content);
+    if (message.image.has_value() && !message.image->Empty() &&
+        message.role != application::CompletionRole::tool) {
+      // Multimodal user turn: OpenAI expects the content to become an array of
+      // typed parts, exactly like the image understanding path builds
+      // (`image_understanding_codec.cpp:100-110`).
+      json += "[";
+      if (!message.content.empty()) {
+        json += "{\"type\":\"text\",\"text\":";
+        AppendEscaped(json, message.content);
+        json += "},";
+      }
+      json += "{\"type\":\"image_url\",\"image_url\":{\"url\":";
+      AppendEscaped(json, domain::ChatImageDataUrl(*message.image));
+      json += "}}]";
+    } else {
+      AppendEscaped(json, message.tool_result ? message.tool_result->content
+                                              : message.content);
+    }
     if (message.role == application::CompletionRole::assistant &&
         !message.tool_calls.empty()) {
       json += ",\"tool_calls\":[";
