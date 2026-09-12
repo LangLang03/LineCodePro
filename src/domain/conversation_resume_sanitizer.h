@@ -99,6 +99,22 @@ struct ResumeSanitizeResult final {
 [[nodiscard]] std::string
 ResolveTerminatedMessage(std::string_view terminated_message);
 
+// Port of `isUnfinishedReviewState` (`ConversationResumeSanitizer.java:348-352`):
+// a review still in flight, or one accepted with nothing to show for it.
+[[nodiscard]] bool IsUnfinishedReviewState(std::string_view state,
+                                           std::string_view content);
+
+// The same repairs applied to the model the conversation store actually hands
+// to the session. `domain::ChatMessage` keeps a tool call and its result
+// together in one `AssistantToolEvent`, so the legacy "assistant tool call
+// with no matching tool result" case is an event whose result is empty.
+//
+// Returns whether anything needed repairing. Recovered results carry the
+// terminated notice and the error flag, exactly like the legacy synthesized
+// `MessageRecord`s.
+[[nodiscard]] bool SanitizeResumeMessages(
+    std::vector<ChatMessage> &messages, std::string_view terminated_message);
+
 // Port of `ConversationResumeSanitizer.sanitizeId`
 // (`ConversationResumeSanitizer.java:399-402`): every character outside
 // `[A-Za-z0-9_-]` becomes `_`, an empty result becomes "unknown".

@@ -16,6 +16,7 @@
 
 #include "infrastructure/attachment_json_codec.h"
 #include "infrastructure/archive_json.h"
+#include "domain/conversation_resume_sanitizer.h"
 #include "infrastructure/legacy_conversation_schema.h"
 
 namespace linecode::infrastructure {
@@ -895,6 +896,15 @@ SqliteConversationStore::InitializeAsync(huxerui::File database_file) {
     }
     next_order = std::max(next_order, row.local_order + 1);
   }
+
+  // Legacy `ConversationPersistenceController.applyConversation` ran the
+  // resume sanitizer before handing a loaded conversation to the session, so a
+  // process killed mid-generation could not leave a write permanently awaiting
+  // review or a progress block claiming to still be compacting. The repairs
+  // happen on the hydrated messages, before they become visible state.
+  static_cast<void>(
+      domain::SanitizeResumeMessages(hydrated, domain::ResolveTerminatedMessage(
+                                                   std::string_view{})));
 
   const bool has_local_state = !state_->pending.empty() ||
                                !state_->conversation_id.empty() ||

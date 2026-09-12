@@ -204,14 +204,6 @@ void PutInteger(json::Object &object, std::string_view key,
   return json::Serialize(json::Value{std::move(object)});
 }
 
-// Port of `ConversationResumeSanitizer.isUnfinishedReviewState`
-// (`ConversationResumeSanitizer.java:321-324`).
-[[nodiscard]] bool IsUnfinishedReviewState(std::string_view state,
-                                           std::string_view content) {
-  return state == kRunning || state == kPending ||
-         (state == kAccepted && IsBlank(content));
-}
-
 // `ConversationResumeSanitizer.java:326-328`.
 [[nodiscard]] bool IsUnfinishedAgentStatus(std::string_view status) {
   return status == kRunning || status == kWaitingUnlock || status == kPending;
@@ -565,6 +557,59 @@ ReadToolCalls(std::string_view raw_json) {
 }
 
 } // namespace
+
+// Port of `ConversationResumeSanitizer.isUnfinishedReviewState`
+// (`ConversationResumeSanitizer.java:321-324`).
+bool IsUnfinishedReviewState(const std::string_view state,
+                             const std::string_view content) {
+  return state == "running" || state == "pending" ||
+         (state == "accepted" && IsBlank(content));
+}
+
+bool SanitizeResumeMessages(std::vector<ChatMessage> &messages,
+                            const std::string_view terminated_message) {
+  const auto terminated = ResolveTerminatedMessage(terminated_message);
+  bool changed = false;
+  for (auto &message : messages) {
+    if (message.streaming) {
+      message.streaming = false;
+      changed = true;
+    }
+    // A progress block left mid-flight would otherwise claim to be compacting
+    // forever.
+    if (message.compact_status == kRunning) {
+      message.compact_status = std::string{kError};
+      changed = true;
+    }
+    for (auto &event : message.timeline) {
+      auto *tool = std::get_if<AssistantToolEvent>(&event);
+      if (tool == nullptr)
+        continue;
+      if (!tool->result.has_value()) {
+        // Legacy `missingToolResults`: the model asked for a tool and the
+        // process died before a result was recorded.
+        ChatToolResult recovered;
+        recovered.call_id = tool->call.id;
+        recovered.name = tool->call.name;
+        recovered.content = terminated;
+        recovered.error = true;
+        tool->result = std::move(recovered);
+        changed = true;
+        continue;
+      }
+      auto &result = *tool->result;
+      if (!IsUnfinishedReviewState(result.review_state, result.content))
+        continue;
+      // Legacy cleared the review state and marked the result as failed, so a
+      // write that never got its decision stops asking for one.
+      result.error = true;
+      result.content = terminated;
+      result.review_state.clear();
+      changed = true;
+    }
+  }
+  return changed;
+}
 
 std::string ResolveTerminatedMessage(std::string_view terminated_message) {
   return IsBlank(terminated_message) ? std::string{fallback_terminated_message}

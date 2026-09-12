@@ -20,6 +20,9 @@ namespace {
 
 namespace json = linecode::infrastructure::archive_json;
 
+using linecode::domain::AssistantToolEvent;
+using linecode::domain::ChatMessage;
+using linecode::domain::ChatToolResult;
 using linecode::domain::MessageRole;
 using linecode::domain::ResolveTerminatedMessage;
 using linecode::domain::ResumeConversationRecord;
@@ -27,6 +30,7 @@ using linecode::domain::ResumeMessageRecord;
 using linecode::domain::ResumeSanitizeResult;
 using linecode::domain::Sanitize;
 using linecode::domain::SanitizeResumeId;
+using linecode::domain::SanitizeResumeMessages;
 using linecode::domain::SanitizedPayload;
 using linecode::domain::SanitizeToolContent;
 
@@ -680,6 +684,89 @@ void SanitizingTwiceIsStable() {
   assert(second.conversation == first.conversation);
 }
 
+// The store hands the session `domain::ChatMessage`s, where a tool call and
+// its result share one event, so the record-level rules are mirrored here.
+void ResumeMessagesDropStaleStreamingAndProgressFlags() {
+  std::vector<ChatMessage> messages(1);
+  messages[0].streaming = true;
+  messages[0].compact_status = "running";
+  assert(SanitizeResumeMessages(messages, kFallback));
+  assert(!messages[0].streaming);
+  assert(messages[0].compact_status == "error");
+
+  // A finished block is left alone, and a second pass reports no change.
+  std::vector<ChatMessage> finished(1);
+  finished[0].compact_status = "done";
+  assert(!SanitizeResumeMessages(finished, kFallback));
+  assert(finished[0].compact_status == "done");
+}
+
+void ResumeMessagesRecoverAMissingToolResult() {
+  std::vector<ChatMessage> messages(1);
+  AssistantToolEvent event;
+  event.call.id = "call_1";
+  event.call.name = "file_write";
+  messages[0].timeline.push_back(event);
+  assert(SanitizeResumeMessages(messages, kFallback));
+  const auto *tool = std::get_if<AssistantToolEvent>(&messages[0].timeline[0]);
+  assert(tool != nullptr);
+  assert(tool->result.has_value());
+  assert(tool->result->call_id == "call_1");
+  assert(tool->result->name == "file_write");
+  assert(tool->result->content == kFallback);
+  assert(tool->result->error);
+}
+
+void ResumeMessagesClearAnUnfinishedReview() {
+  const auto build = [](std::string state, std::string content) {
+    std::vector<ChatMessage> messages(1);
+    AssistantToolEvent event;
+    event.call.id = "call_1";
+    ChatToolResult result;
+    result.call_id = "call_1";
+    result.review_state = std::move(state);
+    result.content = std::move(content);
+    result.diff_id = "d1";
+    event.result = std::move(result);
+    messages[0].timeline.push_back(std::move(event));
+    return messages;
+  };
+
+  for (const auto state : {"running", "pending"}) {
+    auto messages = build(state, "wrote the file");
+    assert(SanitizeResumeMessages(messages, kFallback));
+    const auto *tool = std::get_if<AssistantToolEvent>(&messages[0].timeline[0]);
+    assert(tool != nullptr && tool->result.has_value());
+    assert(tool->result->error);
+    assert(tool->result->content == kFallback);
+    assert(tool->result->review_state.empty());
+    // The recorded change stays reviewable rather than being dropped.
+    assert(tool->result->diff_id == "d1");
+  }
+
+  // `accepted` with no content is unfinished; with content it is not.
+  auto empty_accepted = build("accepted", "   ");
+  assert(SanitizeResumeMessages(empty_accepted, kFallback));
+  auto accepted = build("accepted", "done");
+  assert(!SanitizeResumeMessages(accepted, kFallback));
+  const auto *kept = std::get_if<AssistantToolEvent>(&accepted[0].timeline[0]);
+  assert(kept != nullptr && kept->result.has_value());
+  assert(kept->result->content == "done");
+  assert(!kept->result->error);
+}
+
+void CleanResumeMessagesReportNoChange() {
+  std::vector<ChatMessage> messages(1);
+  AssistantToolEvent event;
+  event.call.id = "call_1";
+  ChatToolResult result;
+  result.call_id = "call_1";
+  result.content = "ok";
+  event.result = std::move(result);
+  messages[0].timeline.push_back(std::move(event));
+  assert(!SanitizeResumeMessages(messages, kFallback));
+}
+
 } // namespace
 
 int main() {
@@ -704,6 +791,10 @@ int main() {
   CleanConversationsReportNoChange();
   RepairedConversationsKeepTheirMetadata();
   SanitizingTwiceIsStable();
+  ResumeMessagesDropStaleStreamingAndProgressFlags();
+  ResumeMessagesRecoverAMissingToolResult();
+  ResumeMessagesClearAnUnfinishedReview();
+  CleanResumeMessagesReportNoChange();
   std::cout << "conversation_resume_sanitizer_tests passed\n";
   return 0;
 }

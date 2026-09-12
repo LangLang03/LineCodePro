@@ -291,7 +291,26 @@ python3 tools/ui_parity_test.py \
       表现为 `std::bad_variant_access: variant is valueless`。
       另有 1 处测试自身笔误（对对象型字段调用整数读取器，
       该读取器是 assert 而非返回哨兵，`||` 兜底永远不生效）。
-- [ ] **会话恢复清理器尚未接入载入路径**（当前是惰性代码，不产生实际效果）：
+- [x] **会话恢复清理器已接入载入路径**：`SanitizeResumeMessages` 把同一套规则
+      作用到仓储实际交给会话的 `domain::ChatMessage` 模型上
+      （工具调用与结果同处一个 `AssistantToolEvent`，所以旧版
+      "assistant 工具调用没有对应 tool 结果" 在这里就是 `result` 为空的事件），
+      在 `sqlite_conversation_store.cpp` 水合之后、成为可见状态之前调用
+      （对应旧版 `ConversationPersistenceController.applyConversation`）。
+      真机验证：直接构造中断态（`tool_results.review_state='pending'`、
+      两条 `messages.streaming=1`）后重启，**卡片显示 `Completed` 而非
+      "需要确认"**，而数据库里仍是 `pending`/`streaming=1`——
+      直接证明是加载期的内存态修复生效；无崩溃。
+- [ ] **会话恢复清理器未回写持久层**（与旧版的差异，用户不可见）：
+      旧版在 `changed` 时 `saveConversation` 回写；当前只修内存态，
+      所以数据库保留陈旧值、每次加载重复修复一次（幂等，无副作用）。
+      未回写是因为该路径是异步的，需要单独验证；若要补齐，
+      应在 `SanitizeResumeMessages` 返回 `true` 时把修复结果落库。
+- [ ] **旧的记录级接口仍未接线**（`Sanitize`/`SanitizeToolContent` 等）：
+      它们按旧版 `MessageRecord` + `raw_json` 建模，而候选仓储不读
+      `compact_status`/`review_state` 的 raw_json（`review_state` 在
+      `tool_results` 表、由 `StoredMessage` 解码进工具结果），
+      故保留为 API/文案对齐与测试载体，实际生效的是消息级版本。
       旧版在 `ConversationPersistenceController.applyConversation`（加载/切换会话前）
       调用并回写。候选的接缝在
       `src/infrastructure/sqlite_conversation_store.cpp` 的 `stored` 向量
