@@ -72,7 +72,7 @@ TextStyle ChatTextStyle(float size, FontWeight weight = FontWeight::Regular,
   return TextStyle{Font::System(size).WithWeight(weight), color};
 }
 
-View HeaderAction(ImageResource icon, float icon_size,
+View HeaderAction(ImageResource icon, float icon_size, StringResource label,
                   std::function<void()> action) {
   return Stack{
       Image(std::move(icon))
@@ -82,11 +82,13 @@ View HeaderAction(ImageResource icon, float icon_size,
       .OnClick(std::move(action))
       .With(Frame{.width = 40.0F, .height = 48.0F},
             Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-            Focusable(), PointerCursor(PointerCursorKind::Hand));
+            Semantics{.label = label}, Focusable(),
+            PointerCursor(PointerCursorKind::Hand));
 }
 
 View ComposerAction(ImageResource icon, Color tint, Color background,
-                    bool enabled, std::function<void()> action) {
+                    bool enabled, StringResource label,
+                    std::function<void()> action) {
   return Stack{
       Image(std::move(icon))
           .Tint(tint)
@@ -96,7 +98,7 @@ View ComposerAction(ImageResource icon, Color tint, Color background,
       .With(Frame{.width = 44.0F, .height = 44.0F},
             Align(HorizontalAlignment::Center, VerticalAlignment::Center),
             Background(background), CornerRadius(22.0F), Enabled{enabled},
-            Focusable(enabled),
+            Semantics{.label = label}, Focusable(enabled),
             PointerCursor(enabled ? PointerCursorKind::Hand
                                   : PointerCursorKind::Default));
 }
@@ -474,11 +476,14 @@ View Header(
     revision += 1;
   };
 
+  const StringVariant brand_label =
+      project_label.empty() ? StringVariant{app::strings::header_project_default}
+                            : StringVariant{project_label};
   return Row{
-      HeaderAction(app::images::menu, 19.0F, std::move(open_drawer)),
+      HeaderAction(app::images::menu, 19.0F, app::strings::header_menu_desc,
+                   std::move(open_drawer)),
       Row{
-          Text(project_label.empty() ? StringVariant{app::strings::header_project_default}
-                                     : StringVariant{std::move(project_label)})
+          Text(brand_label)
               .Style(ChatTextStyle(16.0F, FontWeight::Medium)),
           Stack{
               Image(app::images::chevron_down)
@@ -492,12 +497,20 @@ View Header(
           .OnClick(std::move(show_project_picker))
           .With(Frame{.min_height = 48.0F},
                 CrossAlign(CrossAxisAlignment::Center), Grow(), Focusable(),
+                // `HeaderView.render` labels the brand container with the same
+                // text it shows (`HeaderView.java:90-93`).
+                Semantics{.label = brand_label},
                 PointerCursor(PointerCursorKind::Hand)),
       ContextUsageIndicator(context_usage.percent,
                             std::move(show_context_usage)),
-      HeaderAction(app::images::shield, 19.0F, std::move(show_permissions)),
-      HeaderAction(app::images::plus, 19.0F, reset_conversation),
-      HeaderAction(app::images::more_vertical, 19.0F, std::move(show_more)),
+      HeaderAction(app::images::shield, 19.0F,
+                   app::strings::header_permission_desc,
+                   std::move(show_permissions)),
+      HeaderAction(app::images::plus, 19.0F,
+                   app::strings::header_new_conversation_desc,
+                   reset_conversation),
+      HeaderAction(app::images::more_vertical, 19.0F,
+                   app::strings::chat_context_more, std::move(show_more)),
   }
       .With(Frame{.min_height = 56.0F},
             Padding(EdgeInsets{
@@ -2886,6 +2899,7 @@ struct SlashPopupRow final {
           Row{
               ComposerAction(app::images::plus, colors::secondary,
                              Color::Transparent(), !generating,
+                             app::strings::composer_image_button_desc,
                              std::move(show_attachment_picker)),
               TextField(draft)
                   .Placeholder(has_selected_model.value_or(true)
@@ -2914,6 +2928,8 @@ struct SlashPopupRow final {
                                              : app::images::arrow_up,
                   can_send ? colors::text_on_color : colors::secondary,
                   can_send ? colors::accent : Color::Transparent(), can_send,
+                  generating && !has_content ? app::strings::chat_stop
+                                             : app::strings::chat_send,
                   send),
           } // Match the legacy 148px composer body at the 420dpi reference
             // density. A 56dp minimum rasterizes two pixels short here and
