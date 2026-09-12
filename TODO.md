@@ -392,6 +392,22 @@ python3 tools/ui_parity_test.py \
       聊天页已完成的 8 个（第 19 轮）保留——它们不改变像素，且比缺失更贴近基线节点树；
       但不再扩展到其它页面。
 
+- [x] **展示层硬编码英文文案已清除**（第 21 轮）：扫描 `src/presentation/`
+      的字符串字面量，识别出 4 处**真实可见**的硬编码英文（其余命中是注释）：
+      (1) 子代理卡片的 `"Running…"` / `"Done"` → 改用旧版
+      `tool_call_agent_running` / `tool_call_agent_done` / `tool_call_agent_failed`
+      （`ToolCallAgentView.java:173,181`，中文「正在执行任务…」「任务完成」「执行失败」）；
+      (2) 通用工具卡片的 `"Input"` / `"Output"` 分节标题 → `sheet_title_input` /
+      `sheet_title_output`（中文「输入设置」「输出设置」）；
+      (3)(4) 生成协程的两条守卫消息 `"Please add and select a model first"` /
+      `"The selected model no longer exists"` —— **这两条是候选自造的，旧版没有等价物**
+      （旧版只靠输入栏提示 `composer_hint_no_model` 提示用户），故按应用语气新拟中文
+      「请先添加并选择模型」/「所选模型已不存在」，但仍需跟随界面语言。
+      因协程不是组合作用域，两条守卫消息与卡片标题一样在组合期解析后传入。
+      真机验证：无模型时错误行由 `模型通信失败：Please add and select a model first`
+      变为 **`模型通信失败：请先添加并选择模型`**，无崩溃。
+      回归：18 场景功能失败 0。
+
 已核实**不属于**缺口的项（不要重复投入）：
 - **「模型切换提示」不存在**：旧版 `message_model_switched`（"已切换模型"）
   只在 `values*/strings.xml` 定义，**全仓库无任何引用**（Java 与布局均无，

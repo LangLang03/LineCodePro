@@ -1274,10 +1274,16 @@ View AgentToolRenderer(const ToolTimelinePresentation &presentation,
       content.push_back(
           AssistantMarkdown(presentation.output_detail, true, on_link,
                             on_copy));
-    if (content.empty())
-      content.push_back(Text(presentation.running ? "Running…" : "Done")
-                            .Style(ChatTextStyle(12.0F, FontWeight::Regular,
-                                                 colors::tertiary)));
+    if (content.empty()) {
+      // Legacy `ToolCallAgentView.java:173,181`.
+      const StringResource empty_label =
+          presentation.running
+              ? app::strings::tool_call_agent_running
+              : (presentation.failed ? app::strings::tool_call_agent_failed
+                                     : app::strings::tool_call_agent_done);
+      content.push_back(Text(empty_label).Style(ChatTextStyle(
+          12.0F, FontWeight::Regular, colors::tertiary)));
+    }
     title_rows.push_back(
         ScrollView(Column(std::move(content))
                        .With(CrossAlign(CrossAxisAlignment::Stretch),
@@ -1319,8 +1325,10 @@ View GenericToolRenderer(const ToolTimelinePresentation &presentation,
   if (expanded &&
       (!presentation.input_detail.empty() || !presentation.output_detail.empty())) {
     std::vector<View> sections;
-    const auto add_section = [&](std::string heading, const std::string &body,
-                                 Color color) {
+    // A resource key, not a literal: the heading is part of the card's
+    // visible text (`sheet_title_input` / `sheet_title_output`).
+    const auto add_section = [&](StringResource heading,
+                                 const std::string &body, Color color) {
       if (body.empty())
         return;
       sections.push_back(
@@ -1335,8 +1343,9 @@ View GenericToolRenderer(const ToolTimelinePresentation &presentation,
                                        .bottom = 12.0F,
                                        .left = 14.0F})));
     };
-    add_section("Input", presentation.input_detail, colors::secondary);
-    add_section("Output", presentation.output_detail,
+    add_section(app::strings::sheet_title_input, presentation.input_detail,
+                colors::secondary);
+    add_section(app::strings::sheet_title_output, presentation.output_detail,
                 presentation.failed ? static_cast<Color>(colors::danger)
                                     : static_cast<Color>(colors::secondary));
     rows.push_back(ScrollView(Column(std::move(sections))
@@ -1930,6 +1939,11 @@ struct RetryLabels final {
   std::string attempt;
   // `chat_model_failed`: "Model communication failed: {0}".
   std::string failed;
+  // Guards the generation coroutine raises before it can talk to a model.
+  // These are this port's own (the legacy only warns through the composer
+  // hint), so they still have to follow the interface language.
+  std::string no_model;
+  std::string model_missing;
 };
 
 // Control characters cannot appear in a translation, so they are safe markers.
@@ -2233,7 +2247,7 @@ private:
           work.generation_id,
           application::CompletionError{
               .code = application::CompletionErrorCode::invalid_configuration,
-              .message = "Please add and select a model first"});
+              .message = retry_labels_.no_model});
       co_return;
     }
 
@@ -2254,7 +2268,7 @@ private:
           work.generation_id,
           application::CompletionError{
               .code = application::CompletionErrorCode::invalid_configuration,
-              .message = "The selected model no longer exists"});
+              .message = retry_labels_.model_missing});
       co_return;
     }
 
@@ -3073,6 +3087,8 @@ View GenerationError(const application::GenerationController &generation,
                            std::string{kErrorMarker}),
       .failed = UseString(app::strings::chat_model_failed,
                           std::string{kErrorMarker}),
+      .no_model = UseString(app::strings::chat_error_no_model),
+      .model_missing = UseString(app::strings::chat_error_model_missing),
   };
   const CompactionLabels compaction_labels{
       .failed_prefix = UseString(app::strings::context_compact_failed, ""),
