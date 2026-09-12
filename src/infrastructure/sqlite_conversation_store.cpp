@@ -108,6 +108,8 @@ struct StoredMessage final {
   std::string attachments_json;
   std::vector<domain::InputAttachment> attachments;
   std::string reasoning_content;
+  std::string compact_status;
+  bool retry_notice{};
   bool hidden{};
   bool streaming{};
   bool exclude_from_context{};
@@ -139,6 +141,13 @@ void DecodeLegacyMetadata(StoredMessage &message) {
   if (const auto *error =
           json::AsString(json::Find(*object, "error_message")))
     message.error_message = *error;
+  if (const auto *status =
+          json::AsString(json::Find(*object, "compact_status")))
+    message.compact_status = *status;
+  if (const auto *notice = json::Find(*object, "retry_notice")) {
+    if (const auto *flag = std::get_if<bool>(notice))
+      message.retry_notice = *flag;
+  }
   const auto *calls = json::AsArray(json::Find(*object, "tool_calls"));
   if (calls == nullptr)
     return;
@@ -213,6 +222,9 @@ Result<StoredMessage> DecodeStoredMessage(const RowView &row) {
                         .attachments_json = std::move(*attachments_json),
                         .attachments = std::move(attachments),
                         .reasoning_content = std::move(*reasoning),
+                        // Both are decoded from `raw_json` just below.
+                        .compact_status = {},
+                        .retry_notice = {},
                         .hidden = *hidden != 0,
                         .streaming = *streaming != 0,
                         .exclude_from_context = *excluded != 0,
@@ -239,6 +251,8 @@ Result<StoredMessage> DecodeStoredMessage(const RowView &row) {
   // Hidden rows now load (a compaction summary has to reach the model) but
   // stay out of the transcript, exactly like legacy `MessageRecord.hidden`.
   message.hidden = row.hidden;
+  message.compact_status = row.compact_status;
+  message.retry_notice = row.retry_notice;
   message.streaming = row.streaming;
   message.exclude_from_context = row.exclude_from_context;
   message.error = row.error;
@@ -270,6 +284,13 @@ EncodeMessageRawJson(const domain::ChatMessage &message) {
   }
   if (!message.error_message.empty())
     object.insert_or_assign("error_message", message.error_message);
+  // Legacy `messageRawJson` stores the compaction status for a progress block,
+  // so a restarted app still knows the block finished (or failed) instead of
+  // losing the row's meaning.
+  if (!message.compact_status.empty())
+    object.insert_or_assign("compact_status", message.compact_status);
+  if (message.retry_notice)
+    object.insert_or_assign("retry_notice", true);
 
   json::Array tool_calls;
   for (const auto &event : message.timeline) {

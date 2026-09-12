@@ -1261,6 +1261,8 @@ add_test(NAME pending_message_queue_tests COMMAND pending_message_queue_tests)
 
 add_executable(sqlite_conversation_attachment_tests
         sqlite_conversation_attachment_tests.cpp
+        ../src/domain/compaction_progress.cpp
+        ../src/domain/conversation_resume_sanitizer.cpp
         ../src/domain/input_attachment.cpp
         ../src/infrastructure/archive_json.cpp
         ../src/infrastructure/attachment_json_codec.cpp

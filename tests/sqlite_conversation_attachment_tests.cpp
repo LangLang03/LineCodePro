@@ -16,6 +16,7 @@
 #include <huxerui/huxerui.h>
 #include <huxerui/testing/ui_test.h>
 
+#include "domain/compaction_progress.h"
 #include "infrastructure/attachment_json_codec.h"
 #include "infrastructure/legacy_conversation_schema.h"
 #include "infrastructure/sqlite_conversation_store.h"
@@ -352,6 +353,36 @@ huxerui::View ConversationStoreProbe() {
                  restored_tool->result &&
                  restored_tool->result->content == "contents";
       }
+      // A compaction progress block and a retry notice both live only in
+      // `raw_json`, so a restart would lose them without the round trip.
+      // The id must come from the store: appending with the placeholder id the
+      // factory defaults to would collide with any other placeholder row.
+      linecode::domain::ChatMessage progress = linecode::domain::CompactProgressMessage(
+          store->AllocateMessageId(), "done");
+      progress.content = "compacting";
+      store->Append(std::move(progress));
+      linecode::domain::ChatMessage notice;
+      notice.id = store->AllocateMessageId();
+      notice.role = linecode::domain::MessageRole::assistant;
+      notice.content = "retrying";
+      notice.retry_notice = true;
+      store->Append(std::move(notice));
+      const auto flags_flushed = co_await store->FlushPendingAsync();
+      bool flags_reloaded{};
+      if (flags_flushed)
+        flags_reloaded = static_cast<bool>(co_await store->ReloadAsync());
+      const auto with_flags = store->Messages();
+      const auto restored_progress = std::ranges::find(
+          with_flags, std::string_view{"compacting"},
+          &linecode::domain::ChatMessage::content);
+      const auto restored_notice = std::ranges::find(
+          with_flags, std::string_view{"retrying"},
+          &linecode::domain::ChatMessage::content);
+      passed = passed && flags_reloaded &&
+               restored_progress != with_flags.end() &&
+               restored_progress->compact_status == "done" &&
+               restored_notice != with_flags.end() &&
+               restored_notice->retry_notice;
       scenario->passed = passed;
       scenario->done = true;
     });

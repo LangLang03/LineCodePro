@@ -313,6 +313,29 @@ python3 tools/ui_parity_test.py \
       （`StoredMessage` 原本**没有** `hidden` 字段）；渲染层早已跳过隐藏消息，
       故 transcript 不变。修复后同一场景实测 `含压缩摘要: True`，无崩溃。
       回归：18 场景功能失败 0、像素值不变。
+- [x] **压缩进度块与重试提示现可持久化**：两者只存在于内存（`compact_status`
+      与 `retry_notice` 都不在 SQLite 列里），原先**从未写入 raw_json**，
+      重启后「压缩」状态行会失去含义。现在
+      `EncodeMessageRawJson` 会写入这两个键、`DecodeLegacyMetadata` 读回，
+      并接进 `StoredMessage`/`HydrateMessage`（对应旧版
+      `ConversationPersistenceController.messageRawJson` 的
+      `compact_status` 分支与 `readRawString`）。
+      **验证方式**：新增仓储往返测试（append → `FlushPendingAsync` →
+      `ReloadAsync` → 断言 `compact_status == "done"` 且 `retry_notice` 为真），
+      实测通过。
+      *过程中修正的两个自身错误*：(1) 我一度以为编码器没被调用——
+      实际 `raw_json` 存在 `message_text_chunks` 分块表里，
+      `messages.raw_json` 列按设计留空，是我查询错了表；
+      (2) 新测试最初用工厂默认的占位 id 直接 append，
+      与其它占位行冲突导致进度块被覆盖，改为 `AllocateMessageId()` 后通过。
+- [ ] **图片输入尚未开始**：曾派子代理实现，其交付为**半成品且无法编译**
+      （改了 `chat_session`/`completion_gateway`/`send_message`/
+      `completion_protocol_codec`/`app_state` 与两个新 domain 头，
+      但没有测试、没有 UI、没有平台层，且 `ChatSession::Send` 签名不一致）。
+      已**全部回退**，TODO 保留该项。已摸清的可复用件：
+      `domain::WorkspaceImage`、`Base64Encode`、
+      `image_understanding_codec.cpp` 里两种协议的图片编码形状、
+      `completion_protocol_codec.cpp` 已在构建 content 数组。
 - [ ] **会话恢复清理器未回写持久层**（与旧版的差异，用户不可见）：
       旧版在 `changed` 时 `saveConversation` 回写；当前只修内存态，
       所以数据库保留陈旧值、每次加载重复修复一次（幂等，无副作用）。
