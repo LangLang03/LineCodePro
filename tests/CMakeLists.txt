@@ -1853,3 +1853,23 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME generation_retry_tests COMMAND generation_retry_tests)
+
+add_executable(conversation_resume_sanitizer_tests
+        conversation_resume_sanitizer_tests.cpp
+        ../src/domain/conversation_resume_sanitizer.cpp
+        ../src/infrastructure/archive_json.cpp
+)
+target_include_directories(conversation_resume_sanitizer_tests PRIVATE ../src)
+target_compile_features(conversation_resume_sanitizer_tests PRIVATE cxx_std_23)
+set_target_properties(conversation_resume_sanitizer_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(conversation_resume_sanitizer_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(conversation_resume_sanitizer_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME conversation_resume_sanitizer_tests COMMAND conversation_resume_sanitizer_tests)

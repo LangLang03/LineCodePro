@@ -273,6 +273,35 @@ python3 tools/ui_parity_test.py \
       真机验证：`Worked 0.7s` → **`Edited 1 files`** → 答复；
       点击展开后显示 `Completed / linecode-tool-check.txt` 卡片，无崩溃。
 
+- [x] **会话恢复清理器已移植（纯逻辑 + 20 个测试）但尚未接线**：
+      `domain/conversation_resume_sanitizer.*` 逐条移植
+      `ConversationResumeSanitizer`——清理卡在 `streaming` 的消息、
+      `compact_status=running` 的进度块、处于 running/pending 未完成审核态的工具结果、
+      没有对应结果的 assistant 工具调用（补齐 `recovered_tool_*` 记录）、
+      以及 `linecode_agent_progress` / `linecode_agent_pipeline_progress`
+      里仍称 running 的负载，缺失处一律用「上次生成已中断。」填充。
+      **接手子代理失败任务时发现并修掉 3 个真实缺陷**：
+      (1) 恢复记录算了 `timestamp` 却从未赋值（旧版用会话 `updated_at`，
+      回落到当前时间）——编译器 `-Wunused-variable` 暴露；
+      (2) `Trim(OptString(...))` 产生**悬垂 `string_view`**（`OptString` 按值返回，
+      临时量在完整表达式结束时销毁），导致拼接进 output 的是**已释放内存**，
+      实测出现 `(]\u0005...` 垃圾字节；
+      (3) 测试辅助 `ObjectOf()` 返回**函数内静态对象**的引用，而
+      `FieldText` 等又会重新赋值它，持有指针的用例全部悬垂——
+      表现为 `std::bad_variant_access: variant is valueless`。
+      另有 1 处测试自身笔误（对对象型字段调用整数读取器，
+      该读取器是 assert 而非返回哨兵，`||` 兜底永远不生效）。
+- [ ] **会话恢复清理器尚未接入载入路径**（当前是惰性代码，不产生实际效果）：
+      旧版在 `ConversationPersistenceController.applyConversation`（加载/切换会话前）
+      调用并回写。候选的接缝在
+      `src/infrastructure/sqlite_conversation_store.cpp` 的 `stored` 向量
+      （约 875-885 行，`LoadStoredMessagesAsync` 之后、`hydrated` 之前）。
+      接入需要：`StoredMessage` ↔ `ResumeMessageRecord` 的转换
+      （注意仓储侧 `role` 是**字符串**、且有 `local_order`/`attachments`/
+      `finished_at`/`error_message`/`timeline` 等额外字段），
+      以及 `changed` 时把修复结果回写持久层（异步路径，需单独验证）。
+      调用点应传入当前时间作为 `now_millis`（替代 `System.currentTimeMillis()`）。
+
 已核实**不属于**缺口的项（不要重复投入）：
 - **「模型切换提示」不存在**：旧版 `message_model_switched`（"已切换模型"）
   只在 `values*/strings.xml` 定义，**全仓库无任何引用**（Java 与布局均无，
