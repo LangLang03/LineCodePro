@@ -1160,10 +1160,35 @@ huxerui::View Probe() {
   return huxerui::Text("file-tool-registry-probe");
 }
 
+// The composition root resolves a locale probe because HuxerUI exposes no
+// "current locale" accessor; this is the mapping it feeds the catalog.
+void LocaleProbeSelectsTheCatalogLanguage() {
+  assert(application::ToolTextLanguageFor("zh") ==
+         application::ToolTextLanguage::chinese);
+  assert(application::ToolTextLanguageFor("en") ==
+         application::ToolTextLanguage::english);
+  // Anything else -- including an empty probe, which is what a failed
+  // resolution returns -- falls back to English rather than to Chinese.
+  assert(application::ToolTextLanguageFor("") ==
+         application::ToolTextLanguage::english);
+  assert(application::ToolTextLanguageFor("ru") ==
+         application::ToolTextLanguage::english);
+
+  // The two catalogs really do differ, so the mapping changes what a user
+  // reads on a tool failure.
+  const auto english = application::ToolTextTemplate(
+      application::ToolTextKey::tool_agent_invalid_type);
+  const auto chinese = application::ToolTextTemplate(
+      application::ToolTextKey::tool_agent_invalid_type,
+      application::ToolTextLanguage::chinese);
+  assert(!english.empty() && !chinese.empty() && english != chinese);
+}
+
 } // namespace
 
 int main() {
   CheckCatalogMatchesProperties();
+  LocaleProbeSelectsTheCatalogLanguage();
   CheckCatalogFormatting();
 
   active = std::make_shared<Scenario>();

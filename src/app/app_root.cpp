@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <huxerui/http.h>
+#include <app_resources.h>
 #include <huxerui/huxerui.h>
 
 #include "app/bootstrap.h"
@@ -474,12 +475,19 @@ huxerui::View PlatformServicesHost() {
   auto tool_file_access = huxerui::UseState(
       std::shared_ptr<application::ToolFileAccess>{
           std::make_shared<infrastructure::HuxToolFileAccess>()});
+  // Tool-internal messages are shown to the user on failure, so they follow
+  // the UI language. A locale is only observable by resolving a resource
+  // during composition, hence the probe.
+  // `UseString` validates the placeholder count, so a zero-placeholder probe
+  // must be resolved without arguments (passing a fallback is a runtime error,
+  // not a default).
+  const auto tool_text_language = application::ToolTextLanguageFor(
+      UseString(::app::strings::app_locale_probe));
   auto file_tools = huxerui::UseState(
       std::shared_ptr<application::ToolRegistry>{
           std::make_shared<application::FileToolRegistry>(
               mcp_settings.Get(), project_workspace.Get(),
-              tool_file_access.Get(), application::ToolTextLanguage::english,
-              diff_store.Get())});
+              tool_file_access.Get(), tool_text_language, diff_store.Get())});
   tool_sources.push_back(todo_tools.Get());
   tool_sources.push_back(memory_tools.Get());
   tool_sources.push_back(web_tool_registry.Get());
@@ -509,7 +517,7 @@ huxerui::View PlatformServicesHost() {
       std::shared_ptr<application::ToolRegistry>{
           std::make_shared<application::AgentToolRegistry>(
               mcp_settings.Get(), agent_results.Get(),
-              sub_agent_runner.Get())});
+              sub_agent_runner.Get(), tool_text_language)});
   auto runtime_tools =
       huxerui::UseState(std::shared_ptr<application::ToolRegistry>{
           std::make_shared<application::CompositeToolRegistry>(

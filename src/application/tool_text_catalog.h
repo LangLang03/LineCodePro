@@ -118,6 +118,17 @@ ToolTextTemplate(std::string_view name,
 ToolTextTemplate(ToolTextKey key,
                  ToolTextLanguage language = ToolTextLanguage::english) noexcept;
 
+// Maps the app's locale probe (`app_locale_probe`, "en" / "zh") to the catalog
+// language. HuxerUI exposes no "current locale" accessor -- a locale is only
+// observable by resolving a resource during composition -- so the composition
+// root resolves that probe and passes the answer down, which is why the
+// catalog never guesses.
+[[nodiscard]] constexpr ToolTextLanguage
+ToolTextLanguageFor(std::string_view locale_probe) noexcept {
+  return locale_probe == "zh" ? ToolTextLanguage::chinese
+                              : ToolTextLanguage::english;
+}
+
 // Legacy positional formatting: {0}, {1}, ... are zero-based placeholders and
 // {{ / }} are literal braces. A placeholder without a matching argument is kept
 // verbatim, so a wrong argument count stays visible instead of silently empty.
