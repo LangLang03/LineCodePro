@@ -205,6 +205,20 @@ python3 tools/ui_parity_test.py \
       *实现中发现的坑*：`CompletionMessage` 没有 id，而保留尾部规则按 id 匹配；
       最初把 id 赋值放在触发判定之后，导致所有 id 为 0、判定误判为"全部保留"
       而永不触发。已改为在转换时立即赋 id（诊断输出定位）。
+- [x] mid-loop 压缩真机端到端验证（补上上一轮标记的未验证项）：
+      fixture 新增 `__LINECODE_TEST_LOOP__`（连续多轮调用只读的 `list_dir`），
+      配合 120 token 的上下文窗口可堆出长工具循环。实测请求序列为
+      ① 正常请求（含 tool 结果）→ ② **压缩摘要请求**（无工具、单条 user）
+      → ③ 重建请求 = `system` + 摘要（`Another language model started…`）
+      + 在途 `assistant` + 在途 `tool` 结果（目录列表逐字保留），
+      与设计完全一致，无崩溃。
+- [ ] **mid-loop 压缩的残留语义差异**（本轮实测发现，尚未修）：
+      旧版 `startToolLoopContextCompaction` 会改写会话并
+      `persistCurrentConversation()`，因此摘要落库、UI 出现「压缩」进度块。
+      当前实现只重写**本次在途请求**（`MidLoopCompactor` 端口拿不到会话），
+      所以：摘要不落库、不显示进度块；循环结束后下一轮用户消息会从会话
+      重新构建请求，需要再次触发压缩。功能上防止了循环内溢出，但
+      可观察行为与旧版不一致。修法：让端口能写入会话（或由会话侧实现端口）。
 - [ ] P1 Markdown 退化：裸 URL 不可点、引用/列表内代码块被压成一行、
       思考块直接输出原始 `**`；旧版有 `Linkify.WEB_URLS` 与 `ThinkingBlockView` 样式。
 - [ ] P1 回合汇总「已编辑 N 个文件 / Review」区块缺失。

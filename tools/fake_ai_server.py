@@ -40,6 +40,10 @@ FILE_TOOL_TRIGGER = "__LINECODE_TEST_FILE__"
 FILE_TOOL_PATH = "linecode-tool-check.txt"
 FILE_TOOL_CONTENT = "linecode file tool ok"
 AGENT_TOOL_TRIGGER = "__LINECODE_TEST_AGENT__"
+# Keeps requesting one cheap read-only tool so a single conversation can build
+# a long tool loop; used to exercise mid-loop context compaction.
+LOOP_TOOL_TRIGGER = "__LINECODE_TEST_LOOP__"
+LOOP_TOOL_ROUNDS = 14
 TODO_TOOL_TRIGGER = "__LINECODE_TEST_TODO__"
 TODO_TOOL_ITEMS = (
     {"content": "Verify the todo prompt projection", "status": "in_progress"},
@@ -286,8 +290,38 @@ class FakeAiHandler(BaseHTTPRequestHandler):
         tools = request.get("tools")
         if not isinstance(messages, list) or not isinstance(tools, list):
             return None
-        if any(isinstance(message, dict) and message.get("role") == "tool"
-               for message in messages):
+        loop_requested = any(
+            isinstance(message, dict)
+            and message.get("role") == "user"
+            and LOOP_TOOL_TRIGGER in str(message.get("content", ""))
+            for message in messages
+        )
+        tool_rounds = sum(
+            1
+            for message in messages
+            if isinstance(message, dict) and message.get("role") == "tool"
+        )
+        if tool_rounds:
+            # Every other trigger stops after one call to keep runs short. The
+            # loop trigger keeps going so the tool loop itself is exercised.
+            if not loop_requested or tool_rounds >= LOOP_TOOL_ROUNDS:
+                return None
+            available = any(
+                isinstance(tool, dict)
+                and isinstance(tool.get("function"), dict)
+                and tool["function"].get("name") == "list_dir"
+                for tool in tools
+            )
+            if available:
+                return {
+                    "index": 0,
+                    "id": f"call_linecode_loop_{tool_rounds}",
+                    "type": "function",
+                    "function": {
+                        "name": "list_dir",
+                        "arguments": compact_json({"path": "."}).decode("utf-8"),
+                    },
+                }
             return None
         strategies = (
             (
