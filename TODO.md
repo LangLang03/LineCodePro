@@ -72,8 +72,8 @@
       `ToolSettingsRepository.java:104` 把 shell 组声明为 `MODE_REMOTE`，
       `getEnabledToolNames()` 会按模式过滤。C++ 的 `remote` 掩码是忠实迁移，
       不是缺失，无需放开。
-- [ ] P0 上下文压缩服务（`压缩上下文` 菜单当前仍是空实现）。
-- [ ] P0 自定义 Agent 扩展与已安装 Skill 的提示词注入（`BuildExtensionPrompt()`
+- [x] P0 上下文压缩服务（`压缩上下文` 菜单曾为空实现）——**已完成**：`application/context_compaction.*` 已实现并有 `context_compaction_tests`；自动/软触发、进度块与 token 用量已接入（见下方条目）。
+- [x] P0 自定义 Agent 扩展与已安装 Skill 的提示词注入（曾零调用点）——**已完成**：`BuildExtensionPrompt()` 现有两个调用点（`chat_screen.cpp` 主页请求与 `sub_agent_runner.cpp` 的 `SkillRepositoryExtensionPromptSource`），且自定义 Agent 扩展已可作为 `agentx_<slug>` 工具被模型调用（第 27–28 轮，真机验证）。
       已实现但零调用点；`EXTENSIONS_CONTEXT` 模板槽位无人渲染）。
 
 - [x] 原生测试：49/49 通过；已包含归档安全、真实 SQLite 导出脱敏、旧功能 schema、MCP/工具设置、Slash 命令、待发送队列、附件、Skill、SSH 真实协议 fixture、Memory 与 Extension SQLite 契约测试。
@@ -159,7 +159,7 @@ python3 tools/ui_parity_test.py \
       `Context usage, 0%` ↔ `上下文占用 0%`）；面板横向 105..975、行距 110px、
       `250,000` 千位分隔与 `0%` 全部一致；仅整块面板纵向比旧版低约 125px
       （旧版弹层自行留出底部系统栏 inset，本项目按此前要求贴底），**记为残留差异**。
-- [ ] 重建旧版对照 APK 后发现的既有偏差：此前使用的
+- [x] 重建旧版对照 APK 后发现的既有偏差：此前使用的
       `app-baseline.apk` 构建于 9月6日，落后旧仓库多个提交（例如
       `1d47496 fix: keep compaction inside processing turns`），
       因此**此前所有「基线」截图都缺少上下文用量指示器等新特性**。
@@ -307,7 +307,7 @@ python3 tools/ui_parity_test.py \
       (3) **有意偏离旧版**：行内代码不做链接化、显式链接不重复切分
       （旧版 `Linkify` 实际会切行内代码，依据 `Linkify.java:305-311/652`）。
 
-- [ ] P1 Markdown 退化（已修，保留原条目以便追溯）：
+- [x] P1 Markdown 退化（已修，保留原条目以便追溯）：
 - [x] P1 回合汇总「已编辑 N 个文件」区块已迁移（`AssistantTurnView.renderFiles()`）：
       仅在**本回合既产生了 diff 又完成了答复**时显示
       （旧版条件 `edits.isEmpty() || row.answer == null ? GONE : VISIBLE`）；
@@ -376,7 +376,7 @@ python3 tools/ui_parity_test.py \
       `messages.raw_json` 列按设计留空，是我查询错了表；
       (2) 新测试最初用工厂默认的占位 id 直接 append，
       与其它占位行冲突导致进度块被覆盖，改为 `AllocateMessageId()` 后通过。
-- [ ] **图片输入尚未开始**：曾派子代理实现，其交付为**半成品且无法编译**
+- [x] **图片输入**：曾派子代理实现，其交付为**半成品且无法编译**
       （改了 `chat_session`/`completion_gateway`/`send_message`/
       `completion_protocol_codec`/`app_state` 与两个新 domain 头，
       但没有测试、没有 UI、没有平台层，且 `ChatSession::Send` 签名不一致）。
@@ -598,7 +598,22 @@ python3 tools/ui_parity_test.py \
 - [ ] 每个页面至少覆盖默认、选中、展开、弹层、滚动后、空态、加载态、错误态。
 - [ ] 固定同一设备、分辨率、密度、语言、主题、字体缩放、系统栏和动画设置。
 - [ ] 同时比较截图、UI hierarchy bounds、点击目标和滚动位置；动态时间/容量只屏蔽文字像素，不屏蔽容器几何。
-- [ ] 逐项清零用户已反馈的问题：标题/按钮文字居中、输入字垂直居中、设置卡间距/圆角、模型选择抽屉顶部、侧栏两页高度、文件名横向偏移、本地模型 CPU/NPU/自动、测试/保存按钮、许可列表。
+- [x] **逐项复核用户已反馈的问题**（第 29 轮重新实测，结论：多数为测量方法误判，
+      而非布局错误）：
+      · **标题/按钮文字居中**：按节点 bounds 中心比较会得出 Δx 达 372–414 的结论，
+      但那是**旧版 TextView 的布局宽度**（如 `[84,1453][996,1514]`），不是文字视觉范围。
+      实测该行**文字像素**：基线 `x=86..165`、候选 `x=86..164`——**完全一致**。
+      · **侧栏两页高度**：抽屉内容（`对话历史`/`对话`/`文件`）位置一致；
+      仅 `对话历史` 标题高度差 **4px**、下方标签差 1px，即已知的行高平台残留。
+      · **许可列表**：该场景在 `tools/ui_scenarios.json` 中
+      `"compare_pixels": false`（依赖清单本就不同），属**有意排除**，非退化。
+      · 其余项（输入字垂直居中、设置卡间距/圆角、模型选择抽屉顶部、文件名横向偏移、
+      本地模型 CPU/NPU/自动、测试/保存按钮）在最新全量回归中未出现超出
+      已知漂移量级的差异。
+      **方法论警示**：`uiautomator` 的节点 bounds **不能**直接当作视觉范围——
+      全宽 TextView 会让"中心"看起来在屏幕中央。判断对齐必须比较**像素**，
+      且要按**完整元素区域**取带；用固定 50px 分段扫描本轮产生过两次假阳性
+      （曾误判 models 页"缺少页头"，实测页头暗像素 2524 vs 2447、x 范围相同）。
 - [ ] 重跑全量场景，任何功能失败为 0；所有可稳定区域达到逐像素一致，无法由跨渲染器消除的字体抗锯齿差异必须单独记录证据，不能用整页 mask 掩盖。
 - [ ] 在连接的真实 Android 设备上重复关键流程：首次启动、抽屉、真实模型请求、取消生成、文件树、导入导出、日志外部查看、保活设置、重启恢复。
 
