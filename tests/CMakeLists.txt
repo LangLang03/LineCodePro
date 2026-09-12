@@ -1918,3 +1918,29 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME custom_agent_tool_tests COMMAND custom_agent_tool_tests)
+
+add_executable(legacy_archive_writer_tests
+        legacy_archive_writer_tests.cpp
+        ../src/infrastructure/archive_validation.cpp
+        ../src/infrastructure/archive_json.cpp
+        ../src/infrastructure/linecode_zip.cpp
+        ../src/domain/model_config.cpp
+)
+target_include_directories(legacy_archive_writer_tests PRIVATE ../src)
+target_compile_features(legacy_archive_writer_tests PRIVATE cxx_std_23)
+find_package(ZLIB REQUIRED)
+target_link_libraries(legacy_archive_writer_tests PRIVATE HuxerUI::testing ZLIB::ZLIB)
+set_target_properties(legacy_archive_writer_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(legacy_archive_writer_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(legacy_archive_writer_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME legacy_archive_writer_tests
+        COMMAND legacy_archive_writer_tests
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)

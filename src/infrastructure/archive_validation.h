@@ -5,6 +5,8 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "application/legacy_data_archive.h"
 
@@ -35,5 +37,21 @@ ValidateDatabaseSnapshot(std::string_view text,
                             ArchiveValidationError>
 DecodeLegacyArchive(std::span<const ZipEntryData> entries,
                     std::int64_t fallback_timestamp);
+
+// The legacy-compatible half of an export.
+//
+// `DecodeLegacyArchive` reads the shapes the legacy app writes; this is the
+// matching writer. Without it an export carries no models, conversations or
+// settings in `async-storage.json`, so the legacy app -- which reads exactly
+// that entry on import -- restores nothing.
+struct LegacyArchiveEncoding final {
+  // Contents of `async-storage.json`.
+  std::string async_storage_json;
+  // `conversations/<safe name>` entries, in the same order as the input.
+  std::vector<std::pair<std::string, std::string>> conversation_files;
+};
+
+[[nodiscard]] LegacyArchiveEncoding
+EncodeLegacyArchive(const application::LegacyArchiveData &data);
 
 } // namespace linecode::infrastructure

@@ -339,7 +339,112 @@ bool IsLegacySettingKey(std::string_view key) {
          !key.starts_with("@lineai_conv_chunk_");
 }
 
+// Mirrors `LineCodeArchiveCodec.messageJson`
+// (`LineCodeArchiveCodec.java:225-239`). `raw_json` is folded in first, then
+// the structured fields overwrite, which is what the legacy `objectFromRaw`
+// plus successive `put` calls amount to.
+json::Value LegacyMessageJson(const application::LegacyArchiveMessage &message) {
+  json::Object object;
+  if (!message.raw_json.empty()) {
+    if (auto parsed = json::Parse(message.raw_json);
+        parsed && json::AsObject(&*parsed) != nullptr)
+      object = *json::AsObject(&*parsed);
+  }
+  object.insert_or_assign("id", message.id);
+  object.insert_or_assign("role", LegacyRole(message.role));
+  object.insert_or_assign("content", message.content);
+  object.insert_or_assign("reasoningContent", message.reasoning_content);
+  object.insert_or_assign("timestamp", message.timestamp);
+  object.insert_or_assign("streaming", message.streaming);
+  object.insert_or_assign("hidden", message.hidden);
+  object.insert_or_assign("excludeFromContext", message.exclude_from_context);
+  object.insert_or_assign("toolCallId", message.tool_call_id);
+  object.insert_or_assign("toolName", message.tool_name);
+  object.insert_or_assign("isError", message.is_error);
+  return object;
+}
+
+// Mirrors `LineCodeArchiveCodec.conversationJson`
+// (`LineCodeArchiveCodec.java:210-223`).
+json::Value
+LegacyConversationJson(const application::LegacyArchiveConversation &conversation) {
+  json::Object object;
+  if (!conversation.raw_json.empty()) {
+    if (auto parsed = json::Parse(conversation.raw_json);
+        parsed && json::AsObject(&*parsed) != nullptr)
+      object = *json::AsObject(&*parsed);
+  }
+  object.insert_or_assign("id", conversation.id);
+  object.insert_or_assign("title", conversation.title);
+  object.insert_or_assign("createdAt", conversation.created_at);
+  object.insert_or_assign("updatedAt", conversation.updated_at);
+  json::Array messages;
+  messages.reserve(conversation.messages.size());
+  for (const auto &message : conversation.messages)
+    messages.push_back(LegacyMessageJson(message));
+  object.insert_or_assign("messages", std::move(messages));
+  return object;
+}
+
 } // namespace
+
+LegacyArchiveEncoding
+EncodeLegacyArchive(const application::LegacyArchiveData &data) {
+  // `LineCodeArchiveCodec.buildAsyncStorageEntries`.
+  json::Array entries;
+  json::Array models;
+  for (const auto &model : data.models)
+    models.push_back(LegacyModelJson(model.config));
+  entries.push_back(json::Object{{"key", std::string{"@lineai_models"}},
+                                 {"value", json::Serialize(models)}});
+  if (!data.selected_model_id.empty()) {
+    entries.push_back(json::Object{
+        {"key", std::string{"@lineai_selected_model"}},
+        {"value", data.selected_model_id}});
+  }
+  if (!data.current_conversation_id.empty()) {
+    entries.push_back(json::Object{
+        {"key", std::string{"@lineai_current_conversation"}},
+        {"value", data.current_conversation_id}});
+  }
+
+  LegacyArchiveEncoding encoding;
+  json::Array conversation_list;
+  for (const auto &conversation : data.conversations) {
+    const auto file_name = SafeConversationFileName(conversation.id);
+    auto content = json::Serialize(LegacyConversationJson(conversation));
+    conversation_list.push_back(json::Object{
+        {"id", conversation.id},
+        {"title", conversation.title},
+        {"createdAt", conversation.created_at},
+        {"updatedAt", conversation.updated_at}});
+    // The metadata entry carries the byte size of the file it points at, so
+    // it has to be built after serialising that file.
+    entries.push_back(json::Object{
+        {"key", std::string{"@lineai_conv_"} + conversation.id},
+        {"value", json::Serialize(json::Object{
+                      {"storage", std::string{"file"}},
+                      {"schemaVersion", kCurrentArchiveDatabaseSchemaVersion},
+                      {"id", conversation.id},
+                      {"fileName", file_name},
+                      {"size", static_cast<std::int64_t>(content.size())},
+                      {"updatedAt", conversation.updated_at},
+                      {"messageCount",
+                       static_cast<std::int64_t>(conversation.messages.size())},
+                  })}});
+    encoding.conversation_files.emplace_back(
+        "conversations/" + file_name, std::move(content));
+  }
+  entries.push_back(json::Object{
+      {"key", std::string{"@lineai_conversation_list"}},
+      {"value", json::Serialize(conversation_list)}});
+  for (const auto &[key, value] : data.settings) {
+    if (IsLegacySettingKey(key))
+      entries.push_back(json::Object{{"key", key}, {"value", value}});
+  }
+  encoding.async_storage_json = json::Serialize(entries);
+  return encoding;
+}
 
 std::expected<ValidatedArchiveManifest, ArchiveValidationError>
 ValidateArchiveManifest(std::string_view text) {

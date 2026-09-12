@@ -548,6 +548,22 @@ python3 tools/ui_parity_test.py \
       修复需实现旧版平面（模型 JSON、`@lineai_conv_<id>` 元数据、
       `@lineai_conversation_list`、每会话 ZIP 条目与设置条目），
       属独立一轮的工作量。
+      **第 31 轮进展**：**编码器已完成并经真实数据验证**。
+      新增 `EncodeLegacyArchive(LegacyArchiveData)` →
+      `{async_storage_json, conversation_files}`（`archive_validation.h/.cpp`），
+      复用已有的 `LegacyModelJson` 与 `SafeConversationFileName`，
+      并新增消息/会话编码器（镜像旧版 `messageJson`/`conversationJson`，
+      含 `raw_json` 先折叠、结构化字段后覆盖的顺序语义）。
+      **验证方式**：新增 `tests/legacy_archive_writer_tests.cpp`，
+      直接读取上一轮存下的**真实旧版归档**做往返——
+      解码后再编码，必须复现全部 **9 个** async-storage 条目
+      （含 `@lineai_conv_lg-conv-1` 与 4 项 `@linecode_*` 设置）、
+      会话文件名 `conversations/lg-conv-1.json`，
+      且元数据中的 `size` 与实际产出的字节数一致、`messageCount` 正确；
+      空数据也须产出合法的 async-storage。82/82 通过。
+      **仍未完成**：DB 侧的数据收集（`ArchiveDatabase::ExportLegacy()`
+      读取模型/会话/消息/设置）与 `PrepareExport` 接线——
+      编码器目前尚无调用点，因此**缺陷尚未修复**，下一轮接线。
 - [ ] 按旧版 60dp header、68dp 行、16/12dp padding、12dp 圆角完成同机像素截图。
 
 ## 教程
