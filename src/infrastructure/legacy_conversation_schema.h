@@ -72,9 +72,10 @@ SELECT m.id, m.local_order, m.role,
        m.is_error,
        m.timestamp,
        COALESCE(m.tool_call_id, ''),
-       COALESCE(m.tool_name, '')
+       COALESCE(m.tool_name, ''),
+       m.hidden
 FROM messages AS m
-WHERE m.conversation_id = ? AND m.hidden = 0
+WHERE m.conversation_id = ?
 ORDER BY m.local_order
 )sql";
 

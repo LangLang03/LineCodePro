@@ -301,6 +301,18 @@ python3 tools/ui_parity_test.py \
       两条 `messages.streaming=1`）后重启，**卡片显示 `Completed` 而非
       "需要确认"**，而数据库里仍是 `pending`/`streaming=1`——
       直接证明是加载期的内存态修复生效；无崩溃。
+- [x] **冷启动丢失压缩摘要（严重，已修）**：`load_visible_messages` 带
+      `AND m.hidden = 0`，而旧版 `ConversationRepository.getMessages` 只按
+      `conversation_id` 过滤、**载入全部消息**并用 `hidden` 标志控制渲染。
+      由于压缩摘要与"隐藏尾部副本"都是 `hidden=1`，
+      且被摘要的原文标了 `exclude_from_context=1`，
+      冷启动后模型**既拿不到摘要也拿不到原文**——压缩静默失效、历史近乎清空。
+      实测：压缩后重启，请求里 `含压缩摘要: False`。
+      修复：查询不再过滤 `hidden`，并把 `hidden` 列接入
+      `StoredMessage`/`DecodeStoredMessage`/`HydrateMessage`
+      （`StoredMessage` 原本**没有** `hidden` 字段）；渲染层早已跳过隐藏消息，
+      故 transcript 不变。修复后同一场景实测 `含压缩摘要: True`，无崩溃。
+      回归：18 场景功能失败 0、像素值不变。
 - [ ] **会话恢复清理器未回写持久层**（与旧版的差异，用户不可见）：
       旧版在 `changed` 时 `saveConversation` 回写；当前只修内存态，
       所以数据库保留陈旧值、每次加载重复修复一次（幂等，无副作用）。

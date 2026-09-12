@@ -108,6 +108,7 @@ struct StoredMessage final {
   std::string attachments_json;
   std::vector<domain::InputAttachment> attachments;
   std::string reasoning_content;
+  bool hidden{};
   bool streaming{};
   bool exclude_from_context{};
   bool error{};
@@ -202,6 +203,9 @@ Result<StoredMessage> DecodeStoredMessage(const RowView &row) {
   auto tool_name = row.Get<std::string>(11);
   if (!tool_name)
     return tool_name.Error();
+  auto hidden = row.Get<std::int64_t>(12);
+  if (!hidden)
+    return hidden.Error();
   StoredMessage message{.id = std::move(*id),
                         .local_order = *local_order,
                         .role = std::move(*role),
@@ -209,6 +213,7 @@ Result<StoredMessage> DecodeStoredMessage(const RowView &row) {
                         .attachments_json = std::move(*attachments_json),
                         .attachments = std::move(attachments),
                         .reasoning_content = std::move(*reasoning),
+                        .hidden = *hidden != 0,
                         .streaming = *streaming != 0,
                         .exclude_from_context = *excluded != 0,
                         .error = *error != 0,
@@ -231,6 +236,9 @@ Result<StoredMessage> DecodeStoredMessage(const RowView &row) {
   message.attachments = row.attachments;
   message.reasoning_content = row.reasoning_content;
   message.timeline = row.timeline;
+  // Hidden rows now load (a compaction summary has to reach the model) but
+  // stay out of the transcript, exactly like legacy `MessageRecord.hidden`.
+  message.hidden = row.hidden;
   message.streaming = row.streaming;
   message.exclude_from_context = row.exclude_from_context;
   message.error = row.error;
