@@ -14,8 +14,9 @@
 #include <huxerui/testing/ui_test.h>
 
 #include "application/ports/archive_database.h"
-#include "infrastructure/hux_data_archive_service.h"
+#include "infrastructure/archive_json.h"
 #include "infrastructure/linecode_zip.h"
+#include "infrastructure/hux_data_archive_service.h"
 
 namespace {
 
@@ -69,7 +70,20 @@ public:
     co_return summary;
   }
 
+  // The legacy plane an export has to carry; the export tests assert on it.
+  huxerui::Task<DataArchiveResult<linecode::application::LegacyArchiveData>>
+  ExportLegacy() override {
+    ++export_legacy_calls;
+    if (fail_export_legacy)
+      co_return std::unexpected(
+          DataArchiveError{"injected legacy export failure"});
+    co_return legacy_export;
+  }
+
   bool fail_import{};
+  bool fail_export_legacy{};
+  std::size_t export_legacy_calls{};
+  linecode::application::LegacyArchiveData legacy_export;
   ArchiveSummary summary;
   std::size_t replace_calls{};
   std::size_t legacy_calls{};
@@ -142,8 +156,55 @@ bool HasTransactionDirectory(const ImportFixture &fixture) {
   return false;
 }
 
+// An export has to carry the legacy plane. Without it a legacy app importing
+// our archive restores no models, no conversations and no settings, because it
+// reads them from `async-storage.json` rather than our table snapshot.
+struct ExportFixture final {
+  std::shared_ptr<RecordingArchiveDatabase> database;
+  std::shared_ptr<HuxDataArchiveService> service;
+  std::optional<DataArchiveResult<linecode::application::PreparedDataArchive>>
+      result;
+};
+
+std::shared_ptr<ExportFixture>
+MakeExportFixture(const File &suite_root, std::string_view name) {
+  const File base = suite_root.Child(name);
+  assert(base.CreateDirectories());
+  const File workspace = base.Child("workspace");
+  assert(workspace.CreateDirectories());
+  std::array roots{workspace.Child("home"), workspace.Child("project"),
+                   workspace.Child("skills")};
+  const auto database = std::make_shared<RecordingArchiveDatabase>();
+  linecode::application::LegacyArchiveData legacy;
+  linecode::domain::ModelConfig model;
+  model.id = "m1";
+  model.name = "Exported Model";
+  model.model_id = "model-1";
+  linecode::application::LegacyArchiveModel archive_model;
+  archive_model.config = model;
+  archive_model.selected = true;
+  legacy.models.push_back(std::move(archive_model));
+  legacy.selected_model_id = "m1";
+  legacy.current_conversation_id = "c1";
+  linecode::application::LegacyArchiveConversation conversation;
+  conversation.id = "c1";
+  conversation.title = "Exported Conversation";
+  conversation.created_at = 10;
+  conversation.updated_at = 20;
+  legacy.conversations.push_back(std::move(conversation));
+  legacy.settings.emplace("@linecode_chat_mode", "agent");
+  database->legacy_export = std::move(legacy);
+  return std::make_shared<ExportFixture>(ExportFixture{
+      .database = database,
+      .service = std::make_shared<HuxDataArchiveService>(
+          database, base.Child("temporary"), roots[0], roots[1], roots[2]),
+      .result = std::nullopt,
+  });
+}
+
 struct Scenario final {
   std::vector<std::shared_ptr<ImportFixture>> fixtures;
+  std::vector<std::shared_ptr<ExportFixture>> exports;
   bool done{};
 };
 
@@ -157,6 +218,9 @@ huxerui::View ArchiveTransactionProbe() {
       for (const auto &fixture : scenario->fixtures) {
         fixture->result = co_await fixture->service->ImportBytes(
             fixture->archive, fixture->mode);
+      }
+      for (const auto &fixture : scenario->exports) {
+        fixture->result = co_await fixture->service->PrepareExport();
       }
       scenario->done = true;
     });
@@ -237,6 +301,74 @@ void AssertInvalidDatabasePreflight(const ImportFixture &fixture) {
 
 } // namespace
 
+// Reads back the archive `PrepareExport` staged and checks the legacy plane.
+void AssertExportCarriesTheLegacyPlane(const ExportFixture &fixture) {
+  assert(fixture.result.has_value());
+  assert(fixture.result->has_value());
+  assert(fixture.database->export_legacy_calls == 1U);
+  const auto bytes = fixture.result->value().file.ReadBytes();
+  assert(bytes.Succeeded());
+  auto entries = linecode::infrastructure::ReadLineCodeZip(bytes.Value());
+  assert(entries.has_value());
+
+  const auto find = [&entries](std::string_view name) -> const ZipEntryData * {
+    for (const auto &entry : *entries) {
+      if (entry.name == name)
+        return &entry;
+    }
+    return nullptr;
+  };
+
+  const auto *storage = find("async-storage.json");
+  assert(storage != nullptr && "an export must carry async-storage.json");
+  std::string text;
+  for (const auto byte : storage->content)
+    text.push_back(static_cast<char>(byte));
+  // Empty or unparsable here is exactly the defect this pins: the legacy side
+  // would restore nothing.
+  auto parsed = linecode::infrastructure::archive_json::Parse(text);
+  assert(parsed.has_value());
+  const auto *array = linecode::infrastructure::archive_json::AsArray(&*parsed);
+  assert(array != nullptr);
+  assert(!array->empty());
+
+  const auto value_of = [array](std::string_view key) -> std::string {
+    for (const auto &value : *array) {
+      const auto *object = linecode::infrastructure::archive_json::AsObject(&value);
+      if (object == nullptr)
+        continue;
+      const auto *name = linecode::infrastructure::archive_json::AsString(
+          linecode::infrastructure::archive_json::Find(*object, "key"));
+      if (name == nullptr || *name != key)
+        continue;
+      const auto *stored = linecode::infrastructure::archive_json::AsString(
+          linecode::infrastructure::archive_json::Find(*object, "value"));
+      return stored == nullptr ? std::string{} : *stored;
+    }
+    return {};
+  };
+  assert(value_of("@lineai_selected_model") == "m1");
+  assert(value_of("@lineai_current_conversation") == "c1");
+  assert(value_of("@linecode_chat_mode") == "agent");
+  const auto models = value_of("@lineai_models");
+  assert(models.find("Exported Model") != std::string::npos);
+  // The row has to appear under the name the metadata entry points at.
+  const auto *conversation_file = find("conversations/c1.json");
+  assert(conversation_file != nullptr && "an export must carry its conversations");
+  std::string conversation_text;
+  for (const auto byte : conversation_file->content)
+    conversation_text.push_back(static_cast<char>(byte));
+  auto conversation =
+      linecode::infrastructure::archive_json::Parse(conversation_text);
+  assert(conversation.has_value());
+  const auto *object =
+      linecode::infrastructure::archive_json::AsObject(&*conversation);
+  assert(object != nullptr);
+  assert(*linecode::infrastructure::archive_json::AsString(
+             linecode::infrastructure::archive_json::Find(*object, "id")) ==
+         "c1");
+}
+
 int main() {
   const auto unique =
       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
@@ -245,6 +377,8 @@ int main() {
        ("linecode-archive-transaction-tests-" + unique))
           .string());
   assert(suite_root.CreateDirectories());
+
+  auto export_fixture = MakeExportFixture(suite_root, "export");
 
   auto database_failure = MakeFixture(
       suite_root, "database-failure",
@@ -321,6 +455,7 @@ int main() {
   active_scenario->fixtures = {database_failure, merge, legacy_paths,
                                staging_failure, invalid_legacy,
                                invalid_database};
+  active_scenario->exports = {export_fixture};
   const huxerui::Application application(
       ArchiveTransactionProbe, {.show_debug_overlay = false});
   huxerui::testing::UiTest ui(application);
@@ -336,6 +471,7 @@ int main() {
   AssertLegacyRootReplace(*legacy_paths);
   AssertStagingFailureDoesNotMutate(*staging_failure);
   AssertInvalidLegacyPreflight(*invalid_legacy);
+  AssertExportCarriesTheLegacyPlane(*export_fixture);
   AssertInvalidDatabasePreflight(*invalid_database);
 
   active_scenario.reset();

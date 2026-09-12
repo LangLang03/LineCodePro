@@ -24,6 +24,13 @@ public:
   ReplaceFromSnapshot(std::string json) = 0;
   [[nodiscard]] virtual huxerui::Task<DataArchiveResult<domain::ArchiveSummary>>
   ImportLegacy(LegacyArchiveData data, domain::ArchiveImportMode mode) = 0;
+  // The inverse of `ImportLegacy`: reads this installation's models,
+  // conversations, messages and settings in the shapes the legacy app reads,
+  // so an export is importable there. `ExportRedacted` alone is not enough --
+  // it produces our own table snapshot, which the legacy never consults for
+  // models, conversations or settings.
+  [[nodiscard]] virtual huxerui::Task<DataArchiveResult<LegacyArchiveData>>
+  ExportLegacy() = 0;
 };
 
 } // namespace linecode::application

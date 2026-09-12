@@ -388,6 +388,10 @@ LegacyConversationJson(const application::LegacyArchiveConversation &conversatio
 
 } // namespace
 
+std::string EncodeLegacyModelJson(const domain::ModelConfig &model) {
+  return json::Serialize(LegacyModelJson(model));
+}
+
 LegacyArchiveEncoding
 EncodeLegacyArchive(const application::LegacyArchiveData &data) {
   // `LineCodeArchiveCodec.buildAsyncStorageEntries`.

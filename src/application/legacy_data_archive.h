@@ -12,6 +12,9 @@ namespace linecode::application {
 struct LegacyArchiveModel final {
   domain::ModelConfig config;
   std::string raw_json;
+  // Set by an export so the selected model can be found without a second
+  // query; the legacy archive carries the selection as its own entry.
+  bool selected{};
 };
 
 struct LegacyArchiveMessage final {

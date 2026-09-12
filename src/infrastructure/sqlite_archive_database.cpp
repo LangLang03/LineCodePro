@@ -640,6 +640,245 @@ SqliteArchiveDatabase::ReplaceFromSnapshot(std::string text) {
   };
 }
 
+huxerui::Task<
+    application::DataArchiveResult<application::LegacyArchiveData>>
+SqliteArchiveDatabase::ExportLegacy() {
+  auto opened = co_await Database::OpenAsync(
+      database_file_, huxerui::sqlite::OpenOptions{
+                          .mode = huxerui::sqlite::OpenMode::ReadWrite});
+  if (!opened)
+    co_return std::unexpected(DatabaseError(opened.Error()));
+
+  application::LegacyArchiveData output;
+
+  // Models: the legacy shape is rebuilt from the columns instead of reusing
+  // `raw_json`, so an export never carries a stale copy of an edited row.
+  auto models = co_await opened->QueryAsync<application::LegacyArchiveModel>(
+      "SELECT id, name, protocol_type, provider_label, base_url, api_key, "
+      "model_id, tool_call_limit, compression_model_enabled, "
+      "compression_model_auto, compression_model_id, context_size, selected "
+      "FROM model_configs ORDER BY selected DESC, updated_at DESC",
+      [](const RowView &row) -> Result<application::LegacyArchiveModel> {
+        auto id = row.Get<std::string>(0);
+        if (!id)
+          return id.Error();
+        auto name = row.Get<std::string>(1);
+        if (!name)
+          return name.Error();
+        auto protocol = row.Get<std::string>(2);
+        if (!protocol)
+          return protocol.Error();
+        auto provider = row.Get<std::string>(3);
+        if (!provider)
+          return provider.Error();
+        auto base_url = row.Get<std::optional<std::string>>(4);
+        if (!base_url)
+          return base_url.Error();
+        auto api_key = row.Get<std::optional<std::string>>(5);
+        if (!api_key)
+          return api_key.Error();
+        auto model_id = row.Get<std::string>(6);
+        if (!model_id)
+          return model_id.Error();
+        auto tool_limit = row.Get<std::int64_t>(7);
+        if (!tool_limit)
+          return tool_limit.Error();
+        auto compression_enabled = row.Get<bool>(8);
+        if (!compression_enabled)
+          return compression_enabled.Error();
+        auto compression_auto = row.Get<bool>(9);
+        if (!compression_auto)
+          return compression_auto.Error();
+        auto compression_id = row.Get<std::optional<std::string>>(10);
+        if (!compression_id)
+          return compression_id.Error();
+        auto context_size = row.Get<std::int64_t>(11);
+        if (!context_size)
+          return context_size.Error();
+        auto selected = row.Get<bool>(12);
+        if (!selected)
+          return selected.Error();
+
+        domain::ModelConfig config{
+            .id = std::move(*id),
+            .name = std::move(*name),
+            .protocol = domain::ParseModelProtocol(*protocol),
+            .provider_label = std::move(*provider),
+            .base_url = base_url->value_or(""),
+            .api_key = api_key->value_or(""),
+            .model_id = std::move(*model_id),
+            .tool_call_limit = static_cast<int>(*tool_limit),
+            .compression_model_enabled = *compression_enabled,
+            .compression_model_auto = *compression_auto,
+            .compression_model_id = compression_id->value_or(""),
+            .context_size = static_cast<int>(*context_size),
+        };
+        config.Normalize();
+        application::LegacyArchiveModel model;
+        model.raw_json = EncodeLegacyModelJson(config);
+        model.selected = *selected;
+        model.config = std::move(config);
+        return model;
+      });
+  if (!models)
+    co_return std::unexpected(DatabaseError(models.Error()));
+  output.models = std::move(*models);
+  for (const auto &model : output.models) {
+    if (model.selected) {
+      output.selected_model_id = model.config.id;
+      break;
+    }
+  }
+
+  auto conversations =
+      co_await opened->QueryAsync<application::LegacyArchiveConversation>(
+          "SELECT id, title, created_at, updated_at FROM conversations "
+          "ORDER BY updated_at DESC",
+          [](const RowView &row) -> Result<application::LegacyArchiveConversation> {
+            auto id = row.Get<std::string>(0);
+            if (!id)
+              return id.Error();
+            auto title = row.Get<std::string>(1);
+            if (!title)
+              return title.Error();
+            auto created_at = row.Get<std::int64_t>(2);
+            if (!created_at)
+              return created_at.Error();
+            auto updated_at = row.Get<std::int64_t>(3);
+            if (!updated_at)
+              return updated_at.Error();
+            application::LegacyArchiveConversation conversation;
+            conversation.id = std::move(*id);
+            conversation.title = std::move(*title);
+            conversation.created_at = *created_at;
+            conversation.updated_at = *updated_at;
+            return conversation;
+          });
+  if (!conversations)
+    co_return std::unexpected(DatabaseError(conversations.Error()));
+  output.conversations = std::move(*conversations);
+
+  auto current = co_await opened->QueryAsync<std::string>(
+      "SELECT id FROM conversations WHERE current = 1 LIMIT 1",
+      [](const RowView &row) { return row.Get<std::string>(0); });
+  if (!current)
+    co_return std::unexpected(DatabaseError(current.Error()));
+  if (!current->empty())
+    output.current_conversation_id = current->front();
+
+  // Message bodies live in chunk rows rather than in `messages.content`, so
+  // they are reassembled per message and field before the per-conversation
+  // reads below.
+  auto chunks = co_await opened->QueryAsync<std::pair<std::string, std::string>>(
+      "SELECT message_id, field_name, content FROM message_text_chunks "
+      "ORDER BY message_id, field_name, chunk_order",
+      [](const RowView &row) -> Result<std::pair<std::string, std::string>> {
+        auto id = row.Get<std::string>(0);
+        if (!id)
+          return id.Error();
+        auto field = row.Get<std::string>(1);
+        if (!field)
+          return field.Error();
+        auto content = row.Get<std::string>(2);
+        if (!content)
+          return content.Error();
+        return std::pair<std::string, std::string>{
+            std::move(*id) + '\x1f' + std::move(*field), std::move(*content)};
+      });
+  if (!chunks)
+    co_return std::unexpected(DatabaseError(chunks.Error()));
+  std::map<std::string, std::string, std::less<>> text;
+  for (auto &[key, value] : *chunks)
+    text[key] += value;
+
+  for (auto &conversation : output.conversations) {
+    auto messages =
+        co_await opened->QueryAsync<application::LegacyArchiveMessage>(
+            "SELECT id, role, timestamp, streaming, hidden, "
+            "exclude_from_context, tool_call_id, tool_name, is_error "
+            "FROM messages WHERE conversation_id = ? ORDER BY local_order",
+            [&text](const RowView &row) -> Result<application::LegacyArchiveMessage> {
+              auto id = row.Get<std::string>(0);
+              if (!id)
+                return id.Error();
+              auto role = row.Get<std::string>(1);
+              if (!role)
+                return role.Error();
+              auto timestamp = row.Get<std::int64_t>(2);
+              if (!timestamp)
+                return timestamp.Error();
+              auto streaming = row.Get<bool>(3);
+              if (!streaming)
+                return streaming.Error();
+              auto hidden = row.Get<bool>(4);
+              if (!hidden)
+                return hidden.Error();
+              auto excluded = row.Get<bool>(5);
+              if (!excluded)
+                return excluded.Error();
+              auto tool_call_id = row.Get<std::optional<std::string>>(6);
+              if (!tool_call_id)
+                return tool_call_id.Error();
+              auto tool_name = row.Get<std::optional<std::string>>(7);
+              if (!tool_name)
+                return tool_name.Error();
+              auto is_error = row.Get<bool>(8);
+              if (!is_error)
+                return is_error.Error();
+
+              application::LegacyArchiveMessage message;
+              message.id = std::move(*id);
+              message.role = std::move(*role);
+              message.timestamp = *timestamp;
+              message.streaming = *streaming;
+              message.hidden = *hidden;
+              message.exclude_from_context = *excluded;
+              message.tool_call_id = tool_call_id->value_or("");
+              message.tool_name = tool_name->value_or("");
+              message.is_error = *is_error;
+              const auto field = [&text, &message](std::string_view name) {
+                const auto found =
+                    text.find(message.id + '\x1f' + std::string{name});
+                return found == text.end() ? std::string{} : found->second;
+              };
+              message.content = field("content");
+              message.reasoning_content = field("reasoning_content");
+              message.raw_json = field("raw_json");
+              return message;
+            },
+            conversation.id);
+    if (!messages)
+      co_return std::unexpected(DatabaseError(messages.Error()));
+    conversation.messages = std::move(*messages);
+  }
+
+  auto settings =
+      co_await opened->QueryAsync<std::pair<std::string, std::string>>(
+          "SELECT key, value FROM settings",
+          [](const RowView &row) -> Result<std::pair<std::string, std::string>> {
+            auto key = row.Get<std::string>(0);
+            if (!key)
+              return key.Error();
+            auto value = row.Get<std::string>(1);
+            if (!value)
+              return value.Error();
+            return std::pair<std::string, std::string>{std::move(*key),
+                                                       std::move(*value)};
+          });
+  if (!settings)
+    co_return std::unexpected(DatabaseError(settings.Error()));
+  for (auto &[key, value] : *settings) {
+    if (key == "@lineai_selected_model") {
+      if (output.selected_model_id.empty())
+        output.selected_model_id = value;
+      continue;
+    }
+    output.settings.emplace(std::move(key), std::move(value));
+  }
+
+  co_return output;
+}
+
 huxerui::Task<DataArchiveResult<domain::ArchiveSummary>>
 SqliteArchiveDatabase::ImportLegacy(application::LegacyArchiveData data,
                                     domain::ArchiveImportMode mode) {

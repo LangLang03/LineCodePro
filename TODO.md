@@ -561,9 +561,24 @@ python3 tools/ui_parity_test.py \
       会话文件名 `conversations/lg-conv-1.json`，
       且元数据中的 `size` 与实际产出的字节数一致、`messageCount` 正确；
       空数据也须产出合法的 async-storage。82/82 通过。
-      **仍未完成**：DB 侧的数据收集（`ArchiveDatabase::ExportLegacy()`
-      读取模型/会话/消息/设置）与 `PrepareExport` 接线——
-      编码器目前尚无调用点，因此**缺陷尚未修复**，下一轮接线。
+      **第 32 轮完成接线并端到端验证**：
+      新增 `ArchiveDatabase::ExportLegacy()`（SQLite 适配器实现：读模型/会话/
+      消息/设置，消息正文从 `message_text_chunks` 分块重组，
+      模型形状由列重建而非复用 `raw_json`），并在 `PrepareExport` 中写入
+      `async-storage.json` 与每会话 ZIP 条目。
+      **真机双向验证通过**：
+      · 候选导出条目 `async-storage.json` 由 **2 字节 → 1117 字节 / 10 条**
+        （`@lineai_models`/`@lineai_selected_model`/`@lineai_current_conversation`/
+        `@lineai_conv_lg-conv-1`/`@lineai_conversation_list` + 5 项 `@linecode_*`），
+        并产出 `conversations/lg-conv-1.json`；
+      · 清空旧版后导入该归档，旧版提示
+        **「已导入 .linecode：1 个会话，1 个模型，5 项设置」**，
+        库内为 `lg-model-1`/`Legacy Model`/`selected=1`/`linecode-test-model`/
+        `128000` 与 `lg-conv-1`/`Legacy Conversation`/`createdAt=1000`/`updatedAt=2000`，
+        与导出源**逐项一致**。
+      另补服务级测试 `AssertExportCarriesTheLegacyPlane`：断言导出必须带
+      `async-storage.json`（非空且可解析）、选中模型、当前会话、设置，
+      以及元数据指向的会话文件——防止接线被无声移除。
 - [ ] 按旧版 60dp header、68dp 行、16/12dp padding、12dp 圆角完成同机像素截图。
 
 ## 教程

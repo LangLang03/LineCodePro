@@ -54,4 +54,10 @@ struct LegacyArchiveEncoding final {
 [[nodiscard]] LegacyArchiveEncoding
 EncodeLegacyArchive(const application::LegacyArchiveData &data);
 
+// The legacy `ModelConfig.toJson()` shape, including the upper-snake
+// `protocolType` the legacy app expects. Exposed because the export reads
+// models from their own table and has to hand back this shape, not ours.
+[[nodiscard]] std::string
+EncodeLegacyModelJson(const domain::ModelConfig &model);
+
 } // namespace linecode::infrastructure

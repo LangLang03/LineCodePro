@@ -350,7 +350,17 @@ HuxDataArchiveService::PrepareExport() {
                 "[\"home\", \"project\", \"skills\"]\n}"),
   });
   entries.push_back({"database.json", TextBytes(database->json)});
-  entries.push_back({"async-storage.json", TextBytes("[]")});
+  // The legacy app reads models, conversations and settings from
+  // `async-storage.json`, not from our table snapshot, so the export has to
+  // carry both planes or importing it there restores nothing.
+  auto legacy = co_await database_->ExportLegacy();
+  if (!legacy)
+    co_return std::unexpected(std::move(legacy.error()));
+  const auto encoded_legacy = EncodeLegacyArchive(*legacy);
+  entries.push_back(
+      {"async-storage.json", TextBytes(encoded_legacy.async_storage_json)});
+  for (const auto &[name, content] : encoded_legacy.conversation_files)
+    entries.push_back({name, TextBytes(content)});
   for (std::size_t index = 0; index < roots_.size(); ++index) {
     if (!roots_[index].Exists()) {
       continue;

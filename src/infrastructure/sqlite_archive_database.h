@@ -28,6 +28,9 @@ public:
       application::DataArchiveResult<domain::ArchiveSummary>>
   ImportLegacy(application::LegacyArchiveData data,
                domain::ArchiveImportMode mode) override;
+  [[nodiscard]] huxerui::Task<
+      application::DataArchiveResult<application::LegacyArchiveData>>
+  ExportLegacy() override;
 
 private:
   huxerui::File database_file_;
