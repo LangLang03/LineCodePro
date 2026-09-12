@@ -13,6 +13,7 @@
 #include "domain/app_state.h"
 #include "domain/behavior_settings.h"
 #include "application/chat_mode_service.h"
+#include "application/tool_review_broker.h"
 #include "application/prompt_request_composer.h"
 #include "application/ports/todo_state_store.h"
 #include "presentation/components/drawer.h"
@@ -65,6 +66,7 @@ namespace linecode::presentation {
     const std::shared_ptr<application::OutputSettingsService> &output_settings,
     const std::shared_ptr<application::ToolPermissionService>
         &tool_permissions,
+    const std::shared_ptr<application::ToolReviewBroker> &tool_reviews,
     const std::shared_ptr<application::ChatModeService> &chat_modes,
     huxerui::State<application::ChatInteractionModeState> interaction_mode,
     domain::InputSettings input_settings,

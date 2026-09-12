@@ -1944,3 +1944,23 @@ endif ()
 add_test(NAME legacy_archive_writer_tests
         COMMAND legacy_archive_writer_tests
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
+add_executable(tool_review_broker_tests
+        tool_review_broker_tests.cpp
+        ../src/application/tool_review_broker.cpp
+)
+target_include_directories(tool_review_broker_tests PRIVATE ../src)
+target_compile_features(tool_review_broker_tests PRIVATE cxx_std_23)
+target_link_libraries(tool_review_broker_tests PRIVATE HuxerUI::testing)
+set_target_properties(tool_review_broker_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(tool_review_broker_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(tool_review_broker_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME tool_review_broker_tests COMMAND tool_review_broker_tests)

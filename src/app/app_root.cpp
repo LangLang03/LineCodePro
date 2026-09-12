@@ -256,6 +256,8 @@ huxerui::View PlatformServicesHost() {
   auto input_settings =
       huxerui::UseState(std::make_shared<application::InputSettingsRepository>(
           settings_store.Get()));
+  auto tool_reviews =
+      huxerui::UseState(std::make_shared<application::ToolReviewBroker>());
   auto tool_permissions =
       huxerui::UseState(std::make_shared<application::ToolPermissionService>(
           settings_store.Get()));
@@ -513,7 +515,9 @@ huxerui::View PlatformServicesHost() {
               std::make_shared<application::SkillRepositoryExtensionPromptSource>(
                   skill_repository.Get()),
               std::make_shared<application::TaskScopeSubAgentLauncher>(
-                  tasks))});
+                  tasks),
+              application::SubAgentEnvironment{},
+              nullptr, tool_permissions.Get(), tool_reviews.Get())});
   auto agent_tools = huxerui::UseState(
       std::shared_ptr<application::ToolRegistry>{
           std::make_shared<application::AgentToolRegistry>(
@@ -564,7 +568,8 @@ huxerui::View PlatformServicesHost() {
        completion_loop = completion_loop.Get(),
        theme_service = theme_service.Get(), theme_settings,
        mcp_settings = mcp_settings.Get(), tool_settings = tool_settings.Get(),
-       tool_permissions = tool_permissions.Get(), chat_modes = chat_modes.Get(),
+       tool_permissions = tool_permissions.Get(),
+       tool_reviews = tool_reviews.Get(), chat_modes = chat_modes.Get(),
        ssh_settings = ssh_settings.Get(), memory_store = memory_store.Get(),
        todo_state = todo_state.Get(),
        skills = skill_repository.Get(),
@@ -604,7 +609,8 @@ huxerui::View PlatformServicesHost() {
             ai_behavior_settings, input_settings, prompt_templates,
             completion_loop, output_settings_service, theme_service,
             theme_settings, mcp_settings, tool_settings, tool_permissions,
-            chat_modes, ssh_settings, memory_store, todo_state, skills,
+            tool_reviews, chat_modes, ssh_settings, memory_store, todo_state,
+            skills,
             mcp_settings, compaction_service, diff_store, diff_review,
             agent_extensions,
             mcp_extensions, mcp_tool_catalog, agent_drafts, linecode_root,

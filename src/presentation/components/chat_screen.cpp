@@ -2220,6 +2220,27 @@ private:
     dependencies_.generation->RefreshMessages(work);
   }
 
+  // The same prompt serves the main loop and the sub-agent runner, so a
+  // sub-agent's writes are reviewed rather than silently executed.
+  application::ToolReviewBroker::Handler ToolReviewer() const {
+    return [pending_review = pending_review_, revision = revision_](
+               application::CompletionObserver::ToolReviewRequest request)
+               -> Task<application::CompletionObserver::ToolReviewDecision> {
+      pending_review->request = std::move(request);
+      pending_review->decision.reset();
+      pending_review->submitted = false;
+      revision += 1;
+      while (!pending_review->decision.has_value())
+        co_await Delay(std::chrono::milliseconds{20});
+      const auto decision = *pending_review->decision;
+      pending_review->request.reset();
+      pending_review->decision.reset();
+      pending_review->submitted = false;
+      revision += 1;
+      co_return decision;
+    };
+  }
+
   void ResetToolReview() const {
     pending_review_->request.reset();
     pending_review_->decision.reset();
@@ -2375,23 +2396,7 @@ private:
                   if (generation->Observe(generation_id, event))
                     revision += 1;
                 },
-            .on_tool_review =
-                [pending_review = pending_review_, revision = revision_](
-                    application::CompletionObserver::ToolReviewRequest request)
-                -> Task<application::CompletionObserver::ToolReviewDecision> {
-                  pending_review->request = std::move(request);
-                  pending_review->decision.reset();
-                  pending_review->submitted = false;
-                  revision += 1;
-                  while (!pending_review->decision.has_value())
-                    co_await Delay(std::chrono::milliseconds{20});
-                  const auto decision = *pending_review->decision;
-                  pending_review->request.reset();
-                  pending_review->decision.reset();
-                  pending_review->submitted = false;
-                  revision += 1;
-                  co_return decision;
-                },
+            .on_tool_review = ToolReviewer(),
         });
       if (!dependencies_.generation->IsCurrent(work.generation_id))
         co_return;
@@ -3029,6 +3034,7 @@ View GenerationError(const application::GenerationController &generation,
     const std::shared_ptr<application::OutputSettingsService> &output_settings,
     const std::shared_ptr<application::ToolPermissionService>
         &tool_permissions,
+    const std::shared_ptr<application::ToolReviewBroker> &tool_reviews,
     const std::shared_ptr<application::ChatModeService> &chat_modes,
     State<application::ChatInteractionModeState> interaction_mode,
     domain::InputSettings input_settings,
@@ -3127,6 +3133,32 @@ View GenerationError(const application::GenerationController &generation,
   auto auto_compaction = UseState(std::make_shared<AutoCompactionUiState>());
   const auto toast = UseToast();
 
+  Lifecycle([reviews = tool_reviews, pending_review = pending_review.Get(),
+            revision] {
+    if (reviews) {
+      reviews->SetHandler(
+          [pending_review, revision](
+              application::CompletionObserver::ToolReviewRequest request)
+              -> Task<application::CompletionObserver::ToolReviewDecision> {
+            pending_review->request = std::move(request);
+            pending_review->decision.reset();
+            pending_review->submitted = false;
+            revision += 1;
+            while (!pending_review->decision.has_value())
+              co_await Delay(std::chrono::milliseconds{20});
+            const auto decision = *pending_review->decision;
+            pending_review->request.reset();
+            pending_review->decision.reset();
+            pending_review->submitted = false;
+            revision += 1;
+            co_return decision;
+          });
+    }
+    return [reviews] {
+      if (reviews)
+        reviews->SetHandler(nullptr);
+    };
+  });
   Lifecycle([tasks, tool_permissions, permission_state, toast] {
     tasks.Launch([tool_permissions, permission_state, toast]() -> Task<void> {
       auto loaded = co_await tool_permissions->Load();

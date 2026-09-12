@@ -9,6 +9,7 @@
 #include "application/ports/todo_state_store.h"
 #include "application/context_compaction.h"
 #include "application/skill_repository.h"
+#include "application/tool_review_broker.h"
 #include "application/diff_review_service.h"
 #include "application/theme_settings.h"
 #include "domain/mcp_execution_settings.h"
@@ -65,6 +66,7 @@ huxerui::View MainScreen(
     std::shared_ptr<application::McpExecutionSettingsService> mcp_settings,
     std::shared_ptr<application::ToolSettingsService> tool_settings,
     std::shared_ptr<application::ToolPermissionService> tool_permissions,
+    std::shared_ptr<application::ToolReviewBroker> tool_reviews,
     std::shared_ptr<application::ChatModeService> chat_modes,
     std::shared_ptr<application::SshSettingsService> ssh_settings,
     std::shared_ptr<application::MemoryStore> memory_store,

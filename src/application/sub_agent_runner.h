@@ -19,6 +19,8 @@
 #include "application/ports/agent_runner.h"
 #include "application/agent_tool_registry.h"
 #include "application/ports/completion_gateway.h"
+#include "application/tool_permission_service.h"
+#include "application/tool_review_broker.h"
 #include "application/ports/model_store.h"
 #include "application/ports/skill_services.h"
 #include "application/ports/tool_registry.h"
@@ -200,6 +202,8 @@ struct SubAgentEnvironment final {
   std::string workspace_path;
   bool remote_mode{};
   std::string permission_mode{"auto"};
+  // Part of the permanent-grant key, exactly as the main loop uses it.
+  std::string permission_scope{};
 
   bool operator==(const SubAgentEnvironment &) const = default;
 };
@@ -330,7 +334,9 @@ public:
                  std::shared_ptr<AgentExtensionPromptSource> extensions = {},
                  std::shared_ptr<SubAgentBackgroundLauncher> background = {},
                  SubAgentEnvironment environment = {},
-                 std::shared_ptr<const AgentToolAccessPolicy> tool_access = {});
+                 std::shared_ptr<const AgentToolAccessPolicy> tool_access = {},
+                 std::shared_ptr<ToolPermissionService> permissions = {},
+                 std::shared_ptr<ToolReviewBroker> reviews = {});
 
   [[nodiscard]] huxerui::Task<AgentRunResult>
   RunAgent(AgentRunRequest request) override;
@@ -421,6 +427,10 @@ private:
   std::shared_ptr<AgentExtensionPromptSource> extensions_;
   std::shared_ptr<SubAgentBackgroundLauncher> background_;
   std::shared_ptr<const AgentToolAccessPolicy> tool_access_;
+  // The same policy and prompt the main loop uses, so a sub-agent's writes
+  // are reviewed rather than silently executed.
+  std::shared_ptr<ToolPermissionService> permissions_;
+  std::shared_ptr<ToolReviewBroker> reviews_;
   SubAgentEnvironment environment_;
   AgentCancellation cancellation_;
   AgentToolBudget budget_;

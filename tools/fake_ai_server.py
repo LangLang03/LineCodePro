@@ -40,6 +40,9 @@ FILE_TOOL_TRIGGER = "__LINECODE_TEST_FILE__"
 FILE_TOOL_PATH = "linecode-tool-check.txt"
 FILE_TOOL_CONTENT = "linecode file tool ok"
 AGENT_TOOL_TRIGGER = "__LINECODE_TEST_AGENT__"
+# Same, but a writable agent whose prompt asks for a file write, so the
+# sub-agent has to raise a review before touching the filesystem.
+AGENT_WRITE_TOOL_TRIGGER = "__LINECODE_TEST_AGENT_WRITE__"
 # Keeps requesting one cheap read-only tool so a single conversation can build
 # a long tool loop; used to exercise mid-loop context compaction.
 LOOP_TOOL_TRIGGER = "__LINECODE_TEST_LOOP__"
@@ -351,6 +354,17 @@ class FakeAiHandler(BaseHTTPRequestHandler):
                 }
             return None
         strategies = (
+            (
+                AGENT_WRITE_TOOL_TRIGGER,
+                "agent",
+                {
+                    "type": "sub-coding",
+                    "description": "Write the check file",
+                    "prompt": "Write the check file. " + FILE_TOOL_TRIGGER,
+                    "write_scope": ["."],
+                },
+                "call_linecode_agent_write_test",
+            ),
             (
                 AGENT_TOOL_TRIGGER,
                 "agent",

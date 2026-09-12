@@ -199,6 +199,32 @@ python3 tools/ui_parity_test.py \
       `agent` / `agent_pipeline` / `agent_output`；触发一次 `agent`（explore）
       后返回紧凑 ref `{"agent_id":"ag_...","linecode_agent_ref":true,
       "status":"done","preview":"..."}`，子代理真实执行了一轮模型请求。
+- [x] **子代理的工具审批通道已接入**（第 34 轮）：
+      旧版 `executeAgentToolCall`（`:925-934`）对子代理走与主代理**相同**的确认路径
+      （`isSessionAutoConfirmed` / `requiresToolConfirmation` /
+      `executeAgentToolCallWithReview`），而候选的子代理原先直接 `tools_->Invoke`——
+      **子代理可以在无任何批准的情况下写文件**，这不只是复刻差异，更是安全问题。
+      实现：新增 `application/tool_review_broker.*`——一个由界面安装回调、
+      长生命周期协作者（子代理执行器）询问的中介（执行器活得比单轮久，
+      拿不到每轮一次的 `CompletionObserver`）。`SubAgentRunner` 现在：
+      用**与主循环同一份** `ToolPermissionService::Evaluate` 判定
+      （`deny` → 拒绝；`review` → 询问中介；`allow_always` → 记永久授权），
+      `SubAgentEnvironment` 增加 `permission_scope` 作为授权键的一部分。
+      中介**无回调时默认拒绝**（宁可拒绝也不静默执行）。
+      接线：`app_root` 建中介 → `MainScreen` → `ChatScreen` 组合期安装回调、
+      卸载时解绑。
+      **测试**：新增 `tests/tool_review_broker_tests.cpp`（未安装时拒绝、
+      已安装时委派、解绑后恢复拒绝）。83/83 通过；编译装机、无崩溃。
+      **真机验证未完成（如实记录）**：已观察到**改动前的对照行为**——
+      权限模式为"自动"时子代理的 `file_write` **未经审批直接执行**
+      （请求序列：主请求 → 子代理请求 → `Successfully created file`）。
+      但把模式切到"确认"后重跑时，模拟器的 `adb reverse` 在首个请求后即失效
+      （第二个请求 `Failed to connect`），未能取到"确认"模式下的审批证据。
+      fixture 侧已就绪（新增 `__LINECODE_TEST_AGENT_WRITE__`，
+      返回 `sub-coding` 代理调用并让其在内部请求 `file_write`，
+      已用 curl 直接确认返回 `call_linecode_agent_write_test`）。
+      下一轮补做该真机验证。
+
 - [ ] 子代理的剩余部分未迁移：进度会话（`AgentProgressSession` /
       `PipelineProgressSession`）、流式 delta、子代理内的工具审批通道；
       `custom_tool_names` / `custom_mcp_ids` 未接入；同层并行依赖注入的

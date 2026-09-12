@@ -513,13 +513,16 @@ SubAgentRunner::SubAgentRunner(
     std::shared_ptr<AgentExtensionPromptSource> extensions,
     std::shared_ptr<SubAgentBackgroundLauncher> background,
     SubAgentEnvironment environment,
-    std::shared_ptr<const AgentToolAccessPolicy> tool_access)
+    std::shared_ptr<const AgentToolAccessPolicy> tool_access,
+    std::shared_ptr<ToolPermissionService> permissions,
+    std::shared_ptr<ToolReviewBroker> reviews)
     : completion_(std::move(completion)), tools_(std::move(tools)),
       prompt_templates_(std::move(prompt_templates)),
       models_(std::move(models)), results_(std::move(results)),
       extensions_(std::move(extensions)), background_(std::move(background)),
       tool_access_(tool_access ? std::move(tool_access)
                                : DefaultAgentToolAccessPolicy()),
+      permissions_(std::move(permissions)), reviews_(std::move(reviews)),
       environment_(std::move(environment)) {
   if (!completion_ || !tools_ || !prompt_templates_ || !models_)
     throw std::invalid_argument(
@@ -642,6 +645,44 @@ huxerui::Task<CompletionToolResult> SubAgentRunner::ExecuteToolCall(
     result.content = *scope_error;
     result.error = true;
     co_return result;
+  }
+  // Legacy `executeAgentToolCall` (lines 925-934) ran the same confirmation
+  // path for a sub-agent as for the main agent. Without this a sub-agent could
+  // write files that the main agent would have had to ask about.
+  if (permissions_) {
+    auto evaluated = co_await permissions_->Evaluate(
+        *found, call, environment_.permission_scope);
+    if (!evaluated) {
+      result.content = evaluated.error().message;
+      result.error = true;
+      co_return result;
+    }
+    if (*evaluated == ToolPermissionDecision::deny) {
+      result.content =
+          "This tool is not allowed in read-only mode: " + call.name;
+      result.error = true;
+      co_return result;
+    }
+    if (*evaluated == ToolPermissionDecision::review) {
+      const auto decision =
+          reviews_
+              ? co_await reviews_->Review(CompletionObserver::ToolReviewRequest{
+                    .call = call,
+                    .can_allow_always =
+                        found->permanent_grant_supported &&
+                        !environment_.permission_scope.empty(),
+                })
+              : CompletionObserver::ToolReviewDecision::reject;
+      if (decision == CompletionObserver::ToolReviewDecision::reject) {
+        result.content = "The user rejected this tool call.";
+        result.error = true;
+        co_return result;
+      }
+      if (decision == CompletionObserver::ToolReviewDecision::allow_always) {
+        static_cast<void>(co_await permissions_->RememberPermanentGrant(
+            *found, call, environment_.permission_scope));
+      }
+    }
   }
   auto invoked = co_await tools_->Invoke(call.name, call.arguments_json);
   if (invoked) {
