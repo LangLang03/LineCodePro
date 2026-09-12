@@ -131,6 +131,19 @@ python3 tools/ui_parity_test.py \
       硬/软两套合并语义（摘要必须进上下文、被摘要的标 exclude、
       保留尾部与近期用户消息原样）；`presentation/compaction_progress_presentation.*`
       移植 `ContextCompactBlockView`，进度块在时间线中独立成块。
+- [x] **软压缩摘要插入位已修正**（第 23–24 轮）：旧版只摘要最老的一段，
+      并把摘要排在「头部之后、未摘要尾部之前」
+      （`ContextCompactionController.java:606-615`：前情提要 → 近期上下文 → 当前问题），
+      候选原先一律追加，摘要落到尾部之后。已给仓储加「按锚点插入」能力
+      （端口 `ApplyCompaction(..., insert_after_id)`，内存按索引插入，
+      SQLite 落在锚点之后）。
+      *过程中发现**我自己引入的回归***：`messages` 表有
+      `UNIQUE(conversation_id, local_order)`，`SET local_order = local_order + 1`
+      会在更新途中撞约束 → **整个压缩事务回滚**，软路径的摘要与排除标记全部丢失
+      （实测 0 hidden / 0 excluded，而内存请求里却有摘要）。
+      改用**两段式大偏移**（先 +1000000 停靠，再 -1000000+1 落回）后修复。
+      **验证**：落库顺序 `0-5 排除 | 6 隐藏(摘要) | 7-8 保留`，
+      第二次压缩同样正确（`9 排除 | 10 隐藏 | 11+`）；冷启动后摘要仍在下标 1。
 - [x] 真机端到端验证（把测试模型上下文窗口设为 120 token 以触达阈值）：
       连续 6 轮对话后自动压缩真实触发，数据库出现 `hidden=1` 的摘要行、
       `exclude_from_context=1` 的历史消息、空正文的进度块行；
