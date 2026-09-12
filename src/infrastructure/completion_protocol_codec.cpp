@@ -342,8 +342,11 @@ DecodeOpenAiEvent(std::string_view data) {
       .final_reasoning = std::nullopt,
       .tool_call_deltas = {},
       .final_tool_calls = {},
-      .input_tokens = 0,
-      .output_tokens = 0,
+      // The streaming decoder reads usage off the wire; dropping it here would
+      // leave the token-usage tracker empty and force the compaction trigger
+      // back onto its local estimate.
+      .input_tokens = decoded->input_tokens,
+      .output_tokens = decoded->output_tokens,
   };
   if (decoded->reasoning_delta && !decoded->reasoning_delta->empty()) {
     chunk.reasoning_deltas.push_back(application::CompletionReasoningDelta{

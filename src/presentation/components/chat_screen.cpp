@@ -42,6 +42,7 @@
 #include "application/prompt_request_composer.h"
 #include "application/ports/todo_state_store.h"
 #include "application/skill_repository.h"
+#include "application/token_usage_tracker.h"
 #include "application/tool_text_catalog.h"
 #include "application/slash_command_catalog.h"
 #include "application/tool_permission_service.h"
@@ -1988,6 +1989,9 @@ struct ComposerGenerationDependencies final {
   // `ModelPromptController.renderTodoStateForPrompt()` did the same, so the
   // projection has to be refreshed per request rather than captured once.
   std::shared_ptr<application::TodoStateStore> todo_state;
+  // Shared with the composition so the count survives the runner being rebuilt
+  // on every recomposition; a member here would be reset before it was read.
+  std::shared_ptr<application::TokenUsageTracker> token_usage;
   // Installed Skill prompts. Legacy `ModelPromptController` folded these into
   // the system prompt on every request; the C++ port keeps that by refreshing
   // them here instead of capturing the text once.
@@ -2113,16 +2117,19 @@ private:
         application::PreservedTail(messages, active_user_message_id);
     const auto preserved_ids = application::MessageIdSet(preserved);
     const std::optional<domain::ModelConfig> model_option{model};
-    // This port has no `TokenUsageTracker`, so the checks fall back to the
-    // local estimate exactly like the legacy controller did before the server
-    // reported an input token count.
-    constexpr int kNoObservedTokens = 0;
+    // Legacy `ContextCompactionController` measured the live context with
+    // `tokenUsageTracker.lastInputTokens()`; 0 means no protocol has reported
+    // usage yet, and the checks fall back to the local estimate.
+    const int observed_tokens =
+        dependencies_.token_usage
+            ? dependencies_.token_usage->LastInputTokens()
+            : 0;
     const bool hard = application::ShouldAutoCompactBeforeRequest(
-        model_option, messages, kNoObservedTokens, preserved_ids,
+        model_option, messages, observed_tokens, preserved_ids,
         behavior.preserve_reasoning);
     const bool soft =
         !hard && application::ShouldAutoSoftCompactBeforeRequest(
-                     model_option, messages, kNoObservedTokens,
+                     model_option, messages, observed_tokens,
                      behavior.soft_compaction, preserved_ids,
                      behavior.preserve_reasoning);
     if (!hard && !soft)
@@ -2231,6 +2238,12 @@ private:
   Task<void> Run(application::GenerationWork work,
                  domain::MemoryConversationTurn turn,
                  std::string conversation_id, std::string user_text) {
+    // Legacy `ContextCompactionController.onConversationChanged()`.
+    if (dependencies_.token_usage) {
+      dependencies_.token_usage->BeginConversation(
+          std::string{dependencies_.session->CurrentConversationId()},
+          dependencies_.session->Messages().empty());
+    }
     const auto selected_id = co_await dependencies_.model_store->SelectedId();
     if (!dependencies_.generation->IsCurrent(work.generation_id))
       co_return;
@@ -2406,6 +2419,8 @@ private:
     if (!response)
       co_return;
 
+    if (dependencies_.token_usage)
+      dependencies_.token_usage->Record(*response);
     const std::string assistant_text = response->text;
     const bool completed = dependencies_.generation->Complete(
         work.generation_id, std::move(*response));
@@ -2742,6 +2757,10 @@ struct SlashPopupRow final {
         &compaction_service,
     const std::shared_ptr<AutoCompactionUiState> &auto_compaction,
     RetryLabels retry_labels) {
+  // Composition-scoped so the token count survives the runner being rebuilt on
+  // every recomposition.
+  const auto token_usage =
+      UseState(std::make_shared<application::TokenUsageTracker>()).Get();
   auto runner = std::make_shared<ComposerGenerationRunner>(
       ComposerGenerationDependencies{
           .session = session,
@@ -2751,6 +2770,7 @@ struct SlashPopupRow final {
           .memory_context = memory_context,
           .behavior_settings = behavior_settings,
           .todo_state = todo_state,
+          .token_usage = token_usage,
           .skills = skills,
           .compaction = compaction_service,
           .auto_compaction = auto_compaction,

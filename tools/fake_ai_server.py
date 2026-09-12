@@ -430,11 +430,29 @@ class FakeAiHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
         return True
 
+    @staticmethod
+    def prompt_tokens(request: dict[str, Any]) -> int:
+        """A plausible prompt size for the reported usage.
+
+        The app prefers the server's count over its own estimate once one is
+        reported, so a constant `1` would silently disable context
+        compaction. Roughly the same characters-over-four rule the local
+        estimate uses keeps the two in the same ballpark.
+        """
+        size = len(compact_json(request.get("messages") or []))
+        size += len(compact_json(request.get("tools") or []))
+        return max(1, size // 4)
+
     def handle_chat_completions(
         self, request: dict[str, Any], stream: bool
     ) -> None:
         if self.maybe_fail(request):
             return
+        usage = {
+            "prompt_tokens": self.prompt_tokens(request),
+            "completion_tokens": 1,
+            "total_tokens": self.prompt_tokens(request) + 1,
+        }
         response_id = "chatcmpl-linecode-test"
         common = {
             "id": response_id,
@@ -477,6 +495,15 @@ class FakeAiHandler(BaseHTTPRequestHandler):
                                 ],
                             },
                         ),
+                        (
+                            None,
+                            common
+                            | {
+                                "object": "chat.completion.chunk",
+                                "choices": [],
+                                    "usage": usage,
+                            },
+                        ),
                         (None, "[DONE]"),
                     ]
                 )
@@ -496,11 +523,7 @@ class FakeAiHandler(BaseHTTPRequestHandler):
                             "finish_reason": "tool_calls",
                         }
                     ],
-                    "usage": {
-                        "prompt_tokens": 1,
-                        "completion_tokens": 1,
-                        "total_tokens": 2,
-                    },
+                    "usage": usage,
                 }
             )
             return
@@ -545,6 +568,15 @@ class FakeAiHandler(BaseHTTPRequestHandler):
                             ],
                         },
                     ),
+                    (
+                        None,
+                        common
+                        | {
+                            "object": "chat.completion.chunk",
+                            "choices": [],
+                            "usage": usage,
+                        },
+                    ),
                     (None, "[DONE]"),
                 ]
             )
@@ -560,7 +592,7 @@ class FakeAiHandler(BaseHTTPRequestHandler):
                         "finish_reason": "stop",
                     }
                 ],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                "usage": usage,
             }
         )
 

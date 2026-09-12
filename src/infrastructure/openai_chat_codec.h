@@ -29,6 +29,11 @@ struct OpenAiStreamChunk final {
     std::string arguments_delta;
   };
   std::vector<ToolCallDelta> tool_call_deltas;
+  // Compatible endpoints often put the usage on the last chunk, whose
+  // `choices` array is empty; legacy `OpenAiCompatibleProtocol` read it before
+  // looking at choices for exactly that reason.
+  std::int64_t input_tokens{};
+  std::int64_t output_tokens{};
 
   bool operator==(const OpenAiStreamChunk &) const = default;
 };

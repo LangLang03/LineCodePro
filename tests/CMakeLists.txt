@@ -1875,3 +1875,22 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME conversation_resume_sanitizer_tests COMMAND conversation_resume_sanitizer_tests)
+
+add_executable(token_usage_tracker_tests
+        token_usage_tracker_tests.cpp
+)
+target_include_directories(token_usage_tracker_tests PRIVATE ../src)
+target_compile_features(token_usage_tracker_tests PRIVATE cxx_std_23)
+target_link_libraries(token_usage_tracker_tests PRIVATE HuxerUI::testing)
+set_target_properties(token_usage_tracker_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(token_usage_tracker_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(token_usage_tracker_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME token_usage_tracker_tests COMMAND token_usage_tracker_tests)

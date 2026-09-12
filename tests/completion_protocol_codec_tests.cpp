@@ -483,6 +483,41 @@ void OpenAiImageTurnTurnsContentIntoParts() {
   assert(plain_text.find("\"content\":\"question\"") != std::string::npos);
 }
 
+// A compatible endpoint puts usage on the final chunk, whose `choices` array is
+// empty. The legacy protocol read it before looking at choices for that reason;
+// skipping it leaves the compaction trigger stuck on its local estimate.
+void StreamUsageSurvivesEmptyChoices() {
+  const auto *codec =
+      FindCompletionProtocolCodec(ModelProtocol::openai_compatible);
+  assert(codec != nullptr);
+
+  // A usage-only chunk still has to surface the counts.
+  const auto usage_only = codec->decode_stream_event(
+      R"json({"choices":[],"usage":{"prompt_tokens":4321,"completion_tokens":12}})json");
+  assert(usage_only);
+  assert(usage_only->input_tokens == 4321);
+  assert(usage_only->output_tokens == 12);
+
+  // A normal content chunk carries no usage and must not invent one.
+  const auto content = codec->decode_stream_event(
+      R"json({"choices":[{"delta":{"content":"hi"}}]})json");
+  assert(content);
+  assert(content->text_delta && *content->text_delta == "hi");
+  assert(content->input_tokens == 0);
+
+  // Usage alongside content is kept too.
+  const auto both = codec->decode_stream_event(
+      R"json({"choices":[{"delta":{"content":"hi"}}],"usage":{"prompt_tokens":77}})json");
+  assert(both);
+  assert(both->input_tokens == 77);
+
+  // Non-streaming responses already reported usage; keep that working.
+  const auto buffered = codec->decode_response(
+      R"json({"choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":9,"completion_tokens":2}})json");
+  assert(buffered);
+  assert(buffered->input_tokens == 9 && buffered->output_tokens == 2);
+}
+
 } // namespace
 
 int main() {
@@ -500,5 +535,6 @@ int main() {
   CodexCodecSupportsToolRoundTrips();
   ImagePartsFollowEachProtocolShape();
   OpenAiImageTurnTurnsContentIntoParts();
+  StreamUsageSurvivesEmptyChoices();
   UnsupportedProtocolsHaveNoRegisteredCodec();
 }

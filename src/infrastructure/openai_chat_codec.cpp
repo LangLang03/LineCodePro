@@ -905,9 +905,16 @@ DecodeOpenAiChatStreamEvent(const std::string_view data) {
   if (!api_error.has_value()) {
     return std::unexpected(api_error.error());
   }
+  // Read usage before choices: the final chunk of a compatible stream carries
+  // it with an empty `choices` array.
+  OpenAiStreamChunk usage_only{};
+  if (const auto *usage = Member(*root, "usage")) {
+    usage_only.input_tokens = IntegerValue(Member(*usage, "prompt_tokens"));
+    usage_only.output_tokens = IntegerValue(Member(*usage, "completion_tokens"));
+  }
   const auto *choice = Element(Member(*root, "choices"), 0U);
   if (choice == nullptr) {
-    return OpenAiStreamChunk{};
+    return usage_only;
   }
   if (const auto *finish_reason = StringValue(Member(*choice, "finish_reason"));
       finish_reason != nullptr && *finish_reason == "content_filter") {
@@ -926,6 +933,8 @@ DecodeOpenAiChatStreamEvent(const std::string_view data) {
               ? std::nullopt
               : std::optional<std::string>{MessageReasoning(delta)},
       .tool_call_deltas = {},
+      .input_tokens = usage_only.input_tokens,
+      .output_tokens = usage_only.output_tokens,
   };
   if (chunk.reasoning_delta && chunk.reasoning_delta->empty())
     chunk.reasoning_delta.reset();
