@@ -428,6 +428,24 @@ constexpr std::array<ToolTextEntry, kToolTextKeyCount> kToolTextEntries{{
         .chinese = "Agent 以错误结束。",
     },
     {
+        .key = ToolTextKey::tool_custom_agent_task_empty,
+        .name = "tool_custom_agent_task_empty",
+        .english = "Custom Agent task cannot be empty.",
+        .chinese = "自定义 Agent 任务不能为空。",
+    },
+    {
+        .key = ToolTextKey::tool_custom_agent_runner_not_available,
+        .name = "tool_custom_agent_runner_not_available",
+        .english = "Agent runner not available, cannot run custom Agent.",
+        .chinese = "Agent 执行器未接入，无法运行自定义 Agent。",
+    },
+    {
+        .key = ToolTextKey::tool_custom_agent_failed,
+        .name = "tool_custom_agent_failed",
+        .english = "Custom Agent execution failed: {0}",
+        .chinese = "自定义 Agent 执行失败: {0}",
+    },
+    {
         .key = ToolTextKey::tool_agent_output_empty,
         .name = "tool_agent_output_empty",
         .english = "Agent finished with empty output.",

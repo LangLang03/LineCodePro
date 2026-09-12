@@ -320,13 +320,20 @@ std::span<const std::string_view> AgentExcludedToolNames() noexcept {
 
 bool IsAgentToolAllowed(const RegisteredTool &tool, std::string_view type,
                         std::span<const std::string> custom_tool_names,
+                        std::span<const std::string> custom_mcp_ids,
                         const AgentToolAccessPolicy &access) {
-  // Legacy `isAgentToolAllowed` (lines 812-839). The legacy MCP-name shortcut
-  // and the remote-execution shortcut are not ported: `AgentRunRequest`
-  // carries no custom MCP ids and the port has no execution mode yet.
+  // Legacy `isAgentToolAllowed` (lines 812-839). The remote-execution and
+  // delete-needs-confirmation shortcuts are still not ported: the port has no
+  // execution mode on this path and `RegisteredTool` carries neither a
+  // confirmation flag nor a display category.
   if (std::ranges::contains(AgentExcludedToolNames(),
                             std::string_view{tool.name}))
     return false;
+  // Legacy line 817: an MCP tool the custom Agent selected is allowed before
+  // the custom-name filter, so selecting MCP tools does not exclude them.
+  if (!custom_mcp_ids.empty() &&
+      std::ranges::contains(custom_mcp_ids, tool.name))
+    return true;
   if (!custom_tool_names.empty() &&
       !std::ranges::contains(custom_tool_names, tool.name))
     return false;
@@ -665,7 +672,8 @@ huxerui::Task<AgentRunResult> SubAgentRunner::RunLoop(AgentRunInputs inputs) {
     // is frozen for the whole loop and doubles as the allow list.
     std::vector<RegisteredTool> agent_tools;
     for (const auto &tool : tools_->Tools()) {
-      if (IsAgentToolAllowed(tool, inputs.type, {}, *tool_access_))
+      if (IsAgentToolAllowed(tool, inputs.type, inputs.custom_tool_names,
+                             inputs.custom_mcp_ids, *tool_access_))
         agent_tools.push_back(tool);
     }
     std::vector<CompletionTool> advertised_tools;
@@ -841,6 +849,8 @@ huxerui::Task<AgentRunResult> SubAgentRunner::RunAgent(AgentRunRequest request) 
   inputs.prompt = request.prompt;
   inputs.read_scope = request.read_scope;
   inputs.write_scope = request.write_scope;
+  inputs.custom_tool_names = request.custom_tool_names;
+  inputs.custom_mcp_ids = request.custom_mcp_ids;
   inputs.workspace_path = environment_.workspace_path;
   inputs.model = *model;
 

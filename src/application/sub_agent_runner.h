@@ -363,6 +363,10 @@ private:
     std::string prompt;
     std::vector<std::string> read_scope;
     std::vector<std::string> write_scope;
+    // Selected by a custom Agent extension; empty means the ordinary
+    // type-based tool set.
+    std::vector<std::string> custom_tool_names;
+    std::vector<std::string> custom_mcp_ids;
     std::string workspace_path;
     domain::ModelConfig model;
   };

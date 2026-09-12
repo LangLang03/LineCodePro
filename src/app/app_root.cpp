@@ -13,6 +13,7 @@
 
 #include "app/bootstrap.h"
 #include "application/agent_extension_draft.h"
+#include "application/agent_extension_tool_registry.h"
 #include "application/agent_result_registry.h"
 #include "application/agent_result_registry_sink.h"
 #include "application/agent_tool_registry.h"
@@ -518,11 +519,17 @@ huxerui::View PlatformServicesHost() {
           std::make_shared<application::AgentToolRegistry>(
               mcp_settings.Get(), agent_results.Get(),
               sub_agent_runner.Get(), tool_text_language)});
+  auto agent_extension_tools = huxerui::UseState(
+      std::shared_ptr<application::ToolRegistry>{
+          std::make_shared<application::AgentExtensionToolRegistry>(
+              agent_extensions.Get(), sub_agent_runner.Get(),
+              tool_text_language)});
   auto runtime_tools =
       huxerui::UseState(std::shared_ptr<application::ToolRegistry>{
           std::make_shared<application::CompositeToolRegistry>(
               std::vector<std::shared_ptr<application::ToolRegistry>>{
-                  base_tools.Get(), agent_tools.Get()})});
+                  base_tools.Get(), agent_tools.Get(),
+                  agent_extension_tools.Get()})});
   auto agent_drafts = huxerui::UseState(
       std::shared_ptr<application::AgentExtensionDraftGenerator>{
           std::make_shared<application::CompletionAgentExtensionDraftGenerator>(

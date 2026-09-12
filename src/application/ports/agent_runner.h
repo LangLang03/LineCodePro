@@ -34,6 +34,11 @@ struct AgentRunRequest final {
   std::vector<std::string> write_scope;
   // explore-only: return the compact ref immediately and keep running.
   bool async{};
+  // Tool and MCP names a custom Agent extension selected for itself
+  // (`CustomAgentExtensionTool.java:92-95` delegated both). Empty means the
+  // agent inherited the ordinary type-based tool set.
+  std::vector<std::string> custom_tool_names{};
+  std::vector<std::string> custom_mcp_ids{};
   // Tool call that requested this run, used to tie progress to the card.
   std::string tool_call_id;
 };

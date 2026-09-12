@@ -448,6 +448,28 @@ python3 tools/ui_parity_test.py \
       变为 **`模型通信失败：请先添加并选择模型`**，无崩溃。
       回归：18 场景功能失败 0。
 
+- [x] **自定义 Agent 扩展现可作为工具被调用**（第 27–28 轮）：
+      此前**没有任何注册表读取 `AgentExtensionStore`**——用户能在界面里创建、
+      启用自定义 Agent，但模型**永远无法调用它**。
+      已移植 `CustomAgentExtensionTool` 与 `ToolRegistry.reloadExtensions`
+      的注册逻辑：新增 `application/custom_agent_tool.*`（纯逻辑：命名规则
+      `agentx_<slug>`、`safeToolNamePart` 的清洗/折叠/去首尾下划线/首字母兜底、
+      提示词与 900 字能力节选、工具 schema）与
+      `application/agent_extension_tool_registry.*`（每个**已启用**的扩展注册一个工具，
+      调用时委派为 `sub-coding` 运行并带上该 Agent 自选的 `custom_tool_names`
+      /`custom_mcp_ids`）。
+      同时补上 `AgentRunRequest` 的这两个字段与 `IsAgentToolAllowed` 的
+      **MCP 快捷分支**（旧版 `:817`：自选 MCP 工具在自定义名单过滤**之前**放行）。
+      文案 3 条逐字取自旧版并已进目录（67→70 键，`gen_tool_text_catalog.py`
+      新增 `tool_custom_agent_` 前缀）。
+      **测试**：`tests/custom_agent_tool_tests.cpp` 覆盖命名规则 7 例、
+      提示词含/不含各分节、描述 900 字截断、schema、仅注册已启用扩展、
+      委派请求字段、空任务、缺执行器、未知工具。81/81 通过。
+      *测试抓到的真实 bug*：空任务判断未做 `trim`（旧版是
+      `optString("task").trim()`），纯空白任务会被当成有效任务。
+      **未验证**：真机端到端（需在界面创建自定义 Agent 再让模型调用），
+      模拟器在本轮末崩溃重启，留待下轮。
+
 已核实**不属于**缺口的项（不要重复投入）：
 - **「模型切换提示」不存在**：旧版 `message_model_switched`（"已切换模型"）
   只在 `values*/strings.xml` 定义，**全仓库无任何引用**（Java 与布局均无，

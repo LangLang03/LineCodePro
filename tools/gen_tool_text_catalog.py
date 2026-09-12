@@ -42,6 +42,7 @@ KEY_PREFIXES = (
     "tool_call_action_",
     "tool_agent_",
     "tool_pipeline_",
+    "tool_custom_agent_",
 )
 
 _PROPERTY_LINE = re.compile(r"^([A-Za-z0-9_.\-]+)\s*=\s*(.*)$")

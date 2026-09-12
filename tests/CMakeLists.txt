@@ -1894,3 +1894,27 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME token_usage_tracker_tests COMMAND token_usage_tracker_tests)
+
+add_executable(custom_agent_tool_tests
+        custom_agent_tool_tests.cpp
+        ../src/application/agent_extension_tool_registry.cpp
+        ../src/application/custom_agent_tool.cpp
+        ../src/application/tool_text_catalog.cpp
+        ../src/infrastructure/archive_json.cpp
+        ../src/domain/extension_config.cpp
+)
+target_include_directories(custom_agent_tool_tests PRIVATE ../src)
+target_compile_features(custom_agent_tool_tests PRIVATE cxx_std_23)
+target_link_libraries(custom_agent_tool_tests PRIVATE HuxerUI::testing)
+set_target_properties(custom_agent_tool_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(custom_agent_tool_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(custom_agent_tool_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME custom_agent_tool_tests COMMAND custom_agent_tool_tests)
