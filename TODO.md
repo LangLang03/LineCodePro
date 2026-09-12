@@ -237,6 +237,20 @@ python3 tools/ui_parity_test.py \
       → ③ 重建请求 = `system` + 摘要（`Another language model started…`）
       + 在途 `assistant` + 在途 `tool` 结果（目录列表逐字保留），
       与设计完全一致，无崩溃。
+- [x] **压缩触发改用服务器上报的 token 用量**（第 22 轮）：此前触发永远回落到
+      本地 chars/4 估算，因为观测值从未被填充。查出并修掉**三个独立断点**：
+      (1) **流式响应不解析 usage**——`usage` 只在非流式解码器里读，流式 chunk
+      结构没有该字段，且解码器在 `choices` 缺失时直接返回空 chunk，
+      而带 usage 的末个 chunk 恰恰 `choices` 为空；旧版
+      `OpenAiCompatibleProtocol.java:138` 正是为此在 `choices` 之前读 usage。
+      已在协议 chunk 适配处传递（原为硬编码 0）。
+      (2) **追踪器随组合重建而丢失**——`ComposerGenerationRunner` 是
+      `Composer(...)` 内的局部 `make_shared`，每次重组重建、成员归零；
+      提升为组合期 `UseState` 状态并注入。
+      (3) **假服务从不发送 usage chunk**，已补齐（curl 直接确认线上字节）。
+      **双向真机验证**：窗口 600 时每轮触发（摘要请求 + 含摘要请求各一）；
+      窗口 128000 时两次发送仅两个请求、**不触发**。80/80 测试、回归功能失败 0。
+
 - [ ] **mid-loop 压缩的残留语义差异**（本轮实测发现，尚未修）：
       旧版 `startToolLoopContextCompaction` 会改写会话并
       `persistCurrentConversation()`，因此摘要落库、UI 出现「压缩」进度块。
