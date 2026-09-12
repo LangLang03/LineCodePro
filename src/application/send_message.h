@@ -1,10 +1,12 @@
 #pragma once
 
 #include <expected>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "application/ports/attachment_policy.h"
+#include "domain/chat_image.h"
 #include "application/ports/conversation_store.h"
 
 namespace linecode::application {
@@ -25,6 +27,13 @@ public:
   [[nodiscard]] std::expected<domain::ChatMessage, SendMessageError>
   Execute(std::string text,
           std::vector<domain::InputAttachment> attachments);
+  // Legacy `ChatInteractionController.sendMessageWithImage`: an attached image
+  // with no text gets a placeholder so the turn is never empty (and the Codex
+  // protocol still receives a non-empty prompt).
+  [[nodiscard]] std::expected<domain::ChatMessage, SendMessageError>
+  Execute(std::string text,
+          std::vector<domain::InputAttachment> attachments,
+          std::optional<domain::ChatImage> image);
 
 private:
   ConversationStore &store_;

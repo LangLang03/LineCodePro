@@ -149,6 +149,43 @@ int main() {
   session.Clear();
   assert(session.Messages().empty());
 
+  // An attached image with no text still produces a turn, using the legacy
+  // placeholder so the model gets a non-empty prompt
+  // (`ChatInteractionController.java:160-162`).
+  {
+    linecode::domain::ChatImage image;
+    image.name = "photo.jpg";
+    image.mime_type = "image/jpeg";
+    image.base64 = "QUJD";
+    linecode::application::ChatSession with_image{
+        std::make_unique<InMemoryConversationStore>()};
+    const auto sent = with_image.Send("", {}, image);
+    assert(sent.has_value());
+    assert(sent->content == "已附加图片：photo.jpg");
+    assert(sent->image.has_value());
+    assert(sent->image->base64 == "QUJD");
+
+    // A named-less image falls back to the shorter notice.
+    auto anonymous = image;
+    anonymous.name.clear();
+    const auto unnamed = with_image.Send("  ", {}, anonymous);
+    assert(unnamed.has_value());
+    assert(unnamed->content == "已附加图片");
+
+    // Text wins when present, and an unusable image is dropped rather than
+    // producing an empty payload.
+    const auto with_text = with_image.Send("look", {}, image);
+    assert(with_text.has_value());
+    assert(with_text->content == "look");
+    auto broken = image;
+    broken.base64.clear();
+    const auto dropped = with_image.Send("plain", {}, broken);
+    assert(dropped.has_value());
+    assert(!dropped->image.has_value());
+    // Nothing at all is still rejected.
+    assert(!with_image.Send("", {}, broken).has_value());
+  }
+
   auto recording_store = std::make_unique<RecordingConversationStore>();
   auto *recording = recording_store.get();
   linecode::application::ChatSession managed{std::move(recording_store)};

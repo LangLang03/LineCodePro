@@ -193,7 +193,8 @@ std::vector<CompletionMessage> GenerationController::BuildMessages() const {
       continue;
     if (message.role == domain::MessageRole::user) {
       messages.push_back(CompletionMessage{.role = CompletionRole::user,
-                                           .content = message.content});
+                                           .content = message.content,
+                                           .image = message.image});
     } else if (message.role == domain::MessageRole::assistant) {
       AppendAssistantHistory(message, messages, *result_display_);
     }

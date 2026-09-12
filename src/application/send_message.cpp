@@ -1,5 +1,6 @@
 #include "application/send_message.h"
 
+#include <optional>
 #include <string_view>
 #include <utility>
 
@@ -43,9 +44,24 @@ SendMessage::Execute(std::string text) {
 std::expected<domain::ChatMessage, SendMessageError>
 SendMessage::Execute(std::string text,
                      std::vector<domain::InputAttachment> attachments) {
+  return Execute(std::move(text), std::move(attachments), std::nullopt);
+}
+
+std::expected<domain::ChatMessage, SendMessageError>
+SendMessage::Execute(std::string text,
+                     std::vector<domain::InputAttachment> attachments,
+                     std::optional<domain::ChatImage> image) {
   text = Trim(std::move(text));
   attachments = attachment_policy_.Sanitize(attachments);
-  if (text.empty() && attachments.empty()) {
+  if (image.has_value() && image->Empty())
+    image.reset();
+  if (text.empty() && image.has_value()) {
+    // `ChatInteractionController.java:160-162`.
+    const auto name = Trim(image->name);
+    text = name.empty() ? std::string{"已附加图片"}
+                        : "已附加图片：" + name;
+  }
+  if (text.empty() && attachments.empty() && !image.has_value()) {
     return std::unexpected(SendMessageError::empty);
   }
 
@@ -55,6 +71,7 @@ SendMessage::Execute(std::string text,
       .content = std::move(text),
       .attachments = std::move(attachments),
   };
+  message.image = std::move(image);
   store_.Append(message);
   return message;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -8,6 +9,7 @@
 #include <vector>
 
 #include "domain/extension_kind.h"
+#include "domain/chat_image.h"
 #include "domain/chat_timeline.h"
 #include "domain/input_attachment.h"
 #include "domain/skill_hub_route.h"
@@ -247,6 +249,10 @@ struct ChatMessage final {
   // legacy flag it keeps the row part of the turn's process instead of
   // letting it count as the assistant's answer.
   bool retry_notice{};
+  // Image the user attached to this message. Legacy stored it as a
+  // `linecode_image_understanding` payload on the message so the request could
+  // replay it; the same fields are used here.
+  std::optional<ChatImage> image{};
 
   bool operator==(const ChatMessage &) const = default;
 };

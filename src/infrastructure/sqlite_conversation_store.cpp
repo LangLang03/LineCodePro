@@ -109,6 +109,7 @@ struct StoredMessage final {
   std::vector<domain::InputAttachment> attachments;
   std::string reasoning_content;
   std::string compact_status;
+  std::optional<domain::ChatImage> image;
   bool retry_notice{};
   bool hidden{};
   bool streaming{};
@@ -144,6 +145,19 @@ void DecodeLegacyMetadata(StoredMessage &message) {
   if (const auto *status =
           json::AsString(json::Find(*object, "compact_status")))
     message.compact_status = *status;
+  if (const auto *payload =
+          json::AsObject(json::Find(*object, "linecode_image_understanding"))) {
+    if (const auto *data = json::AsString(json::Find(*payload, "data_base64"));
+        data != nullptr && !data->empty()) {
+      domain::ChatImage image;
+      image.base64 = *data;
+      if (const auto *mime = json::AsString(json::Find(*payload, "mime_type")))
+        image.mime_type = *mime;
+      if (const auto *name = json::AsString(json::Find(*payload, "name")))
+        image.name = *name;
+      message.image = std::move(image);
+    }
+  }
   if (const auto *notice = json::Find(*object, "retry_notice")) {
     if (const auto *flag = std::get_if<bool>(notice))
       message.retry_notice = *flag;
@@ -224,6 +238,7 @@ Result<StoredMessage> DecodeStoredMessage(const RowView &row) {
                         .reasoning_content = std::move(*reasoning),
                         // Both are decoded from `raw_json` just below.
                         .compact_status = {},
+                        .image = std::nullopt,
                         .retry_notice = {},
                         .hidden = *hidden != 0,
                         .streaming = *streaming != 0,
@@ -252,6 +267,7 @@ Result<StoredMessage> DecodeStoredMessage(const RowView &row) {
   // stay out of the transcript, exactly like legacy `MessageRecord.hidden`.
   message.hidden = row.hidden;
   message.compact_status = row.compact_status;
+  message.image = row.image;
   message.retry_notice = row.retry_notice;
   message.streaming = row.streaming;
   message.exclude_from_context = row.exclude_from_context;
@@ -289,6 +305,14 @@ EncodeMessageRawJson(const domain::ChatMessage &message) {
   // losing the row's meaning.
   if (!message.compact_status.empty())
     object.insert_or_assign("compact_status", message.compact_status);
+  if (message.image.has_value() && !message.image->Empty()) {
+    object.insert_or_assign(
+        "linecode_image_understanding",
+        json::Object{{"data_base64", message.image->base64},
+                     {"kind", "linecode_image_understanding"},
+                     {"mime_type", message.image->mime_type},
+                     {"name", message.image->name}});
+  }
   if (message.retry_notice)
     object.insert_or_assign("retry_notice", true);
 

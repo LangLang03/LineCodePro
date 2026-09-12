@@ -23,6 +23,14 @@ ChatSession::Send(std::string text,
   return send_message_.Execute(std::move(text), std::move(attachments));
 }
 
+std::expected<domain::ChatMessage, SendMessageError>
+ChatSession::Send(std::string text,
+                  std::vector<domain::InputAttachment> attachments,
+                  std::optional<domain::ChatImage> image) {
+  return send_message_.Execute(std::move(text), std::move(attachments),
+                               std::move(image));
+}
+
 domain::ChatMessage ChatSession::AppendAssistant(std::string text) {
   domain::ChatMessage message{};
   message.content = std::move(text);

@@ -20,6 +20,9 @@ public:
   Send(std::string text);
   [[nodiscard]] std::expected<domain::ChatMessage, SendMessageError>
   Send(std::string text, std::vector<domain::InputAttachment> attachments);
+  [[nodiscard]] std::expected<domain::ChatMessage, SendMessageError>
+  Send(std::string text, std::vector<domain::InputAttachment> attachments,
+       std::optional<domain::ChatImage> image);
   [[nodiscard]] domain::ChatMessage AppendAssistant(std::string text);
   [[nodiscard]] domain::ChatMessage
   AppendAssistant(domain::ChatMessage message);

@@ -383,6 +383,32 @@ huxerui::View ConversationStoreProbe() {
                restored_progress->compact_status == "done" &&
                restored_notice != with_flags.end() &&
                restored_notice->retry_notice;
+      // An attached image is stored as the legacy
+      // `linecode_image_understanding` payload so a restored turn can replay
+      // it to the model.
+      linecode::domain::ChatMessage with_image;
+      with_image.id = store->AllocateMessageId();
+      with_image.role = linecode::domain::MessageRole::user;
+      with_image.content = "look at this";
+      linecode::domain::ChatImage attached;
+      attached.name = "photo.jpg";
+      attached.mime_type = "image/jpeg";
+      attached.base64 = "QUJD";
+      with_image.image = attached;
+      store->Append(std::move(with_image));
+      const auto image_flushed = co_await store->FlushPendingAsync();
+      bool image_reloaded{};
+      if (image_flushed)
+        image_reloaded = static_cast<bool>(co_await store->ReloadAsync());
+      const auto after_image = store->Messages();
+      const auto restored_image = std::ranges::find(
+          after_image, std::string_view{"look at this"},
+          &linecode::domain::ChatMessage::content);
+      passed = passed && image_reloaded && restored_image != after_image.end() &&
+               restored_image->image.has_value() &&
+               restored_image->image->base64 == "QUJD" &&
+               restored_image->image->mime_type == "image/jpeg" &&
+               restored_image->image->name == "photo.jpg";
       scenario->passed = passed;
       scenario->done = true;
     });
