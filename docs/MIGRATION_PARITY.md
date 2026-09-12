@@ -96,7 +96,10 @@ tracked with its evidence in `TODO.md`:
   its in-flight messages into the session, which this port does not.
 - Sub-agent tool calls do not raise their own review prompt.
 - The resume sanitizer repairs loaded messages in memory but does not write
-  the repair back.
+  the repair back. The repair is idempotent, invisible to the user, and
+  re-derived on every load; doing it would mean refactoring the most-used
+  write path for no observable gain, so it is recorded as an accepted,
+  invisible divergence rather than silently left undone.
 - A soft compaction summary is placed after the slice it replaced; this was
   fixed and verified (stored order `head | summary | tail`).
 - Cross-renderer text metrics: HuxerUI exposes no line-spacing control and

@@ -444,6 +444,26 @@ python3 tools/ui_parity_test.py \
       `domain::WorkspaceImage`、`Base64Encode`、
       `image_understanding_codec.cpp` 里两种协议的图片编码形状、
       `completion_protocol_codec.cpp` 已在构建 content 数组。
+- [x] **会话恢复清理器回写持久层 —— 评估后决定不做**（第 38 轮给出理由）：
+      旧版在 `changed` 时 `saveConversation` 回写；候选只修内存态，
+      数据库保留陈旧值、每次加载重复修复一次（**幂等、无副作用、用户不可见**）。
+      评估了三种实现路径后决定不做：
+      (1) **复用 `append` 事件**——不可行：append 分支会
+      `UPDATE conversations SET current = 0` 并把自己置为 `current = 1`
+      （`sqlite_conversation_store.cpp:1354-1372`），用它做修复会**改变当前会话**。
+      (2) **抽取共用写入函数**——需把 append 分支近 200 行（消息 upsert、
+      `message_text_chunks` 分块、`tool_results`/`tool_calls`/`message_blocks`
+      重建、时间线 visit）整体搬移。这是**全应用最常用的写入路径**，
+      为一项不可见差异重构它，风险与收益不相称（我在该区域已发生过一次回归：
+      第 23 轮的 `UNIQUE(conversation_id, local_order)` 事务回滚）。
+      (3) **新增独立的最小写入器**——只写 `streaming` 与 compact_status，
+      `tool_results` 的修复仍留内存。这是"半修"，
+      比明确记录"不做"更难维护，也不更忠实。
+      **结论**：保留为**已知的、不可见的实现差异**，并在
+      `docs/MIGRATION_PARITY.md` 的 Known residuals 中记录。
+      若将来确实需要，建议走路径 (2) 并单独一轮、以纯搬移（不改 SQL）的方式做，
+      先补一个"append 写入前后数据库完全一致"的回归测试再动手。
+
 - [ ] **会话恢复清理器未回写持久层**（与旧版的差异，用户不可见）：
       旧版在 `changed` 时 `saveConversation` 回写；当前只修内存态，
       所以数据库保留陈旧值、每次加载重复修复一次（幂等，无副作用）。
@@ -761,6 +781,13 @@ python3 tools/ui_parity_test.py \
       `grep -rniE "accessibilityservice|phonecontrol|phone_control|无障碍服务|手机控制"`
       对 `src/`、`platform/android/app/src/`、`resources/` **零命中**；
       AndroidManifest 无相关 service/permission。
+- [x] **第 38 轮最终复核**（全部重新实测，非沿用旧结论）：
+      · 18 场景截图回归 **功能失败 0**（`artifacts/ui-parity-v20`）；
+      · 原生测试 **83/83**；
+      · 包名 `cn.lineai` / versionCode `32` / versionName `1.2.8-max`；
+      · 双 ABI `arm64-v8a` + `x86_64`；
+      · 签名 SHA-256 `1c2c0c…64fac` 与原版一致；
+      · 无障碍/手机控制残留全仓 **0 命中**。
 - [x] 旧版页面/功能归档记录：`docs/MIGRATION_PARITY.md` 的 **Parity ledger**
       已按实测更新为 `migrated` / `excluded` / `equivalent` 三态，
       22 行逐项附证据（测试名或真机验证），并新增 **Known residuals** 一节，
