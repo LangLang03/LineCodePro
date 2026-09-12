@@ -57,9 +57,17 @@
       `file_write` 后设备上真实落盘
       `/data/data/cn.lineai/files/.linecode/home/linecode-tool-check.txt`，
       内容与模型提交的完全一致。
-- [ ] `ToolTextCatalog` 目前固定英文（构造函数默认值）：`domain::McpExecutionSettings`
-      不含语言字段，且 HuxerUI 0.3.0 没有公开的「组合期读取当前 Locale」接口。
-      仅影响工具回给模型的文案语言，不影响功能。
+- [x] `ToolTextCatalog` 语言已按界面语言选择（第 20 轮）：HuxerUI 确实没有公开的
+      「组合期读取当前 Locale」接口，故新增自描述的探测文案 `app_locale_probe`
+      （`default`="en" / `zh`="zh"），由组合根 `UseString` 解析后经
+      `ToolTextLanguageFor` 映射，传给使用目录的 `FileToolRegistry` 与
+      `AgentToolRegistry`。**更正**：此前的描述「仅影响工具回给模型的文案语言」
+      不准确——工具内部文案（如 `tool_agent_invalid_type` 的中文
+      「Agent 类型只能是 explore 或 sub-coding。」）在**工具失败时会渲染进工具卡片，
+      用户可见**，所以这是一处真实的可见缺陷。
+      *再次踩到同一个坑*：`UseString` 会校验占位符个数，探测文案有 0 个占位符，
+      我仍按习惯写成 `UseString(resource, "")` → 启动即崩溃
+      （`requires exactly 0 arguments`）；第 11 轮重试文案时踩过同款。
 - [x] 已核实 `shell` 组在 local 模式本就不可用：旧版
       `ToolSettingsRepository.java:104` 把 shell 组声明为 `MODE_REMOTE`，
       `getEnabledToolNames()` 会按模式过滤。C++ 的 `remote` 掩码是忠实迁移，
