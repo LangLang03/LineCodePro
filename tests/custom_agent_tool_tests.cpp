@@ -18,6 +18,7 @@
 #include "application/ports/agent_runner.h"
 #include "application/ports/extension_store.h"
 #include "domain/extension_config.h"
+#include "infrastructure/archive_json.h"
 
 namespace {
 
@@ -138,11 +139,25 @@ void DescriptionCapsTheCapabilityExcerpt() {
 
 void SchemaRequiresOnlyTheTask() {
   const auto schema = CustomAgentToolSchemaJson();
-  assert(schema.find("\"required\":[\"task\"]") != std::string::npos);
-  for (const auto key : {"\"task\"", "\"context\"", "\"read_scope\"",
-                         "\"write_scope\""}) {
-    assert(schema.find(key) != std::string::npos);
-  }
+  // Parse it, do not just grep it: a mangled raw-string literal can still
+  // contain every expected substring while being invalid JSON, which is
+  // exactly how a broken schema reached the wire once. The provider rejects
+  // the whole request body in that case, so validity is the real assertion.
+  const auto parsed = infrastructure::archive_json::Parse(schema);
+  assert(parsed.has_value());
+  const auto *object = infrastructure::archive_json::AsObject(&*parsed);
+  assert(object != nullptr);
+  const auto *properties = infrastructure::archive_json::AsObject(
+      infrastructure::archive_json::Find(*object, "properties"));
+  assert(properties != nullptr);
+  assert(properties->size() == 4U);
+  for (const auto key : {"task", "context", "read_scope", "write_scope"})
+    assert(properties->contains(key));
+  const auto *required = infrastructure::archive_json::AsArray(
+      infrastructure::archive_json::Find(*object, "required"));
+  assert(required != nullptr && required->size() == 1U);
+  assert(*infrastructure::archive_json::AsString(&required->front()) ==
+         "task");
 }
 
 // ---------------------------------------------------------------------------

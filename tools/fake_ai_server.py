@@ -212,7 +212,27 @@ class FakeAiHandler(BaseHTTPRequestHandler):
                 "request body ended before Content-Length bytes were received",
             )
 
-        decoded = json.loads(body.decode("utf-8"))
+        try:
+            decoded = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            # A malformed tool schema is otherwise only visible as a byte
+            # offset, which is unusable in a 27KB body; log the region.
+            position = getattr(error, "pos", 0)
+            if self.fixture_server.request_log is not None:
+                # Write the whole body next to the log: a 150-byte window is
+                # not enough to locate a defect in a 27KB request, and the body
+                # can be re-parsed offline for the exact error.
+                copy_path = (
+                    self.fixture_server.request_log.parent / "malformed-body.json"
+                )
+                copy_path.write_bytes(body)
+                with self.fixture_server.request_log.open("ab") as dump:
+                    dump.write(
+                        b"\n--- malformed body at byte "
+                        + str(position).encode()
+                        + b" (full copy: malformed-body.json) ---\n"
+                    )
+            raise
         if not isinstance(decoded, dict):
             raise ValueError("request body must be a JSON object")
         return decoded

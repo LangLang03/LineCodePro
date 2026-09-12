@@ -112,12 +112,10 @@ std::string BuildCustomAgentPrompt(const domain::AgentExtension &agent,
 }
 
 std::string CustomAgentToolSchemaJson() {
-  return R"json({"type":"object","properties":{)"
-         R"json("task":{"type":"string","description":"Task assigned to the custom Agent"})"
-         R"json(,"context":{"type":"string","description":"Optional supplementary context for the task"})"
-         R"json(,"read_scope":{"type":"array","items":{"type":"string"},"description":"List of files or directories allowed to read"})"
-         R"json(,"write_scope":{"type":"array","items":{"type":"string"},"description":"List of unique files or directories allowed to write. Without a write scope, the custom Agent cannot write files"})"
-         R"json(},"required":["task"]})json";
+  // One raw literal, not several adjacent ones: mixing the `json` delimiter
+  // with a bare `)"` terminator silently swallows the rest of the function
+  // into a single string.
+  return R"json({"type":"object","properties":{"task":{"type":"string","description":"Task assigned to the custom Agent"},"context":{"type":"string","description":"Optional supplementary context for the task"},"read_scope":{"type":"array","items":{"type":"string"},"description":"List of files or directories allowed to read"},"write_scope":{"type":"array","items":{"type":"string"},"description":"List of unique files or directories allowed to write. Without a write scope, the custom Agent cannot write files"}},"required":["task"]})json";
 }
 
 } // namespace linecode::application
