@@ -259,12 +259,18 @@ python3 tools/ui_parity_test.py \
       外框分别为 `[42..532]` 与 `[548..1038]`；按文字中心点会点到右侧按钮，
       必须按外框中心（Reject x=287 / Allow x=793）。
 
-- [ ] 子代理的剩余部分未迁移：进度会话（`AgentProgressSession` /
-      `PipelineProgressSession`）、流式 delta、子代理内的工具审批通道；
-      `custom_tool_names` / `custom_mcp_ids` 未接入；同层并行依赖注入的
-      `TaskScopeSubAgentLauncher`（未注入时退化为顺序执行）。
-- [ ] P1 图片输入（拍照/相册）缺失：`domain/input_attachment.h` 无图片负载；
-      旧版对应 `ComposerView.java` 的 `onSendWithImage` / `onImagePickerClick`。
+- [x] 子代理：**工具审批通道**（第 34 轮实现、第 36 轮真机验证）与
+      **`custom_tool_names` / `custom_mcp_ids`**（第 27–28 轮，含自定义 Agent
+      作为 `agentx_<slug>` 工具被调用）均已完成。
+- [ ] 子代理**仍未迁移**的部分（仅剩两项，均为"进度可见性"类）：
+      · 进度会话（`AgentProgressSession` / `PipelineProgressSession`）——
+        旧版把子代理的中间步骤写进一个进度会话并在主转录中展示；
+      · 流式 delta——子代理的流式输出未回传给主转录。
+      与 mid-loop 压缩同属"在途消息是否写入会话"的结构差异，理由见该条目。
+      `TaskScopeSubAgentLauncher` 已有依赖注入（未注入时退化为顺序执行）。
+- [x] P1 图片输入：**请求/发送/持久化三层已完成**（`domain/chat_image.h`、
+      三种协议的图片编码、存储往返），但**不加入口**——旧版该入口不可达
+      （详见下方"图片输入在旧版 UI 中不可达"条目）。
 - [x] P1 生成失败自动重试已迁移（模型切换/中断恢复提示仍缺）：
       `GenerationController::ResetAttempt` 丢弃本次尝试的流式内容但**不**结束回合
       （旧版是删除失败的 assistant 消息再补重试提示；本移植从不持久化失败内容，
