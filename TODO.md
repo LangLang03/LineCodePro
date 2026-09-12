@@ -528,7 +528,26 @@ python3 tools/ui_parity_test.py \
 - [x] 为容器/解压后总大小、条目数和单文件大小设置上限；工作区递归深度仍需明确上限和测试。
 - [x] 导出脱敏模型 `api_key`、SSH/Web Search secret、敏感 setting key、MCP headers/raw JSON secrets；除递归规则测试外，真实 SQLite 导出反向测试也证明上述秘密及旧消息分块 `raw_json` 秘密不在 `database.json` 中。
 - [ ] ZIP codec、JSON typed cell、SQLite 事务、导入失败不破坏原数据已有测试；旧版真实 fixture、文件选择取消和确认框状态仍需补齐。
-- [ ] 用旧版和新版实际互导 `.linecode`，逐项核对会话、模型、设置和工作区文件。
+- [x] **用旧版和新版实际互导 `.linecode`**（第 30 轮做了真实往返，发现**一处真实缺陷**）：
+      **主方向（旧版 → 候选）已验证通过**：在旧版中造 1 个模型 + 1 个会话 + 4 项设置，
+      用旧版界面真实导出（`已导出 .linecode：1 个会话，1 个模型，4 项设置`），
+      再把该归档导入候选，结果**逐项一致**：
+      模型 `lg-model-1`/`Legacy Model`/`selected=1`、会话 `lg-conv-1`/`Legacy Conversation`、
+      4 项设置（`@linecode_chat_mode`/`@linecode_selected_project_local`/
+      `@linecode_user_agreement_accepted`/`@linecode_user_agreement_version`）键值完全相同。
+      真实归档已存为 `tests/fixtures/legacy-export-v1.linecode`（2566 B），
+      供后续回归直接使用——此前仓库里只有构造数据，没有真实导出物。
+      **反向（候选 → 旧版）存在真实缺陷，尚未修**：对比两边导出条目——
+      旧版 `async-storage.json` 1217 B / 9 条、另有 `conversations/<id>.json`；
+      候选 `async-storage.json` **仅 2 B（空数组 `[]`）且无 `conversations/` 条目**。
+      而旧版导入时模型/会话/设置正是从 `async-storage.json` 读取的
+      （`ARCHIVE-VALIDATION` 侧同样要求该条目存在且可解析），
+      因此**旧版导入候选归档会丢失全部模型、会话与设置**。
+      根因：`hux_data_archive_service.cpp:353` 导出时硬写 `TextBytes("[]")`，
+      从未把候选自身的模型/会话/设置序列化成旧版形状。
+      修复需实现旧版平面（模型 JSON、`@lineai_conv_<id>` 元数据、
+      `@lineai_conversation_list`、每会话 ZIP 条目与设置条目），
+      属独立一轮的工作量。
 - [ ] 按旧版 60dp header、68dp 行、16/12dp padding、12dp 圆角完成同机像素截图。
 
 ## 教程
