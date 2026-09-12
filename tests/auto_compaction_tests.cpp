@@ -695,6 +695,10 @@ void ApplyCompactionKeepsTheTailAfterTheSummary() {
   const auto *summary = Find(compacted, compacted[3].id);
   assert(summary != nullptr);
   assert(summary->content == "the summary");
+  // Legacy builds the summary as `Role.USER`
+  // (`ContextCompactionController.java:500`). The runtime write-back went out
+  // as assistant for a while because only this field was left unchecked.
+  assert(summary->role == MessageRole::user);
   assert(summary->hidden);
   // The summary enters the model context right before the preserved tail.
   assert(!summary->exclude_from_context);

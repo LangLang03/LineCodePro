@@ -242,6 +242,11 @@ struct ChatMessage final {
   // `domain/compaction_progress.h`). The field is declared last so every
   // existing designated initializer keeps its declaration order.
   std::string compact_status{};
+  // Port of `ChatMessage.isRetryNotice()`: marks the "Retrying n/3" line the
+  // generation flow appends before re-issuing a failed request. Like the
+  // legacy flag it keeps the row part of the turn's process instead of
+  // letting it count as the assistant's answer.
+  bool retry_notice{};
 
   bool operator==(const ChatMessage &) const = default;
 };

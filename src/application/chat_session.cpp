@@ -57,7 +57,10 @@ void ChatSession::ApplyCompaction(std::vector<std::uint64_t> excluded_ids,
   auto &store = RequireStore(store_);
   domain::ChatMessage summary;
   summary.id = store.AllocateMessageId();
-  summary.role = domain::MessageRole::assistant;
+  // Legacy `ContextCompactionController.java:500` builds the summary as a
+  // `Role.USER` message, not an assistant one; the model must read it as
+  // handed-over context rather than its own prior turn.
+  summary.role = domain::MessageRole::user;
   summary.content = std::move(summary_content);
   // Legacy compact blocks are hidden from the transcript but stay in context,
   // which is exactly what makes them replace the summarized history.
