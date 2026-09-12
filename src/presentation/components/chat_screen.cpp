@@ -1507,6 +1507,79 @@ View ToolTimelineCard(const domain::AssistantToolEvent &event,
       on_copy, context);
 }
 
+// Port of `AssistantTurnView.renderFiles()`: a collapsible "Edited N files"
+// row listing every recorded change of the turn.
+//
+// Legacy showed it only when the turn both produced diffs and finished with an
+// answer (`edits.isEmpty() || row.answer == null ? GONE : VISIBLE`), and it
+// counted *distinct paths* while keeping one entry per diff id, so repeated
+// edits to the same file stay individually reviewable.
+View ChangedFilesBlock(const domain::ChatMessage &message,
+                       std::int64_t stable_turn_id,
+                       State<std::vector<std::string>> toggled,
+                       const TutorialMarkdownLinkHandler &on_link,
+                       const TutorialMarkdownCopyHandler &on_copy,
+                       const ToolRendererContext &context) {
+  const auto hidden = Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
+  if (message.content.empty())
+    return hidden;
+  std::vector<const domain::AssistantToolEvent *> edits;
+  std::vector<std::string> seen_ids;
+  std::vector<std::string> paths;
+  for (const auto &event : message.timeline) {
+    const auto *tool = std::get_if<domain::AssistantToolEvent>(&event);
+    if (tool == nullptr || !tool->result.has_value())
+      continue;
+    const auto &diff_id = tool->result->diff_id;
+    if (diff_id.empty() || std::ranges::contains(seen_ids, diff_id))
+      continue;
+    seen_ids.push_back(diff_id);
+    edits.push_back(tool);
+    const auto path =
+        ToolCallTargetPath(tool->call.arguments_json, diff_id);
+    if (!std::ranges::contains(paths, path))
+      paths.push_back(path);
+  }
+  if (edits.empty())
+    return hidden;
+  const auto block_key = std::to_string(stable_turn_id) + ":files";
+  const bool expanded = ToggleState(toggled.Get(), block_key, false);
+  auto header = Row{
+      Text::Format(app::strings::chat_files_changed, paths.size())
+          .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::tertiary)),
+      Spacer(),
+      Image(expanded ? app::images::chevron_down : app::images::chevron_right)
+          .Tint(colors::tertiary)
+          .With(Frame{.width = 16.0F, .height = 16.0F}),
+  }
+                    .With(CrossAlign(CrossAxisAlignment::Center),
+                          Frame{.min_height = 40.0F})
+                    .OnClick([toggled, block_key] {
+                      auto next = toggled.Get();
+                      if (std::ranges::contains(next, block_key))
+                        std::erase(next, block_key);
+                      else
+                        next.push_back(block_key);
+                      toggled = std::move(next);
+                    })
+                    .With(PointerCursor(PointerCursorKind::Hand));
+  std::vector<View> children;
+  if (expanded) {
+    for (std::size_t index = 0; index < edits.size(); ++index) {
+      children.push_back(ToolTimelineCard(
+          *edits[index], block_key + ":" + std::to_string(index), toggled,
+          on_link, on_copy, context));
+    }
+  }
+  View body = children.empty()
+                  ? View{Stack{}.With(Frame{.height = 0.0F})}
+                  : View{Column(std::move(children))
+                             .With(CrossAlign(CrossAxisAlignment::Stretch))};
+  return Column{std::move(header), std::move(body)}
+      .With(CrossAlign(CrossAxisAlignment::Stretch),
+            Padding(EdgeInsets{.top = 6.0F, .bottom = 6.0F}));
+}
+
 View AssistantTimeline(
     const domain::ChatMessage &message, bool live,
     const ChatTimelineSettings &settings,
@@ -1590,10 +1663,16 @@ View AssistantTimeline(
           process_key + ":legacy", settings, toggled));
     }
   }
-  return Column(std::move(rows))
-      .With(CrossAlign(CrossAxisAlignment::Stretch),
-            Padding(EdgeInsets{.right = 2.0F, .bottom = 12.0F, .left = 2.0F}),
-            Border(colors::border_light, 0.5F), CornerRadius(10.0F));
+  View changed_files = ChangedFilesBlock(
+      message, stable_turn_id, toggled, on_link, on_copy, context);
+  return Column{
+      Column(std::move(rows))
+          .With(CrossAlign(CrossAxisAlignment::Stretch),
+                Padding(EdgeInsets{
+                    .right = 2.0F, .bottom = 12.0F, .left = 2.0F}),
+                Border(colors::border_light, 0.5F), CornerRadius(10.0F)),
+      std::move(changed_files),
+  }.With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
 View MessageBubble(const domain::ChatMessage &message,

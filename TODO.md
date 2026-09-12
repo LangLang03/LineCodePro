@@ -260,9 +260,26 @@ python3 tools/ui_parity_test.py \
       （旧版 `Linkify` 实际会切行内代码，依据 `Linkify.java:305-311/652`）。
 
 - [ ] P1 Markdown 退化（已修，保留原条目以便追溯）：
-- [ ] P1 回合汇总「已编辑 N 个文件 / Review」区块缺失。
+- [x] P1 回合汇总「已编辑 N 个文件」区块已迁移（`AssistantTurnView.renderFiles()`）：
+      仅在**本回合既产生了 diff 又完成了答复**时显示
+      （旧版条件 `edits.isEmpty() || row.answer == null ? GONE : VISIBLE`）；
+      计数用**去重后的文件路径**，而条目按 **diff_id** 去重——
+      所以同一文件被多次编辑时每一笔仍可单独审核（旧版语义）。
+      路径取自工具调用参数的 `file_path` → `path` → 回落到 diff_id
+      （新增 `presentation::ToolCallTargetPath` 复用展示层的解析）。
+      折叠展开后逐个渲染该回合的写入卡片。
+      文案 `chat_files_changed` = "Edited {0} files" / "已编辑 {0} 个文件"
+      逐字取自旧版。
+      真机验证：`Worked 0.7s` → **`Edited 1 files`** → 答复；
+      点击展开后显示 `Completed / linecode-tool-check.txt` 卡片，无崩溃。
 
 已核实**不属于**缺口的项（不要重复投入）：
+- **「模型切换提示」不存在**：旧版 `message_model_switched`（"已切换模型"）
+  只在 `values*/strings.xml` 定义，**全仓库无任何引用**（Java 与布局均无，
+  也无 `getIdentifier` 动态查找）——是死资源。候选同样未迁移该文案，
+  这正是 1:1。此前 TODO 把它列为缺失功能是**我的误判**，已更正。
+  （真正缺失的是「生成中断恢复」，对应旧版 `ConversationResumeSanitizer`，
+  它确实被 `ConversationPersistenceController.applyConversation` 调用。）
 - `shell_execute` 在 local 模式不可用 —— 旧版本身如此，见上方说明。
 - 原生「发布 Skill」页无导航入口 —— 旧版同样不可达（旧版按钮也绑的是 `onCenter()`）。
 - `PendingScreen` 占位分支 —— 27 个路由全部有真实 destination，该分支不可达。

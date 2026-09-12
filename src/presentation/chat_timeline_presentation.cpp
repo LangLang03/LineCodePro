@@ -312,6 +312,21 @@ const ToolTimelineRendererRegistry &DefaultToolTimelineRendererRegistry() {
   return registry;
 }
 
+std::string ToolCallTargetPath(const std::string_view arguments_json,
+                               const std::string_view fallback) {
+  json::Value storage;
+  const auto *input = ParseObject(arguments_json, storage);
+  if (input != nullptr) {
+    for (const auto key : {std::string_view{"file_path"},
+                           std::string_view{"path"}}) {
+      const auto *value = json::AsString(json::Find(*input, key));
+      if (value != nullptr && !value->empty())
+        return *value;
+    }
+  }
+  return std::string{fallback};
+}
+
 ToolTimelinePresentation
 PresentToolTimeline(const domain::AssistantToolEvent &event) {
   const auto display = event.result

@@ -137,6 +137,13 @@ struct AssistantProcessPresentation final {
 [[nodiscard]] ToolTimelinePresentation
 PresentToolTimeline(const domain::AssistantToolEvent &event);
 
+// The file a tool call targets, read from its arguments. Legacy
+// `AssistantTurnView.renderFiles()` labelled its "N files changed" block by
+// looking up `file_path`, then `path`, then falling back to the diff id, so
+// the same order is kept here.
+[[nodiscard]] std::string ToolCallTargetPath(
+    std::string_view arguments_json, std::string_view fallback);
+
 [[nodiscard]] AssistantProcessPresentation PresentAssistantProcess(
     const domain::ChatMessage &message, bool live,
     bool process_auto_expand) noexcept;
