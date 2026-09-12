@@ -237,10 +237,27 @@ python3 tools/ui_parity_test.py \
       (3) 新增 `tools/device_send.sh`：每次从当前层级**动态定位输入框**再发送。
       输入框在 y≈1373 与 y≈2148 之间随是否配置模型/正文高度变化，
       固定坐标会静默点空、伪装成功能失败——这是多轮设备测试反复受阻的另一原因。
-      **仍未取到**：子代理**嵌套**写调用的独立审批证据——
-      该触发下应用只发出 1 个请求（主请求），未出现子代理请求，
-      原因待查（fixture 返回的 agent 工具调用未被继续执行）。
-      下一轮继续。
+      **第 36 轮：嵌套审批已真机验证通过** ✓
+      *先查清了上一轮"只发出 1 个请求"的原因——不是产品缺陷*：
+      fixture 的策略是"会话中一旦出现过 tool 消息就不再触发"
+      （`fake_ai_server.py:335-340`，为保持运行简短），
+      而当时会话里已留有先前 `file_write` 的 tool 消息，故所有触发被抑制、
+      返回默认文本。**改用"新建会话"清空转录后立刻正常**。
+      **完整证据链（权限模式 `confirm`）**：
+      ① 主模型发起 `agent` 调用 → 弹出审批（`agent` / `Write the check file` /
+         `Reject` / `Allow once`）；点 Allow once 后子代理启动（`Running task…`）；
+      ② 子代理**内部**发起 `file_write` → **弹出属于它自己的第二个审批**
+         （`file_write` / `Allow this operation in the current workspace?` /
+         `linecode-tool-check.txt` / `Reject` / `Allow once`），
+         此时转录仍显示 `Running task…`，证明该审批来自子代理而非主循环；
+      ③ **拒绝** → 子代理正常结束（`Worked 48.0s`），
+         `files/.linecode/home/` 中**未产生**该文件（计数 0）；
+      ④ **允许**（一次误点恰好构成对照）→ 同目录出现
+         `linecode-tool-check.txt`（21 字节，内容 `linecode file tool ok`）。
+      两条路径都实测，这是 P1 #2 的完整验收证据。
+      *过程中的一个操作教训*：审批按钮 `Reject`/`Allow once` **同一 y 值**，
+      外框分别为 `[42..532]` 与 `[548..1038]`；按文字中心点会点到右侧按钮，
+      必须按外框中心（Reject x=287 / Allow x=793）。
 
 - [ ] 子代理的剩余部分未迁移：进度会话（`AgentProgressSession` /
       `PipelineProgressSession`）、流式 delta、子代理内的工具审批通道；
