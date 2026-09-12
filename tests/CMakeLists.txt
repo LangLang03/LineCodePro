@@ -1760,3 +1760,66 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME tool_loop_compactor_tests COMMAND tool_loop_compactor_tests)
+
+# Port tests for the streamed-reasoning inline emphasis parser
+# (`cn.lineai.ui.theme.InlineEmphasisParser`).
+add_executable(inline_emphasis_tests
+        inline_emphasis_tests.cpp
+        ../src/domain/inline_emphasis.cpp
+)
+target_include_directories(inline_emphasis_tests PRIVATE ../src)
+target_compile_features(inline_emphasis_tests PRIVATE cxx_std_23)
+set_target_properties(inline_emphasis_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(inline_emphasis_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(inline_emphasis_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME inline_emphasis_tests COMMAND inline_emphasis_tests)
+
+# Bare-URL recognition equivalent to `Linkify.addLinks(..., WEB_URLS)`.
+add_executable(markdown_linkify_tests
+        markdown_linkify_tests.cpp
+        ../src/presentation/markdown_linkify.cpp
+)
+target_include_directories(markdown_linkify_tests PRIVATE ../src)
+target_compile_features(markdown_linkify_tests PRIVATE cxx_std_23)
+set_target_properties(markdown_linkify_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(markdown_linkify_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(markdown_linkify_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME markdown_linkify_tests COMMAND markdown_linkify_tests)
+
+# Quotes and list items keep their block-level children.
+add_executable(tutorial_nested_blocks_tests
+        tutorial_nested_blocks_tests.cpp
+        ../src/infrastructure/tutorial_markdown_parser.cpp
+)
+target_include_directories(tutorial_nested_blocks_tests PRIVATE ../src)
+target_compile_features(tutorial_nested_blocks_tests PRIVATE cxx_std_23)
+set_target_properties(tutorial_nested_blocks_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(tutorial_nested_blocks_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(tutorial_nested_blocks_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME tutorial_nested_blocks_tests
+        COMMAND tutorial_nested_blocks_tests)

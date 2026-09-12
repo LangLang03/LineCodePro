@@ -219,8 +219,30 @@ python3 tools/ui_parity_test.py \
       所以：摘要不落库、不显示进度块；循环结束后下一轮用户消息会从会话
       重新构建请求，需要再次触发压缩。功能上防止了循环内溢出，但
       可观察行为与旧版不一致。修法：让端口能写入会话（或由会话侧实现端口）。
-- [ ] P1 Markdown 退化：裸 URL 不可点、引用/列表内代码块被压成一行、
-      思考块直接输出原始 `**`；旧版有 `Linkify.WEB_URLS` 与 `ThinkingBlockView` 样式。
+- [x] P1 Markdown 三处退化已修：
+      (A) 裸 URL —— 新增 `presentation/markdown_linkify.*`，等价
+      `Linkify.WEB_URLS`（`scheme://` / `http(s)://` / `www.`，词首边界、
+      前导 `@` 拒绝、尾随标点裁剪），在 `RichText()` 对非链接纯文本切分；
+      target 仍过 `ParseNavigableMarkdownLink`，故非 http(s) 显示链接样式但不可点。
+      (B) 引用/列表内的代码块 —— 确认原 domain 结构只能表达内联行，
+      故把 `TutorialQuote` 改为嵌套块序列、`TutorialListItem` 增加块级子内容，
+      解析器抽成递归 `ParseLines`（列表项按内容列收缩进续行、围栏整体消费），
+      渲染改为 depth 感知的递归；depth 0 边距与改动前一致。
+      (C) 思考块原始 `**` —— 新增 `domain/inline_emphasis.*`，逐条移植
+      `InlineEmphasisParser`（反引号段连同反引号原样保留且不做强调解析、
+      找不到闭合只输出首字符、span 内不递归、`**` 相邻时插入 `" | "`），
+      `ReasoningTimelineBlock` 改用 `AttributedText`。
+      独立验证（用自写用例而非子代理测试）：`**a****b**`→`a | b` 2 spans、
+      `` `**not bold**` ``→反引号保留且 **0 span**、`**unclosed` 原样、
+      `\*literal\*`→字面量、`foo_bar_baz` 不开启强调。77/77 测试。
+- [ ] Markdown 的已知范围取舍（有意，非缺陷）：
+      (1) 不识别裸域名（`example.com` 无 scheme/www）——严格复刻需内置 IANA
+      TLD 表，且本应用正文多含 `context_compaction.cpp` 这类文件名，无表会误报；
+      (2) 不支持 IRI/非 ASCII URL（避免吞掉中文标点）；
+      (3) **有意偏离旧版**：行内代码不做链接化、显式链接不重复切分
+      （旧版 `Linkify` 实际会切行内代码，依据 `Linkify.java:305-311/652`）。
+
+- [ ] P1 Markdown 退化（已修，保留原条目以便追溯）：
 - [ ] P1 回合汇总「已编辑 N 个文件 / Review」区块缺失。
 
 已核实**不属于**缺口的项（不要重复投入）：

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <variant>
@@ -34,18 +35,30 @@ struct TutorialParagraph final {
   bool operator==(const TutorialParagraph&) const = default;
 };
 
-struct TutorialQuote final {
-  TutorialInlineLine content;
+// A quote and a list item are block containers in Markdown, so both keep the
+// block-level children the legacy `MarkdownRenderer.renderBlockQuote()` and
+// `MarkdownRenderer.addList()` rendered inside them (a fenced code block, a
+// second paragraph, a nested list, a table, ...). `TutorialBlock` is a variant
+// and a variant cannot hold an incomplete type, so the recursive sequence is
+// reached through a shared pointer; the value is immutable once parsed and the
+// pointers deduplicate when a document is copied.
+struct TutorialBlockSequence;
 
-  bool operator==(const TutorialQuote&) const = default;
+struct TutorialQuote final {
+  std::shared_ptr<const TutorialBlockSequence> blocks = nullptr;
+
+  [[nodiscard]] bool operator==(const TutorialQuote& other) const;
 };
 
 struct TutorialListItem final {
   std::string marker;
   std::size_t depth = 0;
+  /// Inline content of the marker line itself.
   TutorialInlineLine content;
+  /// Block-level content indented under the marker line.
+  std::shared_ptr<const TutorialBlockSequence> blocks = nullptr;
 
-  bool operator==(const TutorialListItem&) const = default;
+  [[nodiscard]] bool operator==(const TutorialListItem& other) const;
 };
 
 struct TutorialList final {
@@ -90,6 +103,35 @@ using TutorialBlock =
     std::variant<TutorialHeading, TutorialParagraph, TutorialQuote,
                  TutorialList, TutorialCodeBlock, TutorialImageBlock, TutorialTable,
                  TutorialThematicBreak>;
+
+/// Owned block children of a quote or a list item.
+///
+/// Defined after `TutorialBlock` so the variant is complete; quotes and list
+/// items refer to it through `std::shared_ptr<const TutorialBlockSequence>`
+/// and compare by value.
+struct TutorialBlockSequence final {
+  std::vector<TutorialBlock> blocks;
+
+  bool operator==(const TutorialBlockSequence&) const = default;
+};
+
+inline bool TutorialQuote::operator==(const TutorialQuote& other) const {
+  if (blocks == other.blocks)
+    return true;
+  return blocks != nullptr && other.blocks != nullptr &&
+         *blocks == *other.blocks;
+}
+
+inline bool
+TutorialListItem::operator==(const TutorialListItem& other) const {
+  if (marker != other.marker || depth != other.depth ||
+      content != other.content)
+    return false;
+  if (blocks == other.blocks)
+    return true;
+  return blocks != nullptr && other.blocks != nullptr &&
+         *blocks == *other.blocks;
+}
 
 struct TutorialSection final {
   std::string title;

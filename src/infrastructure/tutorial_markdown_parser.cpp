@@ -5,6 +5,7 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <ranges>
 #include <string>
@@ -393,12 +394,101 @@ bool IsTableSeparator(std::string_view line) {
   });
 }
 
-} // namespace
+std::size_t LeadingSpaces(std::string_view line) noexcept {
+  std::size_t spaces = 0;
+  while (spaces < line.size() && line[spaces] == ' ')
+    ++spaces;
+  return spaces;
+}
 
-domain::TutorialDocument TutorialMarkdownParser::Parse(
-    std::string_view markdown) const {
+/// Removes up to `column` leading spaces, the way CommonMark dedents the
+/// content of a container block such as a list item.
+std::string_view Dedent(std::string_view line, std::size_t column) noexcept {
+  const auto spaces = LeadingSpaces(line);
+  line.remove_prefix(std::min(spaces, column));
+  return line;
+}
+
+/// Nested block children are immutable; an empty sequence stays a null pointer
+/// so "has nested blocks" is a single check at the call site.
+std::shared_ptr<const domain::TutorialBlockSequence>
+MakeSequence(std::vector<domain::TutorialBlock> blocks) {
+  if (blocks.empty())
+    return {};
+  return std::make_shared<const domain::TutorialBlockSequence>(
+      domain::TutorialBlockSequence{.blocks = std::move(blocks)});
+}
+
+// Deeply nested quotes or list content would otherwise recurse once per
+// container; real documents never come close to this bound.
+constexpr std::size_t kMaximumNestingDepth = 24U;
+
+domain::TutorialDocument ParseLines(const std::vector<std::string_view>& lines,
+                                    std::size_t depth);
+
+/// Content lines of a list item: everything indented to at least the item's
+/// content column, with fenced code blocks consumed as a unit so a `-` inside
+/// a fence cannot be mistaken for the next list item.
+std::vector<std::string_view> ListItemContentLines(
+    const std::vector<std::string_view>& lines, std::size_t& index,
+    std::size_t content_column) {
+  std::vector<std::string_view> nested;
+  bool in_fence = false;
+  while (index < lines.size()) {
+    const auto line = lines[index];
+    const auto text = Trim(line);
+    if (in_fence) {
+      nested.push_back(Dedent(line, content_column));
+      if (text.starts_with("```"))
+        in_fence = false;
+      ++index;
+      continue;
+    }
+    if (text.empty()) {
+      // A blank line only continues this item when deeper-indented content
+      // follows; otherwise it ends the list exactly as before.
+      std::size_t probe = index;
+      while (probe < lines.size() && Trim(lines[probe]).empty())
+        ++probe;
+      if (probe >= lines.size() || ParseListPrefix(lines[probe]) ||
+          LeadingSpaces(lines[probe]) < content_column)
+        break;
+      while (index < probe) {
+        nested.push_back(Dedent(lines[index], content_column));
+        ++index;
+      }
+      continue;
+    }
+    // Sibling and nested markers stay in the flat item run this parser has
+    // always produced; only deeper, non-marker content belongs to the item.
+    if (ParseListPrefix(line))
+      break;
+    if (LeadingSpaces(line) < content_column)
+      break;
+    if (text.starts_with("```"))
+      in_fence = true;
+    nested.push_back(Dedent(line, content_column));
+    ++index;
+  }
+  return nested;
+}
+
+domain::TutorialDocument ParseLines(const std::vector<std::string_view>& lines,
+                                    std::size_t depth) {
   domain::TutorialDocument document;
-  const auto lines = Lines(markdown);
+  if (depth > kMaximumNestingDepth) {
+    // Defensive fallback for pathologically nested input: keep the text.
+    std::string flattened;
+    for (const auto line : lines) {
+      if (!flattened.empty())
+        flattened.push_back('\n');
+      flattened.append(Trim(line));
+    }
+    if (!flattened.empty())
+      document.blocks.emplace_back(
+          domain::TutorialParagraph{ParseInline(flattened)});
+    return document;
+  }
   std::size_t index = 0;
 
   while (index < lines.size()) {
@@ -441,7 +531,7 @@ domain::TutorialDocument TutorialMarkdownParser::Parse(
     if (const auto heading = Heading(line)) {
       const std::size_t block_index = document.blocks.size();
       auto content = ParseInline(heading->second);
-      const std::string title = PlainText(content);
+      const std::string title = TutorialMarkdownParser::PlainText(content);
       document.blocks.emplace_back(
           domain::TutorialHeading{heading->first, std::move(content)});
       if (heading->first == 2)
@@ -480,26 +570,33 @@ domain::TutorialDocument TutorialMarkdownParser::Parse(
         const auto item = ParseListPrefix(lines[index]);
         if (!item)
           break;
-        list.items.push_back({item->marker, item->depth,
-                              ParseInline(item->content)});
+        // The content column is where the marker line's own text starts, so
+        // `- x` continues at column 2 and `1. x` at column 3.
+        const auto content_column = static_cast<std::size_t>(
+            item->content.data() - lines[index].data());
+        domain::TutorialListItem entry{.marker = item->marker,
+                                       .depth = item->depth,
+                                       .content = ParseInline(item->content)};
         ++index;
+        auto nested = ListItemContentLines(lines, index, content_column);
+        if (!nested.empty())
+          entry.blocks = MakeSequence(ParseLines(nested, depth + 1).blocks);
+        list.items.push_back(std::move(entry));
       }
       document.blocks.emplace_back(std::move(list));
       continue;
     }
 
     if (Trim(line).starts_with('>')) {
-      std::string quote;
+      std::vector<std::string_view> inner;
       while (index < lines.size() && Trim(lines[index]).starts_with('>')) {
         auto text = Trim(lines[index]);
         text.remove_prefix(1);
-        text = Trim(text);
-        if (!quote.empty())
-          quote.push_back('\n');
-        quote.append(text);
+        inner.push_back(Trim(text));
         ++index;
       }
-      document.blocks.emplace_back(domain::TutorialQuote{ParseInline(quote)});
+      document.blocks.emplace_back(domain::TutorialQuote{
+          .blocks = MakeSequence(ParseLines(inner, depth + 1).blocks)});
       continue;
     }
 
@@ -522,6 +619,13 @@ domain::TutorialDocument TutorialMarkdownParser::Parse(
           domain::TutorialParagraph{ParseInline(paragraph)});
   }
   return document;
+}
+
+} // namespace
+
+domain::TutorialDocument TutorialMarkdownParser::Parse(
+    std::string_view markdown) const {
+  return ParseLines(Lines(markdown), 0U);
 }
 
 std::string TutorialMarkdownParser::PlainText(

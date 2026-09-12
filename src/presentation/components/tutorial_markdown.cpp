@@ -14,6 +14,7 @@
 
 #include "presentation/line_theme.h"
 #include "presentation/markdown_link_policy.h"
+#include "presentation/markdown_linkify.h"
 
 namespace linecode::presentation {
 namespace {
@@ -29,12 +30,56 @@ TextStyle Label(float size, FontWeight weight = FontWeight::Regular,
   return TextStyle{Font::System(size).WithWeight(weight), color};
 }
 
+/// Appends the runs of one inline part, turning bare web URLs into link-styled
+/// spans the way `MarkdownLinks.apply()` did with
+/// `Linkify.addLinks(builder, Linkify.WEB_URLS)` (`MarkdownLinks.java:17-18`).
+///
+/// Parts that already carry an explicit `[text](url)` destination keep their
+/// own link and are never split again, and inline code is left alone because a
+/// code sample must stay readable.
+void AppendRuns(std::vector<TextSpan>& spans, const domain::TutorialInline& part,
+                float scale) {
+  const auto part_style = [&part, scale] {
+    TextSpanStyle style;
+    if (part.strong)
+      style.font_weight = FontWeight::Bold;
+    if (part.emphasis)
+      style.font_slant = FontSlant::Italic;
+    if (part.code) {
+      style.font = Font::Monospace(16.0F * scale);
+      style.background = colors::surface_light;
+    }
+    return style;
+  };
+  const auto has_part_style =
+      part.strong || part.emphasis || part.code;
+  for (const auto& run : LinkifyWebUrls(part.text)) {
+    if (run.text.empty())
+      continue;
+    TextSpan span(run.text);
+    TextSpanStyle style = part_style();
+    if (run.url) {
+      style.foreground = colors::accent;
+      style.decoration = TextDecoration::Underline;
+    }
+    if (has_part_style || run.url)
+      span = std::move(span).Style(std::move(style));
+    if (run.url) {
+      // Same navigability gate as explicit Markdown links: a recognized URL
+      // stays link-styled, but only a navigable target becomes clickable.
+      if (auto target = ParseNavigableMarkdownLink(*run.url))
+        span = std::move(span).Link(std::move(*target));
+    }
+    spans.push_back(std::move(span));
+  }
+}
+
 AttributedText RichText(const domain::TutorialInlineLine& line, float scale) {
   std::vector<TextSpan> spans;
   spans.reserve(line.size());
   for (const auto& part : line) {
-    TextSpan span(part.text);
-    if (part.strong || part.emphasis || part.code || part.link) {
+    if (!LinkifiesBareUrls(part.code, part.link.has_value())) {
+      TextSpan span(part.text);
       TextSpanStyle style;
       if (part.strong)
         style.font_weight = FontWeight::Bold;
@@ -48,14 +93,19 @@ AttributedText RichText(const domain::TutorialInlineLine& line, float scale) {
         style.foreground = colors::accent;
         style.decoration = TextDecoration::Underline;
       }
-      span = std::move(span).Style(std::move(style));
+      if (part.strong || part.emphasis || part.code || part.link)
+        span = std::move(span).Style(std::move(style));
+      if (part.link) {
+        if (auto target = ParseNavigableMarkdownLink(*part.link))
+          span = std::move(span).Link(std::move(*target));
+      }
+      spans.push_back(std::move(span));
+      continue;
     }
-    if (part.link) {
-      if (auto target = ParseNavigableMarkdownLink(*part.link))
-        span = std::move(span).Link(std::move(*target));
-    }
-    spans.push_back(std::move(span));
+    AppendRuns(spans, part, scale);
   }
+  if (spans.empty())
+    return AttributedText();
   return AttributedText(std::span<const TextSpan>(spans));
 }
 
@@ -73,34 +123,55 @@ View RichLabel(const domain::TutorialInlineLine& content, float size,
           });
 }
 
-View HeadingBlock(const domain::TutorialHeading& heading, float scale,
+View HeadingBlock(const domain::TutorialHeading& heading, std::size_t depth,
+                  float scale,
                   const TutorialMarkdownLinkHandler& on_link) {
   const float size = heading.level <= 1 ? 28.0F
                      : heading.level == 2 ? 24.0F
                      : heading.level == 3 ? 20.0F
                                           : 16.0F;
+  // `MarkdownRenderer.java:95`: nested headings use the 4/10 container margins.
   return RichLabel(heading.content, size, scale, on_link, FontWeight::Medium)
-      .With(Padding(EdgeInsets{.top = 8.0F,
+      .With(Padding(EdgeInsets{.top = depth == 0 ? 8.0F : 4.0F,
                                .right = 0.0F,
-                               .bottom = 20.0F,
+                               .bottom = depth == 0 ? 20.0F : 10.0F,
                                .left = 0.0F}));
 }
 
-View ParagraphBlock(const domain::TutorialParagraph& paragraph, float scale,
+View ParagraphBlock(const domain::TutorialParagraph& paragraph,
+                    std::size_t depth, float scale,
                     const TutorialMarkdownLinkHandler& on_link) {
+  // `MarkdownRenderer.java:110`: nested paragraphs drop the outer spacing.
   return RichLabel(paragraph.content, 16.0F, scale, on_link)
-      .With(Padding(EdgeInsets{.top = 2.0F,
+      .With(Padding(EdgeInsets{.top = depth == 0 ? 2.0F : 0.0F,
                                .right = 0.0F,
-                               .bottom = 18.0F,
+                               .bottom = depth == 0 ? 18.0F : 8.0F,
                                .left = 0.0F}));
 }
 
-View QuoteBlock(const domain::TutorialQuote& quote, float scale,
-                const TutorialMarkdownLinkHandler& on_link) {
+View BlockView(const domain::TutorialBlock& block, std::size_t depth,
+               bool wraps, float scale,
+               const TutorialMarkdownLinkHandler& on_link,
+               const TutorialMarkdownCopyHandler& on_copy);
+
+View BlockSequenceView(const domain::TutorialBlockSequence* sequence,
+                       std::size_t depth, bool wraps, float scale,
+                       const TutorialMarkdownLinkHandler& on_link,
+                       const TutorialMarkdownCopyHandler& on_copy);
+
+View QuoteBlock(const domain::TutorialQuote& quote, std::size_t depth,
+                bool wraps, float scale,
+                const TutorialMarkdownLinkHandler& on_link,
+                const TutorialMarkdownCopyHandler& on_copy) {
+  // `MarkdownRenderer.java:124-128` renders every child block of the
+  // `BlockQuote` inside the content column next to the rail, so a fenced code
+  // block inside `>` keeps its own block layout.
   return Row {
     Stack {}.With(Frame{.width = 3.0F}, Background(colors::border_light),
                   CornerRadius(2.0F)),
-    RichLabel(quote.content, 16.0F, scale, on_link).With(Grow()),
+    BlockSequenceView(quote.blocks.get(), depth + 1, wraps, scale, on_link,
+                      on_copy)
+        .With(Grow()),
   }.With(Spacing(12.0F), Padding(EdgeInsets{.top = 3.0F,
                                             .right = 0.0F,
                                             .bottom = 8.0F,
@@ -108,14 +179,25 @@ View QuoteBlock(const domain::TutorialQuote& quote, float scale,
          CrossAlign(CrossAxisAlignment::Stretch));
 }
 
-View ListItem(const domain::TutorialListItem& item, float scale,
-              const TutorialMarkdownLinkHandler& on_link) {
+View ListItem(const domain::TutorialListItem& item, bool wraps, float scale,
+              const TutorialMarkdownLinkHandler& on_link,
+              const TutorialMarkdownCopyHandler& on_copy) {
+  // `MarkdownRenderer.java:154-155` renders the children of the `ListItem`
+  // inside the item's content column, indented under the marker.
+  std::vector<View> content;
+  content.push_back(RichLabel(item.content, 16.0F, scale, on_link));
+  if (item.blocks) {
+    for (const auto& block : item.blocks->blocks)
+      content.push_back(BlockView(block, item.depth + 1, wraps, scale, on_link,
+                                  on_copy));
+  }
   return Row {
     Text(item.marker)
         .Style(Label(16.0F * scale, FontWeight::Regular, colors::secondary))
         .Align(TextAlign::Trailing)
         .With(Frame{.width = 22.0F + static_cast<float>(item.depth) * 4.0F}),
-    RichLabel(item.content, 16.0F, scale, on_link).With(Grow()),
+    Column(std::move(content))
+        .With(Grow(), CrossAlign(CrossAxisAlignment::Stretch)),
   }.With(Spacing(8.0F),
          Padding(EdgeInsets{.top = 0.0F,
                             .right = 0.0F,
@@ -124,12 +206,13 @@ View ListItem(const domain::TutorialListItem& item, float scale,
          CrossAlign(CrossAxisAlignment::Start));
 }
 
-View ListBlock(const domain::TutorialList& list, float scale,
-               const TutorialMarkdownLinkHandler& on_link) {
+View ListBlock(const domain::TutorialList& list, bool wraps, float scale,
+               const TutorialMarkdownLinkHandler& on_link,
+               const TutorialMarkdownCopyHandler& on_copy) {
   std::vector<View> items;
   items.reserve(list.items.size());
   for (const auto& item : list.items)
-    items.push_back(ListItem(item, scale, on_link));
+    items.push_back(ListItem(item, wraps, scale, on_link, on_copy));
   return Column(std::move(items))
       .With(Padding(EdgeInsets{.top = 1.0F,
                                .right = 0.0F,
@@ -254,41 +337,62 @@ View ThematicBreakBlock() {
          Align(HorizontalAlignment::Stretch, VerticalAlignment::Center));
 }
 
-} // namespace
+View BlockSequenceView(const domain::TutorialBlockSequence* sequence,
+                       std::size_t depth, bool wraps, float scale,
+                       const TutorialMarkdownLinkHandler& on_link,
+                       const TutorialMarkdownCopyHandler& on_copy) {
+  std::vector<View> blocks;
+  if (sequence) {
+    blocks.reserve(sequence->blocks.size());
+    for (const auto& block : sequence->blocks)
+      blocks.push_back(BlockView(block, depth, wraps, scale, on_link, on_copy));
+  }
+  return Column(std::move(blocks))
+      .With(CrossAlign(CrossAxisAlignment::Stretch));
+}
 
-View TutorialMarkdownBlockView(const domain::TutorialBlock& block,
-                               bool code_wrap_enabled, float text_scale,
-                               TutorialMarkdownLinkHandler on_link,
-                               TutorialMarkdownCopyHandler on_copy) {
+View BlockView(const domain::TutorialBlock& block, std::size_t depth,
+               bool wraps, float scale,
+               const TutorialMarkdownLinkHandler& on_link,
+               const TutorialMarkdownCopyHandler& on_copy) {
   return std::visit(
       Overloaded{
-          [text_scale, on_link](const domain::TutorialHeading& value) {
-            return HeadingBlock(value, text_scale, on_link);
+          [depth, scale, &on_link](const domain::TutorialHeading& value) {
+            return HeadingBlock(value, depth, scale, on_link);
           },
-          [text_scale, on_link](const domain::TutorialParagraph& value) {
-            return ParagraphBlock(value, text_scale, on_link);
+          [depth, scale, &on_link](const domain::TutorialParagraph& value) {
+            return ParagraphBlock(value, depth, scale, on_link);
           },
-          [text_scale, on_link](const domain::TutorialQuote& value) {
-            return QuoteBlock(value, text_scale, on_link);
+          [depth, wraps, scale, &on_link,
+           &on_copy](const domain::TutorialQuote& value) {
+            return QuoteBlock(value, depth, wraps, scale, on_link, on_copy);
           },
-          [text_scale, on_link](const domain::TutorialList& value) {
-            return ListBlock(value, text_scale, on_link);
+          [wraps, scale, &on_link, &on_copy](const domain::TutorialList& value) {
+            return ListBlock(value, wraps, scale, on_link, on_copy);
           },
-          [code_wrap_enabled, text_scale,
-           on_copy](const domain::TutorialCodeBlock& value) {
-            return CodeBlock(value, code_wrap_enabled, text_scale, on_copy);
+          [wraps, scale, &on_copy](const domain::TutorialCodeBlock& value) {
+            return CodeBlock(value, wraps, scale, on_copy);
           },
-          [text_scale](const domain::TutorialImageBlock &value) {
-            return ImageBlock(value, text_scale);
+          [scale](const domain::TutorialImageBlock& value) {
+            return ImageBlock(value, scale);
           },
-          [text_scale, on_link](const domain::TutorialTable& value) {
-            return TableBlock(value, text_scale, on_link);
+          [scale, &on_link](const domain::TutorialTable& value) {
+            return TableBlock(value, scale, on_link);
           },
           [](const domain::TutorialThematicBreak&) {
             return ThematicBreakBlock();
           },
       },
       block);
+}
+
+} // namespace
+
+View TutorialMarkdownBlockView(const domain::TutorialBlock& block,
+                               bool code_wrap_enabled, float text_scale,
+                               TutorialMarkdownLinkHandler on_link,
+                               TutorialMarkdownCopyHandler on_copy) {
+  return BlockView(block, 0U, code_wrap_enabled, text_scale, on_link, on_copy);
 }
 
 View TutorialMarkdownDocumentView(const domain::TutorialDocument& document,
@@ -299,8 +403,7 @@ View TutorialMarkdownDocumentView(const domain::TutorialDocument& document,
   blocks.reserve(document.blocks.size());
   for (const auto& block : document.blocks)
     blocks.push_back(
-        TutorialMarkdownBlockView(block, code_wrap_enabled, text_scale,
-                                  on_link, on_copy));
+        BlockView(block, 0U, code_wrap_enabled, text_scale, on_link, on_copy));
   return SelectionArea(Column(std::move(blocks)).With(
       CrossAlign(CrossAxisAlignment::Stretch)));
 }

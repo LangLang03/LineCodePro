@@ -47,6 +47,7 @@
 #include "domain/compaction_progress.h"
 #include "domain/context_usage.h"
 #include "domain/diff_lines.h"
+#include "domain/inline_emphasis.h"
 #include "infrastructure/tutorial_markdown_parser.h"
 #include "presentation/components/chat_overlays.h"
 #include "presentation/components/tutorial_markdown.h"
@@ -1377,6 +1378,34 @@ View AssistantMarkdown(std::string_view markdown, bool code_wrap,
       .With(Frame{.max_width = 684.0F});
 }
 
+// Turns `InlineEmphasisParser` spans into text fragments. The mapping matches
+// `ThinkingBlockView.typefaceStyle()`: BOLD keeps the weight, ITALIC the slant
+// and every other style (BOLD_ITALIC) gets both.
+AttributedText ReasoningEmphasisText(std::string_view source) {
+  const auto parsed = domain::ParseInlineEmphasis(source);
+  if (parsed.spans.empty())
+    return AttributedText(parsed.text);
+  std::vector<TextSpan> spans;
+  spans.reserve(parsed.spans.size() * 2U + 1U);
+  std::size_t cursor = 0;
+  for (const auto &span : parsed.spans) {
+    if (span.start > cursor)
+      spans.emplace_back(parsed.text.substr(cursor, span.start - cursor));
+    TextSpanStyle style;
+    if (span.style != domain::InlineEmphasisStyle::Italic)
+      style.font_weight = FontWeight::Bold;
+    if (span.style != domain::InlineEmphasisStyle::Bold)
+      style.font_slant = FontSlant::Italic;
+    TextSpan emphasised(
+        parsed.text.substr(span.start, span.end - span.start));
+    spans.push_back(std::move(emphasised).Style(std::move(style)));
+    cursor = span.end;
+  }
+  if (cursor < parsed.text.size())
+    spans.emplace_back(parsed.text.substr(cursor));
+  return AttributedText(std::span<const TextSpan>(spans));
+}
+
 View ReasoningTimelineBlock(
     const domain::AssistantReasoningEvent &reasoning,
     std::string key, const ChatTimelineSettings &settings,
@@ -1402,8 +1431,11 @@ View ReasoningTimelineBlock(
                      PointerCursor(PointerCursorKind::Hand));
   if (!expanded)
     return header;
+  // `ThinkingBlockView.styledContent()` runs the streamed summary through
+  // `InlineEmphasisParser` and applies `StyleSpan(BOLD/ITALIC/BOLD_ITALIC)`
+  // rather than showing the raw markers.
   View body = SelectionArea(
-      Text(reasoning.text)
+      Text(ReasoningEmphasisText(reasoning.text))
           .Style(ChatTextStyle(14.0F, FontWeight::Regular, colors::tertiary)));
   if (settings.thinking_scroll) {
     body = ScrollView(std::move(body))
