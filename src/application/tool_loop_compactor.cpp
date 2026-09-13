@@ -1,11 +1,14 @@
 #include "application/tool_loop_compactor.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "domain/compaction_progress.h"
 
 namespace linecode::application {
 namespace {
@@ -45,12 +48,14 @@ domain::ChatMessage ToDomain(const CompletionMessage &message) {
 
 ToolLoopCompactor::ToolLoopCompactor(
     std::shared_ptr<ContextCompactionService> compaction,
-    std::shared_ptr<ModelStore> models, const bool include_reasoning)
+    std::shared_ptr<ModelStore> models, const bool include_reasoning,
+    std::shared_ptr<ChatSession> session)
     : compaction_(std::move(compaction)), models_(std::move(models)),
-      include_reasoning_(include_reasoning) {}
+      include_reasoning_(include_reasoning), session_(std::move(session)) {}
 
 huxerui::Task<CompletionRequest>
-ToolLoopCompactor::CompactIfNeeded(CompletionRequest request) {
+ToolLoopCompactor::CompactIfNeeded(CompletionRequest request,
+                                  const std::int64_t observed_input_tokens) {
   if (!compaction_)
     co_return request;
 
@@ -70,7 +75,11 @@ ToolLoopCompactor::CompactIfNeeded(CompletionRequest request) {
   converted.reserve(request.messages.size() - head);
   for (std::size_t index = head; index < request.messages.size(); ++index) {
     converted.push_back(ToDomain(request.messages[index]));
-    converted.back().id = index + 1;
+    // Prefer the conversation row this message came from. Only the in-flight
+    // group has none, and those are exactly the messages that must be kept.
+    converted.back().id = request.messages[index].source_id != 0
+                              ? request.messages[index].source_id
+                              : index + 1;
   }
 
   std::optional<domain::ModelConfig> model;
@@ -87,11 +96,8 @@ ToolLoopCompactor::CompactIfNeeded(CompletionRequest request) {
   if (!request.model.model_id.empty())
     model = request.model;
 
-  // No server-observed token count travels with the request yet, so the check
-  // falls back to the local estimate exactly like the legacy controller did
-  // before usage was reported.
-  constexpr int kNoObservedTokens = 0;
-  if (!ShouldAutoCompactMidLoop(model, converted, kNoObservedTokens,
+  if (!ShouldAutoCompactMidLoop(model, converted,
+                                static_cast<int>(observed_input_tokens),
                                 include_reasoning_)) {
     co_return request;
   }
@@ -106,10 +112,17 @@ ToolLoopCompactor::CompactIfNeeded(CompletionRequest request) {
 
   std::vector<domain::ChatMessage> base;
   base.reserve(converted.size());
-  for (const auto &message : converted) {
-    if (std::ranges::contains(preserved_ids, message.id))
+  // The conversation rows being summarized, named by the ids they actually
+  // have. Messages with no `source_id` are the in-flight group and are never
+  // in `base`; taking the ids from provenance rather than from position is
+  // what makes the write-back below exact.
+  std::vector<std::uint64_t> summarized_rows;
+  for (std::size_t index = 0; index < converted.size(); ++index) {
+    if (std::ranges::contains(preserved_ids, converted[index].id))
       continue;
-    base.push_back(message);
+    base.push_back(converted[index]);
+    if (request.messages[head + index].source_id != 0)
+      summarized_rows.push_back(request.messages[head + index].source_id);
   }
   if (!HasCompactableBaseMessages(base))
     co_return request;
@@ -117,6 +130,24 @@ ToolLoopCompactor::CompactIfNeeded(CompletionRequest request) {
   auto compacted = co_await compaction_->Compact(request.model, base);
   if (!compacted || compacted->Empty())
     co_return request;
+
+  // Show the block while it is being applied, exactly like the pre-request
+  // path, and take it down again whichever way the write-back goes.
+  const bool has_session = session_ != nullptr;
+  if (has_session) {
+    static_cast<void>(session_->AppendAssistant(
+        domain::CompactProgressMessage(0U, domain::compact_status_running)));
+  }
+  if (has_session && !summarized_rows.empty()) {
+    // The summarized rows leave the context and the summary joins it. The
+    // in-flight group is deliberately not appended: the loop still owns it and
+    // the generation persists it when the turn completes, so appending it here
+    // would duplicate it.
+    session_->ApplyCompaction(summarized_rows, compacted->summary_content,
+                              std::vector<domain::ChatMessage>{});
+    static_cast<void>(session_->AppendAssistant(
+        domain::CompactProgressMessage(0U, domain::compact_status_done)));
+  }
 
   // Rebuild: system prompt, summary, then the untouched in-flight group.
   std::vector<CompletionMessage> rebuilt;

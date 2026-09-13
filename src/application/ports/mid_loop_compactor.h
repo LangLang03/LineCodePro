@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -26,10 +27,16 @@ public:
 
   // Called after each tool batch, before the next model turn.
   //
+  // `observed_input_tokens` is what the provider reported for the turn that
+  // just finished, or 0 when it reported nothing. The loop has it in hand and
+  // passes it through so the trigger measures the real context instead of
+  // falling back to a local estimate, which undercounts badly for CJK text.
+  //
   // Returns the possibly rewritten request. A request returned unchanged means
   // "nothing to do"; the loop then proceeds exactly as before.
   [[nodiscard]] virtual huxerui::Task<CompletionRequest>
-  CompactIfNeeded(CompletionRequest request) = 0;
+  CompactIfNeeded(CompletionRequest request,
+                  std::int64_t observed_input_tokens) = 0;
 };
 
 } // namespace linecode::application

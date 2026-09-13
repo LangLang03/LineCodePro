@@ -11,7 +11,9 @@
 #include <map>
 #include <vector>
 
+#include "application/chat_session.h"
 #include "application/context_compaction.h"
+#include "infrastructure/in_memory_conversation_store.h"
 #include "application/ports/completion_gateway.h"
 #include "application/ports/model_store.h"
 #include "application/prompt_template_repository.h"
@@ -168,15 +170,20 @@ struct Harness final {
   std::shared_ptr<application::PromptTemplateRepository> templates;
   std::shared_ptr<application::ContextCompactionService> compaction;
   std::shared_ptr<application::ToolLoopCompactor> compactor;
+  std::shared_ptr<application::ChatSession> session;
 
-  explicit Harness(domain::ModelConfig model) {
+  explicit Harness(domain::ModelConfig model, bool with_session = false) {
     models->model_ = std::move(model);
     templates = std::make_shared<application::PromptTemplateRepository>(
         std::make_shared<MemorySettings>());
     compaction = std::make_shared<application::ContextCompactionService>(
         gateway, templates, models);
-    compactor = std::make_shared<application::ToolLoopCompactor>(compaction,
-                                                                models, true);
+    if (with_session) {
+      session = std::make_shared<application::ChatSession>(
+          std::make_unique<infrastructure::InMemoryConversationStore>());
+    }
+    compactor = std::make_shared<application::ToolLoopCompactor>(
+        compaction, models, true, session);
   }
 };
 
@@ -186,6 +193,9 @@ struct Harness final {
 // The compactor is a coroutine, so the probe drives it inside a HuxerUI
 // application exactly like the other async tests in this suite.
 struct Probe final {
+  // What the provider reported for the finished turn; 0 means it reported
+  // nothing and the trigger falls back to the local estimate.
+  std::int64_t observed_input_tokens{};
   std::shared_ptr<Harness> harness;
   application::CompletionRequest request;
   application::CompletionRequest result;
@@ -204,7 +214,7 @@ huxerui::View CompactionProbe() {
     tasks.Launch([current]() -> huxerui::Task<void> {
       current->result =
           co_await current->harness->compactor->CompactIfNeeded(
-              std::move(current->request));
+              std::move(current->request), current->observed_input_tokens);
       current->done = true;
     });
   });
@@ -297,10 +307,105 @@ void CompactorWithoutACompactionServiceIsANoOp() {
 
 } // namespace
 
+// A mid-loop compaction has to leave the conversation changed. Rewriting only
+// the request in flight would put the summary nowhere, so the next turn would
+// rebuild from the untouched history and compact it all over again.
+void MidLoopCompactionWritesBackToTheConversation() {
+  Probe target;
+  target.harness = std::make_shared<Harness>(SmallWindowModel(), true);
+  target.run = true;
+  target.request.model = target.harness->models->model_;
+  target.request.messages = {SystemMessage()};
+
+  // Seed the conversation and mirror it into the request the way
+  // `BuildMessages` does, carrying each row's id as provenance.
+  for (int index = 0; index < 12; ++index) {
+    static_cast<void>(target.harness->session->Send(
+        std::string(60, 'a') + std::to_string(index)));
+  }
+  const auto rows = std::vector<domain::ChatMessage>{
+      target.harness->session->Messages().begin(),
+      target.harness->session->Messages().end()};
+  for (const auto &row : rows) {
+    target.request.messages.push_back(
+        application::CompletionMessage{.role = application::CompletionRole::user,
+                                       .content = row.content,
+                                       .source_id = row.id});
+  }
+  // The in-flight group: no session row behind it.
+  target.request.messages.push_back(application::CompletionMessage::Assistant(
+      "working", {application::CompletionToolCall{
+                     .id = "c1", .name = "list_dir", .arguments_json = "{}"}}));
+  target.request.messages.push_back(application::CompletionMessage::Tool(
+      application::CompletionToolResult{
+          .call_id = "c1", .name = "list_dir", .content = "[]", .error = false}));
+
+  const auto before = target.harness->session->Messages().size();
+  static_cast<void>(Run(target));
+
+  const auto after = std::vector<domain::ChatMessage>{
+      target.harness->session->Messages().begin(),
+      target.harness->session->Messages().end()};
+  // Summarized rows leave the context, the summary joins it, and the running
+  // and done progress blocks were appended for the transcript.
+  const auto hidden =
+      std::count_if(after.begin(), after.end(),
+                    [](const domain::ChatMessage &message) {
+                      return message.exclude_from_context;
+                    });
+  assert(hidden > 0);
+  assert(after.size() > before);
+  const auto summaries = std::count_if(
+      after.begin(), after.end(), [](const domain::ChatMessage &message) {
+        return message.hidden && !message.exclude_from_context;
+      });
+  assert(summaries == 1);
+  const auto blocks = std::count_if(
+      after.begin(), after.end(), [](const domain::ChatMessage &message) {
+        return message.compact_status == std::string{"done"};
+      });
+  assert(blocks == 1);
+}
+
+// The trigger has to measure what the provider reported.
+void MidLoopTriggerUsesTheReportedCount() {
+  Probe without;
+  without.harness = std::make_shared<Harness>(SmallWindowModel());
+  without.run = true;
+  without.request.model = without.harness->models->model_;
+  // Deliberately short: the local estimate (characters / 4) stays far below
+  // the threshold, so only a reported count can cross it. Enough rows that a
+  // compactable base remains once the preserved tail is set aside.
+  const auto short_history = [] {
+    std::vector<application::CompletionMessage> messages{SystemMessage()};
+    for (int index = 0; index < 6; ++index)
+      messages.push_back(UserMessage("s" + std::to_string(index)));
+    return messages;
+  };
+  without.request.messages = short_history();
+  without.observed_input_tokens = 0;
+  const auto untouched = Run(without);
+
+  Probe reported;
+  reported.harness = std::make_shared<Harness>(SmallWindowModel());
+  reported.run = true;
+  reported.request.model = reported.harness->models->model_;
+  // A short history, so only the reported count can cross the threshold.
+  reported.request.messages = short_history();
+  reported.observed_input_tokens = 190;
+  const auto compacted = Run(reported);
+
+  // The local estimate is nowhere near the threshold, so nothing changed.
+  assert(untouched.messages.size() == without.request.messages.size());
+  assert(compacted.messages.size() < reported.request.messages.size());
+}
+
 int main() {
   LongToolLoopCompactsAndKeepsTheInFlightGroup();
   ShortLoopIsLeftAlone();
   CompactorWithoutACompactionServiceIsANoOp();
+  MidLoopCompactionWritesBackToTheConversation();
+  MidLoopTriggerUsesTheReportedCount();
   std::cout << "tool_loop_compactor_tests passed\n";
   return 0;
 }

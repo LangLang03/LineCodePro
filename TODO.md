@@ -330,7 +330,35 @@ python3 tools/ui_parity_test.py \
       **双向真机验证**：窗口 600 时每轮触发（摘要请求 + 含摘要请求各一）；
       窗口 128000 时两次发送仅两个请求、**不触发**。80/80 测试、回归功能失败 0。
 
-- [ ] **mid-loop 压缩的残留语义差异**（第 23 轮做过可行性核查，结论：改动深、
+- [x] **mid-loop 压缩的四个问题已全部修复并真机验证**（第 41 轮）。
+      原先报告的只是其中一个，实际有四个：
+      (1) 无「压缩」进度块；(2) 摘要不落库；(3) **触发用的是本地估算而非
+      服务器上报用量**（`kNoObservedTokens = 0` 硬编码，而
+      `characters_per_token = 4` 对中文严重低估，会让 80% 硬触发偏晚甚至不触发）；
+      (4) 摘要只存在于请求中，**下一轮从会话重建 → 每轮重复压缩一次**。
+      **解法（不用 Java 那套耦合）**：根因是旧版靠"在途消息也在会话里"来推断
+      保留尾部，候选的在途组只活在请求中。与其让会话去模仿循环，
+      改为给消息加**来源标识**：`CompletionMessage::source_id` 记录它来自哪一行会话
+      （在途消息为 0），由 `BuildMessages` 填入。这样"排除了哪些会话行"
+      由**来源**精确给出，不依赖"请求前缀与会话 1:1"这种位置不变量。
+      压缩器据此调用 `ChatSession::ApplyCompaction`（旧版语义：被摘要行标 exclude、
+      摘要以 hidden 行加入），追加 running/done 进度块，并只重建
+      `[system] + [摘要] + [在途组]`——**在途组不写入会话**，
+      因为它仍由循环持有、由生成完成时的正常路径持久化，写两次就会重复。
+      进度块无需额外通知：会话本就会触发界面重绘。
+      用量由循环把 `response->input_tokens` 传入（旧版用
+      `tokenUsageTracker.lastInputTokens()`，同一语义）。
+      **真机证据**（上下文窗口 700，`__LINECODE_TEST_LOOP__` 长工具循环）：
+      · 请求序列 `2 条 → 1 条（摘要请求）→ 4 条（摘要下标 1）`；
+      · 数据库落库顺序为
+        `0 user(排除) | 1 running 块 | 2 摘要(hidden) | 3 done 块 | 4 assistant(保留)`；
+      · **重启后**只发 1 个请求、摘要在下标 1——证明不再重复压缩。
+      **测试**：新增 `MidLoopCompactionWritesBackToTheConversation`
+      （断言被摘要行标 exclude、摘要 hidden 行存在、done 块存在）与
+      `MidLoopTriggerUsesTheReportedCount`（短历史本地估算不触发、
+      上报 190 才触发）。83/83；23 场景回归功能失败 0。
+
+- [ ] **mid-loop 压缩的残留语义差异（已修复，保留原条目以便追溯）**（第 23 轮做过可行性核查，结论：改动深、
       收益窄，暂缓）：旧版 `startToolLoopContextCompaction` 会改写会话并
       `persistCurrentConversation()`，因此摘要落库、UI 出现「压缩」进度块；
       当前实现只重写**本次在途请求**（`MidLoopCompactor` 端口拿不到会话），

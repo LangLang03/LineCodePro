@@ -549,7 +549,10 @@ huxerui::View PlatformServicesHost() {
               // Product default; `AiBehaviorSettings` loads asynchronously, so
               // the loop uses the same default the legacy controller saw when
               // the setting was untouched.
-              domain::AiBehaviorSettings{}.preserve_reasoning)));
+              domain::AiBehaviorSettings{}.preserve_reasoning,
+              // Mid-loop compaction writes the summary back to the same
+              // conversation the pre-request path rewrites.
+              chat.Get()->Session())));
   const auto line_colors =
       presentation::LineColorsForPalette(theme_settings->palette);
   auto theme = presentation::LineThemeDefinition(line_colors);

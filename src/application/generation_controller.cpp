@@ -134,14 +134,21 @@ void AppendAssistantHistory(const domain::ChatMessage &message,
     static_cast<void>(index);
     if (turn.calls.empty())
       continue;
-    history.push_back(CompletionMessage::Assistant(
-        std::move(turn.text), std::move(turn.calls), std::move(turn.reasoning)));
-    for (auto &result : turn.results)
-      history.push_back(CompletionMessage::Tool(std::move(result)));
+    auto assistant = CompletionMessage::Assistant(
+        std::move(turn.text), std::move(turn.calls), std::move(turn.reasoning));
+    assistant.source_id = message.id;
+    history.push_back(std::move(assistant));
+    for (auto &result : turn.results) {
+      auto tool = CompletionMessage::Tool(std::move(result));
+      tool.source_id = message.id;
+      history.push_back(std::move(tool));
+    }
   }
-  history.push_back(CompletionMessage::Assistant(
+  auto trailing = CompletionMessage::Assistant(
       result_display.Project({}, message.content, false).model_content, {},
-      message.reasoning_content));
+      message.reasoning_content);
+  trailing.source_id = message.id;
+  history.push_back(std::move(trailing));
 }
 
 } // namespace
@@ -194,7 +201,8 @@ std::vector<CompletionMessage> GenerationController::BuildMessages() const {
     if (message.role == domain::MessageRole::user) {
       messages.push_back(CompletionMessage{.role = CompletionRole::user,
                                            .content = message.content,
-                                           .image = message.image});
+                                           .image = message.image,
+                                           .source_id = message.id});
     } else if (message.role == domain::MessageRole::assistant) {
       AppendAssistantHistory(message, messages, *result_display_);
     }

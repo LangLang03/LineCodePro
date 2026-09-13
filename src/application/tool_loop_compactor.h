@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "application/auto_compaction_service.h"
+#include "application/chat_session.h"
 #include "application/context_compaction.h"
 #include "application/ports/completion_gateway.h"
 #include "application/ports/mid_loop_compactor.h"
@@ -24,15 +25,28 @@ namespace linecode::application {
 class ToolLoopCompactor final : public MidLoopCompactor {
 public:
   ToolLoopCompactor(std::shared_ptr<ContextCompactionService> compaction,
-                    std::shared_ptr<ModelStore> models, bool include_reasoning);
+                    std::shared_ptr<ModelStore> models, bool include_reasoning,
+                    std::shared_ptr<ChatSession> session = {});
 
   [[nodiscard]] huxerui::Task<CompletionRequest>
-  CompactIfNeeded(CompletionRequest request) override;
+  CompactIfNeeded(CompletionRequest request,
+                  std::int64_t observed_input_tokens) override;
 
 private:
+  // Lets the screen re-render the transcript the block was appended to.
+  void NotifyChanged() const;
+
   std::shared_ptr<ContextCompactionService> compaction_;
   std::shared_ptr<ModelStore> models_;
   bool include_reasoning_{true};
+  // Owns the conversation. Mid-loop compaction rewrites it the same way the
+  // pre-request path does -- the summarized rows leave the context and the
+  // summary joins it -- instead of only editing the request in flight, which
+  // left the summary nowhere and made the next turn compact the same history
+  // again.
+  // The session notifies the screen when it changes, so appending the
+  // progress block is enough to make it appear.
+  std::shared_ptr<ChatSession> session_;
 };
 
 } // namespace linecode::application

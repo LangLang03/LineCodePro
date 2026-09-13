@@ -355,6 +355,15 @@ class FakeAiHandler(BaseHTTPRequestHandler):
             return None
         strategies = (
             (
+                # Starts the loop: without an entry here the first request of a
+                # loop run falls through to the default reply and the loop the
+                # trigger is named for never begins.
+                LOOP_TOOL_TRIGGER,
+                "list_dir",
+                {"path": "."},
+                "call_linecode_loop_first",
+            ),
+            (
                 AGENT_WRITE_TOOL_TRIGGER,
                 "agent",
                 {

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <variant>
@@ -61,6 +62,12 @@ struct CompletionMessage final {
   // the text through the whole send path (`onSendWithImage`), so each protocol
   // encoder can emit its own multimodal part.
   std::optional<domain::ChatImage> image{};
+  // The conversation row this message was built from, or 0 for a message that
+  // exists only inside the running tool loop (the in-flight assistant and tool
+  // group). Mid-loop compaction has to name the rows it summarized, and
+  // deriving that from position would depend on the request layout staying in
+  // step with the session -- provenance is exact and survives any rebuilding.
+  std::uint64_t source_id{};
 
   bool operator==(const CompletionMessage &) const = default;
 

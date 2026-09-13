@@ -312,7 +312,11 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
     // compactor a chance to shrink the history so a long tool loop cannot
     // outgrow the window.
     if (mid_loop_compactor_) {
-      request = co_await mid_loop_compactor_->CompactIfNeeded(std::move(request));
+      // Hand the provider's own count to the trigger: the local estimate
+      // divides characters by four, which undercounts CJK text by a wide
+      // margin and would let the context drift past the window.
+      request = co_await mid_loop_compactor_->CompactIfNeeded(
+          std::move(request), response->input_tokens);
     }
     ++turn_index;
   }

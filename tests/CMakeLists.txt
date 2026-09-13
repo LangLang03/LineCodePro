@@ -29,6 +29,7 @@ add_executable(linecodepro_tests
         ../src/application/chat_session.cpp
         ../src/application/legacy_attachment_policy.cpp
         ../src/application/send_message.cpp
+        ../src/application/legacy_attachment_policy.cpp
         ../src/domain/input_attachment.cpp
         ../src/infrastructure/in_memory_conversation_store.cpp
 )
@@ -1652,6 +1653,8 @@ add_test(NAME agent_pipeline_tests COMMAND agent_pipeline_tests)
 
 add_executable(sub_agent_runner_tests
         sub_agent_runner_tests.cpp
+        ../src/application/tool_permission_service.cpp
+        ../src/application/tool_review_broker.cpp
         ../src/domain/agent_pipeline.cpp
         ../src/application/sub_agent_runner.cpp
         ../src/application/prompt_template_repository.cpp
@@ -1737,6 +1740,10 @@ add_test(NAME auto_compaction_tests COMMAND auto_compaction_tests)
 add_executable(tool_loop_compactor_tests
         tool_loop_compactor_tests.cpp
         ../src/application/tool_loop_compactor.cpp
+        ../src/application/chat_session.cpp
+        ../src/application/send_message.cpp
+        ../src/application/legacy_attachment_policy.cpp
+        ../src/infrastructure/in_memory_conversation_store.cpp
         ../src/application/auto_compaction_service.cpp
         ../src/application/context_compaction.cpp
         ../src/application/prompt_template_repository.cpp
