@@ -796,15 +796,19 @@ python3 tools/ui_parity_test.py \
       因为 NDK 在打包阶段会 strip；`liblinecodepro.so` 的 14.3 MB 是
       **真实代码**（`.text` 9.0 MB、`.eh_frame` 1.2 MB、`.dynstr` 1.2 MB、
       `.rodata` 1.0 MB），不是符号。
-      *预期收益*：移除 x86_64 三个库共约 **22.9 MB（未压缩）**，
-      APK 由 43.2 MB 降至约 21 MB 量级。
-      **待补**：实测重建——删除 `.cxx` 时一并清掉了 CMake 拉取的
-      `Lib-SQLite`/`Lib-WebView` 源码，而当前网络中断
-      （代理 7890 未监听、直连 000），无法重新拉取。
-      ABI 配置本身已用 `--dry-run` 验证：
-      默认只出现 `configureCMakeRelWithDebInfo[arm64-v8a]`，
-      加 `-PlinecodeIncludeEmulatorAbi` 才同时出现 `[x86_64]`。
-      网络恢复后需重跑一次并记录实际体积。
+      **实测结果（网络恢复后完成重建）**：
+      · 发布包 **43.2 MB → 21.3 MB**（省 **21.9 MB，−50.7%**），
+        仅含 `lib/arm64-v8a`；
+      · 签名 SHA-256 仍为 `1c2c0c…64fac`、versionCode `32`、
+        versionName `1.2.8-max` 均未变；
+      · 剥离状态实测：`file` 报 **stripped**、
+        `readelf -S` 找到 **0** 个 `.symtab`/调试段；
+      · **验证包**：`-PlinecodeIncludeEmulatorAbi` 重建双 ABI 包
+        （43.2 MB），用其跑完整 23 场景回归 **功能失败 0**
+        （`artifacts/ui-parity-v26`）——确认重新编译的二进制与 ABI 改动
+        均未改变行为；
+      · 实测确认 arm64-only 包在 x86_64 模拟器上
+        `INSTALL_FAILED_NO_MATCHING_ABIS`，故验证包必须存在。
 
 - [x] Android Release 双 ABI、Lint、签名、升级安装验证通过：
       `assembleRelease` 对 arm64-v8a 与 x86_64 均真实编译；
