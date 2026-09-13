@@ -90,7 +90,15 @@ android {
         }
 
         ndk {
-            abiFilters(*huxeruiAbis)
+            // The shipped build targets phones. `-PlinecodeIncludeEmulatorAbi`
+            // restores x86_64 for the screenshot harness, whose device is an
+            // x86_64 emulator, so the verified artifact and the shipped
+            // artifact can both exist. This has to be set here rather than per
+            // build type: those filters union with these instead of replacing
+            // them.
+            abiFilters(*(rootProject.hasProperty("linecodeIncludeEmulatorAbi")
+                    ? huxeruiAbis
+                    : ["arm64-v8a"]))
         }
     }
 
@@ -117,6 +125,12 @@ android {
             }
             minifyEnabled = false
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            // The legacy release sets `debugSymbolLevel = "NONE"`; the NDK
+            // already strips the packaged libraries, and this keeps any
+            // future symbol packaging off as well.
+            ndk {
+                debugSymbolLevel = "NONE"
+            }
         }
     }
 

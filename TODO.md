@@ -779,6 +779,33 @@ python3 tools/ui_parity_test.py \
 - [x] Native、协议、SQLite、归档与 UI 自动化测试全部通过：`ctest` **80/80**，
       含协议编解码、SQLite 仓储、归档脱敏、agent 工具、子代理、压缩、diff、
       Markdown 与教程解析等套件；UI 自动化见下方像素门槛。
+- [x] **发布包改为 arm64-only，并显式关闭调试符号**（第 40 轮，按用户要求）：
+      `app/build.gradle` 的 `defaultConfig.ndk.abiFilters` 现按
+      `-PlinecodeIncludeEmulatorAbi` 决定——默认**只出 `arm64-v8a`**，
+      加上该属性才补回 `x86_64`。
+      之所以保留开关：**本机测试模拟器是 x86_64**
+      （logcat 显示加载 `lib/x86_64/liblinecodepro.so`），
+      若发布包不含 x86_64，则该 APK 无法在模拟器安装，
+      23 场景像素验收会全部失效——保留开关让"发布产物"与"可验收产物"并存。
+      *注意*：build type 的 `abiFilters` 与 `defaultConfig` 是**并集**，
+      必须在此处收窄才生效（我第一版写在 build type 里，实测无效）。
+      同时 release 增加 `ndk { debugSymbolLevel = "NONE" }`，
+      与旧版 `app/build.gradle.kts:154` 一致。
+      **符号表**：实测打包后的 `.so` **本来就是剥离的**
+      （`file` 报 `stripped`、`readelf -S` 无 `.symtab`/调试段），
+      因为 NDK 在打包阶段会 strip；`liblinecodepro.so` 的 14.3 MB 是
+      **真实代码**（`.text` 9.0 MB、`.eh_frame` 1.2 MB、`.dynstr` 1.2 MB、
+      `.rodata` 1.0 MB），不是符号。
+      *预期收益*：移除 x86_64 三个库共约 **22.9 MB（未压缩）**，
+      APK 由 43.2 MB 降至约 21 MB 量级。
+      **待补**：实测重建——删除 `.cxx` 时一并清掉了 CMake 拉取的
+      `Lib-SQLite`/`Lib-WebView` 源码，而当前网络中断
+      （代理 7890 未监听、直连 000），无法重新拉取。
+      ABI 配置本身已用 `--dry-run` 验证：
+      默认只出现 `configureCMakeRelWithDebInfo[arm64-v8a]`，
+      加 `-PlinecodeIncludeEmulatorAbi` 才同时出现 `[x86_64]`。
+      网络恢复后需重跑一次并记录实际体积。
+
 - [x] Android Release 双 ABI、Lint、签名、升级安装验证通过：
       `assembleRelease` 对 arm64-v8a 与 x86_64 均真实编译；
       `lintRelease` **BUILD SUCCESSFUL**（0 error）；
