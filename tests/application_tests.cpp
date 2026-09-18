@@ -227,6 +227,13 @@ int main() {
   assert(managed.Conversations().front().title == "First");
   assert(managed.CurrentConversationId() == "conversation-1");
   managed.StartNewConversation();
+  managed.DeleteCurrentConversation();
+  assert(recording->deleted_id == "conversation-1");
+  recording->deleted_id.clear();
+  recording->current_id.clear();
+  managed.DeleteCurrentConversation();
+  assert(recording->deleted_id.empty());
+  recording->current_id = "conversation-1";
   managed.SelectConversation("conversation-1");
   managed.SelectConversation("");
   managed.DeleteConversation("conversation-1");

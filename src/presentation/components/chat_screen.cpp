@@ -1,18 +1,18 @@
 #include "presentation/components/chat_screen.h"
 
 #include <algorithm>
-#include <atomic>
 #include <array>
+#include <atomic>
 #include <cctype>
 #include <chrono>
 #include <functional>
 #include <iterator>
 #include <map>
-#include <set>
 #include <memory>
 #include <numbers>
 #include <optional>
 #include <ranges>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -24,38 +24,38 @@
 
 #include "application/auto_compaction_service.h"
 #include "application/behavior_settings_repository.h"
+#include "application/chat_export.h"
 #include "application/chat_session.h"
 #include "application/context_compaction.h"
-#include "application/mcp_execution_settings.h"
 #include "application/diff_review_service.h"
-#include "application/ports/diff_store.h"
-#include "application/chat_export.h"
 #include "application/generation_controller.h"
-#include "application/memory_context_service.h"
 #include "application/mcp_completion_loop.h"
+#include "application/mcp_execution_settings.h"
+#include "application/memory_context_service.h"
 #include "application/output_settings.h"
-#include "application/ports/external_link.h"
 #include "application/pending_message_queue.h"
+#include "application/ports/diff_store.h"
+#include "application/ports/external_link.h"
 #include "application/ports/model_store.h"
 #include "application/ports/share_text.h"
 #include "application/ports/storage_permission.h"
-#include "application/prompt_request_composer.h"
 #include "application/ports/todo_state_store.h"
+#include "application/prompt_request_composer.h"
 #include "application/skill_repository.h"
-#include "application/token_usage_tracker.h"
-#include "application/tool_text_catalog.h"
 #include "application/slash_command_catalog.h"
+#include "application/token_usage_tracker.h"
 #include "application/tool_permission_service.h"
+#include "application/tool_text_catalog.h"
 #include "domain/compaction_progress.h"
 #include "domain/context_usage.h"
 #include "domain/diff_lines.h"
 #include "domain/inline_emphasis.h"
 #include "infrastructure/tutorial_markdown_parser.h"
-#include "presentation/components/chat_overlays.h"
-#include "presentation/components/tutorial_markdown.h"
-#include "presentation/components/tool_approval_view.h"
 #include "presentation/chat_timeline_presentation.h"
 #include "presentation/compaction_progress_presentation.h"
+#include "presentation/components/chat_overlays.h"
+#include "presentation/components/tool_approval_view.h"
+#include "presentation/components/tutorial_markdown.h"
 #include "presentation/line_theme.h"
 #include "presentation/platform_features.h"
 
@@ -87,21 +87,213 @@ View HeaderAction(ImageResource icon, float icon_size, StringResource label,
             PointerCursor(PointerCursorKind::Hand));
 }
 
-View ComposerAction(ImageResource icon, Color tint, Color background,
-                    bool enabled, StringResource label,
+struct ComposerActionVisual final {
+  ImageResource icon;
+  Color tint;
+  Color background;
+  float icon_size = 20.0F;
+  float opacity = 1.0F;
+};
+
+enum class ComposerPrimaryActionState : std::size_t {
+  send,
+  stop,
+};
+
+struct ComposerPrimaryActionPresentation final {
+  ImageResource icon;
+  StringResource label;
+  float icon_size;
+};
+
+const std::array kComposerPrimaryActionPresentations{
+    ComposerPrimaryActionPresentation{
+        .icon = app::images::arrow_up,
+        .label = app::strings::chat_send,
+        .icon_size = 20.0F,
+    },
+    ComposerPrimaryActionPresentation{
+        .icon = app::images::stop,
+        .label = app::strings::chat_stop,
+        .icon_size = 17.0F,
+    },
+};
+
+static_assert(kComposerPrimaryActionPresentations.size() == 2);
+
+const ComposerPrimaryActionPresentation &PrimaryActionPresentationFor(
+    ComposerPrimaryActionState state) {
+  return kComposerPrimaryActionPresentations[std::to_underlying(state)];
+}
+
+View ComposerAction(ComposerActionVisual visual, bool enabled,
+                    StringResource label,
                     std::function<void()> action) {
   return Stack{
-      Image(std::move(icon))
-          .Tint(tint)
-          .With(Frame{.width = 20.0F, .height = 20.0F}),
+      Image(std::move(visual.icon))
+          .Tint(visual.tint)
+          .With(Frame{.width = visual.icon_size,
+                      .height = visual.icon_size}),
   }
       .OnClick(std::move(action))
       .With(Frame{.width = 44.0F, .height = 44.0F},
             Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-            Background(background), CornerRadius(22.0F), Enabled{enabled},
+            Background(visual.background), CornerRadius(22.0F),
+            Opacity(visual.opacity), Enabled{enabled},
             Semantics{.label = label}, Focusable(enabled),
             PointerCursor(enabled ? PointerCursorKind::Hand
                                   : PointerCursorKind::Default));
+}
+
+struct ChatTailScroll final {
+  class Extension;
+
+  ScrollController controller;
+  std::string conversation_id;
+  std::size_t content_revision = 0;
+  std::uint64_t smooth_request = 0;
+
+  bool operator==(const ChatTailScroll &) const = default;
+};
+
+class ChatTailScroll::Extension final : public NodeExtension {
+public:
+  Extension(ViewNode &node, const ChatTailScroll &value) {
+    Update(node, value);
+  }
+
+  void Update(ViewNode &, const ChatTailScroll &value) {
+    controller_ = value.controller;
+    if (!initialized_) {
+      initialized_ = true;
+      conversation_id_ = value.conversation_id;
+      content_revision_ = value.content_revision;
+      smooth_request_ = value.smooth_request;
+      snap_pending_ = true;
+      return;
+    }
+
+    const bool conversation_changed = conversation_id_ != value.conversation_id;
+    const bool content_changed = content_revision_ != value.content_revision;
+    const bool smooth_requested = smooth_request_ != value.smooth_request;
+    conversation_id_ = value.conversation_id;
+    content_revision_ = value.content_revision;
+    smooth_request_ = value.smooth_request;
+
+    if (conversation_changed) {
+      follow_tail_ = true;
+      smooth_pending_ = false;
+      snap_pending_ = true;
+      motion_.Set(controller_.Offset());
+    }
+    if (smooth_requested) {
+      follow_tail_ = true;
+      snap_pending_ = false;
+      smooth_pending_ = true;
+    } else if (content_changed && follow_tail_) {
+      snap_pending_ = true;
+    }
+  }
+
+  FrameResult OnFrame(ViewNode &, const FrameInfo &frame) override {
+    if (!controller_.IsConnected())
+      return {};
+
+    if (smooth_pending_) {
+      smooth_pending_ = false;
+      motion_.Set(controller_.Offset());
+      motion_.AnimateTo(
+          controller_.MaxOffset(),
+          TweenSpec{.duration = 0.180, .easing = Easing::EaseOut});
+    }
+    if (snap_pending_) {
+      snap_pending_ = false;
+      motion_.Set(controller_.MaxOffset());
+      static_cast<void>(controller_.ScrollTo(controller_.MaxOffset()));
+      return {};
+    }
+    if (!motion_.IsRunning())
+      return {};
+
+    const auto advanced = motion_.Advance(frame);
+    static_cast<void>(controller_.ScrollTo(
+        std::clamp(motion_.Value(), 0.0F, controller_.MaxOffset())));
+    return {.needs_frame = advanced.needs_frame,
+            .wake_after = advanced.wake_after};
+  }
+
+  [[nodiscard]] bool HitTest(ViewNode &node, Point point) const override {
+    return node.Bounds().Contains(point);
+  }
+
+  PointerResult OnPointer(ViewNode &, const PointerEvent &event) override {
+    if (event.type == PointerEventType::Down)
+      PauseFollowing();
+    return event.type == PointerEventType::Down ? PointerResult::Observe
+                                                : PointerResult::Ignored;
+  }
+
+  void OnScrollActivity(ViewNode &, const ScrollActivity &activity) override {
+    if ((activity.phase == ScrollPhase::Begin ||
+         activity.phase == ScrollPhase::Update) &&
+        IsManualSource(activity.source)) {
+      PauseFollowing();
+    }
+  }
+
+private:
+  static bool IsManualSource(ScrollSource source) noexcept {
+    switch (source) {
+    case ScrollSource::Drag:
+    case ScrollSource::Wheel:
+    case ScrollSource::Momentum:
+    case ScrollSource::Scrollbar:
+    case ScrollSource::Accessibility:
+      return true;
+    case ScrollSource::Overscroll:
+    case ScrollSource::Programmatic:
+    case ScrollSource::FocusReveal:
+    case ScrollSource::DragDrop:
+      return false;
+    }
+    return false;
+  }
+
+  void PauseFollowing() {
+    follow_tail_ = false;
+    snap_pending_ = false;
+    smooth_pending_ = false;
+    motion_.Set(controller_.Offset());
+  }
+
+  ScrollController controller_;
+  MotionController motion_;
+  std::string conversation_id_;
+  std::size_t content_revision_ = 0;
+  std::uint64_t smooth_request_ = 0;
+  bool initialized_ = false;
+  bool follow_tail_ = true;
+  bool snap_pending_ = false;
+  bool smooth_pending_ = false;
+};
+
+static_assert(ViewModifier<ChatTailScroll>);
+
+View ScrollToBottomButton(std::function<void()> action) {
+  return Stack{
+      Image(app::images::chevron_down)
+          .Tint(colors::text_on_color)
+          .With(Frame{.width = 20.0F, .height = 20.0F}),
+  }
+      .OnClick(std::move(action))
+      .With(
+          Frame{.width = 44.0F, .height = 44.0F},
+          Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+          Background(colors::accent), Border(colors::accent, 1.0F),
+          CornerRadius(22.0F),
+          Shadow{.color = Color::Rgb(0, 0, 0, 0.24F), .blur_radius = 8.0F},
+          Semantics{.label = app::strings::message_list_scroll_to_bottom_desc},
+          Focusable(), PointerCursor(PointerCursorKind::Hand));
 }
 
 bool HasVisibleText(const std::string &text) {
@@ -215,8 +407,8 @@ void TogglePath(std::vector<std::string> &paths, std::string_view path) {
   }
 }
 
-std::vector<std::string> AttachmentPaths(
-    std::span<const domain::InputAttachment> attachments) {
+std::vector<std::string>
+AttachmentPaths(std::span<const domain::InputAttachment> attachments) {
   std::vector<std::string> paths;
   paths.reserve(attachments.size());
   std::ranges::transform(attachments, std::back_inserter(paths),
@@ -322,9 +514,8 @@ struct AutoCompactionUiState final {
 // caller can skip its revision bump.
 bool StartManualContextCompaction(
     const std::shared_ptr<application::ContextCompactionService> &service,
-    const std::shared_ptr<application::ChatSession> &session,
-    TaskScope tasks, ToastHandle toast,
-    std::shared_ptr<std::atomic<bool>> busy,
+    const std::shared_ptr<application::ChatSession> &session, TaskScope tasks,
+    ToastHandle toast, std::shared_ptr<std::atomic<bool>> busy,
     CompactionLabels labels) {
   if (!service) {
     toast.Show(app::strings::context_compact_failed);
@@ -362,8 +553,7 @@ bool StartManualContextCompaction(
     // messages path, so the user's latest turn is never summarized away.
     if (excluded.size() > 2)
       excluded.resize(excluded.size() - 2);
-    session->ApplyCompaction(std::move(excluded),
-                             compacted->summary_content);
+    session->ApplyCompaction(std::move(excluded), compacted->summary_content);
     toast.Show(labels.done);
   });
   return true;
@@ -394,9 +584,8 @@ View ContextUsageIndicator(int percent, std::function<void()> on_click) {
   // Theme tokens are composition-bound: resolve them here and capture the
   // plain colors, because the paint callback runs at draw time.
   const Color track = colors::border;
-  const Color progress =
-      percent >= 80 ? static_cast<Color>(colors::warning)
-                    : static_cast<Color>(colors::secondary);
+  const Color progress = percent >= 80 ? static_cast<Color>(colors::warning)
+                                       : static_cast<Color>(colors::secondary);
   // The ring lives in a Stack child: `Align` positions a container's content,
   // so a bare Canvas leaf would collapse to zero size.
   return Stack{
@@ -416,8 +605,7 @@ View ContextUsageIndicator(int percent, std::function<void()> on_click) {
       .With(Frame{.width = 40.0F, .height = 48.0F},
             Align(HorizontalAlignment::Center, VerticalAlignment::Center),
             Semantics{.label = StringVariant::Format(
-                          app::strings::context_usage_accessibility,
-                          percent)},
+                          app::strings::context_usage_accessibility, percent)},
             Focusable(), PointerCursor(PointerCursorKind::Hand));
 }
 
@@ -439,8 +627,7 @@ View ContextUsageRow(const std::string &label, std::string value) {
       Text(std::move(value))
           .Style(ChatTextStyle(14.0F, FontWeight::Medium, colors::text)),
   }
-      .With(Frame{.height = 42.0F},
-            CrossAlign(CrossAxisAlignment::Center));
+      .With(Frame{.height = 42.0F}, CrossAlign(CrossAxisAlignment::Center));
 }
 
 View ContextUsageSheet(domain::ContextSnapshot snapshot,
@@ -473,19 +660,19 @@ View Header(
     active_generation.Get().Cancel();
     generation->Reset();
     pending_messages->Clear();
-    session->Clear();
+    session->StartNewConversation();
     revision += 1;
   };
 
   const StringVariant brand_label =
-      project_label.empty() ? StringVariant{app::strings::header_project_default}
-                            : StringVariant{project_label};
+      project_label.empty()
+          ? StringVariant{app::strings::header_project_default}
+          : StringVariant{project_label};
   return Row{
       HeaderAction(app::images::menu, 19.0F, app::strings::header_menu_desc,
                    std::move(open_drawer)),
       Row{
-          Text(brand_label)
-              .Style(ChatTextStyle(16.0F, FontWeight::Medium)),
+          Text(brand_label).Style(ChatTextStyle(16.0F, FontWeight::Medium)),
           Stack{
               Image(app::images::chevron_down)
                   .Tint(colors::secondary)
@@ -521,21 +708,27 @@ View Header(
 }
 
 View EmptyConversation(
-    const RouteNavigationController<domain::AppRoute> &navigation) {
+    const RouteNavigationController<domain::AppRoute> &navigation,
+    bool configure_model) {
   // Spacing between the three rows comes from wrapping containers rather than
   // per-child padding: the legacy layout used `topMargin` (20dp then 28dp),
   // and a child's own padding did not shift its siblings here.
-  return Column{
-      Text(app::strings::chat_empty_title)
-          .Style(ChatTextStyle(28.0F, FontWeight::Regular)),
+  std::vector<View> content;
+  content.reserve(configure_model ? 3U : 2U);
+  content.push_back(Text(app::strings::chat_empty_title)
+                        .Style(ChatTextStyle(28.0F, FontWeight::Regular)));
+  content.push_back(
       Column{
-          Text(app::strings::message_list_configure_desc)
-              .Style(ChatTextStyle(15.0F, FontWeight::Regular,
-                                   colors::secondary)),
+          Text(configure_model
+                   ? StringVariant{app::strings::message_list_configure_desc}
+                   : StringVariant{app::strings::chat_empty_message})
+              .Style(
+                  ChatTextStyle(15.0F, FontWeight::Regular, colors::secondary)),
       }
           .With(Padding(EdgeInsets{.top = 20.0F}),
-                CrossAlign(CrossAxisAlignment::Start)),
-      Column{
+                CrossAlign(CrossAxisAlignment::Start)));
+  if (configure_model) {
+    content.push_back(Column{
           Stack{
               Text(app::strings::empty_state_add_model)
                   .Style(ChatTextStyle(16.0F, FontWeight::Regular,
@@ -549,13 +742,13 @@ View EmptyConversation(
                   Align(HorizontalAlignment::Center, VerticalAlignment::Center),
                   Background(colors::accent), CornerRadius(22.0F), Focusable(),
                   PointerCursor(PointerCursorKind::Hand)),
-      }
-          // 40dp, not the legacy 28dp: the description above renders shorter
-          // here (no line spacing support), so the button needs the extra
-          // margin to land on the same baseline as the legacy layout.
+      } // 40dp, not the legacy 28dp: the description above renders shorter
+        // here (no line spacing support), so the button needs the extra
+        // margin to land on the same baseline as the legacy layout.
           .With(Padding(EdgeInsets{.top = 40.0F}),
-                CrossAlign(CrossAxisAlignment::Start)),
+                CrossAlign(CrossAxisAlignment::Start)));
   }
+  return Column(std::move(content))
       .With(
           CrossAlign(CrossAxisAlignment::Start), Grow(),
           Padding(EdgeInsets{
@@ -629,20 +822,22 @@ View MessageActionBar(const domain::ChatMessage &message,
             callbacks.recall(message);
         }));
   }
-  View bar = Row(std::move(actions)).With(
-      Frame{.height = 44.0F}, Spacing(4.0F),
-      CrossAlign(CrossAxisAlignment::Center));
-  return user ? Row{Spacer(), bar} : Row{bar, Spacer()};
+  View bar = Row(std::move(actions))
+                 .With(Frame{.height = 44.0F}, Spacing(4.0F),
+                       CrossAlign(CrossAxisAlignment::Center));
+  View aligned = user ? View{Row{Spacer(), bar}} : View{Row{bar, Spacer()}};
+  return std::move(aligned).With(
+      Padding(EdgeInsets{.top = 3.0F, .right = 4.0F}));
 }
 
-View MessageAttachments(const domain::ChatMessage &message, bool user) {
+View MessageAttachments(const domain::ChatMessage &message, bool user,
+                        float top_padding) {
   std::vector<View> chips;
   chips.reserve(message.attachments.size());
   for (const auto &attachment : message.attachments) {
     chips.push_back(
         Text(attachment.Name())
-            .Style(ChatTextStyle(12.0F, FontWeight::Medium,
-                                 colors::secondary))
+            .Style(ChatTextStyle(11.0F, FontWeight::Medium, colors::secondary))
             .With(Frame{.max_width = 220.0F},
                   Padding(EdgeInsets::Symmetric(8.0F, 4.0F)),
                   Background(colors::surface_light),
@@ -652,10 +847,12 @@ View MessageAttachments(const domain::ChatMessage &message, bool user) {
   }
   if (chips.empty())
     return Stack{}.With(Frame{.height = 0.0F});
-  View column = Column(std::move(chips)).With(
-      Spacing(4.0F), user ? CrossAlign(CrossAxisAlignment::End)
-                          : CrossAlign(CrossAxisAlignment::Start));
-  return user ? Row{Spacer(), column} : Row{column, Spacer()};
+  View column =
+      Column(std::move(chips))
+          .With(Spacing(4.0F), user ? CrossAlign(CrossAxisAlignment::End)
+                                    : CrossAlign(CrossAxisAlignment::Start));
+  View aligned = user ? View{Row{Spacer(), column}} : View{Row{column, Spacer()}};
+  return std::move(aligned).With(Padding(EdgeInsets{.top = top_padding}));
 }
 
 void ToggleMessageSelection(State<std::vector<std::uint64_t>> selected,
@@ -669,6 +866,25 @@ void ToggleMessageSelection(State<std::vector<std::uint64_t>> selected,
   });
 }
 
+View MessageLongPressTarget(
+    View content, State<std::optional<std::uint64_t>> action_message,
+    bool multi_select, State<std::vector<std::uint64_t>> selected_messages,
+    std::uint64_t message_id) {
+  return std::move(content)
+      .On<LongPressEvents::Started>(
+          [action_message, multi_select, selected_messages,
+           message_id](const LongPressEvent &) {
+            if (multi_select) {
+              ToggleMessageSelection(selected_messages, message_id);
+              return;
+            }
+            action_message = action_message.Get() == message_id
+                                 ? std::optional<std::uint64_t>{}
+                                 : std::optional<std::uint64_t>{message_id};
+          })
+      .With(LongPressGesture{});
+}
+
 struct ChatTimelineSettings final {
   bool code_wrap_enabled{};
   bool process_auto_expand{};
@@ -679,6 +895,7 @@ struct ChatTimelineSettings final {
   bool preserve_reasoning{};
   application::BrowserMode browser_mode{application::BrowserMode::builtin};
   bool browser_javascript_enabled{};
+  bool allow_any_http{};
 };
 
 // Legacy `ShareController.showFormatPicker` presented the export formats as a
@@ -703,10 +920,9 @@ View ExportFormatDialog(DialogContext dialog, StringVariant title,
                         std::function<void(std::string)> on_select) {
   std::vector<View> children;
   children.reserve(options.size() + 1);
-  children.emplace_back(
-      Text(std::move(title))
-          .Style(ChatTextStyle(17.0F, FontWeight::Medium))
-          .With(Padding(EdgeInsets{.bottom = 4.0F})));
+  children.emplace_back(Text(std::move(title))
+                            .Style(ChatTextStyle(17.0F, FontWeight::Medium))
+                            .With(Padding(EdgeInsets{.bottom = 4.0F})));
   for (auto &option : options) {
     auto id = option.id;
     children.emplace_back(ExportFormatRow(
@@ -720,8 +936,8 @@ View ExportFormatDialog(DialogContext dialog, StringVariant title,
             Background(colors::elevated), CornerRadius(16.0F), ClipChildren());
 }
 
-bool ToggleState(std::span<const std::string> toggled,
-                 std::string_view key, bool default_value) {
+bool ToggleState(std::span<const std::string> toggled, std::string_view key,
+                 bool default_value) {
   return std::ranges::contains(toggled, key) ? !default_value : default_value;
 }
 
@@ -756,10 +972,10 @@ const std::array kToolStatusPolicies{
 };
 
 StringResource ToolStatusLabel(domain::ToolCallStatus status) {
-  const auto found = std::ranges::find(kToolStatusPolicies, status,
-                                       &ToolStatusPolicy::status);
+  const auto found =
+      std::ranges::find(kToolStatusPolicies, status, &ToolStatusPolicy::status);
   return found == kToolStatusPolicies.end() ? app::strings::chat_tool_failed
-                                             : found->label;
+                                            : found->label;
 }
 
 View LegacyToolHeader(const ToolTimelinePresentation &presentation,
@@ -776,33 +992,28 @@ View LegacyToolHeader(const ToolTimelinePresentation &presentation,
                             .height = metrics.icon_height})}
           .With(Frame{.width = metrics.icon_slot_width,
                       .height = metrics.icon_slot_height},
-                Align(HorizontalAlignment::Center,
-                      VerticalAlignment::Center)));
-  children.push_back(
-      Text(ToolStatusLabel(presentation.status))
-          .Style(ChatTextStyle(metrics.title_size, FontWeight::Regular,
-                               color)));
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center)));
+  children.push_back(Text(ToolStatusLabel(presentation.status))
+                         .Style(ChatTextStyle(metrics.title_size,
+                                              FontWeight::Regular, color)));
   children.push_back(
       Text(presentation.title)
-          .Style(ChatTextStyle(metrics.title_size, FontWeight::Regular,
-                               color))
+          .Style(ChatTextStyle(metrics.title_size, FontWeight::Regular, color))
           .With(Grow()));
   if (presentation.visual == ToolTimelineVisualKind::remove &&
       presentation.item_count > 0) {
-    children.push_back(
-        Text("· " + std::to_string(presentation.item_count))
-            .Style(ChatTextStyle(metrics.title_size, FontWeight::Regular,
-                                 color)));
+    children.push_back(Text("· " + std::to_string(presentation.item_count))
+                           .Style(ChatTextStyle(metrics.title_size,
+                                                FontWeight::Regular, color)));
   }
   if (presentation.expandable) {
-    children.push_back(
-        Stack{Image(expanded ? app::images::chevron_down
-                             : app::images::chevron_right)
-                  .Tint(colors::secondary)
-                  .With(Frame{.width = 24.0F, .height = 14.0F})}
-            .With(Frame{.width = 24.0F, .height = 32.0F},
-                  Align(HorizontalAlignment::Center,
-                        VerticalAlignment::Center)));
+    children.push_back(Stack{
+        Image(expanded ? app::images::chevron_down : app::images::chevron_right)
+            .Tint(colors::secondary)
+            .With(Frame{.width = 24.0F, .height = 14.0F})}
+                           .With(Frame{.width = 24.0F, .height = 32.0F},
+                                 Align(HorizontalAlignment::Center,
+                                       VerticalAlignment::Center)));
   }
   View header = Row(std::move(children))
                     .With(Frame{.min_height = metrics.header_height},
@@ -815,7 +1026,8 @@ View LegacyToolHeader(const ToolTimelinePresentation &presentation,
   return header;
 }
 
-View ToolCodeCard(std::string text, const ToolTimelinePresentation &presentation,
+View ToolCodeCard(std::string text,
+                  const ToolTimelinePresentation &presentation,
                   float maximum_height) {
   const auto metrics = ToolTimelineMetrics(presentation.visual);
   return ScrollView(
@@ -895,12 +1107,11 @@ View ShellToolRenderer(const ToolTimelinePresentation &presentation,
                        const TutorialMarkdownCopyHandler &,
                        const ToolRendererContext &context) {
   std::vector<View> rows;
-  rows.push_back(LegacyToolHeader(presentation, app::images::terminal,
-                                  expanded, std::move(toggle)));
+  rows.push_back(LegacyToolHeader(presentation, app::images::terminal, expanded,
+                                  std::move(toggle)));
   if (expanded && !presentation.detail.empty())
     rows.push_back(ToolCodeCard(presentation.detail, presentation, 240.0F));
-  return Column(std::move(rows))
-      .With(CrossAlign(CrossAxisAlignment::Stretch));
+  return Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
 View ReadToolRenderer(const ToolTimelinePresentation &presentation,
@@ -913,8 +1124,7 @@ View ReadToolRenderer(const ToolTimelinePresentation &presentation,
                                   expanded, std::move(toggle)));
   if (presentation.failed && !presentation.detail.empty())
     rows.push_back(ToolCodeCard(presentation.detail, presentation, 240.0F));
-  return Column(std::move(rows))
-      .With(CrossAlign(CrossAxisAlignment::Stretch));
+  return Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
 // Legacy `DiffView`: a horizontally scrollable unified diff. Context lines
@@ -940,60 +1150,55 @@ View DiffView(const domain::DiffLines &diff) {
       continue;
     }
     if (displayed >= 200) {
-      rows.push_back(
-          Text(StringVariant::Format(app::strings::tool_call_diff_truncated,
-                                     static_cast<std::int64_t>(
-                                         diff.lines.size())))
-              .Style(ChatTextStyle(12.0F, FontWeight::Regular,
-                                   colors::tertiary))
-              .With(Padding(EdgeInsets{.top = 12.0F,
-                                       .right = 14.0F,
-                                       .bottom = 12.0F,
-                                       .left = 14.0F})));
+      rows.push_back(Text(StringVariant::Format(
+                              app::strings::tool_call_diff_truncated,
+                              static_cast<std::int64_t>(diff.lines.size())))
+                         .Style(ChatTextStyle(12.0F, FontWeight::Regular,
+                                              colors::tertiary))
+                         .With(Padding(EdgeInsets{.top = 12.0F,
+                                                  .right = 14.0F,
+                                                  .bottom = 12.0F,
+                                                  .left = 14.0F})));
       break;
     }
     if (omitted) {
-      rows.push_back(Text("⋯")
-                         .Style(ChatTextStyle(13.0F, FontWeight::Regular,
-                                              colors::tertiary))
-                         .With(Padding(EdgeInsets{.top = 4.0F,
-                                                  .right = 0.0F,
-                                                  .bottom = 4.0F,
-                                                  .left = 18.0F})));
+      rows.push_back(
+          Text("⋯")
+              .Style(
+                  ChatTextStyle(13.0F, FontWeight::Regular, colors::tertiary))
+              .With(Padding(EdgeInsets{
+                  .top = 4.0F, .right = 0.0F, .bottom = 4.0F, .left = 18.0F})));
       omitted = false;
     }
     const auto &line = diff.lines[index];
     const bool added = line.kind == domain::DiffLine::Kind::added;
     const bool removed = line.kind == domain::DiffLine::Kind::removed;
-    const Color text_color = added ? colors::diff_add_text
-                              : removed ? colors::diff_delete_text
-                                        : colors::secondary;
-    rows.push_back(
-        Row{
-            Stack{}.With(Frame{.width = 3.0F}, Grow(),
-                         Background(added ? colors::success
-                                     : removed ? colors::danger
-                                               : Color::Transparent())),
-            Text(std::to_string(line.number))
-                .Style(TextStyle{Font::Monospace(13.0F), text_color})
-                .Align(TextAlign::Trailing)
-                .With(Frame{.width = 42.0F},
-                      Padding(EdgeInsets{.top = 3.0F,
-                                         .right = 10.0F,
-                                         .bottom = 3.0F,
-                                         .left = 2.0F})),
-            Text(line.text)
-                .Style(TextStyle{Font::Monospace(13.0F), text_color})
-                .With(Padding(EdgeInsets{.top = 3.0F,
-                                         .right = 14.0F,
-                                         .bottom = 3.0F,
-                                         .left = 4.0F})),
-        }
-            .With(Frame{.min_height = 26.0F},
-                  Background(added   ? colors::diff_add_background
-                             : removed ? colors::diff_delete_background
-                                       : Color::Transparent()),
-                  CrossAlign(CrossAxisAlignment::Stretch)));
+    const Color text_color = added     ? colors::diff_add_text
+                             : removed ? colors::diff_delete_text
+                                       : colors::secondary;
+    rows.push_back(Row{
+        Stack{}.With(Frame{.width = 3.0F}, Grow(),
+                     Background(added     ? colors::success
+                                : removed ? colors::danger
+                                          : Color::Transparent())),
+        Text(std::to_string(line.number))
+            .Style(TextStyle{Font::Monospace(13.0F), text_color})
+            .Align(TextAlign::Trailing)
+            .With(Frame{.width = 42.0F}, Padding(EdgeInsets{.top = 3.0F,
+                                                            .right = 10.0F,
+                                                            .bottom = 3.0F,
+                                                            .left = 2.0F})),
+        Text(line.text)
+            .Style(TextStyle{Font::Monospace(13.0F), text_color})
+            .With(Padding(EdgeInsets{
+                .top = 3.0F, .right = 14.0F, .bottom = 3.0F, .left = 4.0F})),
+    }
+                       .With(Frame{.min_height = 26.0F},
+                             Background(added ? colors::diff_add_background
+                                        : removed
+                                            ? colors::diff_delete_background
+                                            : Color::Transparent()),
+                             CrossAlign(CrossAxisAlignment::Stretch)));
     if (!line.terminated) {
       rows.push_back(Text(app::strings::tool_call_diff_no_newline)
                          .Style(ChatTextStyle(12.0F, FontWeight::Regular,
@@ -1006,13 +1211,11 @@ View DiffView(const domain::DiffLines &diff) {
     ++displayed;
   }
   if (omitted) {
-    rows.push_back(Text("⋯")
-                       .Style(ChatTextStyle(13.0F, FontWeight::Regular,
-                                            colors::tertiary))
-                       .With(Padding(EdgeInsets{.top = 4.0F,
-                                                .right = 0.0F,
-                                                .bottom = 4.0F,
-                                                .left = 18.0F})));
+    rows.push_back(
+        Text("⋯")
+            .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::tertiary))
+            .With(Padding(EdgeInsets{
+                .top = 4.0F, .right = 0.0F, .bottom = 4.0F, .left = 18.0F})));
   }
   return ScrollView(Column(std::move(rows))
                         .With(CrossAlign(CrossAxisAlignment::Stretch)))
@@ -1029,13 +1232,13 @@ View WriteToolRenderer(const ToolTimelinePresentation &presentation,
   const auto request_diff = context.on_request_diff;
   // Expanding asks for the body first; the card then renders it once the
   // request publishes the loaded lines.
-  rows.push_back(LegacyToolHeader(
-      presentation, app::images::file_pen_line, expanded,
-      [toggle = std::move(toggle), diff_id, request_diff] {
-        std::invoke(toggle);
-        if (request_diff && !diff_id.empty())
-          std::invoke(request_diff, diff_id);
-      }));
+  rows.push_back(
+      LegacyToolHeader(presentation, app::images::file_pen_line, expanded,
+                       [toggle = std::move(toggle), diff_id, request_diff] {
+                         std::invoke(toggle);
+                         if (request_diff && !diff_id.empty())
+                           std::invoke(request_diff, diff_id);
+                       }));
   if (!expanded)
     return Column(std::move(rows))
         .With(CrossAlign(CrossAxisAlignment::Stretch));
@@ -1071,32 +1274,29 @@ View WriteToolRenderer(const ToolTimelinePresentation &presentation,
     status = app::strings::tool_call_status_pending_review;
 
   std::vector<View> detail_children;
-  detail_children.push_back(
-      Row{
-          Text(StringVariant{status})
-              .Style(ChatTextStyle(13.0F, FontWeight::Regular,
-                                   presentation.failed ? colors::danger
-                                                       : colors::secondary)),
-          Text(presentation.title)
-              .Style(ChatTextStyle(13.0F, FontWeight::Regular,
-                                   colors::secondary))
-              .With(Padding(EdgeInsets{.left = 4.0F})),
-          Spacer(),
-          Stack{Image(app::images::copy)
-                    .Tint(colors::secondary)
-                    .With(Frame{.width = 16.0F, .height = 16.0F})}
-              .OnClick([on_copy, detail = presentation.detail] {
-                if (!detail.empty())
-                  std::invoke(on_copy, detail);
-              })
-              .With(Frame{.width = 44.0F, .height = 44.0F},
-                    Align(HorizontalAlignment::Center,
-                          VerticalAlignment::Center), Focusable(),
-                    PointerCursor(PointerCursorKind::Hand),
-                    Semantics{.label = app::strings::tool_call_copy_file}),
-      }
-          .With(Padding(EdgeInsets{.left = 12.0F}),
-                CrossAlign(CrossAxisAlignment::Center)));
+  detail_children.push_back(Row{
+      Text(StringVariant{status})
+          .Style(ChatTextStyle(13.0F, FontWeight::Regular,
+                               presentation.failed ? colors::danger
+                                                   : colors::secondary)),
+      Text(presentation.title)
+          .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::secondary))
+          .With(Padding(EdgeInsets{.left = 4.0F})),
+      Spacer(),
+      Stack{Image(app::images::copy)
+                .Tint(colors::secondary)
+                .With(Frame{.width = 16.0F, .height = 16.0F})}
+          .OnClick([on_copy, detail = presentation.detail] {
+            if (!detail.empty())
+              std::invoke(on_copy, detail);
+          })
+          .With(Frame{.width = 44.0F, .height = 44.0F},
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+                Focusable(), PointerCursor(PointerCursorKind::Hand),
+                Semantics{.label = app::strings::tool_call_copy_file}),
+  }
+                                .With(Padding(EdgeInsets{.left = 12.0F}),
+                                      CrossAlign(CrossAxisAlignment::Center)));
 
   if (entry != nullptr) {
     detail_children.push_back(
@@ -1108,17 +1308,15 @@ View WriteToolRenderer(const ToolTimelinePresentation &presentation,
         Text(presentation.diff_id.empty()
                  ? app::strings::tool_call_diff_unavailable
                  : app::strings::tool_call_diff_loading)
-            .Style(ChatTextStyle(12.0F, FontWeight::Regular,
-                                 colors::tertiary))
+            .Style(ChatTextStyle(12.0F, FontWeight::Regular, colors::tertiary))
             .With(Padding(EdgeInsets{.top = 10.0F,
                                      .right = 14.0F,
                                      .bottom = 10.0F,
                                      .left = 14.0F})));
   }
 
-  const std::string message = presentation.failed
-                                  ? presentation.detail
-                                  : review_message;
+  const std::string message =
+      presentation.failed ? presentation.detail : review_message;
   if (!message.empty()) {
     detail_children.push_back(
         Text(message)
@@ -1135,35 +1333,32 @@ View WriteToolRenderer(const ToolTimelinePresentation &presentation,
     const auto diff_id = presentation.diff_id;
     const auto call_id = presentation.tool_call_id;
     const auto on_review = context.on_review;
-    detail_children.push_back(
-        Row{
-            Text(app::strings::tool_call_write_revert)
-                .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::text))
-                .Align(TextAlign::Center)
-                .OnClick([on_review, call_id, diff_id] {
-                  std::invoke(on_review, call_id, diff_id,
-                              std::string{"rejected"});
-                })
-                .With(Frame{.min_height = 48.0F},
-                      Padding(EdgeInsets::Symmetric(14.0F, 0.0F)), Focusable(),
-                      PointerCursor(PointerCursorKind::Hand)),
-            Text(app::strings::tool_call_write_accept)
-                .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::text))
-                .Align(TextAlign::Center)
-                .OnClick([on_review, call_id, diff_id] {
-                  std::invoke(on_review, call_id, diff_id,
-                              std::string{"accepted"});
-                })
-                .With(Frame{.min_height = 48.0F},
-                      Padding(EdgeInsets::Symmetric(14.0F, 0.0F)), Focusable(),
-                      PointerCursor(PointerCursorKind::Hand)),
-        }
-            .With(MainAlign(MainAxisAlignment::End),
-                  CrossAlign(CrossAxisAlignment::Center),
-                  Padding(EdgeInsets{.top = 6.0F,
-                                     .right = 8.0F,
-                                     .bottom = 6.0F,
-                                     .left = 8.0F})));
+    detail_children.push_back(Row{
+        Text(app::strings::tool_call_write_revert)
+            .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::text))
+            .Align(TextAlign::Center)
+            .OnClick([on_review, call_id, diff_id] {
+              std::invoke(on_review, call_id, diff_id, std::string{"rejected"});
+            })
+            .With(Frame{.min_height = 48.0F},
+                  Padding(EdgeInsets::Symmetric(14.0F, 0.0F)), Focusable(),
+                  PointerCursor(PointerCursorKind::Hand)),
+        Text(app::strings::tool_call_write_accept)
+            .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::text))
+            .Align(TextAlign::Center)
+            .OnClick([on_review, call_id, diff_id] {
+              std::invoke(on_review, call_id, diff_id, std::string{"accepted"});
+            })
+            .With(Frame{.min_height = 48.0F},
+                  Padding(EdgeInsets::Symmetric(14.0F, 0.0F)), Focusable(),
+                  PointerCursor(PointerCursorKind::Hand)),
+    }
+                                  .With(MainAlign(MainAxisAlignment::End),
+                                        CrossAlign(CrossAxisAlignment::Center),
+                                        Padding(EdgeInsets{.top = 6.0F,
+                                                           .right = 8.0F,
+                                                           .bottom = 6.0F,
+                                                           .left = 8.0F})));
   }
 
   rows.push_back(Column(std::move(detail_children))
@@ -1171,22 +1366,20 @@ View WriteToolRenderer(const ToolTimelinePresentation &presentation,
                            Background(colors::code),
                            Border(colors::code_border, 1.0F),
                            CornerRadius(12.0F), ClipChildren()));
-  return Column(std::move(rows))
-      .With(CrossAlign(CrossAxisAlignment::Stretch));
+  return Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
 View DeleteToolRenderer(const ToolTimelinePresentation &presentation,
                         bool expanded, std::function<void()> toggle,
                         const TutorialMarkdownLinkHandler &,
                         const TutorialMarkdownCopyHandler &,
-                       const ToolRendererContext &context) {
+                        const ToolRendererContext &context) {
   std::vector<View> rows;
-  rows.push_back(LegacyToolHeader(presentation, app::images::trash_2,
-                                  expanded, std::move(toggle)));
+  rows.push_back(LegacyToolHeader(presentation, app::images::trash_2, expanded,
+                                  std::move(toggle)));
   if (expanded && !presentation.detail.empty())
     rows.push_back(ToolCodeCard(presentation.detail, presentation, 200.0F));
-  return Column(std::move(rows))
-      .With(CrossAlign(CrossAxisAlignment::Stretch));
+  return Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
 View TodoIndicator(ToolTimelineTodoItem::State state) {
@@ -1214,25 +1407,24 @@ View TodoToolRenderer(const ToolTimelinePresentation &presentation, bool,
   std::vector<View> rows;
   rows.reserve(presentation.todo_items.size());
   for (const auto &item : presentation.todo_items) {
-    TextStyle style = ChatTextStyle(
-        14.0F, FontWeight::Regular,
-        item.state == ToolTimelineTodoItem::State::completed
-            ? static_cast<Color>(colors::tertiary)
-            : static_cast<Color>(colors::text));
+    TextStyle style =
+        ChatTextStyle(14.0F, FontWeight::Regular,
+                      item.state == ToolTimelineTodoItem::State::completed
+                          ? static_cast<Color>(colors::tertiary)
+                          : static_cast<Color>(colors::text));
     if (item.state == ToolTimelineTodoItem::State::completed)
       style.decoration = TextDecoration::StrikeThrough;
-    rows.push_back(Row{TodoIndicator(item.state), Text(item.content).Style(style)}
-                       .With(Frame{.min_height = 44.0F}, Spacing(8.0F),
-                             Padding(EdgeInsets::Symmetric(0.0F, 4.0F))));
+    rows.push_back(
+        Row{TodoIndicator(item.state), Text(item.content).Style(style)}.With(
+            Frame{.min_height = 44.0F}, Spacing(8.0F),
+            Padding(EdgeInsets::Symmetric(0.0F, 4.0F))));
   }
   if (rows.empty()) {
-    rows.push_back(Text("No TODO items")
-                       .Style(ChatTextStyle(12.0F, FontWeight::Regular,
-                                            colors::tertiary))
-                       .With(Padding(EdgeInsets{.top = 8.0F,
-                                                .right = 16.0F,
-                                                .bottom = 16.0F,
-                                                .left = 16.0F})));
+    rows.push_back(
+        Text(app::strings::toolcall_preview_todo_empty)
+            .Style(ChatTextStyle(12.0F, FontWeight::Regular, colors::tertiary))
+            .With(Padding(EdgeInsets{
+                .top = 8.0F, .right = 16.0F, .bottom = 16.0F, .left = 16.0F})));
   }
   return Column(std::move(rows))
       .With(CrossAlign(CrossAxisAlignment::Stretch),
@@ -1245,26 +1437,24 @@ View AgentToolRenderer(const ToolTimelinePresentation &presentation,
                        const TutorialMarkdownCopyHandler &on_copy,
                        const ToolRendererContext &context) {
   std::vector<View> title_rows;
-  title_rows.push_back(
-      Row{Text(presentation.title)
-              .Style(ChatTextStyle(14.0F, FontWeight::Bold, colors::text)),
-          Spacer(),
-          presentation.running
-              ? View{ProgressCircle().With(
-                    Frame{.width = 18.0F, .height = 18.0F})}
-              : View{Image(presentation.failed ? app::images::x
-                                               : app::images::check)
-                         .Tint(presentation.failed ? colors::danger
-                                                   : colors::success)
-                         .With(Frame{.width = 18.0F, .height = 13.0F})},
-          Image(expanded ? app::images::chevron_down
-                         : app::images::chevron_right)
-              .Tint(colors::tertiary)
-              .With(Frame{.width = 16.0F, .height = 12.0F})}
-          .OnClick(std::move(toggle))
-          .With(Frame{.min_height = 48.0F}, Spacing(8.0F),
-                Padding(EdgeInsets::Symmetric(16.0F, 8.0F)),
-                PointerCursor(PointerCursorKind::Hand)));
+  title_rows.push_back(Row{
+      Text(presentation.title)
+          .Style(ChatTextStyle(14.0F, FontWeight::Bold, colors::text)),
+      Spacer(),
+      presentation.running
+          ? View{ProgressCircle().With(Frame{.width = 18.0F, .height = 18.0F})}
+          : View{Image(presentation.failed ? app::images::x
+                                           : app::images::check)
+                     .Tint(presentation.failed ? colors::danger
+                                               : colors::success)
+                     .With(Frame{.width = 18.0F, .height = 13.0F})},
+      Image(expanded ? app::images::chevron_down : app::images::chevron_right)
+          .Tint(colors::tertiary)
+          .With(Frame{.width = 16.0F, .height = 12.0F})}
+                           .OnClick(std::move(toggle))
+                           .With(Frame{.min_height = 48.0F}, Spacing(8.0F),
+                                 Padding(EdgeInsets::Symmetric(16.0F, 8.0F)),
+                                 PointerCursor(PointerCursorKind::Hand)));
   if (expanded) {
     std::vector<View> content;
     if (!presentation.input_detail.empty())
@@ -1272,9 +1462,8 @@ View AgentToolRenderer(const ToolTimelinePresentation &presentation,
                             .Style(ChatTextStyle(13.0F, FontWeight::Regular,
                                                  colors::tertiary)));
     if (!presentation.output_detail.empty())
-      content.push_back(
-          AssistantMarkdown(presentation.output_detail, true, on_link,
-                            on_copy));
+      content.push_back(AssistantMarkdown(presentation.output_detail, true,
+                                          on_link, on_copy));
     if (content.empty()) {
       // Legacy `ToolCallAgentView.java:173,181`.
       const StringResource empty_label =
@@ -1282,17 +1471,18 @@ View AgentToolRenderer(const ToolTimelinePresentation &presentation,
               ? app::strings::tool_call_agent_running
               : (presentation.failed ? app::strings::tool_call_agent_failed
                                      : app::strings::tool_call_agent_done);
-      content.push_back(Text(empty_label).Style(ChatTextStyle(
-          12.0F, FontWeight::Regular, colors::tertiary)));
+      content.push_back(Text(empty_label)
+                            .Style(ChatTextStyle(12.0F, FontWeight::Regular,
+                                                 colors::tertiary)));
     }
     title_rows.push_back(
         ScrollView(Column(std::move(content))
                        .With(CrossAlign(CrossAxisAlignment::Stretch),
-                             Spacing(8.0F), Padding(EdgeInsets{
-                                               .top = 8.0F,
-                                               .right = 16.0F,
-                                               .bottom = 16.0F,
-                                               .left = 16.0F})))
+                             Spacing(8.0F),
+                             Padding(EdgeInsets{.top = 8.0F,
+                                                .right = 16.0F,
+                                                .bottom = 16.0F,
+                                                .left = 16.0F})))
             .ScrollAxis(Axis::Vertical)
             .With(Frame{.max_height = 400.0F},
                   Border(colors::code_border, 1.0F), ScrollBar()));
@@ -1307,7 +1497,7 @@ View PipelineToolRenderer(const ToolTimelinePresentation &presentation,
                           bool expanded, std::function<void()> toggle,
                           const TutorialMarkdownLinkHandler &on_link,
                           const TutorialMarkdownCopyHandler &on_copy,
-                       const ToolRendererContext &context) {
+                          const ToolRendererContext &context) {
   auto copy = presentation;
   copy.title += "  " + std::to_string(copy.completed_count) + "/" +
                 std::to_string(copy.item_count);
@@ -1319,12 +1509,12 @@ View GenericToolRenderer(const ToolTimelinePresentation &presentation,
                          bool expanded, std::function<void()> toggle,
                          const TutorialMarkdownLinkHandler &,
                          const TutorialMarkdownCopyHandler &,
-                       const ToolRendererContext &context) {
+                         const ToolRendererContext &context) {
   std::vector<View> rows;
   rows.push_back(LegacyToolHeader(presentation, app::images::mcp, expanded,
                                   std::move(toggle)));
-  if (expanded &&
-      (!presentation.input_detail.empty() || !presentation.output_detail.empty())) {
+  if (expanded && (!presentation.input_detail.empty() ||
+                   !presentation.output_detail.empty())) {
     std::vector<View> sections;
     // A resource key, not a literal: the heading is part of the card's
     // visible text (`sheet_title_input` / `sheet_title_output`).
@@ -1332,34 +1522,32 @@ View GenericToolRenderer(const ToolTimelinePresentation &presentation,
                                  const std::string &body, Color color) {
       if (body.empty())
         return;
-      sections.push_back(
-          Column{Text(std::move(heading))
-                     .Style(ChatTextStyle(12.0F, FontWeight::Bold,
-                                          colors::tertiary)),
-                 SelectionArea(Text(body).Style(
-                     TextStyle{Font::Monospace(14.0F), color}))}
-              .With(CrossAlign(CrossAxisAlignment::Stretch), Spacing(4.0F),
-                    Padding(EdgeInsets{.top = 12.0F,
-                                       .right = 14.0F,
-                                       .bottom = 12.0F,
-                                       .left = 14.0F})));
+      sections.push_back(Column{
+          Text(std::move(heading))
+              .Style(ChatTextStyle(12.0F, FontWeight::Bold, colors::tertiary)),
+          SelectionArea(
+              Text(body).Style(TextStyle{Font::Monospace(14.0F), color}))}
+                             .With(CrossAlign(CrossAxisAlignment::Stretch),
+                                   Spacing(4.0F),
+                                   Padding(EdgeInsets{.top = 12.0F,
+                                                      .right = 14.0F,
+                                                      .bottom = 12.0F,
+                                                      .left = 14.0F})));
     };
     add_section(app::strings::sheet_title_input, presentation.input_detail,
                 colors::secondary);
     add_section(app::strings::sheet_title_output, presentation.output_detail,
                 presentation.failed ? static_cast<Color>(colors::danger)
                                     : static_cast<Color>(colors::secondary));
-    rows.push_back(ScrollView(Column(std::move(sections))
-                                  .With(CrossAlign(
-                                      CrossAxisAlignment::Stretch)))
-                       .ScrollAxis(Axis::Vertical)
-                       .With(Frame{.max_height = 240.0F},
-                             Background(colors::code),
-                             Border(colors::code_border, 1.0F),
-                             CornerRadius(12.0F), ClipChildren(), ScrollBar()));
+    rows.push_back(
+        ScrollView(Column(std::move(sections))
+                       .With(CrossAlign(CrossAxisAlignment::Stretch)))
+            .ScrollAxis(Axis::Vertical)
+            .With(Frame{.max_height = 240.0F}, Background(colors::code),
+                  Border(colors::code_border, 1.0F), CornerRadius(12.0F),
+                  ClipChildren(), ScrollBar()));
   }
-  return Column(std::move(rows))
-      .With(CrossAlign(CrossAxisAlignment::Stretch));
+  return Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
 using ToolRenderer = View (*)(const ToolTimelinePresentation &, bool,
@@ -1389,7 +1577,7 @@ ToolRenderer RendererFor(ToolTimelineVisualKind visual) {
   const auto found = std::ranges::find(kToolRendererPolicies, visual,
                                        &ToolRendererPolicy::visual);
   return found == kToolRendererPolicies.end() ? &GenericToolRenderer
-                                               : found->renderer;
+                                              : found->renderer;
 }
 
 View AssistantMarkdown(std::string_view markdown, bool code_wrap,
@@ -1398,7 +1586,7 @@ View AssistantMarkdown(std::string_view markdown, bool code_wrap,
   infrastructure::TutorialMarkdownParser parser;
   const auto document = parser.Parse(markdown);
   return TutorialMarkdownDocumentView(document, code_wrap, 1.0F, on_link,
-                                     on_copy)
+                                      on_copy)
       .With(Frame{.max_width = 684.0F});
 }
 
@@ -1420,8 +1608,7 @@ AttributedText ReasoningEmphasisText(std::string_view source) {
       style.font_weight = FontWeight::Bold;
     if (span.style != domain::InlineEmphasisStyle::Bold)
       style.font_slant = FontSlant::Italic;
-    TextSpan emphasised(
-        parsed.text.substr(span.start, span.end - span.start));
+    TextSpan emphasised(parsed.text.substr(span.start, span.end - span.start));
     spans.push_back(std::move(emphasised).Style(std::move(style)));
     cursor = span.end;
   }
@@ -1430,28 +1617,29 @@ AttributedText ReasoningEmphasisText(std::string_view source) {
   return AttributedText(std::span<const TextSpan>(spans));
 }
 
-View ReasoningTimelineBlock(
-    const domain::AssistantReasoningEvent &reasoning,
-    std::string key, const ChatTimelineSettings &settings,
-    State<std::vector<std::string>> toggled) {
-  const bool expanded = ToggleState(toggled.Get(), key,
-                                    settings.thinking_auto_expand);
+View ReasoningTimelineBlock(const domain::AssistantReasoningEvent &reasoning,
+                            std::string key,
+                            const ChatTimelineSettings &settings,
+                            State<std::vector<std::string>> toggled) {
+  const bool expanded =
+      ToggleState(toggled.Get(), key, settings.thinking_auto_expand);
   View header = Row{
       Text(reasoning.kind == domain::ReasoningKind::summary
                ? app::strings::chat_reasoning_summary
                : app::strings::chat_reasoning_thinking)
-          .Style(ChatTextStyle(13.0F, FontWeight::Medium, colors::secondary)),
-      Spacer(),
-      Image(expanded ? app::images::chevron_down
-                     : app::images::chevron_right)
-          .Tint(colors::tertiary)
-          .With(Frame{.width = 14.0F, .height = 14.0F}),
+          .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::secondary)),
+      Stack{Image(expanded ? app::images::chevron_down
+                           : app::images::chevron_right)
+                .Tint(colors::tertiary)
+                .With(Frame{.width = 16.0F, .height = 16.0F})}
+          .With(Frame{.width = 28.0F, .height = 32.0F},
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
   };
   header = std::move(header)
                .OnClick([toggled, key] { ToggleKey(toggled, key); })
-               .With(Frame{.height = 48.0F},
-                     Align(HorizontalAlignment::Stretch,
-                           VerticalAlignment::Center),
+               .With(Frame{.min_height = 48.0F},
+                     Padding(EdgeInsets::Symmetric(0.0F, 8.0F)),
+                     CrossAlign(CrossAxisAlignment::Center),
                      PointerCursor(PointerCursorKind::Hand));
   if (!expanded)
     return header;
@@ -1460,15 +1648,17 @@ View ReasoningTimelineBlock(
   // rather than showing the raw markers.
   View body = SelectionArea(
       Text(ReasoningEmphasisText(reasoning.text))
-          .Style(ChatTextStyle(14.0F, FontWeight::Regular, colors::tertiary)));
+          .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::tertiary)));
   if (settings.thinking_scroll) {
     body = ScrollView(std::move(body))
                .ScrollAxis(Axis::Vertical)
                .With(Frame{.max_height = 180.0F}, ScrollBar());
   }
-  return Column{std::move(header), std::move(body)}
-      .With(CrossAlign(CrossAxisAlignment::Stretch),
-            Padding(EdgeInsets{.right = 4.0F, .bottom = 8.0F, .left = 4.0F}));
+  return Column{
+      std::move(header),
+      Column{std::move(body)}.With(Padding(EdgeInsets{.top = 8.0F})),
+  }
+      .With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
 // Port of `cn.lineai.ui.component.ContextCompactBlockView`: one horizontal row
@@ -1482,27 +1672,25 @@ View CompactProgressBlock(const domain::ChatMessage &message,
   const auto metrics = CompactBlockMetricsDefault();
   const Color tint = presentation.danger ? static_cast<Color>(colors::danger)
                                          : static_cast<Color>(colors::tertiary);
-  View status = presentation.show_progress_bar
-                    ? View{ProgressCircle().With(Frame{
-                          .width = metrics.progress_size,
-                          .height = metrics.progress_size})}
-                    : View{Image(presentation.status_icon ==
-                                         CompactStatusIcon::close
-                                     ? app::images::x
-                                     : app::images::check)
-                               .Tint(tint)
-                               .With(Frame{.width = metrics.icon_slot,
-                                           .height = metrics.status_icon_size})};
+  View status =
+      presentation.show_progress_bar
+          ? View{ProgressCircle().With(Frame{.width = metrics.progress_size,
+                                             .height = metrics.progress_size})}
+          : View{Image(presentation.status_icon == CompactStatusIcon::close
+                           ? app::images::x
+                           : app::images::check)
+                     .Tint(tint)
+                     .With(Frame{.width = metrics.icon_slot,
+                                 .height = metrics.status_icon_size})};
   return Row{
       Stack{Image(app::images::archive)
                 .Tint(tint)
                 .With(Frame{.width = metrics.archive_icon_size,
                             .height = metrics.archive_icon_size})}
-          .With(Frame{.width = metrics.icon_slot,
-                      .height = metrics.icon_slot},
+          .With(Frame{.width = metrics.icon_slot, .height = metrics.icon_slot},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
-      Text(label).Style(ChatTextStyle(metrics.label_size, FontWeight::Regular,
-                                      tint)),
+      Text(label).Style(
+          ChatTextStyle(metrics.label_size, FontWeight::Regular, tint)),
       Spacer(),
       std::move(status),
   }
@@ -1513,8 +1701,7 @@ View CompactProgressBlock(const domain::ChatMessage &message,
             CrossAlign(CrossAxisAlignment::Center));
 }
 
-View ToolTimelineCard(const domain::AssistantToolEvent &event,
-                      std::string key,
+View ToolTimelineCard(const domain::AssistantToolEvent &event, std::string key,
                       State<std::vector<std::string>> toggled,
                       const TutorialMarkdownLinkHandler &on_link,
                       const TutorialMarkdownCopyHandler &on_copy,
@@ -1522,8 +1709,8 @@ View ToolTimelineCard(const domain::AssistantToolEvent &event,
   const auto presentation = PresentToolTimeline(event);
   if (!presentation.visible)
     return Stack{}.With(Frame{.height = 0.0F});
-  const bool expanded = ToggleState(toggled.Get(), key,
-                                    presentation.initially_expanded);
+  const bool expanded =
+      ToggleState(toggled.Get(), key, presentation.initially_expanded);
   return RendererFor(presentation.visual)(
       presentation, expanded,
       [toggled, key = std::move(key)] { ToggleKey(toggled, key); }, on_link,
@@ -1558,8 +1745,7 @@ View ChangedFilesBlock(const domain::ChatMessage &message,
       continue;
     seen_ids.push_back(diff_id);
     edits.push_back(tool);
-    const auto path =
-        ToolCallTargetPath(tool->call.arguments_json, diff_id);
+    const auto path = ToolCallTargetPath(tool->call.arguments_json, diff_id);
     if (!std::ranges::contains(paths, path))
       paths.push_back(path);
   }
@@ -1567,25 +1753,53 @@ View ChangedFilesBlock(const domain::ChatMessage &message,
     return hidden;
   const auto block_key = std::to_string(stable_turn_id) + ":files";
   const bool expanded = ToggleState(toggled.Get(), block_key, false);
-  auto header = Row{
-      Text::Format(app::strings::chat_files_changed, paths.size())
-          .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::tertiary)),
-      Spacer(),
-      Image(expanded ? app::images::chevron_down : app::images::chevron_right)
-          .Tint(colors::tertiary)
-          .With(Frame{.width = 16.0F, .height = 16.0F}),
-  }
-                    .With(CrossAlign(CrossAxisAlignment::Center),
-                          Frame{.min_height = 40.0F})
-                    .OnClick([toggled, block_key] {
-                      auto next = toggled.Get();
-                      if (std::ranges::contains(next, block_key))
-                        std::erase(next, block_key);
-                      else
-                        next.push_back(block_key);
-                      toggled = std::move(next);
-                    })
-                    .With(PointerCursor(PointerCursorKind::Hand));
+  auto header =
+      Row{
+          Stack{Image(app::images::file_pen_line)
+                    .Tint(colors::secondary)
+                    .With(Frame{.width = 18.0F, .height = 18.0F})}
+              .With(Frame{.width = 26.0F, .height = 32.0F},
+                    Align(HorizontalAlignment::Center,
+                          VerticalAlignment::Center)),
+          Text::Format(app::strings::chat_files_changed, paths.size())
+              .Style(ChatTextStyle(14.0F, FontWeight::Regular, colors::text))
+              .With(Padding(EdgeInsets{.left = 6.0F}), Grow()),
+          Text(app::strings::chat_review_changes)
+              .Style(ChatTextStyle(14.0F, FontWeight::Regular, colors::text))
+              .VerticalAlign(TextVerticalAlign::Center)
+              .OnClick([toggled, block_key, edit_count = edits.size()] {
+                auto next = toggled.Get();
+                if (!std::ranges::contains(next, block_key))
+                  next.push_back(block_key);
+                for (std::size_t index = 0; index < edit_count; ++index) {
+                  const auto key = block_key + ":" + std::to_string(index);
+                  if (!std::ranges::contains(next, key))
+                    next.push_back(key);
+                }
+                toggled = std::move(next);
+              })
+              .With(Frame{.min_height = 48.0F},
+                    Padding(EdgeInsets{.left = 12.0F}), Focusable(),
+                    PointerCursor(PointerCursorKind::Hand)),
+          Stack{Image(expanded ? app::images::chevron_down
+                               : app::images::chevron_right)
+                    .Tint(colors::tertiary)
+                    .With(Frame{.width = 16.0F, .height = 16.0F})}
+              .With(Frame{.width = 24.0F, .height = 32.0F},
+                    Align(HorizontalAlignment::Center,
+                          VerticalAlignment::Center)),
+      }
+          .With(CrossAlign(CrossAxisAlignment::Center),
+                Frame{.min_height = 64.0F})
+          .OnClick([toggled, block_key] {
+            auto next = toggled.Get();
+            if (std::ranges::contains(next, block_key))
+              std::erase(next, block_key);
+            else
+              next.push_back(block_key);
+            toggled = std::move(next);
+          })
+          .With(PointerCursor(PointerCursorKind::Hand));
   std::vector<View> children;
   if (expanded) {
     for (std::size_t index = 0; index < edits.size(); ++index) {
@@ -1598,104 +1812,101 @@ View ChangedFilesBlock(const domain::ChatMessage &message,
                   ? View{Stack{}.With(Frame{.height = 0.0F})}
                   : View{Column(std::move(children))
                              .With(CrossAlign(CrossAxisAlignment::Stretch))};
-  return Column{std::move(header), std::move(body)}
-      .With(CrossAlign(CrossAxisAlignment::Stretch),
-            Padding(EdgeInsets{.top = 6.0F, .bottom = 6.0F}));
+  return Column{Divider(), std::move(header), std::move(body)}.With(
+      CrossAlign(CrossAxisAlignment::Stretch),
+      Padding(EdgeInsets{.top = 24.0F}));
 }
 
-View AssistantTimeline(
-    const domain::ChatMessage &message, bool live,
-    const ChatTimelineSettings &settings,
-    State<std::vector<std::string>> toggled,
-    const TutorialMarkdownLinkHandler &on_link,
-    const TutorialMarkdownCopyHandler &on_copy,
-    const ToolRendererContext &context) {
-  const auto presentation = PresentAssistantProcess(
-      message, live, settings.process_auto_expand);
+View AssistantTimeline(const domain::ChatMessage &message, bool live,
+                       const ChatTimelineSettings &settings,
+                       State<std::vector<std::string>> toggled,
+                       const TutorialMarkdownLinkHandler &on_link,
+                       const TutorialMarkdownCopyHandler &on_copy,
+                       const ToolRendererContext &context) {
+  const auto presentation =
+      PresentAssistantProcess(message, live, settings.process_auto_expand);
   if (!presentation.visible)
     return Stack{}.With(Frame{.height = 0.0F});
   const auto stable_turn_id = message.processing_started_at > 0
                                   ? message.processing_started_at
                                   : static_cast<std::int64_t>(message.id);
   const auto process_key = std::to_string(stable_turn_id) + ":process";
-  const bool expanded = ToggleState(toggled.Get(), process_key,
-                                    presentation.initially_expanded);
-  const auto label = presentation.failed
-                         ? app::strings::chat_process_failed
+  const bool expanded =
+      ToggleState(toggled.Get(), process_key, presentation.initially_expanded);
+  const auto label = presentation.failed ? app::strings::chat_process_failed
                      : presentation.running
                          ? app::strings::chat_process_working
                          : app::strings::chat_process_completed;
   std::string duration;
   if (presentation.duration_millis > 0) {
-    duration = "  " +
-               std::to_string(presentation.duration_millis / 1'000) + "." +
-               std::to_string((presentation.duration_millis % 1'000) / 100) +
-               "s";
+    duration =
+        "  " + std::to_string(presentation.duration_millis / 1'000) + "." +
+        std::to_string((presentation.duration_millis % 1'000) / 100) + "s";
   }
-  View process_icon = presentation.running
-                          ? ProgressCircle().With(
-                                Frame{.width = 16.0F, .height = 16.0F})
-                          : Image(app::images::brain)
-                                .Tint(presentation.failed ? colors::danger
-                                                          : colors::secondary)
-                                .With(Frame{.width = 17.0F, .height = 17.0F});
   View header = Row{
-      std::move(process_icon),
-      Text(label).Style(ChatTextStyle(14.0F, FontWeight::Medium)),
-      Text(duration).Style(ChatTextStyle(12.0F, FontWeight::Regular,
-                                         colors::tertiary)),
-      Spacer(),
-      Image(expanded ? app::images::chevron_down
-                     : app::images::chevron_right)
-          .Tint(colors::tertiary)
-          .With(Frame{.width = 15.0F, .height = 15.0F}),
+      Text(label).Style(ChatTextStyle(13.0F, FontWeight::Regular,
+                                      presentation.failed ? colors::danger
+                                                          : colors::secondary)),
+      Text(duration).Style(ChatTextStyle(
+          13.0F, FontWeight::Regular,
+          presentation.failed ? colors::danger : colors::secondary)),
+      Stack{Image(expanded ? app::images::chevron_down
+                           : app::images::chevron_right)
+                .Tint(colors::tertiary)
+                .With(Frame{.width = 16.0F, .height = 16.0F})}
+          .With(Frame{.width = 28.0F, .height = 32.0F},
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
   };
-  header = std::move(header)
-               .OnClick([toggled, process_key] {
-                 ToggleKey(toggled, process_key);
-               })
-               .With(Frame{.min_height = 48.0F}, Spacing(8.0F),
-                     PointerCursor(PointerCursorKind::Hand));
-  std::vector<View> rows{std::move(header)};
+  header =
+      std::move(header)
+          .OnClick([toggled, process_key] { ToggleKey(toggled, process_key); })
+          .With(Frame{.min_height = 48.0F},
+                CrossAlign(CrossAxisAlignment::Center),
+                PointerCursor(PointerCursorKind::Hand));
+  std::vector<View> process_rows;
   if (expanded) {
     for (std::size_t index = 0; index < message.timeline.size(); ++index) {
-      const auto key = std::to_string(stable_turn_id) + ":" +
-                       std::to_string(index);
+      const auto key =
+          std::to_string(stable_turn_id) + ":" + std::to_string(index);
       std::visit(
           Overloaded{
               [&](const domain::AssistantReasoningEvent &reasoning) {
-                rows.push_back(ReasoningTimelineBlock(reasoning, key,
-                                                      settings, toggled));
+                process_rows.push_back(
+                    ReasoningTimelineBlock(reasoning, key, settings, toggled));
               },
               [&](const domain::AssistantTextEvent &text) {
                 if (!text.text.empty())
-                  rows.push_back(AssistantMarkdown(
-                      text.text, settings.code_wrap_enabled, on_link,
-                      on_copy));
+                  process_rows.push_back(AssistantMarkdown(
+                      text.text, settings.code_wrap_enabled, on_link, on_copy));
               },
               [&](const domain::AssistantToolEvent &tool) {
-                rows.push_back(ToolTimelineCard(tool, key, toggled, on_link,
-                                                on_copy, context));
+                process_rows.push_back(ToolTimelineCard(
+                    tool, key, toggled, on_link, on_copy, context));
               }},
           message.timeline[index]);
     }
     if (message.timeline.empty() && !message.reasoning_content.empty()) {
-      rows.push_back(ReasoningTimelineBlock(
+      process_rows.push_back(ReasoningTimelineBlock(
           domain::AssistantReasoningEvent{.turn_index = 0,
                                           .text = message.reasoning_content},
           process_key + ":legacy", settings, toggled));
     }
   }
-  View changed_files = ChangedFilesBlock(
-      message, stable_turn_id, toggled, on_link, on_copy, context);
+  View changed_files = ChangedFilesBlock(message, stable_turn_id, toggled,
+                                         on_link, on_copy, context);
+  View process =
+      Column{
+          std::move(header),
+          Column{Divider()}.With(Padding(EdgeInsets{.bottom = 20.0F})),
+          Column(std::move(process_rows))
+              .With(CrossAlign(CrossAxisAlignment::Stretch)),
+      }
+          .With(CrossAlign(CrossAxisAlignment::Stretch));
   return Column{
-      Column(std::move(rows))
-          .With(CrossAlign(CrossAxisAlignment::Stretch),
-                Padding(EdgeInsets{
-                    .right = 2.0F, .bottom = 12.0F, .left = 2.0F}),
-                Border(colors::border_light, 0.5F), CornerRadius(10.0F)),
+      std::move(process),
       std::move(changed_files),
-  }.With(CrossAlign(CrossAxisAlignment::Stretch));
+  }
+      .With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
 View MessageBubble(const domain::ChatMessage &message,
@@ -1720,70 +1931,102 @@ View MessageBubble(const domain::ChatMessage &message,
   if (IsCompactTimelineBlock(message))
     return CompactProgressBlock(message, std::string{compact_label});
   const bool user = message.role == domain::MessageRole::user;
-  const bool selected = std::ranges::contains(selected_messages.Get(),
-                                              message.id);
+  const bool selected =
+      std::ranges::contains(selected_messages.Get(), message.id);
   const auto bubble_color = static_cast<Color>(colors::user_bubble);
   const float luminance = bubble_color.red * 0.2126F +
                           bubble_color.green * 0.7152F +
                           bubble_color.blue * 0.0722F;
   const Color user_text = luminance > 0.55F ? static_cast<Color>(colors::text)
                                             : Color::Rgb(237, 240, 242);
-  View assistant_text = message.content.empty()
-                            ? Stack{}.With(Frame{.height = 0.0F})
-                            : AssistantMarkdown(
-                                  message.content,
-                                  timeline_settings.code_wrap_enabled,
-                                  on_link, on_copy);
+  View assistant_text =
+      message.content.empty()
+          ? Stack{}.With(Frame{.height = 0.0F})
+          : AssistantMarkdown(message.content,
+                              timeline_settings.code_wrap_enabled, on_link,
+                              on_copy);
+  if (!user && !live && !message.content.empty()) {
+    assistant_text = MessageLongPressTarget(
+        assistant_text, action_message, multi_select, selected_messages,
+        message.id);
+  }
   View assistant_error = Stack{}.With(Frame{.height = 0.0F});
   if (message.error && !message.error_message.empty()) {
-    assistant_error = Text(message.error_message)
-                          .Style(ChatTextStyle(12.0F, FontWeight::Regular,
-                                               colors::danger));
+    assistant_error =
+        Text(message.error_message)
+            .Style(ChatTextStyle(12.0F, FontWeight::Regular, colors::danger));
   }
-  View assistant = Column{
-      AssistantTimeline(message, live, timeline_settings, toggled_timeline,
-                        on_link, on_copy, context),
-      std::move(assistant_text),
-      std::move(assistant_error),
-  }.With(CrossAlign(CrossAxisAlignment::Stretch));
-  View bubble = user
-                    ? Text(message.content)
-                          .With(FontSize(16.0F), Foreground(user_text),
-                                Padding(EdgeInsets::Symmetric(15.0F, 10.0F)),
-                                Background(colors::user_bubble),
-                                CornerRadius(18.0F),
-                                Frame{.max_width = 684.0F})
-                    : std::move(assistant);
-  View aligned_bubble =
-      user ? Row{Spacer(), bubble} : Row{bubble, Spacer()};
-  std::vector<View> content{aligned_bubble,
-                            MessageAttachments(message, user)};
-  if (!multi_select && action_message.Get() == message.id)
+  View assistant =
+      Column{
+          AssistantTimeline(message, live, timeline_settings, toggled_timeline,
+                            on_link, on_copy, context),
+          std::move(assistant_text),
+          std::move(assistant_error),
+      }
+          .With(CrossAlign(CrossAxisAlignment::Stretch));
+  std::string_view trimmed_user_content = message.content;
+  while (!trimmed_user_content.empty() &&
+         std::isspace(
+             static_cast<unsigned char>(trimmed_user_content.front())) != 0)
+    trimmed_user_content.remove_prefix(1);
+  while (!trimmed_user_content.empty() &&
+         std::isspace(
+             static_cast<unsigned char>(trimmed_user_content.back())) != 0)
+    trimmed_user_content.remove_suffix(1);
+  const bool legacy_attachment_placeholder =
+      !message.attachments.empty() &&
+      (trimmed_user_content == "已附加文件" ||
+       trimmed_user_content == "Attached files");
+  const bool user_content_visible =
+      !message.content.empty() && !legacy_attachment_placeholder;
+  View bubble = std::move(assistant);
+  if (user) {
+    bubble = user_content_visible
+                 ? Text(message.content)
+                       .With(FontSize(16.0F), Foreground(user_text),
+                             Padding(EdgeInsets::Symmetric(15.0F, 10.0F)),
+                             Background(colors::user_bubble),
+                             CornerRadius(18.0F), Frame{.max_width = 684.0F})
+                 : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
+    if (!live && user_content_visible) {
+      bubble = MessageLongPressTarget(bubble, action_message, multi_select,
+                                      selected_messages, message.id);
+    }
+  }
+  View aligned_bubble = user ? Row{Spacer(), bubble} : Row{bubble, Spacer()};
+  std::vector<View> content{
+      aligned_bubble,
+      MessageAttachments(message, user, 4.0F),
+  };
+  if (!live && !multi_select && action_message.Get() == message.id)
     content.push_back(MessageActionBar(message, callbacks));
 
-  return Column(std::move(content))
+  auto result = Column(std::move(content));
+  // The legacy transient streaming row is display-only. It cannot enter the
+  // persisted-message action or multi-select state before generation finishes.
+  if (live)
+    return std::move(result).With(
+        Padding(EdgeInsets{.top = user ? 16.0F : 0.0F,
+                           .right = 16.0F,
+                           .bottom = user ? 32.0F : 28.0F,
+                           .left = 16.0F}),
+        Background(selected ? colors::accent_muted : Color::Transparent()),
+        Border(selected ? colors::border_light : Color::Transparent(),
+               selected ? 1.0F : 0.0F),
+        CornerRadius(selected ? 12.0F : 0.0F));
+
+  return std::move(result)
       .OnClick([multi_select, selected_messages, id = message.id] {
         if (multi_select)
           ToggleMessageSelection(selected_messages, id);
       })
-      .On<LongPressEvents::Started>(
-          [action_message, multi_select, selected_messages,
-           id = message.id](const LongPressEvent &) {
-            if (multi_select) {
-              ToggleMessageSelection(selected_messages, id);
-              return;
-            }
-            action_message = action_message.Get() == id
-                                 ? std::optional<std::uint64_t>{}
-                                 : std::optional<std::uint64_t>{id};
-          })
-      .With(LongPressGesture{},
-            Padding(EdgeInsets{.top = user ? 16.0F : 0.0F,
+      .With(Padding(EdgeInsets{.top = user ? 16.0F : 0.0F,
                                .right = 16.0F,
                                .bottom = user ? 32.0F : 28.0F,
                                .left = 16.0F}),
-            Background(selected ? colors::accent_muted
-                                : Color::Transparent()),
+            Background(selected ? colors::accent_muted : Color::Transparent()),
+            Border(selected ? colors::border_light : Color::Transparent(),
+                   selected ? 1.0F : 0.0F),
             CornerRadius(selected ? 12.0F : 0.0F));
 }
 
@@ -1801,11 +2044,13 @@ View Conversation(
     const TutorialMarkdownCopyHandler &on_copy,
     const ToolRendererContext &context,
     const std::shared_ptr<AutoCompactionUiState> &auto_compaction,
-    std::string compact_label) {
-  static_cast<void>(revision);
+    std::string compact_label, ScrollController conversation_scroll,
+    State<std::uint64_t> scroll_to_bottom_request,
+    std::optional<bool> has_selected_model) {
   const auto messages = session->Messages();
   if (messages.empty()) {
-    return EmptyConversation(navigation);
+    return EmptyConversation(navigation,
+                             !has_selected_model.value_or(true));
   }
 
   const auto &generation_state = generation->State();
@@ -1822,13 +2067,13 @@ View Conversation(
   streaming_message.timeline = generation_state.timeline;
   streaming_message.streaming = true;
   streaming_message.processing_started_at = generation_state.started_at_millis;
-  View streaming = generation_state.phase ==
-                           application::GenerationPhase::running
-                       ? MessageBubble(streaming_message, action_message, false,
-                                       selected_messages, {}, timeline_settings,
-                                       toggled_timeline, on_link, on_copy,
-                                       context, compact_label, true)
-                       : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
+  View streaming =
+      generation_state.phase == application::GenerationPhase::running
+          ? MessageBubble(streaming_message, action_message, false,
+                          selected_messages, {}, timeline_settings,
+                          toggled_timeline, on_link, on_copy, context,
+                          compact_label, true)
+          : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
   // While an automatic compaction runs, its progress block sits at the end of
   // the transcript as a block of its own; after the write-back the persisted
   // block carries the final status, exactly like the legacy controller that
@@ -1841,85 +2086,125 @@ View Conversation(
         action_message, false, selected_messages, {}, timeline_settings,
         toggled_timeline, on_link, on_copy, context, compact_label);
   }
-  View list = ScrollView(Column{
-                             ForEach(messages,
-                                     [action_message, multi_select,
-                                      selected_messages,
-                                      callbacks, timeline_settings,
-                                      toggled_timeline, on_link, on_copy,
-                                      context,
-                                      compact_label](const auto &message) {
-                                       return MessageBubble(
-                                                  message, action_message,
-                                                  multi_select,
-                                                  selected_messages, callbacks,
-                                                  timeline_settings,
-                                                  toggled_timeline, on_link,
-                                                  on_copy, context,
-                                                  compact_label)
-                                           .Key(message.id);
-                                     }),
-                             std::move(compaction),
-                             std::move(streaming),
-                         }
-                             .With(CrossAlign(CrossAxisAlignment::Stretch),
-                                   Padding(EdgeInsets{
-                                       .bottom = multi_select ? 60.0F : 0.0F})))
-                  .ScrollAxis(Axis::Vertical)
-                  .With(Grow(), ScrollBar());
-  if (!multi_select)
-    return list;
+  const ScrollMetrics metrics = conversation_scroll.Metrics();
+  const bool at_bottom = metrics.maximum_offset <= metrics.offset + 2.0F;
+  View list =
+      ScrollView(
+          Column{
+              ForEach(messages,
+                      [action_message, multi_select, selected_messages,
+                       callbacks, timeline_settings, toggled_timeline, on_link,
+                       on_copy, context, compact_label](const auto &message) {
+                        return MessageBubble(message, action_message,
+                                             multi_select, selected_messages,
+                                             callbacks, timeline_settings,
+                                             toggled_timeline, on_link, on_copy,
+                                             context, compact_label)
+                            .Key(message.id);
+                      }),
+              std::move(compaction),
+              std::move(streaming),
+          }
+              .With(CrossAlign(CrossAxisAlignment::Stretch),
+                    Padding(EdgeInsets{.top = 8.0F,
+                                       .bottom = multi_select ? 72.0F : 8.0F})))
+          .ScrollAxis(Axis::Vertical)
+          .Controller(conversation_scroll)
+          .With(Grow(), ScrollBar(),
+                ChatTailScroll{
+                    .controller = conversation_scroll,
+                    .conversation_id =
+                        std::string{session->CurrentConversationId()},
+                    .content_revision = revision,
+                    .smooth_request = scroll_to_bottom_request.Get(),
+                });
 
-  View selection_bar =
-      Row{
-          Text::Format(app::strings::model_list_selected_count,
-                       selected_messages->size())
-              .Style(ChatTextStyle(16.0F)),
-          Spacer(),
-          MessageActionButton(app::images::download,
-                              app::strings::export_button_label,
-                              callbacks.export_selected),
-          MessageActionButton(
-              app::images::x, app::strings::common_close,
-              [selected_messages, action_message,
-               exit = callbacks.enter_multi_select] {
-                selected_messages = std::vector<std::uint64_t>{};
-                action_message = std::nullopt;
-                if (exit)
-                  exit();
-              }),
-      }
-          .With(Frame{.min_height = 60.0F},
-                Padding(EdgeInsets::Symmetric(16.0F, 8.0F)),
-                CrossAlign(CrossAxisAlignment::Center),
-                Background(colors::elevated),
-                Shadow{.color = Color::Rgb(0, 0, 0, 0.18F),
-                       .blur_radius = 8.0F});
-  return Stack{list, Column{Spacer(), selection_bar}}.With(Grow());
+  View selection_bar = Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
+  if (multi_select) {
+    selection_bar =
+        Row{
+            Text::Format(app::strings::model_list_selected_count,
+                         selected_messages->size())
+                .Style(ChatTextStyle(16.0F)),
+            Spacer(),
+            Row{
+                Stack{Image(app::images::download)
+                          .Tint(colors::text_on_color)
+                          .With(Frame{.width = 20.0F, .height = 20.0F})}
+                    .OnClick(callbacks.export_selected)
+                    .With(Frame{.width = 44.0F, .height = 44.0F},
+                          Align(HorizontalAlignment::Center,
+                                VerticalAlignment::Center),
+                          Background(colors::accent), CornerRadius(22.0F),
+                          Focusable(), PointerCursor(PointerCursorKind::Hand)),
+                Stack{Image(app::images::x)
+                          .Tint(colors::secondary)
+                          .With(Frame{.width = 20.0F, .height = 20.0F})}
+                    .OnClick([selected_messages, action_message,
+                              exit = callbacks.enter_multi_select] {
+                      selected_messages = std::vector<std::uint64_t>{};
+                      action_message = std::nullopt;
+                      if (exit)
+                        exit();
+                    })
+                    .With(Frame{.width = 44.0F, .height = 44.0F},
+                          Align(HorizontalAlignment::Center,
+                                VerticalAlignment::Center),
+                          Focusable(), PointerCursor(PointerCursorKind::Hand)),
+            }
+                .With(Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center)),
+        }
+            .With(Padding(EdgeInsets::Symmetric(16.0F, 8.0F)),
+                  CrossAlign(CrossAxisAlignment::Center),
+                  Background(colors::elevated),
+                  Shadow{.color = Color::Rgb(0, 0, 0, 0.18F),
+                         .blur_radius = 8.0F});
+  }
+
+  View scroll_button = Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
+  if (!multi_select && !at_bottom) {
+    scroll_button = Column{
+        Spacer(),
+        Row{
+            Spacer(),
+            ScrollToBottomButton(
+                [scroll_to_bottom_request] { scroll_to_bottom_request += 1U; }),
+        }
+            .With(Padding(EdgeInsets{.right = 16.0F, .bottom = 16.0F})),
+    };
+  }
+  return Stack{std::move(list), std::move(scroll_button),
+               Column{Spacer(), std::move(selection_bar)}}
+      .With(Grow());
 }
 
-void ShowTextSelectionDialog(const DialogHandle &dialogs,
-                             std::string content) {
+void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
   dialogs.Show([content = std::move(content)](DialogContext dialog) {
     return Column{
         Text(app::strings::dialog_select_text_title)
-            .Style(ChatTextStyle(18.0F, FontWeight::Medium)),
-        ScrollView(SelectionArea(
-                       Text(content).Style(ChatTextStyle(15.0F))))
+            .Style(ChatTextStyle(20.0F, FontWeight::Bold)),
+        ScrollView(SelectionArea(Text(content).Style(ChatTextStyle(15.0F))))
             .ScrollAxis(Axis::Vertical)
-            .With(Frame{.max_height = 500.0F},
-                  Padding(EdgeInsets{.top = 16.0F, .bottom = 16.0F})),
+            .With(Frame{.max_height = 500.0F}, Padding(24.0F),
+                  Background(colors::background)),
         Row{
             Spacer(),
-            Button(app::strings::common_close)
-                .OnClick([dialog] { dialog.Dismiss(); }),
+            Text(app::strings::common_close)
+                .Style(ChatTextStyle(14.0F))
+                .OnClick([dialog] { dialog.Dismiss(); })
+                .With(Frame{.min_height = 48.0F},
+                      Padding(EdgeInsets::Symmetric(12.0F, 8.0F)),
+                      Align(HorizontalAlignment::Center,
+                            VerticalAlignment::Center),
+                      Focusable(), PointerCursor(PointerCursorKind::Hand)),
         },
     }
-        .With(Frame{.width = 352.0F, .max_height = 640.0F},
-              Padding(24.0F), CrossAlign(CrossAxisAlignment::Stretch),
-              Background(colors::elevated), CornerRadius(18.0F),
-              Shadow{.color = Color::Rgb(0, 0, 0, 0.28F),
-                     .blur_radius = 18.0F});
+        .With(
+            Frame{
+                .min_width = 280.0F, .max_width = 560.0F, .max_height = 640.0F},
+            Padding(24.0F), CrossAlign(CrossAxisAlignment::Stretch),
+            Background(colors::background), CornerRadius(24.0F),
+            Shadow{.color = Color::Rgb(0, 0, 0, 0.28F), .blur_radius = 18.0F});
   });
 }
 
@@ -1948,14 +2233,18 @@ struct RetryLabels final {
 };
 
 // Control characters cannot appear in a translation, so they are safe markers.
-constexpr std::string_view kAttemptMarker{"\x1f""0""\x1f"};
-constexpr std::string_view kErrorMarker{"\x1f""2""\x1f"};
+constexpr std::string_view kAttemptMarker{"\x1f"
+                                          "0"
+                                          "\x1f"};
+constexpr std::string_view kErrorMarker{"\x1f"
+                                        "2"
+                                        "\x1f"};
 
 std::string FormatRetryNotice(const RetryLabels &labels, int attempt,
                               std::string_view error) {
   auto text = labels.attempt;
-  for (std::size_t at = text.find(kAttemptMarker);
-       at != std::string::npos; at = text.find(kAttemptMarker, at)) {
+  for (std::size_t at = text.find(kAttemptMarker); at != std::string::npos;
+       at = text.find(kAttemptMarker, at)) {
     text.replace(at, kAttemptMarker.size(), std::to_string(attempt));
     at += 1;
   }
@@ -2018,7 +2307,8 @@ public:
       : dependencies_(std::move(dependencies)),
         retry_labels_(std::move(retry_labels)),
         pending_review_(std::move(pending_review)),
-        pending_messages_(std::move(pending_messages)), tasks_(std::move(tasks)),
+        pending_messages_(std::move(pending_messages)),
+        tasks_(std::move(tasks)),
         active_generation_(std::move(active_generation)),
         revision_(std::move(revision)),
         current_project_id_(std::move(current_project_id)),
@@ -2032,8 +2322,8 @@ public:
     }
 
     const std::string user_text = message.text;
-    auto work = dependencies_.generation->Begin(
-        user_text, std::move(message.attachments));
+    auto work = dependencies_.generation->Begin(user_text,
+                                                std::move(message.attachments));
     if (!work)
       return false;
 
@@ -2043,12 +2333,12 @@ public:
     auto turn = SnapshotConversation(*dependencies_.session,
                                      current_project_id_, conversation_id);
     auto self = shared_from_this();
-    active_generation_ = tasks_.Launch(
-        [self = std::move(self), conversation_id, user_text,
-         turn = std::move(turn), work = std::move(*work)]() mutable {
-          return self->Run(std::move(work), std::move(turn),
-                           std::move(conversation_id), std::move(user_text));
-        });
+    active_generation_ = tasks_.Launch([self = std::move(self), conversation_id,
+                                        user_text, turn = std::move(turn),
+                                        work = std::move(*work)]() mutable {
+      return self->Run(std::move(work), std::move(turn),
+                       std::move(conversation_id), std::move(user_text));
+    });
     return true;
   }
 
@@ -2092,9 +2382,10 @@ private:
   // `startSoftContextCompaction()`: decide the trigger, show the running
   // progress block, summarize, then write the result back. The request then
   // continues with the refreshed transcript.
-  Task<void> AutoCompactBeforeRequest(application::GenerationWork &work,
-                                      const domain::ModelConfig &model,
-                                      const domain::AiBehaviorSettings &behavior) {
+  Task<void>
+  AutoCompactBeforeRequest(application::GenerationWork &work,
+                           const domain::ModelConfig &model,
+                           const domain::AiBehaviorSettings &behavior) {
     if (!dependencies_.compaction || !dependencies_.auto_compaction ||
         !dependencies_.session)
       co_return;
@@ -2121,17 +2412,15 @@ private:
     // `tokenUsageTracker.lastInputTokens()`; 0 means no protocol has reported
     // usage yet, and the checks fall back to the local estimate.
     const int observed_tokens =
-        dependencies_.token_usage
-            ? dependencies_.token_usage->LastInputTokens()
-            : 0;
+        dependencies_.token_usage ? dependencies_.token_usage->LastInputTokens()
+                                  : 0;
     const bool hard = application::ShouldAutoCompactBeforeRequest(
         model_option, messages, observed_tokens, preserved_ids,
         behavior.preserve_reasoning);
-    const bool soft =
-        !hard && application::ShouldAutoSoftCompactBeforeRequest(
-                     model_option, messages, observed_tokens,
-                     behavior.soft_compaction, preserved_ids,
-                     behavior.preserve_reasoning);
+    const bool soft = !hard && application::ShouldAutoSoftCompactBeforeRequest(
+                                   model_option, messages, observed_tokens,
+                                   behavior.soft_compaction, preserved_ids,
+                                   behavior.preserve_reasoning);
     if (!hard && !soft)
       co_return;
 
@@ -2204,10 +2493,9 @@ private:
       // The summarized messages leave the context and the summary joins it;
       // the retained user messages stay in place and the preserved tail is
       // re-appended after the summary, both verbatim.
-      dependencies_.session->ApplyCompaction(std::move(excluded_ids),
-                                             compacted->summary_content,
-                                             std::move(preserved),
-                                             insert_after_id);
+      dependencies_.session->ApplyCompaction(
+          std::move(excluded_ids), compacted->summary_content,
+          std::move(preserved), insert_after_id);
       // Legacy lines 517-522: the completed block closes the transcript.
       static_cast<void>(dependencies_.session->AppendAssistant(
           domain::CompactProgressMessage(0U, domain::compact_status_done)));
@@ -2338,11 +2626,10 @@ private:
     if (!dependencies_.generation->IsCurrent(work.generation_id))
       co_return;
     if (!context) {
-      FailAndContinue(
-          work.generation_id,
-          application::CompletionError{
-              .code = application::CompletionErrorCode::transport,
-              .message = context.error().message});
+      FailAndContinue(work.generation_id,
+                      application::CompletionError{
+                          .code = application::CompletionErrorCode::transport,
+                          .message = context.error().message});
       co_return;
     }
 
@@ -2386,18 +2673,17 @@ private:
     // gives up.
     for (int attempt = 0; attempt < kMaxGenerationAttempts; ++attempt) {
       auto current_response = co_await dependencies_.completion_loop->Complete(
-        request,
-        prompt_context,
-        application::CompletionObserver{
-            .on_event =
-                [generation = dependencies_.generation,
-                 generation_id = work.generation_id,
-                 revision = revision_](const application::CompletionEvent &event) {
-                  if (generation->Observe(generation_id, event))
-                    revision += 1;
-                },
-            .on_tool_review = ToolReviewer(),
-        });
+          request, prompt_context,
+          application::CompletionObserver{
+              .on_event =
+                  [generation = dependencies_.generation,
+                   generation_id = work.generation_id, revision = revision_](
+                      const application::CompletionEvent &event) {
+                    if (generation->Observe(generation_id, event))
+                      revision += 1;
+                  },
+              .on_tool_review = ToolReviewer(),
+          });
       if (!dependencies_.generation->IsCurrent(work.generation_id))
         co_return;
       if (current_response) {
@@ -2406,7 +2692,8 @@ private:
       }
       const int next_attempt = attempt + 1;
       if (next_attempt >= kMaxGenerationAttempts) {
-        FailAndContinue(work.generation_id, std::move(current_response.error()));
+        FailAndContinue(work.generation_id,
+                        std::move(current_response.error()));
         co_return;
       }
       // The failed attempt leaves nothing behind; the notice below is what the
@@ -2415,13 +2702,13 @@ private:
           dependencies_.generation->ResetAttempt(work.generation_id));
       domain::ChatMessage notice;
       notice.role = domain::MessageRole::assistant;
-      notice.content =
-          FormatRetryNotice(retry_labels_, next_attempt + 1,
-                            current_response.error().message);
+      notice.content = FormatRetryNotice(retry_labels_, next_attempt + 1,
+                                         current_response.error().message);
       notice.retry_notice = true;
       notice.processing_started_at = NowMilliseconds();
       notice.processing_finished_at = notice.processing_started_at;
-      static_cast<void>(dependencies_.session->AppendAssistant(std::move(notice)));
+      static_cast<void>(
+          dependencies_.session->AppendAssistant(std::move(notice)));
       revision_ += 1;
       co_await Delay(kRetryDelay);
       if (!dependencies_.generation->IsCurrent(work.generation_id))
@@ -2480,47 +2767,44 @@ View PendingMessages(
     if (preview.size() > 30U)
       preview = preview.substr(0U, 30U) + "...";
     preview = std::to_string(index + 1U) + ". " + preview;
-    rows.emplace_back(
-        Row{
-            Stack{}.With(Frame{.width = 3.0F, .height = 20.0F},
-                         Background(colors::warning)),
-            Text(std::move(preview))
-                .Style(ChatTextStyle(12.0F, FontWeight::Regular,
-                                     Color::Rgb(255, 170, 51)))
-                .With(Grow(), ClipChildren()),
-            Stack{Image(app::images::x)
-                      .Tint(colors::tertiary)
-                      .With(Frame{.width = 12.0F, .height = 12.0F})}
-                .OnClick([queue, revision, index] {
-                  if (queue->Remove(index))
-                    revision += 1;
-                })
-                .With(Frame{.width = 20.0F, .height = 20.0F},
-                      Align(HorizontalAlignment::Center,
-                            VerticalAlignment::Center),
-                      Focusable(), PointerCursor(PointerCursorKind::Hand)),
-        }
-            .With(Padding(EdgeInsets{.top = 4.0F,
-                                     .right = 8.0F,
-                                     .bottom = 4.0F,
-                                     .left = 16.0F}),
-                  Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center),
-                  Background(colors::input))
-            .Key("pending:" + std::to_string(index)));
+    rows.emplace_back(Row{
+        Stack{}.With(Frame{.width = 3.0F, .height = 20.0F},
+                     Background(colors::warning)),
+        Text(std::move(preview))
+            .Style(ChatTextStyle(12.0F, FontWeight::Regular,
+                                 Color::Rgb(255, 170, 51)))
+            .With(Grow(), ClipChildren()),
+        Stack{Image(app::images::x)
+                  .Tint(colors::tertiary)
+                  .With(Frame{.width = 12.0F, .height = 12.0F})}
+            .OnClick([queue, revision, index] {
+              if (queue->Remove(index))
+                revision += 1;
+            })
+            .With(Frame{.width = 20.0F, .height = 20.0F},
+                  Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+                  Focusable(), PointerCursor(PointerCursorKind::Hand)),
+    }
+                          .With(Padding(EdgeInsets{.top = 4.0F,
+                                                   .right = 8.0F,
+                                                   .bottom = 4.0F,
+                                                   .left = 16.0F}),
+                                Spacing(8.0F),
+                                CrossAlign(CrossAxisAlignment::Center),
+                                Background(colors::input))
+                          .Key("pending:" + std::to_string(index)));
   }
   if (items.size() > visible) {
     rows.emplace_back(
         Text::Format(app::strings::common_more_queued, items.size() - visible)
             .Style(ChatTextStyle(12.0F, FontWeight::Regular,
                                  Color::Rgb(204, 136, 0)))
-            .With(Padding(EdgeInsets{.top = 2.0F,
-                                     .bottom = 4.0F,
-                                     .left = 16.0F})));
+            .With(Padding(
+                EdgeInsets{.top = 2.0F, .bottom = 4.0F, .left = 16.0F})));
   }
   if (rows.empty())
     return Stack{}.With(Frame{.height = 0.0F});
-  return Column(std::move(rows))
-      .With(CrossAlign(CrossAxisAlignment::Stretch));
+  return Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
 std::string WithQuote(const std::optional<std::string> &quote,
@@ -2541,28 +2825,29 @@ std::string WithQuote(const std::optional<std::string> &quote,
 View QuotePreview(State<std::optional<std::string>> quote) {
   if (!quote.Get())
     return Stack{}.With(Frame{.height = 0.0F});
-  std::string preview = *quote.Get();
-  if (preview.size() > 80U)
-    preview = preview.substr(0U, 80U) + "...";
-  return Row{
-      Stack{}.With(Frame{.width = 3.0F, .height = 28.0F},
-                   Background(colors::accent), CornerRadius(2.0F)),
-      Text(std::move(preview))
-          .Style(ChatTextStyle(12.0F, FontWeight::Regular,
-                               colors::secondary))
-          .With(Grow(), ClipChildren()),
-      Stack{Image(app::images::x)
-                .Tint(colors::tertiary)
-                .With(Frame{.width = 14.0F, .height = 14.0F})}
-          .OnClick([quote] { quote = std::nullopt; })
-          .With(Frame{.width = 24.0F, .height = 24.0F},
-                Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                Focusable(), PointerCursor(PointerCursorKind::Hand)),
-  }
-      .With(Frame{.min_height = 40.0F},
-            Padding(EdgeInsets::Symmetric(12.0F, 6.0F)), Spacing(8.0F),
-            CrossAlign(CrossAxisAlignment::Center),
-            Background(colors::surface));
+  View panel =
+      Row{
+          Stack{}.With(Frame{.width = 3.0F}, Background(colors::accent),
+                       CornerRadius(2.0F)),
+          Text(*quote.Get())
+              .Style(
+                  ChatTextStyle(13.0F, FontWeight::Regular, colors::secondary))
+              .With(Frame{.max_height = 36.0F}, Grow(), ClipChildren()),
+          Stack{Image(app::images::x)
+                    .Tint(colors::tertiary)
+                    .With(Frame{.width = 16.0F, .height = 16.0F})}
+              .OnClick([quote] { quote = std::nullopt; })
+              .With(
+                  Frame{.width = 28.0F, .height = 28.0F},
+                  Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+                  Focusable(), PointerCursor(PointerCursorKind::Hand)),
+      }
+          .With(Frame{.min_height = 44.0F}, Padding(8.0F), Spacing(8.0F),
+                CrossAlign(CrossAxisAlignment::Stretch),
+                Background(colors::elevated),
+                Border(colors::border_light, 1.0F), CornerRadius(14.0F),
+                ClipChildren());
+  return Column{std::move(panel)}.With(Padding(EdgeInsets{.bottom = 8.0F}));
 }
 
 StringVariant SlashDescription(std::string_view token) {
@@ -2599,10 +2884,10 @@ StringVariant ReasoningDescription(domain::ReasoningEffort effort) {
   std::unreachable();
 }
 
-const domain::ModelConfig *FindSlashModel(
-    std::span<const domain::ModelConfig> models, std::string_view id) {
-  const auto found =
-      std::ranges::find(models, id, &domain::ModelConfig::id);
+const domain::ModelConfig *
+FindSlashModel(std::span<const domain::ModelConfig> models,
+               std::string_view id) {
+  const auto found = std::ranges::find(models, id, &domain::ModelConfig::id);
   return found == models.end() ? nullptr : &*found;
 }
 
@@ -2628,11 +2913,12 @@ struct SlashPopupRow final {
   std::string replacement;
 };
 
-[[huxerui::composable]] View SlashSuggestionsPopup(
-    PopupContext context, application::SlashSuggestionState state,
-    std::vector<domain::ModelConfig> models, std::string selected_model_id,
-    domain::ChatMode chat_mode,
-    std::function<void(std::string)> select_replacement) {
+[[huxerui::composable]] View
+SlashSuggestionsPopup(PopupContext context,
+                      application::SlashSuggestionState state,
+                      std::vector<domain::ModelConfig> models,
+                      std::string selected_model_id, domain::ChatMode chat_mode,
+                      std::function<void(std::string)> select_replacement) {
   StringVariant title = app::strings::slash_command_main_title;
   std::vector<SlashPopupRow> popup_rows;
   std::visit(
@@ -2687,48 +2973,43 @@ struct SlashPopupRow final {
   rows.emplace_back(
       Text(title)
           .Style(ChatTextStyle(13.0F, FontWeight::Medium))
-          .With(Frame{.height = 22.0F},
-                Padding(EdgeInsets{.top = 1.0F,
-                                   .right = 16.0F,
-                                   .left = 16.0F})));
+          .With(
+              Frame{.height = 22.0F},
+              Padding(EdgeInsets{.top = 1.0F, .right = 16.0F, .left = 16.0F})));
   for (auto &row : popup_rows) {
-    rows.emplace_back(
-        Column{
-            Row{
-                Text(row.label)
-                    .Style(ChatTextStyle(13.0F, FontWeight::Medium,
-                                         colors::accent))
-                    .With(Grow(), ClipChildren()),
-                row.selected
-                    ? Stack{}.With(Frame{.width = 7.0F, .height = 7.0F},
-                                   Background(colors::accent),
-                                   CornerRadius(4.0F))
-                    : Stack{}.With(Frame{.width = 7.0F, .height = 7.0F}),
-            }
-                .With(CrossAlign(CrossAxisAlignment::Center)),
-            Text(row.description)
-                .Style(ChatTextStyle(12.0F, FontWeight::Regular,
-                                     colors::tertiary))
-                .With(Padding(EdgeInsets{.top = 1.0F}), ClipChildren()),
+    rows.emplace_back(Column{
+        Row{
+            Text(row.label)
+                .Style(ChatTextStyle(13.0F, FontWeight::Medium, colors::accent))
+                .With(Grow(), ClipChildren()),
+            row.selected
+                ? Stack{}.With(Frame{.width = 7.0F, .height = 7.0F},
+                               Background(colors::accent), CornerRadius(4.0F))
+                : Stack{}.With(Frame{.width = 7.0F, .height = 7.0F}),
         }
-            .OnClick([context, select_replacement,
-                      replacement = row.replacement] {
-              if (!select_replacement) {
-                context.Dismiss();
-                return;
-              }
-              select_replacement(replacement);
-            })
-            .With(Frame{.min_height = 52.0F},
-                  Padding(EdgeInsets::Symmetric(16.0F, 14.0F)),
-                  CrossAlign(CrossAxisAlignment::Stretch), Focusable(),
-                  PointerCursor(PointerCursorKind::Hand))
-            .Key(row.replacement));
+            .With(CrossAlign(CrossAxisAlignment::Center)),
+        Text(row.description)
+            .Style(ChatTextStyle(12.0F, FontWeight::Regular, colors::tertiary))
+            .With(Padding(EdgeInsets{.top = 1.0F}), ClipChildren()),
+    }
+                          .OnClick([context, select_replacement,
+                                    replacement = row.replacement] {
+                            if (!select_replacement) {
+                              context.Dismiss();
+                              return;
+                            }
+                            select_replacement(replacement);
+                          })
+                          .With(Frame{.min_height = 52.0F},
+                                Padding(EdgeInsets::Symmetric(16.0F, 14.0F)),
+                                CrossAlign(CrossAxisAlignment::Stretch),
+                                Focusable(),
+                                PointerCursor(PointerCursorKind::Hand))
+                          .Key(row.replacement));
   }
-  return ScrollView(
-             Column(std::move(rows))
-                 .With(CrossAlign(CrossAxisAlignment::Stretch),
-                       Padding(EdgeInsets::All(8.0F))))
+  return ScrollView(Column(std::move(rows))
+                        .With(CrossAlign(CrossAxisAlignment::Stretch),
+                              Padding(EdgeInsets::All(8.0F))))
       .ScrollAxis(Axis::Vertical)
       .With(Frame{.width = 328.0F, .max_height = 300.0F},
             Background(colors::input), Border(colors::border_light, 1.0F),
@@ -2794,8 +3075,8 @@ struct SlashPopupRow final {
 
   const bool generating =
       generation->State().phase == application::GenerationPhase::running;
-  const bool has_content = HasVisibleText(draft->text) ||
-                           !selected_attachments->empty();
+  const bool has_content =
+      HasVisibleText(draft->text) || !selected_attachments->empty();
 
   const auto dismiss_slash = [slash_popup, slash_layer] {
     if (slash_layer.Get())
@@ -2805,51 +3086,48 @@ struct SlashPopupRow final {
   using SlashPresenter = std::function<void(std::string_view)>;
   const auto slash_presenter = std::make_shared<SlashPresenter>();
   const std::weak_ptr<SlashPresenter> weak_slash_presenter = slash_presenter;
-  *slash_presenter =
-      [slash_popup, slash_layer, draft, chat_mode, slash_models,
-       slash_selected_model_id, generating,
-       weak_slash_presenter](std::string_view text) {
-        auto state = generating
-                         ? std::optional<application::SlashSuggestionState>{}
-                         : application::ResolveSlashSuggestionState(
-                               text, slash_models.Get());
-        if (!state) {
-          if (slash_layer.Get())
-            slash_popup.Dismiss(*slash_layer.Get());
-          slash_layer = std::nullopt;
-          return;
-        }
-        auto factory =
-            [state = std::move(*state), models = slash_models.Get(),
-             selected_model_id = slash_selected_model_id.Get(), chat_mode,
-             draft, weak_slash_presenter](PopupContext context) mutable {
-              return SlashSuggestionsPopup(
-                  context, std::move(state), std::move(models),
-                  std::move(selected_model_id), chat_mode,
-                  [draft, weak_slash_presenter](std::string replacement) {
-                    draft = TextEditingValue::FromText(replacement);
-                    if (const auto presenter = weak_slash_presenter.lock())
-                      (*presenter)(replacement);
-                  });
-            };
-        if (slash_layer.Get() &&
-            slash_popup.Update(*slash_layer.Get(), factory)) {
-          return;
-        }
-        slash_layer = slash_popup.Show(
-            std::move(factory),
-            PopupOptions{
-                .placement = {AnchorSide::Above, AnchorAlignment::Start},
-                .gap = 8.0F,
-                .viewport_margin = 16.0F,
-                .offset = {},
-                .dismiss_on_outside_press = true,
-                .dismiss_on_cancel = true,
-                .trap_focus = false,
-                .retain_anchor_focus = true,
-                .on_dismiss_request = {},
-            });
-      };
+  *slash_presenter = [slash_popup, slash_layer, draft, chat_mode, slash_models,
+                      slash_selected_model_id, generating,
+                      weak_slash_presenter](std::string_view text) {
+    auto state = generating ? std::optional<application::SlashSuggestionState>{}
+                            : application::ResolveSlashSuggestionState(
+                                  text, slash_models.Get());
+    if (!state) {
+      if (slash_layer.Get())
+        slash_popup.Dismiss(*slash_layer.Get());
+      slash_layer = std::nullopt;
+      return;
+    }
+    auto factory = [state = std::move(*state), models = slash_models.Get(),
+                    selected_model_id = slash_selected_model_id.Get(),
+                    chat_mode, draft,
+                    weak_slash_presenter](PopupContext context) mutable {
+      return SlashSuggestionsPopup(
+          context, std::move(state), std::move(models),
+          std::move(selected_model_id), chat_mode,
+          [draft, weak_slash_presenter](std::string replacement) {
+            draft = TextEditingValue::FromText(replacement);
+            if (const auto presenter = weak_slash_presenter.lock())
+              (*presenter)(replacement);
+          });
+    };
+    if (slash_layer.Get() && slash_popup.Update(*slash_layer.Get(), factory)) {
+      return;
+    }
+    slash_layer = slash_popup.Show(
+        std::move(factory),
+        PopupOptions{
+            .placement = {AnchorSide::Above, AnchorAlignment::Start},
+            .gap = 8.0F,
+            .viewport_margin = 16.0F,
+            .offset = {},
+            .dismiss_on_outside_press = true,
+            .dismiss_on_cancel = true,
+            .trap_focus = false,
+            .retain_anchor_focus = true,
+            .on_dismiss_request = {},
+        });
+  };
 
   auto send = [draft, selected_attachments, pending_messages, runner,
                handle_slash_command = std::move(handle_slash_command),
@@ -2861,8 +3139,8 @@ struct SlashPopupRow final {
         runner->CancelAndContinue();
         return;
       }
-      auto queued = pending_messages->Enqueue(submitted_text,
-                                              selected_attachments.Get());
+      auto queued =
+          pending_messages->Enqueue(submitted_text, selected_attachments.Get());
       if (!queued)
         return;
       draft = TextEditingValue::FromText("");
@@ -2891,6 +3169,11 @@ struct SlashPopupRow final {
   };
 
   const bool can_send = generating || has_content;
+  const auto primary_action_state =
+      generating && !has_content ? ComposerPrimaryActionState::stop
+                                 : ComposerPrimaryActionState::send;
+  const auto &primary_action =
+      PrimaryActionPresentationFor(primary_action_state);
 
   std::vector<View> attachment_chips;
   attachment_chips.reserve(selected_attachments->size());
@@ -2898,8 +3181,8 @@ struct SlashPopupRow final {
     attachment_chips.emplace_back(
         Row{
             Text(attachment.Name())
-                .Style(ChatTextStyle(13.0F, FontWeight::Medium,
-                                     colors::secondary))
+                .Style(
+                    ChatTextStyle(13.0F, FontWeight::Medium, colors::secondary))
                 .With(Frame{.max_width = 170.0F, .max_height = 18.0F},
                       ClipChildren()),
             Stack{Image(app::images::x)
@@ -2929,11 +3212,10 @@ struct SlashPopupRow final {
 
   View attachment_row = Stack{}.With(Frame{.height = 0.0F});
   if (!attachment_chips.empty()) {
-    attachment_row = ScrollView(Row(std::move(attachment_chips))
-                                    .With(Spacing(8.0F)))
-                         .ScrollAxis(Axis::Horizontal)
-                         .With(Frame{.height = 42.0F},
-                               Padding(EdgeInsets{.bottom = 8.0F}));
+    attachment_row =
+        ScrollView(Row(std::move(attachment_chips)).With(Spacing(8.0F)))
+            .ScrollAxis(Axis::Horizontal)
+            .With(Frame{.height = 42.0F}, Padding(EdgeInsets{.bottom = 8.0F}));
   }
 
   return Column{
@@ -2942,8 +3224,14 @@ struct SlashPopupRow final {
           QuotePreview(quote_text),
           PendingMessages(pending_messages, revision),
           Row{
-              ComposerAction(app::images::plus, colors::secondary,
-                             Color::Transparent(), !generating,
+              ComposerAction(ComposerActionVisual{
+                                 .icon = app::images::plus,
+                                 .tint = colors::secondary,
+                                 .background = Color::Transparent(),
+                                 .icon_size = 20.0F,
+                                 .opacity = generating ? 0.62F : 1.0F,
+                             },
+                             !generating,
                              app::strings::composer_image_button_desc,
                              std::move(show_attachment_picker)),
               TextField(draft)
@@ -2960,22 +3248,24 @@ struct SlashPopupRow final {
                       .multiline = true,
                   })
                   .VerticalAlign(TextVerticalAlign::Center)
-                  .OnChanged([draft, slash_presenter](
-                                 const TextEditingValue &value) {
-                    draft = value;
-                    (*slash_presenter)(value.text);
-                  })
+                  .OnChanged(
+                      [draft, slash_presenter](const TextEditingValue &value) {
+                        draft = value;
+                        (*slash_presenter)(value.text);
+                      })
                   .OnSubmitted(send)
                   .With(Frame{.min_height = 44.0F}, Grow(),
                         slash_popup.Anchor()),
-              ComposerAction(
-                  generating && !has_content ? app::images::stop
-                                             : app::images::arrow_up,
-                  can_send ? colors::text_on_color : colors::secondary,
-                  can_send ? colors::accent : Color::Transparent(), can_send,
-                  generating && !has_content ? app::strings::chat_stop
-                                             : app::strings::chat_send,
-                  send),
+              ComposerAction(ComposerActionVisual{
+                                 .icon = primary_action.icon,
+                                 .tint = can_send ? colors::text_on_color
+                                                  : colors::secondary,
+                                 .background = can_send
+                                                   ? colors::accent
+                                                   : Color::Transparent(),
+                                 .icon_size = primary_action.icon_size,
+                             },
+                             can_send, primary_action.label, send),
           } // Match the legacy 148px composer body at the 420dpi reference
             // density. A 56dp minimum rasterizes two pixels short here and
             // makes both the editor text and circular actions look low.
@@ -2993,8 +3283,7 @@ struct SlashPopupRow final {
 }
 
 View GenerationError(const application::GenerationController &generation,
-                     std::size_t revision,
-                     const std::string &failed_label) {
+                     std::size_t revision, const std::string &failed_label) {
   static_cast<void>(revision);
   if (generation.State().phase != application::GenerationPhase::failed ||
       generation.State().error.empty()) {
@@ -3032,16 +3321,14 @@ View GenerationError(const application::GenerationController &generation,
     const std::shared_ptr<application::DiffStore> &diff_store,
     const std::shared_ptr<application::DiffReviewService> &diff_review,
     const std::shared_ptr<application::OutputSettingsService> &output_settings,
-    const std::shared_ptr<application::ToolPermissionService>
-        &tool_permissions,
+    const std::shared_ptr<application::ToolPermissionService> &tool_permissions,
     const std::shared_ptr<application::ToolReviewBroker> &tool_reviews,
     const std::shared_ptr<application::ChatModeService> &chat_modes,
     State<application::ChatInteractionModeState> interaction_mode,
-    domain::InputSettings input_settings,
-    std::string current_project_id,
+    domain::InputSettings input_settings, std::string current_project_id,
     application::PromptAssemblyContext prompt_context,
-    std::string project_label,
-    std::function<void()> show_project_picker) {
+    std::string project_label, std::function<void()> show_project_picker,
+    std::function<void()> refresh_workspace) {
   const auto navigation = UseNavigation<domain::AppRoute>();
   const auto bottom_sheets = UseBottomSheet();
   const auto dialogs = UseDialog();
@@ -3052,14 +3339,15 @@ View GenerationError(const application::GenerationController &generation,
   auto compaction_busy = UseState(std::make_shared<std::atomic<bool>>(false));
   auto attachment_visible = UseState(false);
   auto more_visible = UseState(false);
+  auto compaction_confirm_visible = UseState(false);
   auto permission_visible = UseState(false);
   auto attachment_layer = UseState(std::optional<LayerId>{});
   auto more_layer = UseState(std::optional<LayerId>{});
+  auto compaction_confirm_layer = UseState(std::optional<LayerId>{});
   auto permission_layer = UseState(std::optional<LayerId>{});
   auto permission_state = UseState(application::ToolPermissionState{});
   auto external_storage_granted = UseState(false);
-  auto selected_attachments =
-      UseState(std::vector<domain::InputAttachment>{});
+  auto selected_attachments = UseState(std::vector<domain::InputAttachment>{});
   auto expanded_attachment_directories = UseState(std::vector<std::string>{});
   auto pending_review = UseState(std::make_shared<PendingToolReview>());
   auto quote_text = UseState(std::optional<std::string>{});
@@ -3070,6 +3358,8 @@ View GenerationError(const application::GenerationController &generation,
   auto slash_selected_model_id = UseState(std::string{});
   auto timeline_settings = UseState(ChatTimelineSettings{});
   auto toggled_timeline = UseState(std::vector<std::string>{});
+  const auto conversation_scroll = UseScrollController();
+  auto scroll_to_bottom_request = UseState(std::uint64_t{0});
   const auto tasks = UseTaskScope();
   // Diff bodies live in the store, not in the transcript. `Lifecycle` runs
   // outside composition (the task scope forbids launching during composition)
@@ -3097,13 +3387,13 @@ View GenerationError(const application::GenerationController &generation,
     }
     if (wanted.empty())
       return;
-    tasks.Launch(LoadDiffs(diff_store, diff_cache, diff_pending,
-                           std::move(wanted)));
+    tasks.Launch(
+        LoadDiffs(diff_store, diff_cache, diff_pending, std::move(wanted)));
   });
 
   // Same loader, driven by the card's expand event.
-  auto request_diff = [tasks, diff_store, diff_cache, diff_pending](
-                          std::string diff_id) {
+  auto request_diff = [tasks, diff_store, diff_cache,
+                       diff_pending](std::string diff_id) {
     if (!diff_store || diff_id.empty() || diff_cache.Get()->contains(diff_id) ||
         diff_pending->contains(diff_id))
       return;
@@ -3113,12 +3403,11 @@ View GenerationError(const application::GenerationController &generation,
   };
 
   const RetryLabels retry_labels{
-      .attempt = UseString(app::strings::chat_retry_attempt,
-                           std::string{kAttemptMarker},
-                           std::to_string(kMaxGenerationAttempts),
-                           std::string{kErrorMarker}),
-      .failed = UseString(app::strings::chat_model_failed,
-                          std::string{kErrorMarker}),
+      .attempt = UseString(
+          app::strings::chat_retry_attempt, std::string{kAttemptMarker},
+          std::to_string(kMaxGenerationAttempts), std::string{kErrorMarker}),
+      .failed =
+          UseString(app::strings::chat_model_failed, std::string{kErrorMarker}),
       .no_model = UseString(app::strings::chat_error_no_model),
       .model_missing = UseString(app::strings::chat_error_model_missing),
   };
@@ -3134,11 +3423,11 @@ View GenerationError(const application::GenerationController &generation,
   const auto toast = UseToast();
 
   Lifecycle([reviews = tool_reviews, pending_review = pending_review.Get(),
-            revision] {
+             revision] {
     if (reviews) {
       reviews->SetHandler(
-          [pending_review, revision](
-              application::CompletionObserver::ToolReviewRequest request)
+          [pending_review,
+           revision](application::CompletionObserver::ToolReviewRequest request)
               -> Task<application::CompletionObserver::ToolReviewDecision> {
             pending_review->request = std::move(request);
             pending_review->decision.reset();
@@ -3194,11 +3483,11 @@ View GenerationError(const application::GenerationController &generation,
         settings.browser_mode = loaded->browser_mode;
         settings.browser_javascript_enabled =
             loaded->browser_javascript_enabled;
+        settings.allow_any_http = loaded->allow_any_http;
       });
     });
   });
-  Lifecycle([tasks, model_store, slash_models, slash_selected_model_id,
-             toast] {
+  Lifecycle([tasks, model_store, slash_models, slash_selected_model_id, toast] {
     tasks.Launch([model_store, slash_models, slash_selected_model_id,
                   toast]() -> Task<void> {
       auto models = co_await model_store->List();
@@ -3220,6 +3509,8 @@ View GenerationError(const application::GenerationController &generation,
       bottom_sheets, attachment_visible, attachment_layer);
   const ControlledBottomSheet more_sheet(bottom_sheets, more_visible,
                                          more_layer);
+  const ControlledBottomSheet compaction_confirm_sheet(
+      bottom_sheets, compaction_confirm_visible, compaction_confirm_layer);
   auto context_usage_visible = UseState(false);
   auto context_usage_layer = UseState(std::optional<LayerId>{});
   const ControlledBottomSheet context_usage_sheet(
@@ -3230,95 +3521,92 @@ View GenerationError(const application::GenerationController &generation,
   const auto storage_permission_description =
       UseString(app::strings::permission_mode_storage_required);
 
-  const auto set_permission_mode =
-      [tasks, chat_modes, permission_state, interaction_mode,
-       toast](domain::ToolPermissionMode mode) {
-        tasks.Launch([chat_modes, permission_state, interaction_mode, mode,
-                      toast]() -> Task<void> {
-          auto saved = co_await chat_modes->SetPermissionMode(mode);
-          if (!saved) {
-            toast.Show(saved.error().message);
-            co_return;
-          }
-          interaction_mode = *saved;
-          permission_state.Update([&saved](auto &state) {
-            state.mode = saved->permission_mode;
-          });
-        });
-      };
+  const auto set_permission_mode = [tasks, chat_modes, permission_state,
+                                    interaction_mode,
+                                    toast](domain::ToolPermissionMode mode) {
+    tasks.Launch([chat_modes, permission_state, interaction_mode, mode,
+                  toast]() -> Task<void> {
+      auto saved = co_await chat_modes->SetPermissionMode(mode);
+      if (!saved) {
+        toast.Show(saved.error().message);
+        co_return;
+      }
+      interaction_mode = *saved;
+      permission_state.Update(
+          [&saved](auto &state) { state.mode = saved->permission_mode; });
+    });
+  };
 
-  const auto set_chat_mode =
-      [tasks, chat_modes, permission_state, interaction_mode,
-       toast](domain::ChatMode mode) {
-        tasks.Launch([chat_modes, permission_state, interaction_mode, mode,
-                      toast]() -> Task<void> {
-          auto saved = co_await chat_modes->SetChatMode(mode);
-          if (!saved) {
-            toast.Show(saved.error().message);
-            co_return;
-          }
-          interaction_mode = *saved;
-          permission_state.Update([&saved](auto &state) {
-            state.mode = saved->permission_mode;
-          });
-        });
-      };
+  const auto set_chat_mode = [tasks, chat_modes, permission_state,
+                              interaction_mode, toast](domain::ChatMode mode) {
+    tasks.Launch([chat_modes, permission_state, interaction_mode, mode,
+                  toast]() -> Task<void> {
+      auto saved = co_await chat_modes->SetChatMode(mode);
+      if (!saved) {
+        toast.Show(saved.error().message);
+        co_return;
+      }
+      interaction_mode = *saved;
+      permission_state.Update(
+          [&saved](auto &state) { state.mode = saved->permission_mode; });
+    });
+  };
 
-  const auto handle_slash_command =
-      [tasks, set_chat_mode, model_store, behavior_settings, revision,
-       slash_selected_model_id, toast](std::string_view input) {
-        auto parsed = application::ParseSlashCommand(input);
-        if (!parsed)
-          return false;
-        std::visit(
-            Overloaded{
-                [set_chat_mode](application::ChatModeSlashCommand command) {
-                  set_chat_mode(command.mode);
-                },
-                [tasks, model_store, behavior_settings, revision,
-                 slash_selected_model_id,
-                 toast](application::ModelSlashCommand command) {
-                  tasks.Launch([model_store, behavior_settings,
-                                command = std::move(command), revision,
-                                slash_selected_model_id,
-                                toast]() mutable -> Task<void> {
-                    auto selected =
-                        co_await model_store->Select(command.model_id);
-                    if (!selected) {
-                      toast.Show(selected.error().message);
-                      co_return;
-                    }
-                    slash_selected_model_id = command.model_id;
-                    if (command.reasoning) {
-                      auto reasoning = co_await behavior_settings->SetReasoning(
-                          *command.reasoning);
-                      if (!reasoning) {
-                        toast.Show(reasoning.error().message);
-                        co_return;
-                      }
-                    }
-                    revision += 1;
-                  });
-                },
-            },
-            std::move(*parsed));
-        return true;
-      };
+  const auto handle_slash_command = [tasks, set_chat_mode, model_store,
+                                     behavior_settings, revision,
+                                     slash_selected_model_id,
+                                     toast](std::string_view input) {
+    auto parsed = application::ParseSlashCommand(input);
+    if (!parsed)
+      return false;
+    std::visit(Overloaded{
+                   [set_chat_mode](application::ChatModeSlashCommand command) {
+                     set_chat_mode(command.mode);
+                   },
+                   [tasks, model_store, behavior_settings, revision,
+                    slash_selected_model_id,
+                    toast](application::ModelSlashCommand command) {
+                     tasks.Launch([model_store, behavior_settings,
+                                   command = std::move(command), revision,
+                                   slash_selected_model_id,
+                                   toast]() mutable -> Task<void> {
+                       auto selected =
+                           co_await model_store->Select(command.model_id);
+                       if (!selected) {
+                         toast.Show(selected.error().message);
+                         co_return;
+                       }
+                       slash_selected_model_id = command.model_id;
+                       if (command.reasoning) {
+                         auto reasoning =
+                             co_await behavior_settings->SetReasoning(
+                                 *command.reasoning);
+                         if (!reasoning) {
+                           toast.Show(reasoning.error().message);
+                           co_return;
+                         }
+                       }
+                       revision += 1;
+                     });
+                   },
+               },
+               std::move(*parsed));
+    return true;
+  };
 
-  const auto clear_command_grants =
-      [tasks, tool_permissions, permission_state, toast] {
-        tasks.Launch([tool_permissions, permission_state,
-                      toast]() -> Task<void> {
-          auto cleared = co_await tool_permissions->ClearPermanentGrants();
-          if (!cleared) {
-            toast.Show(cleared.error().message);
-            co_return;
-          }
-          permission_state.Update(
-              [](auto &state) { state.has_permanent_grants = false; });
-          toast.Show(app::strings::chat_permissions_cleared);
-        });
-      };
+  const auto clear_command_grants = [tasks, tool_permissions, permission_state,
+                                     toast] {
+    tasks.Launch([tool_permissions, permission_state, toast]() -> Task<void> {
+      auto cleared = co_await tool_permissions->ClearPermanentGrants();
+      if (!cleared) {
+        toast.Show(cleared.error().message);
+        co_return;
+      }
+      permission_state.Update(
+          [](auto &state) { state.has_permanent_grants = false; });
+      toast.Show(app::strings::chat_permissions_cleared);
+    });
+  };
 
   auto show_permission = [permission_sheet, permission_state,
                           external_storage_granted,
@@ -3346,8 +3634,7 @@ View GenerationError(const application::GenerationController &generation,
     permission_sheet.Show([permission_state, external_storage_granted,
                            storage_permission_description, storage_permission,
                            set_permission_mode, clear_command_grants,
-                           toast](bool visible,
-                                  std::function<void()> dismiss) {
+                           toast](bool visible, std::function<void()> dismiss) {
       return ChatPermissionMenu(
           ChatPermissionMenuState{
               .visible = visible,
@@ -3363,8 +3650,8 @@ View GenerationError(const application::GenerationController &generation,
               .on_dismiss_request = std::move(dismiss),
               .on_action =
                   [set_permission_mode, clear_command_grants,
-                   external_storage_granted, storage_permission, toast](
-                      ChatPermissionAction action) {
+                   external_storage_granted, storage_permission,
+                   toast](ChatPermissionAction action) {
                     switch (action) {
                     case ChatPermissionAction::automatic:
                       set_permission_mode(
@@ -3399,15 +3686,15 @@ View GenerationError(const application::GenerationController &generation,
     });
   };
 
-  auto show_more = [more_sheet, navigation, session, generation,
-                    pending_messages, active_generation, revision, dialogs, toast,
-                    export_service, multi_select, selected_messages,
-                    action_message, compaction_service, tasks, compaction_busy,
-                    compaction_labels] {
-    more_sheet.Show([navigation, session, generation, pending_messages,
-                     active_generation, revision, dialogs, toast, export_service,
-                     multi_select, selected_messages, action_message,
-                     compaction_service, tasks, compaction_busy,
+  auto show_more = [more_sheet, compaction_confirm_sheet, navigation, session,
+                    generation, pending_messages, active_generation, revision,
+                    dialogs, toast, export_service, multi_select,
+                    selected_messages, action_message, compaction_service,
+                    tasks, compaction_busy, compaction_labels] {
+    more_sheet.Show([compaction_confirm_sheet, navigation, session, generation,
+                     pending_messages, active_generation, revision, dialogs,
+                     toast, export_service, multi_select, selected_messages,
+                     action_message, compaction_service, tasks, compaction_busy,
                      compaction_labels](bool visible,
                                         std::function<void()> dismiss) {
       return ChatMoreMenu(
@@ -3415,11 +3702,11 @@ View GenerationError(const application::GenerationController &generation,
           ChatOverlayCallbacks<ChatMoreAction>{
               .on_dismiss_request = std::move(dismiss),
               .on_action =
-                  [navigation, session, generation, pending_messages,
-                   active_generation, revision, dialogs, toast, export_service,
-                   multi_select, selected_messages, compaction_service, tasks,
-                   compaction_busy, compaction_labels,
-                   action_message](ChatMoreAction action) {
+                  [compaction_confirm_sheet, navigation, session, generation,
+                   pending_messages, active_generation, revision, dialogs,
+                   toast, export_service, multi_select, selected_messages,
+                   compaction_service, tasks, compaction_busy,
+                   compaction_labels, action_message](ChatMoreAction action) {
                     switch (action) {
                     case ChatMoreAction::tutorial:
                       navigation.Push(domain::AppRoute::tutorial);
@@ -3431,7 +3718,7 @@ View GenerationError(const application::GenerationController &generation,
                       active_generation.Get().Cancel();
                       generation->Reset();
                       pending_messages->Clear();
-                      session->Clear();
+                      session->DeleteCurrentConversation();
                       revision += 1;
                       break;
                     case ChatMoreAction::export_chat: {
@@ -3442,14 +3729,16 @@ View GenerationError(const application::GenerationController &generation,
                       }
                       dialogs.Show(
                           ExportFormatDialog,
-                          StringVariant{app::strings::dialog_export_format_title},
+                          StringVariant{
+                              app::strings::dialog_export_format_title},
                           export_service->Options(),
                           [export_service, messages, toast](std::string id) {
                             const auto result = export_service->Export(
-                                id, std::span<const domain::ChatMessage>{
-                                        messages});
+                                id,
+                                std::span<const domain::ChatMessage>{messages});
                             if (!result.Succeeded()) {
-                              toast.Show(app::strings::toast_chat_export_failed);
+                              toast.Show(
+                                  app::strings::toast_chat_export_failed);
                               return;
                             }
                             if (result.warn_large_clipboard)
@@ -3465,26 +3754,38 @@ View GenerationError(const application::GenerationController &generation,
                       action_message = std::nullopt;
                       break;
                     case ChatMoreAction::compact_context:
-                      // Legacy ContextCompactionController.showCompactConfirmation()
-                      // confirms first, then runs the manual compaction.
-                      dialogs.Show(
-                          app::strings::sheet_more_compact,
-                          app::strings::context_compact_confirm_desc,
-                          app::strings::context_compact_confirm,
-                          app::strings::common_cancel,
+                      compaction_confirm_sheet.Show(
                           [compaction_service, session, generation, revision,
-                           toast, tasks, compaction_busy,
-                           compaction_labels] {
-                            if (generation->State().phase ==
-                                application::GenerationPhase::running)
-                              return;
-                            auto started = StartManualContextCompaction(
-                                compaction_service, session, tasks, toast,
-                                compaction_busy, compaction_labels);
-                            if (started)
-                              revision += 1;
-                          },
-                          [] {});
+                           toast, tasks, compaction_busy, compaction_labels](
+                              bool visible, std::function<void()> dismiss) {
+                            return ChatCompactionMenu(
+                                visible,
+                                ChatOverlayCallbacks<ChatCompactionAction>{
+                                    .on_dismiss_request = std::move(dismiss),
+                                    .on_action =
+                                        [compaction_service, session,
+                                         generation, revision, toast, tasks,
+                                         compaction_busy, compaction_labels](
+                                            ChatCompactionAction action) {
+                                          if (action ==
+                                              ChatCompactionAction::cancel) {
+                                            return;
+                                          }
+                                          if (generation->State().phase ==
+                                              application::GenerationPhase::
+                                                  running) {
+                                            return;
+                                          }
+                                          const bool started =
+                                              StartManualContextCompaction(
+                                                  compaction_service, session,
+                                                  tasks, toast, compaction_busy,
+                                                  compaction_labels);
+                                          if (started)
+                                            revision += 1;
+                                        },
+                                });
+                          });
                       break;
                     }
                   },
@@ -3494,13 +3795,12 @@ View GenerationError(const application::GenerationController &generation,
 
   // Legacy `AttachmentPickerCoordinator.onAttachmentPickerRequested()`: the
   // browsed files' source follows the configured execution mode.
-  auto attachment_source = UseState(std::string{
-      domain::InputAttachment::source_local});
+  auto attachment_source =
+      UseState(std::string{domain::InputAttachment::source_local});
   Lifecycle([tasks, execution_settings, attachment_source] {
     if (!execution_settings)
       return;
-    tasks.Launch([execution_settings,
-                  attachment_source]() -> Task<void> {
+    tasks.Launch([execution_settings, attachment_source]() -> Task<void> {
       auto settings = co_await execution_settings->Load();
       if (!settings)
         co_return;
@@ -3520,8 +3820,10 @@ View GenerationError(const application::GenerationController &generation,
   });
 
   auto show_attachments = [attachment_sheet, workspace, selected_attachments,
-                           expanded_attachment_directories,
-                           attachment_source] {
+                           expanded_attachment_directories, attachment_source,
+                           refresh_workspace] {
+    if (!workspace->file_tree.has_value() && refresh_workspace)
+      std::invoke(refresh_workspace);
     std::optional<ChatAttachmentNode> initial_tree;
     if (workspace->file_tree.has_value()) {
       initial_tree = ToAttachmentNode(*workspace->file_tree);
@@ -3530,114 +3832,130 @@ View GenerationError(const application::GenerationController &generation,
       expanded_attachment_directories = std::move(expanded);
     }
 
-    attachment_sheet.Show(
-        [workspace, selected_attachments, expanded_attachment_directories,
-         attachment_source](bool visible,
-                            std::function<void()> dismiss) {
-          std::optional<ChatAttachmentNode> tree;
-          if (workspace->file_tree.has_value()) {
-            tree = ToAttachmentNode(*workspace->file_tree);
-          }
-          return ChatAttachmentPicker(
-              ChatAttachmentPickerState{
-                  .visible = visible,
-                  // Legacy AttachmentPickerCoordinator derived this from the
-                  // execution mode, so remote attachments are labelled right.
-                  .source = attachment_source.Get(),
-                  .tree = std::move(tree),
-                  .selected_paths = AttachmentPaths(selected_attachments.Get()),
-                  .expanded_directories = expanded_attachment_directories.Get(),
-                  .loading = !workspace->file_tree.has_value(),
-                  .message = {},
-              },
-              ChatAttachmentPickerCallbacks{
-                  .on_dismiss_request = std::move(dismiss),
-                  .on_directory_toggled =
-                      [expanded_attachment_directories](std::string path) {
-                        expanded_attachment_directories.Update(
-                            [&path](std::vector<std::string> &paths) {
-                              TogglePath(paths, path);
-                            });
-                      },
-                  .on_file_toggled =
-                      [selected_attachments](ChatAttachmentFile file) {
-                        selected_attachments.Update(
-                            [&file](std::vector<domain::InputAttachment>
-                                        &attachments) {
-                              ToggleAttachment(attachments, file);
-                            });
-                      },
-              });
-        });
+    attachment_sheet.Show([workspace, selected_attachments,
+                           expanded_attachment_directories, attachment_source](
+                              bool visible, std::function<void()> dismiss) {
+      std::optional<ChatAttachmentNode> tree;
+      if (workspace->file_tree.has_value()) {
+        tree = ToAttachmentNode(*workspace->file_tree);
+      }
+      return ChatAttachmentPicker(
+          ChatAttachmentPickerState{
+              .visible = visible,
+              // Legacy AttachmentPickerCoordinator derived this from the
+              // execution mode, so remote attachments are labelled right.
+              .source = attachment_source.Get(),
+              .tree = std::move(tree),
+              .selected_paths = AttachmentPaths(selected_attachments.Get()),
+              .expanded_directories = expanded_attachment_directories.Get(),
+              .loading = !workspace->file_tree.has_value(),
+              .message = {},
+          },
+          ChatAttachmentPickerCallbacks{
+              .on_dismiss_request = std::move(dismiss),
+              .on_directory_toggled =
+                  [expanded_attachment_directories](std::string path) {
+                    expanded_attachment_directories.Update(
+                        [&path](std::vector<std::string> &paths) {
+                          TogglePath(paths, path);
+                        });
+                  },
+              .on_file_toggled =
+                  [selected_attachments](ChatAttachmentFile file) {
+                    selected_attachments.Update(
+                        [&file](
+                            std::vector<domain::InputAttachment> &attachments) {
+                          ToggleAttachment(attachments, file);
+                        });
+                  },
+          });
+    });
   };
 
   const MessageActionCallbacks message_actions{
-      .copy = [clipboard, toast](const domain::ChatMessage &message) {
-        if (clipboard && clipboard->WriteText(message.content))
-          toast.Show(app::strings::toast_copied);
-      },
-      .quote = [quote_text, action_message](const domain::ChatMessage &message) {
-        quote_text = message.content;
-        action_message = std::nullopt;
-      },
-      .share = [share_text, toast](const domain::ChatMessage &message) {
-        if (!share_text || !share_text->Share(message.content))
-          toast.Show(app::strings::toast_share_failed);
-      },
-      .select_text = [dialogs](const domain::ChatMessage &message) {
-        ShowTextSelectionDialog(dialogs, message.content);
-      },
-      .enter_multi_select = [multi_select, selected_messages,
-                             action_message] {
-        multi_select = !multi_select.Get();
-        selected_messages = std::vector<std::uint64_t>{};
-        action_message = std::nullopt;
-      },
-      .recall = [session, generation, draft, selected_attachments, quote_text,
-                 action_message, revision](const domain::ChatMessage &message) {
-        if (generation->State().phase ==
-            application::GenerationPhase::running) {
-          return;
-        }
-        auto recalled = session->RecallUserMessage(message.id);
-        if (!recalled)
-          return;
-        draft = TextEditingValue::FromText(recalled->content);
-        selected_attachments = recalled->attachments;
-        quote_text = std::nullopt;
-        action_message = std::nullopt;
-        revision += 1;
-      },
-      .export_selected = [session, selected_messages, dialogs, toast,
-                          export_service] {
-        std::vector<domain::ChatMessage> messages;
-        for (const auto &message : session->Messages()) {
-          if (std::ranges::contains(selected_messages.Get(), message.id))
-            messages.push_back(message);
-        }
-        if (messages.empty()) {
-          toast.Show(app::strings::toast_chat_empty_export);
-          return;
-        }
-        // Legacy `ShareController.showFormatPicker` served both the whole-chat
-        // export and the multi-select export, so both entry points share the
-        // same format list.
-        dialogs.Show(
-            ExportFormatDialog,
-            StringVariant{app::strings::dialog_export_format_title},
-            export_service->Options(),
-            [export_service, messages,
-             toast](std::string id) {
-              const auto result = export_service->Export(
-                  id, std::span<const domain::ChatMessage>{messages});
-              if (!result.Succeeded()) {
-                toast.Show(app::strings::toast_chat_export_failed);
-                return;
-              }
-              if (result.warn_large_clipboard)
-                toast.Show(app::strings::toast_clipboard_large);
-            });
-      },
+      .copy =
+          [clipboard, toast](const domain::ChatMessage &message) {
+            if (clipboard && clipboard->WriteText(message.content))
+              toast.Show(app::strings::toast_copied);
+          },
+      .quote =
+          [quote_text, action_message](const domain::ChatMessage &message) {
+            quote_text = message.content;
+            action_message = std::nullopt;
+          },
+      .share =
+          [dialogs, export_service, toast](const domain::ChatMessage &message) {
+            dialogs.Show(
+                ExportFormatDialog,
+                StringVariant{app::strings::dialog_export_format_title},
+                export_service->Options(),
+                [export_service, message, toast](std::string id) {
+                  const std::array messages{message};
+                  const auto result = export_service->Export(
+                      id, std::span<const domain::ChatMessage>{messages});
+                  if (!result.Succeeded()) {
+                    toast.Show(app::strings::toast_chat_export_failed);
+                    return;
+                  }
+                  if (result.warn_large_clipboard)
+                    toast.Show(app::strings::toast_clipboard_large);
+                });
+          },
+      .select_text =
+          [dialogs](const domain::ChatMessage &message) {
+            ShowTextSelectionDialog(dialogs, message.content);
+          },
+      .enter_multi_select =
+          [multi_select, selected_messages, action_message] {
+            multi_select = !multi_select.Get();
+            selected_messages = std::vector<std::uint64_t>{};
+            action_message = std::nullopt;
+          },
+      .recall =
+          [session, generation, draft, selected_attachments, quote_text,
+           action_message, revision](const domain::ChatMessage &message) {
+            if (generation->State().phase ==
+                application::GenerationPhase::running) {
+              return;
+            }
+            auto recalled = session->RecallUserMessage(message.id);
+            if (!recalled)
+              return;
+            draft = TextEditingValue::FromText(recalled->content);
+            selected_attachments = recalled->attachments;
+            quote_text = std::nullopt;
+            action_message = std::nullopt;
+            revision += 1;
+          },
+      .export_selected =
+          [session, selected_messages, dialogs, toast, export_service] {
+            std::vector<domain::ChatMessage> messages;
+            for (const auto &message : session->Messages()) {
+              if (std::ranges::contains(selected_messages.Get(), message.id))
+                messages.push_back(message);
+            }
+            if (messages.empty()) {
+              toast.Show(app::strings::toast_chat_empty_export);
+              return;
+            }
+            // Legacy `ShareController.showFormatPicker` served both the
+            // whole-chat export and the multi-select export, so both entry
+            // points share the same format list.
+            dialogs.Show(
+                ExportFormatDialog,
+                StringVariant{app::strings::dialog_export_format_title},
+                export_service->Options(),
+                [export_service, messages, toast](std::string id) {
+                  const auto result = export_service->Export(
+                      id, std::span<const domain::ChatMessage>{messages});
+                  if (!result.Succeeded()) {
+                    toast.Show(app::strings::toast_chat_export_failed);
+                    return;
+                  }
+                  if (result.warn_large_clipboard)
+                    toast.Show(app::strings::toast_clipboard_large);
+                });
+          },
   };
 
   View composer_or_review;
@@ -3653,55 +3971,52 @@ View GenerationError(const application::GenerationController &generation,
             .submitted = pending_review.Get()->submitted,
         },
         ToolApprovalCallbacks{
-            .on_reject = [pending = pending_review.Get(), revision](
-                             std::string id) {
-              ResolveToolReview(
-                  pending, id,
-                  application::CompletionObserver::ToolReviewDecision::reject,
-                  revision);
-            },
-            .on_allow_once = [pending = pending_review.Get(), revision](
-                                 std::string id) {
-              ResolveToolReview(
-                  pending, id,
-                  application::CompletionObserver::ToolReviewDecision::
-                      allow_once,
-                  revision);
-            },
-            .on_allow_always = [pending = pending_review.Get(), revision](
-                                   std::string id) {
-              ResolveToolReview(
-                  pending, id,
-                  application::CompletionObserver::ToolReviewDecision::
-                      allow_always,
-                  revision);
-            },
+            .on_reject =
+                [pending = pending_review.Get(), revision](std::string id) {
+                  ResolveToolReview(pending, id,
+                                    application::CompletionObserver::
+                                        ToolReviewDecision::reject,
+                                    revision);
+                },
+            .on_allow_once =
+                [pending = pending_review.Get(), revision](std::string id) {
+                  ResolveToolReview(pending, id,
+                                    application::CompletionObserver::
+                                        ToolReviewDecision::allow_once,
+                                    revision);
+                },
+            .on_allow_always =
+                [pending = pending_review.Get(), revision](std::string id) {
+                  ResolveToolReview(pending, id,
+                                    application::CompletionObserver::
+                                        ToolReviewDecision::allow_always,
+                                    revision);
+                },
         });
   } else {
-    composer_or_review = Composer(
-        draft, session, generation, model_store, completion_loop,
-        has_selected_model, tasks, active_generation, revision,
-        selected_attachments, show_attachments, memory_context,
-        behavior_settings, todo_state, skills, pending_review.Get(),
-        pending_messages,
-        quote_text,
-        handle_slash_command, interaction_mode->chat_mode, slash_models,
-        slash_selected_model_id, input_settings, current_project_id,
-        std::move(prompt_context), permission_state->mode, toast,
-        compaction_service, auto_compaction.Get(), retry_labels);
+    composer_or_review =
+        Composer(draft, session, generation, model_store, completion_loop,
+                 has_selected_model, tasks, active_generation, revision,
+                 selected_attachments, show_attachments, memory_context,
+                 behavior_settings, todo_state, skills, pending_review.Get(),
+                 pending_messages, quote_text, handle_slash_command,
+                 interaction_mode->chat_mode, slash_models,
+                 slash_selected_model_id, input_settings, current_project_id,
+                 std::move(prompt_context), permission_state->mode, toast,
+                 compaction_service, auto_compaction.Get(), retry_labels);
   }
 
   const TutorialMarkdownLinkHandler open_markdown_link =
       [navigation, external_link,
        browser_mode = timeline_settings->browser_mode,
-       javascript_enabled = timeline_settings->browser_javascript_enabled](
-          const Uri &target) {
+       javascript_enabled = timeline_settings->browser_javascript_enabled,
+       allow_any_http = timeline_settings->allow_any_http](const Uri &target) {
         if (browser_mode == application::BrowserMode::external) {
           external_link->Open(target.ToString());
           return;
         }
-        navigation.Push(domain::AppRoute::Browser(target.ToString(),
-                                                  javascript_enabled));
+        navigation.Push(domain::AppRoute::Browser(
+            target.ToString(), javascript_enabled, allow_any_http));
       };
   // Legacy code blocks copy their own source and confirm with a toast.
   auto copy_code = [clipboard, toast](std::string code) {
@@ -3727,14 +4042,13 @@ View GenerationError(const application::GenerationController &generation,
   // the state while rejecting also restores the previous file contents.
   auto review_change = [diff_review, diff_store, tasks, revision, diff_cache,
                         diff_pending](std::string tool_call_id,
-                                      std::string diff_id,
-                                      std::string state) {
+                                      std::string diff_id, std::string state) {
     if (!diff_review || tool_call_id.empty())
       return;
-    tasks.Launch([diff_review, diff_store, tool_call_id = std::move(tool_call_id),
+    tasks.Launch([diff_review, diff_store,
+                  tool_call_id = std::move(tool_call_id),
                   diff_id = std::move(diff_id), state = std::move(state),
-                  revision, diff_cache,
-                  diff_pending]() -> Task<void> {
+                  revision, diff_cache, diff_pending]() -> Task<void> {
       co_await diff_review->Review(std::move(tool_call_id), std::move(state),
                                    std::move(diff_id));
       // Re-read the record so the card shows the decision that was just made
@@ -3758,25 +4072,25 @@ View GenerationError(const application::GenerationController &generation,
   };
   auto show_context_usage = [context_usage_sheet, context_snapshot,
                              context_usage_labels] {
-    context_usage_sheet.Show(
-        [snapshot = context_snapshot, labels = context_usage_labels](
-            bool visible, std::function<void()> dismiss) -> View {
-          if (!visible)
-            return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
-          return ChatSheetPanel(
-              Column{
-                  Stack{}.With(Frame{.width = 36.0F, .height = 4.0F},
-                               Background(colors::tertiary),
-                               CornerRadius(2.0F)),
-                  ContextUsageSheet(snapshot, labels),
-              }
-                  .With(Padding(EdgeInsets{.top = 22.0F,
-                                           .right = 24.0F,
-                                           .bottom = 24.0F,
-                                           .left = 24.0F}),
-                        CrossAlign(CrossAxisAlignment::Stretch),
-                        Background(colors::background), CornerRadius(24.0F)));
-        });
+    context_usage_sheet.Show([snapshot = context_snapshot,
+                              labels = context_usage_labels](
+                                 bool visible,
+                                 std::function<void()> dismiss) -> View {
+      if (!visible)
+        return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
+      return ChatSheetPanel(Column{
+          Stack{}.With(Frame{.width = 36.0F, .height = 4.0F},
+                       Background(colors::tertiary), CornerRadius(2.0F)),
+          ContextUsageSheet(snapshot, labels),
+      }
+                                .With(Padding(EdgeInsets{.top = 22.0F,
+                                                         .right = 24.0F,
+                                                         .bottom = 24.0F,
+                                                         .left = 24.0F}),
+                                      CrossAlign(CrossAxisAlignment::Stretch),
+                                      Background(colors::background),
+                                      CornerRadius(24.0F)));
+    });
   };
 
   return Column{
@@ -3786,12 +4100,14 @@ View GenerationError(const application::GenerationController &generation,
              context_snapshot, std::move(show_context_usage)),
       Conversation(session, generation, revision.Get(), navigation,
                    action_message, multi_select.Get(), selected_messages,
-                   message_actions, timeline_settings.Get(),
-                   toggled_timeline, open_markdown_link, copy_code,
+                   message_actions, timeline_settings.Get(), toggled_timeline,
+                   open_markdown_link, copy_code,
                    ToolRendererContext{.diff_cache = diff_cache.Get(),
                                        .on_request_diff = request_diff,
                                        .on_review = review_change},
-                   auto_compaction.Get(), compaction_labels.progress),
+                   auto_compaction.Get(), compaction_labels.progress,
+                   conversation_scroll, scroll_to_bottom_request,
+                   has_selected_model),
       GenerationError(*generation, revision.Get(), retry_labels.failed),
       std::move(composer_or_review),
   }

@@ -81,7 +81,7 @@ struct TermuxTypography final {
   TextGeometry section_title{.size = 16.0F, .minimum_height = 23.25F};
   TextGeometry description{.size = 11.0F, .minimum_height = 15.25F};
   TextGeometry step_description{.size = 10.5F, .minimum_height = 15.25F};
-  TextGeometry command{.size = 11.0F, .minimum_height = 149.333F};
+  TextGeometry command{.size = 10.5F, .minimum_height = 149.333F};
 };
 
 inline constexpr TermuxTypography kTypography{};
@@ -382,7 +382,7 @@ View ActionButton(const ActionSpec &spec, const ActionContext &context) {
   return Row{
       Glyph(spec.icon, 15.0F, spec.visual.foreground),
       Text(spec.label)
-          .Style(Label(11.0F, FontWeight::Bold, spec.visual.foreground)),
+          .Style(Label(10.5F, FontWeight::Bold, spec.visual.foreground)),
   }.OnClick([context, invoke = spec.invoke] { std::invoke(invoke, context); })
       .With(Frame{.height = 38.0F}, Grow(), Spacing(6.0F),
             MainAlign(MainAxisAlignment::Center),

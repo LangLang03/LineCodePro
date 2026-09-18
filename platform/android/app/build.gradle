@@ -150,6 +150,16 @@ tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     dependsOn validateReleaseSigning
 }
 
+// HuxerUI's generated resource plan lives under Gradle's build directory,
+// while the native dependency graph which references it is cached in .cxx.
+// Keeping that cache across `clean` leaves Ninja with a dependency on a file
+// Gradle has just removed and no configure step to recreate it.
+tasks.named("clean").configure {
+    doLast {
+        delete layout.projectDirectory.dir(".cxx")
+    }
+}
+
 androidComponents.onVariants(androidComponents.selector().all()) { variant ->
     def integrationRoot = layout.buildDirectory.dir("generated/huxerui/integration/${variant.name}").get().asFile
     variant.externalNativeBuild.arguments.add("-DHUXERUI_ANDROID_APP_INTEGRATION_ROOT=${integrationRoot.absolutePath}")

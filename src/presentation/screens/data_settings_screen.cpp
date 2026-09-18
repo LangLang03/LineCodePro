@@ -13,6 +13,7 @@
 #include "domain/app_state.h"
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/components/legacy_settings_card_frame.h"
+#include "presentation/components/line_dialog_presentation.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -172,18 +173,26 @@ Task<void> ImportArchive(
                                           ? ".linecode 文件"
                                           : selected->Name();
       dialogs.Show(
-          app::strings::screen_data_import_confirm_title,
-          StringVariant::Format(app::strings::screen_data_import_confirm_message,
-                                source_name),
-          app::strings::common_confirm, app::strings::common_cancel,
-          [service, source = std::move(*selected), callbacks, toast, tasks,
-           import_failure]() mutable {
-            tasks.Launch([service, source = std::move(source), callbacks, toast,
-                          import_failure]() mutable {
-              return ImportArchive(service, std::move(source), callbacks, toast,
-                                   import_failure);
-            });
-          });
+          LineConfirmationDialog,
+          StringVariant{app::strings::screen_data_import_confirm_title},
+          StringVariant::Format(
+              app::strings::screen_data_import_confirm_message, source_name),
+          LineDialogAction{
+              .label = app::strings::common_confirm,
+              .activate =
+                  [service, source = std::move(*selected), callbacks, toast,
+                   tasks, import_failure]() mutable {
+                    tasks.Launch([service, source = std::move(source),
+                                  callbacks, toast, import_failure]() mutable {
+                      return ImportArchive(service, std::move(source),
+                                           callbacks, toast, import_failure);
+                    });
+                  },
+              .tone = LineDialogActionTone::danger,
+          },
+          std::optional<LineDialogAction>{LineDialogAction{
+              .label = app::strings::common_cancel,
+          }});
     });
   };
 

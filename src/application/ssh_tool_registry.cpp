@@ -84,9 +84,10 @@ std::string Encode(const SshCommandOutput &output) {
 SshToolRegistry::SshToolRegistry(
     std::shared_ptr<McpExecutionSettingsService> settings,
     std::shared_ptr<SshSettingsService> ssh_settings,
-    std::shared_ptr<SshExecutionService> execution)
+    std::shared_ptr<SshExecutionService> execution,
+    const ToolTextLanguage language)
     : settings_(std::move(settings)), ssh_settings_(std::move(ssh_settings)),
-      execution_(std::move(execution)) {
+      execution_(std::move(execution)), language_(language) {
   if (!settings_ || !ssh_settings_ || !execution_)
     throw std::invalid_argument(
         "SshToolRegistry requires execution and settings services");
@@ -135,9 +136,30 @@ SshToolRegistry::Invoke(std::string name, std::string arguments_json) {
     co_return std::unexpected(Error(ToolRegistryErrorCode::unknown_tool,
                                     "Unknown SSH tool: " + name));
   }
-  if (!active_config_ || !active_config_->IsConfigured()) {
-    co_return std::unexpected(Error(ToolRegistryErrorCode::unavailable,
-                                    "SSH is not configured"));
+  // Say what is actually missing. Reporting "not configured" to someone who has
+  // just saved the form sends them back to a screen that is already filled in,
+  // when the real cause is usually the missing password or key.
+  const auto gap_message = [this]() -> std::optional<ToolTextKey> {
+    if (!active_config_)
+      return ToolTextKey::tool_ssh_not_configured;
+    switch (active_config_->Gap()) {
+    case domain::SshConfigGap::none:
+      return std::nullopt;
+    case domain::SshConfigGap::host:
+      return ToolTextKey::tool_ssh_missing_host;
+    case domain::SshConfigGap::port:
+      return ToolTextKey::tool_ssh_missing_port;
+    case domain::SshConfigGap::username:
+      return ToolTextKey::tool_ssh_missing_username;
+    case domain::SshConfigGap::credentials:
+      return ToolTextKey::tool_ssh_missing_credentials;
+    }
+    return ToolTextKey::tool_ssh_not_configured;
+  }();
+  if (gap_message.has_value()) {
+    co_return std::unexpected(
+        Error(ToolRegistryErrorCode::unavailable,
+              std::string{ToolText(*gap_message, {}, language_)}));
   }
   auto arguments = ParseArguments(arguments_json);
   if (!arguments)

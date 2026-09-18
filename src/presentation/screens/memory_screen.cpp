@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <ctime>
 #include <functional>
@@ -179,8 +179,8 @@ std::string Preview(std::string_view value, std::size_t size,
 std::string MemoryDescription(const domain::MemoryRecord &memory,
                               const ResolvedMemoryStrings &strings) {
   return strings.source + memory.source + " · " + strings.used_prefix +
-         std::to_string(memory.use_count) + " " + strings.used_suffix +
-         " · " + Time(memory.updated_at, strings);
+         std::to_string(memory.use_count) + " " + strings.used_suffix + " · " +
+         Time(memory.updated_at, strings);
 }
 
 std::string MemoryDetail(const domain::MemoryRecord &memory,
@@ -189,8 +189,7 @@ std::string MemoryDetail(const domain::MemoryRecord &memory,
   confidence << std::fixed << std::setprecision(2) << memory.confidence;
   return memory.content + "\n\n" + strings.scope +
          std::string{domain::MemoryScopeDefinition(memory.scope).storage_name} +
-         "\n" + strings.source + memory.source + "\n" +
-         strings.project_field +
+         "\n" + strings.source + memory.source + "\n" + strings.project_field +
          (memory.project_id.empty() ? strings.global : memory.project_id) +
          "\n" + strings.confidence + confidence.str() + "\n" +
          strings.use_count + std::to_string(memory.use_count) + "\n" +
@@ -216,8 +215,7 @@ std::string WorkingDetail(const domain::WorkingMemoryRecord &memory,
 std::string HistoryDescription(const domain::ConversationIndexRecord &entry,
                                const ResolvedMemoryStrings &strings) {
   const auto &title = entry.title.empty() ? entry.conversation_id : entry.title;
-  return title + " · " + entry.role + " · " +
-         Time(entry.updated_at, strings);
+  return title + " · " + entry.role + " · " + Time(entry.updated_at, strings);
 }
 
 std::string HistoryDetail(const domain::ConversationIndexRecord &entry,
@@ -235,20 +233,19 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation,
             State<MemoryPageState> state, const ResolvedMemoryStrings &strings,
             std::function<void()> add, std::function<void()> delete_selected) {
   const bool selecting = !state->selected.empty();
-  View left = Stack{Glyph(selecting ? app::images::x
-                                    : app::images::chevron_left,
-                          selecting ? 20.0F : 22.0F, colors::text)}
-                  .OnClick([navigation, state, selecting] {
-                    if (selecting)
-                      state.Update(
-                          [](MemoryPageState &next) { next.selected.clear(); });
-                    else
-                      navigation.Pop();
-                  })
-                  .With(Frame{.width = 36.0F, .height = 36.0F},
-                        Align(HorizontalAlignment::Center,
-                              VerticalAlignment::Center),
-                        Focusable(), PointerCursor(PointerCursorKind::Hand));
+  View left =
+      Stack{Glyph(selecting ? app::images::x : app::images::chevron_left,
+                  selecting ? 20.0F : 22.0F, colors::text)}
+          .OnClick([navigation, state, selecting] {
+            if (selecting)
+              state.Update(
+                  [](MemoryPageState &next) { next.selected.clear(); });
+            else
+              navigation.Pop();
+          })
+          .With(Frame{.width = 36.0F, .height = 36.0F},
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+                Focusable(), PointerCursor(PointerCursorKind::Hand));
   View right =
       Stack{Glyph(selecting ? app::images::trash_2 : app::images::plus, 20.0F,
                   selecting ? colors::danger : colors::accent)}
@@ -257,20 +254,21 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation,
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
                 Enabled{!state->deleting}, Focusable(),
                 PointerCursor(PointerCursorKind::Hand));
-  const std::string title =
-      selecting ? strings.selected_prefix +
-                      std::to_string(state->selected.size()) +
-                      strings.selected_suffix
-                : strings.title;
+  const std::string title = selecting
+                                ? strings.selected_prefix +
+                                      std::to_string(state->selected.size()) +
+                                      strings.selected_suffix
+                                : strings.title;
   return LegacyScreenHeaderLayout{
       left,
       Stack{Text(title).Style(Label(17.0F, FontWeight::Bold))}.With(
           Grow(),
           Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
       right,
-  }.With(Frame{.min_height = 60.0F},
-         Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
-         Background(colors::background));
+  }
+      .With(Frame{.min_height = 60.0F},
+            Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
+            Background(colors::background));
 }
 
 View EmptyRow(const ResolvedMemoryStrings &strings) {
@@ -279,9 +277,7 @@ View EmptyRow(const ResolvedMemoryStrings &strings) {
       .With(Padding(16.0F));
 }
 
-View RowDivider() {
-  return Divider();
-}
+View RowDivider() { return Divider(); }
 
 View Section(std::string title, std::vector<View> rows) {
   if (rows.empty())
@@ -289,17 +285,17 @@ View Section(std::string title, std::vector<View> rows) {
   return Column{
       Text(Upper(std::move(title)))
           .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
-          .With(Frame{.height = 47.625F},
-                Padding(EdgeInsets{.top = 20.0F,
-                                   .right = 16.0F,
-                                   .bottom = 12.0F,
-                                   .left = 16.0F})),
+          .With(Frame{.height = 47.625F}, Padding(EdgeInsets{.top = 20.0F,
+                                                             .right = 16.0F,
+                                                             .bottom = 12.0F,
+                                                             .left = 16.0F})),
       LegacySettingsCardFrame{
           Column(std::move(rows))
               .With(CrossAlign(CrossAxisAlignment::Stretch),
                     Background(colors::elevated), CornerRadius(12.0F)),
       },
-  }.With(CrossAlign(CrossAxisAlignment::Stretch));
+  }
+      .With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
 View MemoryRow(const domain::MemoryRecord &memory, ImageResource icon,
@@ -318,22 +314,13 @@ View MemoryRow(const domain::MemoryRecord &memory, ImageResource icon,
           Text(MemoryDescription(memory, strings))
               .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
               .With(Padding(EdgeInsets{.top = 2.0F})),
-      }.With(Grow()),
-      multi_select
-          ? Stack{selected ? Glyph(app::images::check, 14.0F,
-                                   colors::text_on_color)
-                           : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F})}
-                .With(Frame{.width = 20.0F, .height = 20.0F},
-                      Align(HorizontalAlignment::Center,
-                            VerticalAlignment::Center),
-                      Background(selected ? colors::accent
-                                          : Color::Transparent()),
-                      Border(selected ? colors::accent : colors::border_light,
-                             1.0F),
-                      CornerRadius(10.0F))
-          : Glyph(app::images::chevron_right, 17.0F, colors::tertiary)
-                .With(Frame{.width = 20.0F, .height = 20.0F}),
-  }.OnClick(std::move(activate))
+      }
+          .With(Grow()),
+      multi_select ? Stack{}.With(Frame{.width = 0.0F, .height = 0.0F})
+                   : Glyph(app::images::chevron_right, 17.0F, colors::tertiary)
+                         .With(Frame{.width = 20.0F, .height = 20.0F}),
+  }
+      .OnClick(std::move(activate))
       .With(LongPressGesture{})
       .On<LongPressEvents::Started>(
           [action = std::move(long_press)](const LongPressEvent &) {
@@ -347,9 +334,8 @@ View MemoryRow(const domain::MemoryRecord &memory, ImageResource icon,
 }
 
 template <typename Record, typename Title, typename Description>
-View ReadOnlyRow(const Record &record, ImageResource icon,
-                 Title title, Description description,
-                 std::function<void()> activate) {
+View ReadOnlyRow(const Record &record, ImageResource icon, Title title,
+                 Description description, std::function<void()> activate) {
   return Row{
       Stack{Glyph(icon, 20.0F, colors::accent)}.With(
           Frame{.width = 36.0F, .height = 36.0F},
@@ -361,10 +347,12 @@ View ReadOnlyRow(const Record &record, ImageResource icon,
           Text(std::invoke(description, record))
               .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
               .With(Padding(EdgeInsets{.top = 2.0F})),
-      }.With(Grow()),
+      }
+          .With(Grow()),
       Glyph(app::images::chevron_right, 17.0F, colors::tertiary)
           .With(Frame{.width = 20.0F, .height = 20.0F}),
-  }.OnClick(std::move(activate))
+  }
+      .OnClick(std::move(activate))
       .With(Frame{.min_height = 68.0F}, Spacing(12.0F),
             Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
             CrossAlign(CrossAxisAlignment::Center),
@@ -414,10 +402,9 @@ void ShowTextDialog(const DialogHandle &dialogs, std::string title,
   dialogs.Show([title = std::move(title), body = std::move(body),
                 close = std::move(close)](DialogContext dialog) {
     return DialogPanel(
-        title,
-        {DialogBody(body),
-         DialogActions({DialogAction(close, colors::accent,
-                                     [dialog] { dialog.Dismiss(); })})});
+        title, {DialogBody(body),
+                DialogActions({DialogAction(close, colors::accent,
+                                            [dialog] { dialog.Dismiss(); })})});
   });
 }
 
@@ -428,11 +415,10 @@ TextFieldStyle MemoryEditorFieldStyle() {
   style.outlined.background = colors::input;
   style.outlined.border = colors::border_light;
   style.outlined.hovered_border = colors::border_light;
-  style.outlined.focused_border = colors::accent;
+  style.outlined.focused_border = colors::border_light;
   style.outlined.minimum_height = 132.25F;
   style.text_style = Label(16.0F);
-  style.placeholder_style = Label(16.0F, FontWeight::Regular,
-                                  colors::tertiary);
+  style.placeholder_style = Label(16.0F, FontWeight::Regular, colors::tertiary);
   style.caret = colors::accent;
   style.selection = colors::accent_muted_strong;
   style.border_width = 1.0F;
@@ -475,10 +461,9 @@ Task<void> Reload(std::shared_ptr<application::MemoryStore> store,
   });
 }
 
-Task<void> DeleteMemories(
-    std::shared_ptr<application::MemoryStore> store,
-    std::vector<std::string> ids, std::string project_id,
-    State<MemoryPageState> state, ToastHandle toast) {
+Task<void> DeleteMemories(std::shared_ptr<application::MemoryStore> store,
+                          std::vector<std::string> ids, std::string project_id,
+                          State<MemoryPageState> state, ToastHandle toast) {
   state.Update([](MemoryPageState &next) { next.deleting = true; });
   auto deleted = co_await store->Delete(std::move(ids));
   if (!deleted) {
@@ -512,53 +497,55 @@ Task<void> DeleteMemories(
         RadioButton(strings.*(spec.label), state->scope == spec.value)
             .OnChanged([state, scope = spec.value](bool selected) {
               if (selected)
-                state.Update([scope](MemoryEditorState &next) {
-                  next.scope = scope;
-                });
+                state.Update(
+                    [scope](MemoryEditorState &next) { next.scope = scope; });
             })
+            .With(Enabled(!state->saving))
             .Key(domain::MemoryScopeDefinition(spec.value).storage_name));
   }
 
   ThemeDefinition definition;
   definition.Set(MemoryEditorFieldStyle());
   View input = Theme(
-      definition,
-      TextField(state->content)
-          .Label(strings.input_hint)
-          .Placeholder(strings.input_hint)
-          .Variant(TextFieldVariant::Outlined)
-          .LineLimits(TextFieldLineLimits::MultiLine(5))
-          .VerticalAlign(TextVerticalAlign::Top)
-          .InputConfiguration(TextInputConfiguration{
-              .type = TextInputType::Text,
-              .capitalization = TextCapitalization::Sentences,
-              .action = TextInputAction::Newline,
-              .multiline = true,
-              .secure = false,
-              .autocorrect = true,
-          })
-          .OnChanged([state](const TextEditingValue &next) {
-            state.Update([&](MemoryEditorState &editor) {
-              editor.content = next;
-            });
-          })
-          .With(Frame{.height = 132.25F}));
+      definition, TextField(state->content)
+                      .Label(strings.input_hint)
+                      .Placeholder(strings.input_hint)
+                      .Variant(TextFieldVariant::Outlined)
+                      .LineLimits(TextFieldLineLimits::MultiLine(5))
+                      .VerticalAlign(TextVerticalAlign::Top)
+                      .InputConfiguration(TextInputConfiguration{
+                          .type = TextInputType::Text,
+                          .capitalization = TextCapitalization::Sentences,
+                          .action = TextInputAction::Newline,
+                          .multiline = true,
+                          .secure = false,
+                          .autocorrect = true,
+                      })
+                      .OnChanged([state](const TextEditingValue &next) {
+                        state.Update([&](MemoryEditorState &editor) {
+                          editor.content = next;
+                        });
+                      })
+                      .With(Frame{.height = 132.25F}, Enabled(!state->saving)));
 
   auto save = [tasks, store, state, dialog, memory = std::move(memory),
                project_id = std::move(project_id), strings, toast,
                on_saved = std::move(on_saved)]() mutable {
+    if (state->saving)
+      return;
     auto content = domain::NormalizeMemoryContent(state->content.text);
     if (content.empty()) {
       toast.Show(strings.empty_toast);
       return;
     }
     state.Update([](MemoryEditorState &next) { next.saving = true; });
-    memory.scope = state->scope;
-    memory.project_id = project_id;
-    memory.content = std::move(content);
-    tasks.Launch([store, state, dialog, memory = std::move(memory), toast,
-                  on_saved = std::move(on_saved)]() mutable -> Task<void> {
-      auto saved = co_await store->SaveManual(std::move(memory));
+    auto pending = memory;
+    pending.scope = state->scope;
+    pending.project_id = project_id;
+    pending.content = std::move(content);
+    tasks.Launch([store, state, dialog, pending = std::move(pending), toast,
+                  on_saved]() mutable -> Task<void> {
+      auto saved = co_await store->SaveManual(std::move(pending));
       if (!saved) {
         state.Update([](MemoryEditorState &next) { next.saving = false; });
         toast.Show(saved.error().message);
@@ -576,10 +563,12 @@ Task<void> DeleteMemories(
            .With(Frame{.min_height = 32.0F},
                  CrossAlign(CrossAxisAlignment::Center)),
        Gap(12.0F), input,
-       DialogActions({DialogAction(strings.cancel, colors::secondary,
-                                   [dialog] { dialog.Dismiss(); }),
-                      DialogAction(strings.save, colors::accent,
-                                   std::move(save))})});
+       DialogActions(
+           {DialogAction(strings.cancel, colors::secondary,
+                         [dialog] { dialog.Dismiss(); })
+                .With(Enabled(!state->saving)),
+            DialogAction(strings.save, colors::accent, std::move(save))
+                .With(Enabled(!state->saving))})});
 }
 
 void ShowEditor(const DialogHandle &dialogs,
@@ -601,37 +590,35 @@ void ShowDeleteConfirmation(
     std::vector<std::string> ids, std::string body, std::string project_id,
     State<MemoryPageState> state, const TaskScope &tasks, ToastHandle toast,
     const ResolvedMemoryStrings &strings) {
-  dialogs.Show(
-      [store, ids = std::move(ids), body = std::move(body),
-       project_id = std::move(project_id), state, tasks, toast,
-       strings](DialogContext dialog) {
-        auto remove = [dialog, store, ids, project_id, state, tasks,
-                       toast]() mutable {
-          dialog.Dismiss();
-          tasks.Launch([store, ids = std::move(ids),
-                        project_id = std::move(project_id), state,
-                        toast]() mutable {
-            return DeleteMemories(store, std::move(ids),
-                                  std::move(project_id), state, toast);
-          });
-        };
-        return DialogPanel(
-            strings.delete_title,
-            {DialogBody(body),
-             DialogActions(
-                 {DialogAction(strings.cancel, colors::secondary,
-                               [dialog] { dialog.Dismiss(); }),
-                  DialogAction(strings.action_delete, colors::danger,
-                               std::move(remove))})});
+  dialogs.Show([store, ids = std::move(ids), body = std::move(body),
+                project_id = std::move(project_id), state, tasks, toast,
+                strings](DialogContext dialog) {
+    auto remove = [dialog, store, ids, project_id, state, tasks,
+                   toast]() mutable {
+      dialog.Dismiss();
+      tasks.Launch([store, ids = std::move(ids),
+                    project_id = std::move(project_id), state,
+                    toast]() mutable {
+        return DeleteMemories(store, std::move(ids), std::move(project_id),
+                              state, toast);
       });
+    };
+    return DialogPanel(
+        strings.delete_title,
+        {DialogBody(body),
+         DialogActions({DialogAction(strings.cancel, colors::secondary,
+                                     [dialog] { dialog.Dismiss(); }),
+                        DialogAction(strings.action_delete, colors::danger,
+                                     std::move(remove))})});
+  });
 }
 
-void ShowMemoryActions(
-    const DialogHandle &dialogs,
-    const std::shared_ptr<application::MemoryStore> &store,
-    domain::MemoryRecord memory, std::string project_id,
-    State<MemoryPageState> state, const TaskScope &tasks, ToastHandle toast,
-    const ResolvedMemoryStrings &strings, std::function<void()> reload) {
+void ShowMemoryActions(const DialogHandle &dialogs,
+                       const std::shared_ptr<application::MemoryStore> &store,
+                       domain::MemoryRecord memory, std::string project_id,
+                       State<MemoryPageState> state, const TaskScope &tasks,
+                       ToastHandle toast, const ResolvedMemoryStrings &strings,
+                       std::function<void()> reload) {
   dialogs.Show([dialogs, store, memory = std::move(memory),
                 project_id = std::move(project_id), state, tasks, toast,
                 strings, reload = std::move(reload)](DialogContext dialog) {
@@ -675,9 +662,10 @@ void ShowMemoryActions(
 
 } // namespace
 
-[[huxerui::composable]] View MemoryScreen(
-    std::shared_ptr<application::MemoryStore> store, std::string project_id,
-    MemoryScreenPresentation presentation) {
+[[huxerui::composable]] View
+MemoryScreen(std::shared_ptr<application::MemoryStore> store,
+             std::string project_id, MemoryScreenPresentation presentation,
+             std::string project_display) {
   const auto navigation = UseNavigation<domain::AppRoute>();
   const auto tasks = UseTaskScope();
   const auto dialogs = UseDialog();
@@ -750,11 +738,11 @@ void ShowMemoryActions(
   };
   auto delete_selected = [dialogs, store, project_id, state, tasks, toast,
                           strings] {
-    ShowDeleteConfirmation(
-        dialogs, store, state->selected,
-        strings.batch_delete_prefix + std::to_string(state->selected.size()) +
-            strings.batch_delete_suffix,
-        project_id, state, tasks, toast, strings);
+    ShowDeleteConfirmation(dialogs, store, state->selected,
+                           strings.batch_delete_prefix +
+                               std::to_string(state->selected.size()) +
+                               strings.batch_delete_suffix,
+                           project_id, state, tasks, toast, strings);
   };
 
   std::vector<View> content;
@@ -772,17 +760,18 @@ void ShowMemoryActions(
             .OnClick(reload)
             .With(Padding(EdgeInsets::Symmetric(0.0F, 12.0F)), Focusable(),
                   PointerCursor(PointerCursorKind::Hand)),
-    }.With(Padding(16.0F), Spacing(8.0F)));
+    }
+                          .With(Padding(16.0F), Spacing(8.0F)));
   } else {
     content.push_back(
-        Text(strings.current_project +
-             (state->overview.project_id.empty()
-                  ? strings.project_unselected
-                  : state->overview.project_id))
+        Text(strings.current_project + (!project_display.empty()
+                                            ? project_display
+                                        : state->overview.project_id.empty()
+                                            ? strings.project_unselected
+                                            : state->overview.project_id))
             .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
-            .With(Padding(EdgeInsets{.top = 12.0F,
-                                     .right = 16.0F,
-                                     .left = 16.0F})));
+            .With(Padding(
+                EdgeInsets{.top = 12.0F, .right = 16.0F, .left = 16.0F})));
 
     const std::array memory_sections{
         MemorySectionSpec{&ResolvedMemoryStrings::long_term,
@@ -825,18 +814,17 @@ void ShowMemoryActions(
             ShowMemoryActions(dialogs, store, memory, project_id, state, tasks,
                               toast, strings, reload);
           };
-          rows.push_back(MemoryRow(memory, section.icon, multi_select,
-                                   selected, strings, std::move(activate),
+          rows.push_back(MemoryRow(memory, section.icon, multi_select, selected,
+                                   strings, std::move(activate),
                                    std::move(long_press))
                              .Key(memory.id));
           if (index + 1U < records.size())
             rows.push_back(RowDivider());
         }
       }
-      content.push_back(Section(
-          strings.*section.title + "（" + std::to_string(records.size()) +
-              "）",
-          std::move(rows)));
+      content.push_back(Section(strings.*section.title + "（" +
+                                    std::to_string(records.size()) + "）",
+                                std::move(rows)));
     }
 
     std::vector<View> short_rows;
@@ -847,26 +835,28 @@ void ShowMemoryActions(
       for (std::size_t index{}; index < state->overview.short_term.size();
            ++index) {
         const auto memory = state->overview.short_term[index];
-        short_rows.push_back(ReadOnlyRow(
-            memory, app::images::clock_3,
-            [&strings](const auto &item) {
-              return Preview(item.content, 80, strings);
-            },
-            [&strings](const auto &item) {
-              return Time(item.updated_at, strings);
-            },
-            [dialogs, memory, strings] {
-              ShowTextDialog(dialogs, strings.short_term,
-                             WorkingDetail(memory, strings), strings.close);
-            }).Key(memory.id));
+        short_rows.push_back(
+            ReadOnlyRow(
+                memory, app::images::clock_3,
+                [&strings](const auto &item) {
+                  return Preview(item.content, 80, strings);
+                },
+                [&strings](const auto &item) {
+                  return Time(item.updated_at, strings);
+                },
+                [dialogs, memory, strings] {
+                  ShowTextDialog(dialogs, strings.short_term,
+                                 WorkingDetail(memory, strings), strings.close);
+                })
+                .Key(memory.id));
         if (index + 1U < state->overview.short_term.size())
           short_rows.push_back(RowDivider());
       }
     }
-    content.push_back(Section(
-        strings.short_term + "（" +
-            std::to_string(state->overview.short_term.size()) + "）",
-        std::move(short_rows)));
+    content.push_back(
+        Section(strings.short_term + "（" +
+                    std::to_string(state->overview.short_term.size()) + "）",
+                std::move(short_rows)));
 
     std::vector<View> history_rows;
     if (state->overview.history.empty()) {
@@ -876,26 +866,28 @@ void ShowMemoryActions(
       for (std::size_t index{}; index < state->overview.history.size();
            ++index) {
         const auto entry = state->overview.history[index];
-        history_rows.push_back(ReadOnlyRow(
-            entry, app::images::book_open,
-            [&strings](const auto &item) {
-              return Preview(item.text, 80, strings);
-            },
-            [&strings](const auto &item) {
-              return HistoryDescription(item, strings);
-            },
-            [dialogs, entry, strings] {
-              ShowTextDialog(dialogs, strings.chat_index,
-                             HistoryDetail(entry, strings), strings.close);
-            }).Key(entry.id));
+        history_rows.push_back(
+            ReadOnlyRow(
+                entry, app::images::book_open,
+                [&strings](const auto &item) {
+                  return Preview(item.text, 80, strings);
+                },
+                [&strings](const auto &item) {
+                  return HistoryDescription(item, strings);
+                },
+                [dialogs, entry, strings] {
+                  ShowTextDialog(dialogs, strings.chat_index,
+                                 HistoryDetail(entry, strings), strings.close);
+                })
+                .Key(entry.id));
         if (index + 1U < state->overview.history.size())
           history_rows.push_back(RowDivider());
       }
     }
-    content.push_back(Section(
-        strings.chat_index + "（" +
-            std::to_string(state->overview.history.size()) + "）",
-        std::move(history_rows)));
+    content.push_back(
+        Section(strings.chat_index + "（" +
+                    std::to_string(state->overview.history.size()) + "）",
+                std::move(history_rows)));
   }
   content.push_back(Gap(100.0F));
 
@@ -908,8 +900,9 @@ void ShowMemoryActions(
                            Background(colors::background)))
           .ScrollAxis(Axis::Vertical)
           .With(Grow()),
-  }.With(CrossAlign(CrossAxisAlignment::Stretch),
-         Background(colors::background), SafeAreaPadding{});
+  }
+      .With(CrossAlign(CrossAxisAlignment::Stretch),
+            Background(colors::background), SafeAreaPadding{});
 }
 
 } // namespace linecode::presentation

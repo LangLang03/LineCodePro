@@ -13,8 +13,8 @@
 #include <app_resources.h>
 #include <huxerui/huxerui.h>
 
-#include "domain/tool_settings.h"
 #include "domain/app_state.h"
+#include "domain/tool_settings.h"
 #include "presentation/components/legacy_settings_page.h"
 #include "presentation/image_model_presentation.h"
 #include "presentation/line_theme.h"
@@ -32,17 +32,17 @@ using domain::WebSearchProvider;
 
 struct ToolSettingsEditor final {
   ToolSettingsState settings;
-  TextEditingValue base_url{TextEditingValue::FromText(
-      settings.web_search.base_url)};
-  TextEditingValue api_key{TextEditingValue::FromText(
-      settings.web_search.api_key)};
+  TextEditingValue base_url{
+      TextEditingValue::FromText(settings.web_search.base_url)};
+  TextEditingValue api_key{
+      TextEditingValue::FromText(settings.web_search.api_key)};
   TextEditingValue model{TextEditingValue::FromText(settings.web_search.model)};
-  TextEditingValue query_param{TextEditingValue::FromText(
-      settings.web_search.query_param)};
-  TextEditingValue api_key_header{TextEditingValue::FromText(
-      settings.web_search.api_key_header)};
-  TextEditingValue api_key_param{TextEditingValue::FromText(
-      settings.web_search.api_key_param)};
+  TextEditingValue query_param{
+      TextEditingValue::FromText(settings.web_search.query_param)};
+  TextEditingValue api_key_header{
+      TextEditingValue::FromText(settings.web_search.api_key_header)};
+  TextEditingValue api_key_param{
+      TextEditingValue::FromText(settings.web_search.api_key_param)};
   std::array<std::string, image_model_presentations.size()> image_model_labels;
   std::uint64_t edit_revision{};
 
@@ -142,13 +142,13 @@ std::array<WebSearchFieldBinding, 6> WebSearchFieldBindings() {
        "tool-web-key-header"},
       {&ToolSettingsEditor::api_key_param, &WebSearchConfig::api_key_param,
        app::strings::screen_tools_field_key_query,
-       app::strings::screen_tools_hint_key_query, false,
-       "tool-web-key-query"},
+       app::strings::screen_tools_hint_key_query, false, "tool-web-key-query"},
   }};
 }
 
-Task<std::string> ResolveModelLabel(
-    std::shared_ptr<application::ModelStore> models, std::string id) {
+Task<std::string>
+ResolveModelLabel(std::shared_ptr<application::ModelStore> models,
+                  std::string id) {
   if (!models || id.empty())
     co_return std::string{};
   auto model = co_await models->Find(id);
@@ -162,11 +162,10 @@ Task<std::string> ResolveModelLabel(
   co_return label;
 }
 
-Task<void> LoadToolSettings(
-    std::shared_ptr<ToolSettingsService> service,
-    std::shared_ptr<application::ModelStore> models,
-    State<ToolSettingsEditor> editor,
-    State<ToolSettingsPersistenceQueue> persistence) {
+Task<void> LoadToolSettings(std::shared_ptr<ToolSettingsService> service,
+                            std::shared_ptr<application::ModelStore> models,
+                            State<ToolSettingsEditor> editor,
+                            State<ToolSettingsPersistenceQueue> persistence) {
   auto loaded = co_await service->Load();
   if (!loaded) {
     auto status = persistence.Get();
@@ -179,8 +178,8 @@ Task<void> LoadToolSettings(
   for (const auto &presentation : image_model_presentations) {
     const auto &setting =
         application::ImageModelSettingInfo(presentation.purpose);
-    next.image_model_labels[presentation.label_slot] = co_await ResolveModelLabel(
-        models, next.settings.*setting.state_member);
+    next.image_model_labels[presentation.label_slot] =
+        co_await ResolveModelLabel(models, next.settings.*setting.state_member);
   }
 
   const auto current = editor.Get();
@@ -200,9 +199,8 @@ Task<void> LoadToolSettings(
   persistence = std::move(status);
 }
 
-Task<void> DrainPersistenceQueue(
-    std::shared_ptr<ToolSettingsService> service,
-    State<ToolSettingsPersistenceQueue> queue) {
+Task<void> DrainPersistenceQueue(std::shared_ptr<ToolSettingsService> service,
+                                 State<ToolSettingsPersistenceQueue> queue) {
   for (;;) {
     auto before = queue.Get();
     if (before.pending.empty()) {
@@ -252,11 +250,10 @@ TextFieldStyle ToolFormFieldStyle() {
   style.outlined.background = colors::surface_light;
   style.outlined.border = colors::border_light;
   style.outlined.hovered_border = colors::border_light;
-  style.outlined.focused_border = colors::accent;
+  style.outlined.focused_border = colors::border_light;
   style.outlined.minimum_height = 44.0F;
   style.text_style = Label(16.0F);
-  style.placeholder_style = Label(16.0F, FontWeight::Regular,
-                                  colors::tertiary);
+  style.placeholder_style = Label(16.0F, FontWeight::Regular, colors::tertiary);
   style.caret = colors::accent;
   style.selection = colors::accent_muted_strong;
   style.border_width = 1.0F;
@@ -293,10 +290,10 @@ View FormField(TextEditingValue value, StringVariant label,
   ThemeDefinition definition;
   definition.Set(ToolFormFieldStyle());
   return Column{
-             Text(std::move(label))
-                 .Style(Label(13.0F, FontWeight::Medium, colors::secondary)),
-             Theme(std::move(definition), std::move(input)),
-         }
+      Text(std::move(label))
+          .Style(Label(13.0F, FontWeight::Medium, colors::secondary)),
+      Theme(std::move(definition), std::move(input)),
+  }
       .With(Spacing(4.0F), CrossAlign(CrossAxisAlignment::Stretch));
 }
 
@@ -308,11 +305,10 @@ View SectionHeader(StringResource title) {
 
 View ActionButton(ImageResource icon, std::function<void()> action) {
   return Row{
-             Glyph(std::move(icon), 15.0F, colors::text_on_color),
-             Text(app::strings::screen_tools_pick_model)
-                 .Style(Label(11.0F, FontWeight::Bold,
-                              colors::text_on_color)),
-         }
+      Glyph(std::move(icon), 15.0F, colors::text_on_color),
+      Text(app::strings::screen_tools_pick_model)
+          .Style(Label(11.0F, FontWeight::Bold, colors::text_on_color)),
+  }
       .OnClick([action = std::move(action)] {
         if (action)
           std::invoke(action);
@@ -320,9 +316,8 @@ View ActionButton(ImageResource icon, std::function<void()> action) {
       .With(Frame{.height = 42.0F}, Spacing(6.0F),
             Padding(EdgeInsets::Symmetric(8.0F, 0.0F)),
             MainAlign(MainAxisAlignment::Center),
-            CrossAlign(CrossAxisAlignment::Center),
-            Background(colors::accent), Border(colors::accent, 1.0F),
-            CornerRadius(8.0F), Focusable(),
+            CrossAlign(CrossAxisAlignment::Center), Background(colors::accent),
+            Border(colors::accent, 1.0F), CornerRadius(8.0F), Focusable(),
             PointerCursor(PointerCursorKind::Hand));
 }
 
@@ -331,22 +326,20 @@ View ImageModelCard(const ImageModelPresentation &presentation,
                     std::function<void()> action) {
   const bool selected = !selected_label.empty();
   return Column{
-             Text(presentation.settings_title)
-                 .Style(Label(16.0F, FontWeight::Bold)),
-             Gap(2.0F),
-             Text(presentation.settings_description)
-                 .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
-                 .With(Frame{.min_height =
-                                 presentation.description_minimum_height}),
-             Gap(12.0F),
-             Text(selected ? StringVariant{selected_label}
-                           : StringVariant{
-                                 app::strings::screen_tools_no_model_selected})
-                 .Style(Label(13.0F, FontWeight::Bold,
-                              selected ? colors::text : colors::tertiary)),
-             Gap(12.0F),
-             ActionButton(presentation.action_icon, std::move(action)),
-         }
+      Text(presentation.settings_title).Style(Label(16.0F, FontWeight::Bold)),
+      Gap(2.0F),
+      Text(presentation.settings_description)
+          .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
+          .With(Frame{.min_height = presentation.description_minimum_height}),
+      Gap(12.0F),
+      Text(selected
+               ? StringVariant{selected_label}
+               : StringVariant{app::strings::screen_tools_no_model_selected})
+          .Style(Label(13.0F, FontWeight::Bold,
+                       selected ? colors::text : colors::tertiary)),
+      Gap(12.0F),
+      ActionButton(presentation.action_icon, std::move(action)),
+  }
       .With(Padding(16.0F), CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::elevated), CornerRadius(12.0F));
 }
@@ -356,13 +349,12 @@ View ProviderButton(const WebSearchProviderPresentation &presentation,
                     std::function<void(WebSearchProvider)> choose) {
   const bool active = presentation.provider == selected;
   return Stack{
-             Text(presentation.label)
-                 .Style(Label(11.0F, FontWeight::Bold,
-                              active ? colors::text_on_color
-                                     : colors::secondary))
-                 .Align(TextAlign::Center)
-                 .VerticalAlign(TextVerticalAlign::Center),
-         }
+      Text(presentation.label)
+          .Style(Label(11.0F, FontWeight::Bold,
+                       active ? colors::text_on_color : colors::secondary))
+          .Align(TextAlign::Center)
+          .VerticalAlign(TextVerticalAlign::Center),
+  }
       .OnClick([provider = presentation.provider, choose = std::move(choose)] {
         std::invoke(choose, provider);
       })
@@ -380,27 +372,29 @@ View ProviderGrid(WebSearchProvider selected,
   std::vector<View> rows;
   rows.reserve((web_search_provider_presentations.size() + columns - 1) /
                columns);
-  for (std::size_t start = 0;
-       start < web_search_provider_presentations.size(); start += columns) {
+  for (std::size_t start = 0; start < web_search_provider_presentations.size();
+       start += columns) {
     std::vector<View> buttons;
     buttons.reserve(columns);
     const auto end =
         std::min(start + columns, web_search_provider_presentations.size());
     for (std::size_t index = start; index < end; ++index) {
-      buttons.push_back(ProviderButton(
-          web_search_provider_presentations[index], selected, choose));
+      buttons.push_back(ProviderButton(web_search_provider_presentations[index],
+                                       selected, choose));
     }
-    rows.push_back(Row(std::move(buttons)).With(Spacing(8.0F)));
+    rows.push_back(
+        Row(std::move(buttons))
+            .With(Spacing(8.0F), Padding(EdgeInsets{.right = 8.0F})));
   }
   return Column(std::move(rows))
       .With(Spacing(8.0F), CrossAlign(CrossAxisAlignment::Stretch));
 }
 
-View WebSearchCard(
-    const ToolSettingsEditor &editor,
-    std::function<void(WebSearchProvider)> choose_provider,
-    std::function<void(EditorTextMember, ConfigTextMember,
-                       const TextEditingValue &)> edit_field) {
+View WebSearchCard(const ToolSettingsEditor &editor,
+                   std::function<void(WebSearchProvider)> choose_provider,
+                   std::function<void(EditorTextMember, ConfigTextMember,
+                                      const TextEditingValue &)>
+                       edit_field) {
   std::vector<View> content;
   content.reserve(16);
   content.push_back(Text(app::strings::screen_tools_web_search_label)
@@ -433,20 +427,22 @@ View WebSearchCard(
 
 } // namespace
 
-[[huxerui::composable]] View ToolSettingsScreen(
-    std::shared_ptr<ToolSettingsService> service,
-    std::shared_ptr<application::ModelStore> models,
-    std::size_t reload_revision) {
+[[huxerui::composable]] View
+ToolSettingsScreen(std::shared_ptr<ToolSettingsService> service,
+                   std::shared_ptr<application::ModelStore> models,
+                   std::size_t reload_revision) {
   const auto navigation = UseNavigation<domain::AppRoute>();
   const auto tasks = UseTaskScope();
   auto editor = UseState(MakeEditor(ToolSettingsState{}));
   auto persistence = UseState(ToolSettingsPersistenceQueue{});
 
-  Lifecycle([tasks, service, models, editor, persistence] {
-    tasks.Launch([service, models, editor, persistence] {
-      return LoadToolSettings(service, models, editor, persistence);
-    });
-  }, reload_revision);
+  Lifecycle(
+      [tasks, service, models, editor, persistence] {
+        tasks.Launch([service, models, editor, persistence] {
+          return LoadToolSettings(service, models, editor, persistence);
+        });
+      },
+      reload_revision);
 
   auto choose_provider = [tasks, service, editor,
                           persistence](WebSearchProvider provider) {
@@ -454,8 +450,7 @@ View WebSearchCard(
     next.settings.web_search = domain::DefaultWebSearchConfig(provider);
     next.base_url =
         TextEditingValue::FromText(next.settings.web_search.base_url);
-    next.api_key =
-        TextEditingValue::FromText(next.settings.web_search.api_key);
+    next.api_key = TextEditingValue::FromText(next.settings.web_search.api_key);
     next.model = TextEditingValue::FromText(next.settings.web_search.model);
     next.query_param =
         TextEditingValue::FromText(next.settings.web_search.query_param);
@@ -471,10 +466,10 @@ View WebSearchCard(
         application::WebSearchConfigurationChange{.value = config});
   };
 
-  auto edit_field = [tasks, service, editor, persistence](
-                        EditorTextMember editor_value,
-                        ConfigTextMember config_value,
-                        const TextEditingValue &value) {
+  auto edit_field = [tasks, service, editor,
+                     persistence](EditorTextMember editor_value,
+                                  ConfigTextMember config_value,
+                                  const TextEditingValue &value) {
     auto next = editor.Get();
     SetWebSearchField(next, editor_value, config_value, value);
     const auto config = next.settings.web_search;
@@ -507,20 +502,19 @@ View WebSearchCard(
   content.push_back(Gap(100.0F));
 
   return Column{
-             LegacySettingsPageHeader(app::strings::screen_tools_title,
-                                      [navigation] { navigation.Pop(); }),
-             Divider(),
-             ScrollView(
-                 Column(std::move(content))
+      LegacySettingsPageHeader(app::strings::screen_tools_title,
+                               [navigation] { navigation.Pop(); }),
+      Divider(),
+      ScrollView(Column(std::move(content))
                      .With(Padding(EdgeInsets{.top = 16.0F,
                                               .right = 16.0F,
                                               .bottom = 0.0F,
                                               .left = 16.0F}),
                            CrossAlign(CrossAxisAlignment::Stretch),
                            Background(colors::background)))
-                 .ScrollAxis(Axis::Vertical)
-                 .With(Grow()),
-         }
+          .ScrollAxis(Axis::Vertical)
+          .With(Grow()),
+  }
       .With(CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::background), SafeAreaPadding{});
 }

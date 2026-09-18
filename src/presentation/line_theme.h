@@ -50,6 +50,8 @@ struct LineColors final {
 
 [[nodiscard]] LineColors
 LineColorsForPalette(const domain::ThemePalette &palette);
+[[nodiscard]] huxerui::Color LineColorForPacked(domain::PackedColor value,
+                                                domain::PackedColor background);
 [[nodiscard]] const LineColors &UseLineColors();
 
 huxerui::ThemeSpec LineLightTheme();

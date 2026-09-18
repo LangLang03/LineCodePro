@@ -80,17 +80,21 @@ ModelDraft ModelFormService::Edit(const domain::ModelConfig &model) {
 std::expected<domain::ModelConfig, ModelValidationError>
 ModelFormService::Build(const ModelDraft &draft) {
   const bool local = IsLocal(draft);
+  if (local) {
+    return std::unexpected(
+        ModelValidationError{ModelValidationCode::local_backend_unavailable});
+  }
   const auto model_id = Trim(draft.model_id);
   auto name = Trim(draft.name);
   if (name.empty()) {
     name = model_id;
   }
-  if (name.empty() || (!local && model_id.empty())) {
+  if (name.empty() || model_id.empty()) {
     return std::unexpected(
         ModelValidationError{ModelValidationCode::missing_name_or_model_id});
   }
   const auto api_key = Trim(draft.api_key);
-  if (!local && api_key.empty()) {
+  if (api_key.empty()) {
     return std::unexpected(
         ModelValidationError{ModelValidationCode::missing_api_key});
   }
@@ -109,9 +113,9 @@ ModelFormService::Build(const ModelDraft &draft) {
   domain::ModelConfig model{
       .id = draft.id,
       .name = std::move(name),
-      .protocol = local ? domain::ModelProtocol::local_gguf : draft.protocol,
+      .protocol = draft.protocol,
       .provider_label = Trim(draft.provider_label),
-      .base_url = local ? std::string{} : EffectiveBaseUrl(draft),
+      .base_url = EffectiveBaseUrl(draft),
       .api_key = api_key,
       .model_id = model_id,
       .tool_call_limit = *tool_limit,

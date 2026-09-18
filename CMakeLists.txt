@@ -45,7 +45,7 @@ huxerui_use_library(linecodepro
 huxerui_use_library(linecodepro
         TARGET HuxerUI::WebView
         URL "https://github.com/HuxerUI/Lib-WebView.git"
-        COMMIT "028abfc5c939829fb94f0855ac3bce77ed7ceb8d"
+        COMMIT "88d34570d999cd4ac5a626e2e4c5b840f903885a"
 )
 
 if (NOT HUXERUI_LIBRARY_GRAPH_ONLY)

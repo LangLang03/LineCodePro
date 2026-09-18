@@ -1,6 +1,7 @@
 #include "presentation/screens/theme_settings_screen.h"
 
 #include <array>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -54,8 +55,8 @@ enum class StarterId : std::uint8_t {
   saved,
 };
 
-using StarterPaletteFactory = ThemePalette (*)(
-    const application::ThemeSettingsState &);
+using StarterPaletteFactory =
+    ThemePalette (*)(const application::ThemeSettingsState &);
 
 struct Starter final {
   StarterId id;
@@ -65,8 +66,7 @@ struct Starter final {
 };
 
 template <ThemeMode Mode, const char *CodeBackground = nullptr>
-ThemePalette BuiltInStarterPalette(
-    const application::ThemeSettingsState &) {
+ThemePalette BuiltInStarterPalette(const application::ThemeSettingsState &) {
   auto palette = domain::PaletteForMode(Mode);
   if constexpr (CodeBackground != nullptr) {
     palette[ThemeColorRole::code_background] =
@@ -79,17 +79,13 @@ inline constexpr char kLightCodeBackground[] = "#F2F2F7";
 inline constexpr char kDarkCodeBackground[] = "#151515";
 inline constexpr char kCoffeeCodeBackground[] = "#EFE4D4";
 
-ThemePalette SavedStarterPalette(
-    const application::ThemeSettingsState &saved) {
+ThemePalette SavedStarterPalette(const application::ThemeSettingsState &saved) {
   return domain::ApplyThemeDraft(domain::PaletteForMode(ThemeMode::custom),
                                  saved.custom_colors);
 }
 
-Color UiColor(domain::PackedColor value) {
-  return Color::Rgb(static_cast<int>((value >> 16U) & 0xFFU),
-                    static_cast<int>((value >> 8U) & 0xFFU),
-                    static_cast<int>(value & 0xFFU),
-                    static_cast<float>((value >> 24U) & 0xFFU) / 255.0F);
+Color UiColor(domain::PackedColor value, domain::PackedColor background) {
+  return LineColorForPacked(value, background);
 }
 
 TextStyle Label(float size, FontWeight weight = FontWeight::Regular,
@@ -184,6 +180,40 @@ EditingValues(const ThemeColorDraft &draft) {
   return result;
 }
 
+std::string NormalizeHexDraftText(std::string_view value) {
+  while (!value.empty() &&
+         std::isspace(static_cast<unsigned char>(value.front())) != 0)
+    value.remove_prefix(1);
+  while (!value.empty() &&
+         std::isspace(static_cast<unsigned char>(value.back())) != 0)
+    value.remove_suffix(1);
+  std::string normalized(value);
+  if (!normalized.empty() && normalized.front() != '#')
+    normalized.insert(normalized.begin(), '#');
+  return normalized;
+}
+
+TextFieldStyle ThemeColorFieldStyle(bool valid) {
+  auto style = TextFieldStyle::Default();
+  style.variant = TextFieldVariant::Standard;
+  style.show_label = false;
+  style.standard.background = colors::surface_light;
+  style.standard.border = valid ? colors::border_light : colors::danger;
+  style.standard.hovered_border = valid ? colors::border_light : colors::danger;
+  style.standard.focused_border = valid ? colors::border_light : colors::danger;
+  style.standard.corner_radii = CornerRadii{8.0F};
+  style.standard.minimum_height = 38.0F;
+  style.text_style =
+      TextStyle{Font::Monospace(13.0F), valid ? colors::text : colors::danger};
+  style.placeholder_style = TextStyle{Font::Monospace(13.0F), colors::tertiary};
+  style.padding = EdgeInsets::Symmetric(8.0F, 0.0F);
+  style.caret = valid ? colors::accent : colors::danger;
+  style.error_caret = colors::danger;
+  style.selection = colors::accent_muted_strong;
+  style.focused_border_width = 1.0F;
+  return style;
+}
+
 View Header(const RouteNavigationController<domain::AppRoute> &navigation) {
   return LegacyScreenHeaderLayout{
       Stack{Glyph(app::images::chevron_left, 22.0F, colors::text)}
@@ -254,25 +284,30 @@ View ThemeModes(State<application::ThemeSettingsState> state,
 }
 
 View PaletteChips(const ThemePalette &palette) {
+  const auto background = palette[ThemeColorRole::background];
+  constexpr auto legacy_chip_border = Color::Rgb(0, 0, 0, 0.125F);
   return Row{
-      Stack{}.With(Frame{.width = 18.0F, .height = 18.0F},
-                   Background(UiColor(palette[ThemeColorRole::background])),
-                   CornerRadius(9.0F), Border{colors::border_light, 1.0F}),
-      Stack{}.With(Frame{.width = 18.0F, .height = 18.0F},
-                   Background(UiColor(palette[ThemeColorRole::ai_bubble])),
-                   CornerRadius(9.0F), Border{colors::border_light, 1.0F}),
-      Stack{}.With(Frame{.width = 18.0F, .height = 18.0F},
-                   Background(UiColor(palette[ThemeColorRole::accent])),
-                   CornerRadius(9.0F), Border{colors::border_light, 1.0F}),
+      Stack{}.With(
+          Frame{.width = 18.0F, .height = 18.0F},
+          Background(UiColor(palette[ThemeColorRole::background], background)),
+          CornerRadius(9.0F), Border{legacy_chip_border, 1.0F}),
+      Stack{}.With(
+          Frame{.width = 18.0F, .height = 18.0F},
+          Background(UiColor(palette[ThemeColorRole::ai_bubble], background)),
+          CornerRadius(9.0F), Border{legacy_chip_border, 1.0F}),
+      Stack{}.With(
+          Frame{.width = 18.0F, .height = 18.0F},
+          Background(UiColor(palette[ThemeColorRole::accent], background)),
+          CornerRadius(9.0F), Border{legacy_chip_border, 1.0F}),
   }
       .With(Spacing(-4.0F));
 }
 
 View StarterTile(
-    StarterId id, StringResource title, ImageResource icon, ThemePalette palette,
-    std::optional<StarterId> selected,
+    StarterId id, StringResource title, ImageResource icon,
+    ThemePalette palette, std::optional<StarterId> selected,
     State<std::optional<StarterId>> active_starter,
-    State<ThemeColorDraft> draft,
+    State<ThemeColorDraft> draft, State<ThemeColorDraft> preview_draft,
     State<std::array<TextEditingValue, domain::theme_color_count>> editing) {
   const bool active = id == selected;
   return Column{
@@ -284,10 +319,11 @@ View StarterTile(
                        active ? colors::accent : colors::secondary))
           .With(Padding(EdgeInsets{.top = 4.0F})),
   }
-      .OnClick([id, palette, active_starter, draft, editing] {
+      .OnClick([id, palette, active_starter, draft, preview_draft, editing] {
         auto next = domain::EditableThemeDraft(palette);
         active_starter = id;
         draft = next;
+        preview_draft = next;
         editing = EditingValues(next);
       })
       .With(Grow(), Padding(8.0F), CornerRadius(8.0F),
@@ -298,8 +334,8 @@ View StarterTile(
 
 View StarterPanel(
     const application::ThemeSettingsState &saved,
-    State<std::optional<StarterId>> active,
-    State<ThemeColorDraft> draft,
+    State<std::optional<StarterId>> active, State<ThemeColorDraft> draft,
+    State<ThemeColorDraft> preview_draft,
     State<std::array<TextEditingValue, domain::theme_color_count>> editing) {
   std::vector<Starter> starters{
       {StarterId::default_theme, app::strings::screen_theme_starter_default,
@@ -316,8 +352,7 @@ View StarterPanel(
       {StarterId::vscode, app::strings::screen_theme_starter_vscode,
        app::images::code, &BuiltInStarterPalette<ThemeMode::vscode>},
       {StarterId::github_dark, app::strings::screen_theme_starter_github,
-       app::images::git_branch,
-       &BuiltInStarterPalette<ThemeMode::github_dark>},
+       app::images::git_branch, &BuiltInStarterPalette<ThemeMode::github_dark>},
       {StarterId::gruvbox, app::strings::screen_theme_starter_gruvbox,
        app::images::code, &BuiltInStarterPalette<ThemeMode::gruvbox>},
       {StarterId::high_contrast,
@@ -341,14 +376,16 @@ View StarterPanel(
       const auto &starter = starters[index];
       auto palette = std::invoke(starter.palette, saved);
       tiles.push_back(StarterTile(starter.id, starter.title, starter.icon,
-                                  palette, active.Get(), active, draft, editing)
+                                  palette, active.Get(), active, draft,
+                                  preview_draft, editing)
                           .Key(std::to_underlying(starter.id)));
     }
     // Legacy code adds an 8dp right margin to every grid cell, including the
     // last column, so the three columns share the width left over from that
     // trailing margin.
-    grid.push_back(Row(std::move(tiles)).With(
-        Spacing(8.0F), Padding(EdgeInsets{.right = 8.0F})));
+    grid.push_back(
+        Row(std::move(tiles))
+            .With(Spacing(8.0F), Padding(EdgeInsets{.right = 8.0F})));
   }
   return Column{
       Text(app::strings::screen_theme_starter_section)
@@ -362,29 +399,34 @@ View StarterPanel(
 }
 
 View Preview(const ThemePalette &palette) {
+  const auto background = palette[ThemeColorRole::background];
   return Column{
       Column{
           Text(app::strings::screen_theme_section_preview)
               .Style(Label(16.0F, FontWeight::Bold,
-                           UiColor(palette[ThemeColorRole::text]))),
+                           UiColor(palette[ThemeColorRole::text], background))),
           Text(app::strings::screen_theme_section_preview_desc)
-              .Style(Label(13.0F, FontWeight::Regular,
-                           UiColor(palette[ThemeColorRole::text_secondary])))
+              .Style(Label(
+                  13.0F, FontWeight::Regular,
+                  UiColor(palette[ThemeColorRole::text_secondary], background)))
               .With(Padding(EdgeInsets{.top = 4.0F})),
       }
           .With(Padding(12.0F), CornerRadius(8.0F),
-                Background(UiColor(palette[ThemeColorRole::ai_bubble]))),
+                Background(
+                    UiColor(palette[ThemeColorRole::ai_bubble], background))),
       Text(app::strings::screen_theme_color_accent)
-          .Style(Label(11.0F, FontWeight::Bold,
-                       UiColor(palette[ThemeColorRole::text_on_color])))
-          .With(Padding(EdgeInsets::Symmetric(12.0F, 4.0F)),
-                CornerRadius(999.0F),
-                Background(UiColor(palette[ThemeColorRole::accent]))),
+          .Style(Label(
+              11.0F, FontWeight::Bold,
+              UiColor(palette[ThemeColorRole::text_on_color], background)))
+          .With(
+              Padding(EdgeInsets::Symmetric(12.0F, 4.0F)), CornerRadius(999.0F),
+              Background(UiColor(palette[ThemeColorRole::accent], background))),
   }
-      .With(Spacing(12.0F), Padding(12.0F), CornerRadius(12.0F),
-            Background(UiColor(palette[ThemeColorRole::background])),
-            Border{UiColor(palette[ThemeColorRole::border]), 1.0F},
-            CrossAlign(CrossAxisAlignment::Start));
+      .With(
+          Spacing(12.0F), Padding(12.0F), CornerRadius(12.0F),
+          Background(UiColor(palette[ThemeColorRole::background], background)),
+          Border{UiColor(palette[ThemeColorRole::border], background), 1.0F},
+          CrossAlign(CrossAxisAlignment::Start));
 }
 
 constexpr std::array<std::string_view, 32> kSwatches{
@@ -397,7 +439,7 @@ constexpr std::array<std::string_view, 32> kSwatches{
 View SwatchPanel(
     const FieldMeta &active_field, State<ThemeColorRole> active_role,
     State<std::optional<StarterId>> active_starter,
-    State<ThemeColorDraft> draft,
+    State<ThemeColorDraft> draft, State<ThemeColorDraft> preview_draft,
     State<std::array<TextEditingValue, domain::theme_color_count>> editing) {
   const auto role_index = static_cast<std::size_t>(active_role.Get());
   std::vector<View> lines;
@@ -412,13 +454,22 @@ View SwatchPanel(
       }
       const std::string value(kSwatches[index]);
       const bool selected = draft->at(role_index) == value;
-      const auto color = UiColor(*domain::ParseHexColor(value));
+      const auto background = domain::ParseHexColor(
+          draft->at(static_cast<std::size_t>(ThemeColorRole::background)));
+      const auto fallback_background =
+          domain::PaletteForMode(ThemeMode::custom)[ThemeColorRole::background];
+      const auto color = UiColor(*domain::ParseHexColor(value),
+                                 background.value_or(fallback_background));
       swatches.push_back(
-          Stack{selected ? Glyph(app::images::check, 14.0F, Color::White())
-                         : Spacer()}
-              .OnClick([value, role_index, active_starter, draft, editing] {
-                draft.Update(
-                    [&](ThemeColorDraft &next) { next[role_index] = value; });
+          Stack{selected
+                    ? Glyph(app::images::check, 14.0F, colors::text_on_color)
+                    : Spacer()}
+              .OnClick([value, role_index, active_starter, draft, preview_draft,
+                        editing] {
+                auto next = draft.Get();
+                next[role_index] = value;
+                draft = next;
+                preview_draft = next;
                 editing.Update([&](auto &next) {
                   next[role_index] = TextEditingValue::FromText(value);
                 });
@@ -441,8 +492,9 @@ View SwatchPanel(
           Text(active_field.title)
               .Style(Label(13.0F, FontWeight::Medium, colors::secondary)),
       }
-          .With(Spacing(4.0F)),
-      Column(std::move(lines)).With(Spacing(8.0F)),
+          .With(Spacing(0.0F)),
+      Column(std::move(lines))
+          .With(Spacing(8.0F), Padding(EdgeInsets{.top = 8.0F})),
   }
       .With(Spacing(8.0F), Padding(12.0F), CornerRadius(12.0F),
             Background(colors::elevated));
@@ -452,12 +504,19 @@ View EditorRow(
     const FieldMeta &field, std::size_t index,
     State<ThemeColorRole> active_role,
     State<std::optional<StarterId>> active_starter,
-    State<ThemeColorDraft> draft,
+    State<ThemeColorDraft> draft, State<ThemeColorDraft> preview_draft,
     State<std::array<TextEditingValue, domain::theme_color_count>> editing) {
   const bool active = active_role.Get() == field.role;
   const bool valid = domain::IsHexColor(draft->at(index));
-  const auto preview = valid ? UiColor(*domain::ParseHexColor(draft->at(index)))
+  const auto background = domain::ParseHexColor(
+      draft->at(static_cast<std::size_t>(ThemeColorRole::background)));
+  const auto fallback_background =
+      domain::PaletteForMode(ThemeMode::custom)[ThemeColorRole::background];
+  const auto preview = valid ? UiColor(*domain::ParseHexColor(draft->at(index)),
+                                       background.value_or(fallback_background))
                              : colors::surface_light;
+  ThemeDefinition field_theme;
+  field_theme.Set(ThemeColorFieldStyle(valid));
   return Row{
       Stack{}.With(Frame{.width = 30.0F, .height = 30.0F}, Background(preview),
                    CornerRadius(15.0F), Border{colors::border_light, 1.0F}),
@@ -469,31 +528,36 @@ View EditorRow(
                            valid ? colors::tertiary : colors::danger)),
       }
           .With(Spacing(2.0F), Grow()),
-      TextField(editing->at(index))
-          .Placeholder(app::strings::screen_theme_color_hex_placeholder)
-          .LineLimits(TextFieldLineLimits::SingleLine())
-          .MaxLength(9)
-          .Validation(valid ? ValidationResult::None()
-                            : ValidationResult::Invalid(
-                                  app::strings::screen_theme_color_hex_hint))
-          .OnChanged([index, role = field.role, active_role, active_starter,
-                      draft, editing](const TextEditingValue &proposed) {
-            auto next = proposed;
-            std::string normalized = proposed.text;
-            if (!normalized.empty() && normalized.front() != '#') {
-              normalized.insert(normalized.begin(), '#');
-              next = TextEditingValue::FromText(normalized);
-            }
-            editing.Update([&](auto &values) { values[index] = next; });
-            draft.Update(
-                [&](ThemeColorDraft &values) { values[index] = normalized; });
-            active_role = role;
-            active_starter = std::nullopt;
-          })
-          .With(Frame{.width = 92.0F, .height = 38.0F}, CornerRadius(8.0F),
-                Background(colors::surface_light),
-                Border{valid ? colors::border_light : colors::danger, 1.0F},
-                Padding(EdgeInsets::Symmetric(8.0F, 0.0F))),
+      Theme(field_theme,
+            TextField(editing->at(index))
+                .Placeholder(app::strings::screen_theme_color_hex_placeholder)
+                .LineLimits(TextFieldLineLimits::SingleLine())
+                .MaxLength(9)
+                .InputConfiguration(TextInputConfiguration{
+                    .type = TextInputType::Text,
+                    .capitalization = TextCapitalization::Characters,
+                    .action = TextInputAction::Done,
+                    .multiline = false,
+                    .secure = false,
+                    .autocorrect = false,
+                })
+                .OnChanged([index, role = field.role, active_role,
+                            active_starter, draft, preview_draft,
+                            editing](const TextEditingValue &proposed) {
+                  editing.Update(
+                      [&](auto &values) { values[index] = proposed; });
+            auto next = draft.Get();
+            next[index] = NormalizeHexDraftText(proposed.text);
+            draft = next;
+            // Legacy preview freezes only while the field currently being
+            // edited is invalid. Other invalid fields fall back to the custom
+            // base palette when this active field becomes valid.
+            if (domain::IsHexColor(next[index]))
+              preview_draft = next;
+                  active_role = role;
+                  active_starter = std::nullopt;
+                })
+                .With(Frame{.width = 92.0F, .height = 38.0F})),
   }
       .OnClick([role = field.role, active_role] { active_role = role; })
       .With(Frame{.min_height = 66.0F}, Spacing(12.0F),
@@ -506,13 +570,13 @@ View EditorRow(
 View EditorGroup(
     State<ThemeColorRole> active_role,
     State<std::optional<StarterId>> active_starter,
-    State<ThemeColorDraft> draft,
+    State<ThemeColorDraft> draft, State<ThemeColorDraft> preview_draft,
     State<std::array<TextEditingValue, domain::theme_color_count>> editing) {
   const auto fields = Fields();
   std::vector<View> rows;
   for (std::size_t index = 0; index < fields.size(); ++index) {
     rows.push_back(EditorRow(fields[index], index, active_role, active_starter,
-                             draft, editing)
+                             draft, preview_draft, editing)
                        .Key(fields[index].role));
     if (index + 1 < fields.size()) {
       rows.push_back(Divider().With(Padding(EdgeInsets{.left = 58.0F})));
@@ -531,13 +595,14 @@ ThemeSettingsScreen(std::shared_ptr<application::ThemeSettingsService> service,
   const auto navigation = UseNavigation<domain::AppRoute>();
   const auto toast = UseToast();
   auto draft = UseState(settings->custom_colors);
+  auto preview_draft = UseState(settings->custom_colors);
   auto editing = UseState(EditingValues(settings->custom_colors));
   auto active_role = UseState(ThemeColorRole::accent);
-  auto active_starter = UseState(std::optional{
-      settings->has_saved_custom_colors ? StarterId::saved
-                                        : StarterId::default_theme});
+  auto active_starter = UseState(std::optional{settings->has_saved_custom_colors
+                                                   ? StarterId::saved
+                                                   : StarterId::default_theme});
   const auto preview = domain::ApplyThemeDraft(
-      domain::PaletteForMode(ThemeMode::custom), draft.Get());
+      domain::PaletteForMode(ThemeMode::custom), preview_draft.Get());
   const bool valid = domain::IsValidThemeDraft(draft.Get());
   const auto active_index = static_cast<std::size_t>(active_role.Get());
   const auto fields = Fields();
@@ -548,10 +613,11 @@ ThemeSettingsScreen(std::shared_ptr<application::ThemeSettingsService> service,
               .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
               .With(Grow()),
           Stack{Glyph(app::images::rotate_ccw, 15.0F, colors::secondary)}
-              .OnClick([draft, editing, active_starter] {
+              .OnClick([draft, preview_draft, editing, active_starter] {
                 auto reset = domain::EditableThemeDraft(
                     domain::PaletteForMode(ThemeMode::custom));
                 draft = reset;
+                preview_draft = reset;
                 editing = EditingValues(reset);
                 active_starter = StarterId::default_theme;
               })
@@ -596,11 +662,13 @@ ThemeSettingsScreen(std::shared_ptr<application::ThemeSettingsService> service,
               ThemeModes(settings, service),
               custom_header,
               Column{
-                  StarterPanel(settings.Get(), active_starter, draft, editing),
+                  StarterPanel(settings.Get(), active_starter, draft,
+                               preview_draft, editing),
                   Preview(preview),
                   SwatchPanel(fields[active_index], active_role, active_starter,
-                              draft, editing),
-                  EditorGroup(active_role, active_starter, draft, editing),
+                              draft, preview_draft, editing),
+                  EditorGroup(active_role, active_starter, draft, preview_draft,
+                              editing),
               }
                   .With(Spacing(12.0F),
                         Padding(EdgeInsets::Symmetric(16.0F, 0.0F)),

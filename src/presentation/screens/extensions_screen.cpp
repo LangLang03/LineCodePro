@@ -24,6 +24,7 @@
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/components/legacy_settings_card_frame.h"
 #include "presentation/components/legacy_settings_page.h"
+#include "presentation/components/legacy_switch.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -67,19 +68,19 @@ using EditorRoute = domain::AppRoute (*)(std::optional<std::string>);
 using ExtensionDestination = domain::AppRoute (*)(domain::ExtensionKind);
 
 struct ExtensionPresentation;
-using DetailPrimaryAction = void (*)(
-    const ExtensionPresentation *, const ExtensionScreenServices &,
-    State<DetailState>, State<SkillDraftState>, TaskScope, BottomSheetHandle,
-    DialogHandle, std::shared_ptr<FilePicker>,
-    RouteNavigationController<domain::AppRoute>, ToastHandle);
-using DetailSupplementAction = void (*)(
-    const ExtensionScreenServices &,
-    RouteNavigationController<domain::AppRoute>, ToastHandle);
+using DetailPrimaryAction =
+    void (*)(const ExtensionPresentation *, const ExtensionScreenServices &,
+             State<DetailState>, State<SkillDraftState>, TaskScope,
+             BottomSheetHandle, DialogHandle, std::shared_ptr<FilePicker>,
+             RouteNavigationController<domain::AppRoute>, ToastHandle);
+using DetailSupplementAction =
+    void (*)(const ExtensionScreenServices &,
+             RouteNavigationController<domain::AppRoute>, ToastHandle);
 using DetailSupplementAvailable = bool (*)(const ExtensionScreenServices &);
 using InstalledItemLongPress = void (*)(
-    const ExtensionPresentation *, ExtensionScreenServices,
-    State<DetailState>, TaskScope, BottomSheetHandle,
-    RouteNavigationController<domain::AppRoute>, const InstalledExtension &);
+    const ExtensionPresentation *, ExtensionScreenServices, State<DetailState>,
+    TaskScope, BottomSheetHandle, RouteNavigationController<domain::AppRoute>,
+    const InstalledExtension &);
 
 struct DetailSupplementPresentation final {
   StringResource section_title;
@@ -114,20 +115,22 @@ struct ExtensionPresentation final {
   ExtensionDestination destination;
 };
 
-void OpenExtensionEditor(
-    const ExtensionPresentation *presentation,
-    const ExtensionScreenServices &services, State<DetailState> detail,
-    State<SkillDraftState> skill_draft, TaskScope tasks,
-    BottomSheetHandle sheets, DialogHandle dialogs,
-    std::shared_ptr<FilePicker> picker,
-    RouteNavigationController<domain::AppRoute> navigation, ToastHandle toast);
-void OpenSkillActions(
-    const ExtensionPresentation *presentation,
-    const ExtensionScreenServices &services, State<DetailState> detail,
-    State<SkillDraftState> skill_draft, TaskScope tasks,
-    BottomSheetHandle sheets, DialogHandle dialogs,
-    std::shared_ptr<FilePicker> picker,
-    RouteNavigationController<domain::AppRoute> navigation, ToastHandle toast);
+void OpenExtensionEditor(const ExtensionPresentation *presentation,
+                         const ExtensionScreenServices &services,
+                         State<DetailState> detail,
+                         State<SkillDraftState> skill_draft, TaskScope tasks,
+                         BottomSheetHandle sheets, DialogHandle dialogs,
+                         std::shared_ptr<FilePicker> picker,
+                         RouteNavigationController<domain::AppRoute> navigation,
+                         ToastHandle toast);
+void OpenSkillActions(const ExtensionPresentation *presentation,
+                      const ExtensionScreenServices &services,
+                      State<DetailState> detail,
+                      State<SkillDraftState> skill_draft, TaskScope tasks,
+                      BottomSheetHandle sheets, DialogHandle dialogs,
+                      std::shared_ptr<FilePicker> picker,
+                      RouteNavigationController<domain::AppRoute> navigation,
+                      ToastHandle toast);
 void ShowUnavailableAction(
     const ExtensionPresentation *presentation,
     const ExtensionScreenServices &services, State<DetailState> detail,
@@ -138,21 +141,19 @@ void ShowUnavailableAction(
 void OpenSkillStore(const ExtensionScreenServices &services,
                     RouteNavigationController<domain::AppRoute> navigation,
                     ToastHandle toast);
-void ShareSkillWorkspace(
-    const ExtensionScreenServices &services,
-    RouteNavigationController<domain::AppRoute> navigation, ToastHandle toast);
+void ShareSkillWorkspace(const ExtensionScreenServices &services,
+                         RouteNavigationController<domain::AppRoute> navigation,
+                         ToastHandle toast);
 bool AlwaysSupplementAvailable(const ExtensionScreenServices &services);
 bool WorkspaceShareAvailable(const ExtensionScreenServices &services);
 void OpenEditableItemMenu(
-    const ExtensionPresentation *presentation,
-    ExtensionScreenServices services, State<DetailState> detail,
-    TaskScope tasks, BottomSheetHandle sheets,
+    const ExtensionPresentation *presentation, ExtensionScreenServices services,
+    State<DetailState> detail, TaskScope tasks, BottomSheetHandle sheets,
     RouteNavigationController<domain::AppRoute> navigation,
     const InstalledExtension &item);
 void BeginSkillMultiSelect(
-    const ExtensionPresentation *presentation,
-    ExtensionScreenServices services, State<DetailState> detail,
-    TaskScope tasks, BottomSheetHandle sheets,
+    const ExtensionPresentation *presentation, ExtensionScreenServices services,
+    State<DetailState> detail, TaskScope tasks, BottomSheetHandle sheets,
     RouteNavigationController<domain::AppRoute> navigation,
     const InstalledExtension &item);
 Task<void> ReloadDetail(const ExtensionPresentation *presentation,
@@ -299,8 +300,7 @@ SetSkillEnabled(const ExtensionScreenServices &services, std::string id,
     co_return std::unexpected(application::ExtensionStoreError{
         .message = "Skill extension service is unavailable"});
   }
-  auto changed =
-      co_await services.skills->SetEnabled(std::move(id), enabled);
+  auto changed = co_await services.skills->SetEnabled(std::move(id), enabled);
   if (!changed) {
     co_return std::unexpected(application::ExtensionStoreError{
         .message = std::move(changed.error().message)});
@@ -551,10 +551,22 @@ View ExtensionCard(
             PointerCursor(PointerCursorKind::Hand));
 }
 
-View DetailActionRow(ImageResource icon, StringResource title,
-                     StringResource description, std::function<void()> action,
-                     const float minimum_height = 68.0F) {
-  return Row{
+using DetailAccessoryFactory = std::vector<View> (*)();
+
+std::vector<View> ChevronDetailAccessory() {
+  std::vector<View> result;
+  result.push_back(Glyph(app::images::chevron_right, 17.0F, colors::tertiary)
+                       .With(Frame{.width = 20.0F, .height = 20.0F}));
+  return result;
+}
+
+std::vector<View> NoDetailAccessory() { return {}; }
+
+View DetailActionRow(
+    ImageResource icon, StringResource title, StringVariant description,
+    std::function<void()> action, const float minimum_height = 68.0F,
+    DetailAccessoryFactory accessory = &ChevronDetailAccessory) {
+  std::vector<View> children{
       Stack{Glyph(icon, 20.0F, colors::accent)}.With(
           Frame{.width = 36.0F, .height = 36.0F},
           Align(HorizontalAlignment::Center, VerticalAlignment::Center),
@@ -565,9 +577,11 @@ View DetailActionRow(ImageResource icon, StringResource title,
               .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
       }
           .With(Spacing(2.0F), Grow()),
-      Glyph(app::images::chevron_right, 17.0F, colors::tertiary)
-          .With(Frame{.width = 20.0F, .height = 20.0F}),
-  }
+  };
+  auto trailing = std::invoke(accessory);
+  children.insert(children.end(), std::make_move_iterator(trailing.begin()),
+                  std::make_move_iterator(trailing.end()));
+  return Row(std::move(children))
       .OnClick(std::move(action))
       .With(Frame{.min_height = minimum_height},
             Padding(EdgeInsets::Symmetric(16.0F, 12.0F)), Spacing(12.0F),
@@ -593,7 +607,7 @@ View SheetPanel(StringVariant title, std::vector<View> rows) {
       Text(std::move(title))
           .Style(Label(17.0F, FontWeight::Bold))
           .With(Padding(
-              EdgeInsets{.right = 24.0F, .bottom = 12.0F, .left = 24.0F})),
+              EdgeInsets{.right = 16.0F, .bottom = 12.0F, .left = 16.0F})),
       Divider(),
       Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch)),
   }
@@ -614,7 +628,7 @@ View ConfirmationSheetPanel(StringVariant title, StringVariant message,
       Text(std::move(title))
           .Style(Label(17.0F, FontWeight::Bold))
           .With(Padding(
-              EdgeInsets{.right = 24.0F, .bottom = 12.0F, .left = 24.0F})),
+              EdgeInsets{.right = 16.0F, .bottom = 12.0F, .left = 16.0F})),
       Text(std::move(message))
           .Style(Label(13.0F, FontWeight::Regular, colors::tertiary))
           .With(Padding(
@@ -627,13 +641,17 @@ View ConfirmationSheetPanel(StringVariant title, StringVariant message,
             CrossAlign(CrossAxisAlignment::Stretch));
 }
 
-View SheetRow(StringVariant title, StringVariant description, Color tint,
-              std::function<void()> action) {
-  return Column{
-      Text(std::move(title)).Style(Label(16.0F, FontWeight::Regular, tint)),
-      Text(std::move(description))
-          .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
+View SheetRow(StringVariant title, std::optional<StringVariant> description,
+              Color tint, std::function<void()> action) {
+  std::vector<View> labels;
+  labels.push_back(
+      Text(std::move(title)).Style(Label(16.0F, FontWeight::Regular, tint)));
+  if (description) {
+    labels.push_back(
+        Text(std::move(*description))
+            .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)));
   }
+  return Column(std::move(labels))
       .OnClick([action = std::move(action)] {
         if (action)
           std::invoke(action);
@@ -683,12 +701,13 @@ View SkillDialogPanel(StringResource title, std::vector<View> content) {
             CornerRadius(16.0F), CrossAlign(CrossAxisAlignment::Stretch));
 }
 
-Task<void> FinishSkillMutation(
-    const ExtensionPresentation *presentation,
-    ExtensionScreenServices services, State<DetailState> detail,
-    State<SkillDraftState> draft, DialogContext dialog, ToastHandle toast,
-    application::SkillResult<domain::SkillRecord> result,
-    const StringResource success_message) {
+Task<void>
+FinishSkillMutation(const ExtensionPresentation *presentation,
+                    ExtensionScreenServices services, State<DetailState> detail,
+                    State<SkillDraftState> draft, DialogContext dialog,
+                    ToastHandle toast,
+                    application::SkillResult<domain::SkillRecord> result,
+                    const StringResource success_message) {
   auto next = draft.Get();
   next.busy = false;
   draft = std::move(next);
@@ -705,9 +724,8 @@ Task<void> FinishSkillMutation(
 
 Task<void> CreateSkill(const ExtensionPresentation *presentation,
                        ExtensionScreenServices services,
-                       State<DetailState> detail,
-                       State<SkillDraftState> draft, DialogContext dialog,
-                       ToastHandle toast) {
+                       State<DetailState> detail, State<SkillDraftState> draft,
+                       DialogContext dialog, ToastHandle toast) {
   if (!services.skills || !services.skill_roots) {
     toast.Show(app::strings::extensions_skill_service_unavailable);
     co_return;
@@ -718,8 +736,8 @@ Task<void> CreateSkill(const ExtensionPresentation *presentation,
   auto created = co_await services.skills->Create(
       *services.skill_roots, next.location, Trimmed(next.name.text),
       Trimmed(next.description.text), Trimmed(next.content.text));
-  co_await FinishSkillMutation(presentation, std::move(services), detail,
-                               draft, dialog, toast, std::move(created),
+  co_await FinishSkillMutation(presentation, std::move(services), detail, draft,
+                               dialog, toast, std::move(created),
                                app::strings::extensions_skill_create_success);
 }
 
@@ -737,8 +755,8 @@ Task<void> InstallGitHubSkill(const ExtensionPresentation *presentation,
   draft = next;
   auto installed = co_await services.skill_sources->InstallGitHub(
       *services.skill_roots, next.location, Trimmed(next.source.text));
-  co_await FinishSkillMutation(presentation, std::move(services), detail,
-                               draft, dialog, toast, std::move(installed),
+  co_await FinishSkillMutation(presentation, std::move(services), detail, draft,
+                               dialog, toast, std::move(installed),
                                app::strings::extensions_skill_install_success);
 }
 
@@ -760,8 +778,8 @@ PackageFromPath(const huxerui::File &source) {
       co_return std::unexpected(
           application::SkillError{.message = text.Error().message});
     }
-    co_return application::SkillPackage{application::SkillMarkdownPackage{
-        .markdown = std::move(text).Value()}};
+    co_return application::SkillPackage{
+        application::SkillMarkdownPackage{.markdown = std::move(text).Value()}};
   }
   if (lower.ends_with(".zip")) {
     auto bytes = co_await source.ReadBytesAsync();
@@ -779,8 +797,8 @@ PackageFromPath(const huxerui::File &source) {
 Task<void> InstallPathSkill(const ExtensionPresentation *presentation,
                             ExtensionScreenServices services,
                             State<DetailState> detail,
-                            State<SkillDraftState> draft,
-                            DialogContext dialog, ToastHandle toast) {
+                            State<SkillDraftState> draft, DialogContext dialog,
+                            ToastHandle toast) {
   if (!services.skills || !services.skill_roots) {
     toast.Show(app::strings::extensions_skill_service_unavailable);
     co_return;
@@ -812,17 +830,19 @@ Task<void> InstallPathSkill(const ExtensionPresentation *presentation,
                   : Trimmed(next.optional_name.text),
       .package = std::move(*package),
   });
-  co_await FinishSkillMutation(presentation, std::move(services), detail,
-                               draft, dialog, toast, std::move(installed),
+  co_await FinishSkillMutation(presentation, std::move(services), detail, draft,
+                               dialog, toast, std::move(installed),
                                app::strings::extensions_skill_install_success);
 }
 
-Task<void> InstallPickedSkill(
-    const ExtensionPresentation *presentation,
-    ExtensionScreenServices services, State<DetailState> detail,
-    TaskScope tasks, BottomSheetHandle sheets,
-    std::shared_ptr<FilePicker> picker, ToastHandle toast) {
-  if (!services.skills || !services.skill_roots || !picker || !picker->CanOpenFiles()) {
+Task<void> InstallPickedSkill(const ExtensionPresentation *presentation,
+                              ExtensionScreenServices services,
+                              State<DetailState> detail, TaskScope tasks,
+                              BottomSheetHandle sheets,
+                              std::shared_ptr<FilePicker> picker,
+                              ToastHandle toast) {
+  if (!services.skills || !services.skill_roots || !picker ||
+      !picker->CanOpenFiles()) {
     toast.Show(app::strings::extensions_skill_service_unavailable);
     co_return;
   }
@@ -842,9 +862,10 @@ Task<void> InstallPickedSkill(
   if (!package) {
     const std::string lower = [&selected] {
       std::string value = selected->Name();
-      std::ranges::transform(value, value.begin(), [](const unsigned char byte) {
-        return static_cast<char>(std::tolower(byte));
-      });
+      std::ranges::transform(value, value.begin(),
+                             [](const unsigned char byte) {
+                               return static_cast<char>(std::tolower(byte));
+                             });
       return value;
     }();
     if (lower.ends_with(".md")) {
@@ -874,8 +895,8 @@ Task<void> InstallPickedSkill(
                           sheet](domain::SkillLocation location) {
       sheet.Dismiss();
       tasks.Launch([presentation, services, detail, toast, name,
-                    package = *selected_package, location]() mutable
-                       -> Task<void> {
+                    package = *selected_package,
+                    location]() mutable -> Task<void> {
         auto installed = co_await services.skills->Install({
             .roots = *services.skill_roots,
             .location = location,
@@ -902,8 +923,7 @@ Task<void> InstallPickedSkill(
         app::strings::extensions_skill_target_global,
         app::strings::extensions_skill_target_global_desc, colors::text,
         [install] { install(domain::SkillLocation::app); }));
-    return SheetPanel(app::strings::skillhub_install_location,
-                      std::move(rows));
+    return SheetPanel(app::strings::skillhub_install_location, std::move(rows));
   });
 }
 
@@ -921,8 +941,7 @@ View SkillDraftField(TextEditingValue value, StringResource label,
                                         ? TextFieldLineLimits::MultiLine(3, 8)
                                         : TextFieldLineLimits::SingleLine())
                         .OnChanged(std::move(changed))
-                        .With(Frame{.min_height =
-                                        multiline ? 120.0F : 44.0F}));
+                        .With(Frame{.min_height = multiline ? 120.0F : 44.0F}));
   if (helper)
     content.push_back(Text(*helper).Style(
         Label(11.0F, FontWeight::Regular, colors::tertiary)));
@@ -946,7 +965,8 @@ auto ChangeSkillDraft(State<SkillDraftState> state, Member member) {
   return SkillDialogPanel(
       app::strings::extensions_skill_dialog_create,
       {
-          SkillDraftField(draft->name, app::strings::extensions_skill_field_name,
+          SkillDraftField(draft->name,
+                          app::strings::extensions_skill_field_name,
                           app::strings::extensions_skill_hint_name, false,
                           ChangeSkillDraft(draft, &SkillDraftState::name)),
           SkillDraftField(
@@ -965,10 +985,10 @@ auto ChangeSkillDraft(State<SkillDraftState> state, Member member) {
               SkillLocationOption(
                   app::strings::extensions_skill_location_global,
                   domain::SkillLocation::app, draft),
-          }.With(Spacing(8.0F)),
+          }
+              .With(Spacing(8.0F)),
           SkillDialogButton(
-              app::strings::extensions_skill_create_action, true,
-              !draft->busy,
+              app::strings::extensions_skill_create_action, true, !draft->busy,
               [presentation, services, detail, draft, tasks, dialog,
                toast] mutable {
                 tasks.Launch(CreateSkill(presentation, std::move(services),
@@ -984,11 +1004,11 @@ auto ChangeSkillDraft(State<SkillDraftState> state, Member member) {
   return SkillDialogPanel(
       app::strings::extensions_skill_dialog_github,
       {
-          SkillDraftField(
-              draft->source, app::strings::extensions_skill_field_github_url,
-              app::strings::extensions_skill_hint_github_url, false,
-              ChangeSkillDraft(draft, &SkillDraftState::source),
-              app::strings::extensions_skill_helper_github_url),
+          SkillDraftField(draft->source,
+                          app::strings::extensions_skill_field_github_url,
+                          app::strings::extensions_skill_hint_github_url, false,
+                          ChangeSkillDraft(draft, &SkillDraftState::source),
+                          app::strings::extensions_skill_helper_github_url),
           Row{
               SkillLocationOption(
                   app::strings::extensions_skill_location_project,
@@ -996,28 +1016,29 @@ auto ChangeSkillDraft(State<SkillDraftState> state, Member member) {
               SkillLocationOption(
                   app::strings::extensions_skill_location_global,
                   domain::SkillLocation::app, draft),
-          }.With(Spacing(8.0F)),
-          SkillDialogButton(
-              app::strings::extensions_skill_install, true, !draft->busy,
-              [presentation, services, detail, draft, tasks, dialog,
-               toast] mutable {
-                tasks.Launch(InstallGitHubSkill(
-                    presentation, std::move(services), detail, draft, dialog,
-                    toast));
-              }),
+          }
+              .With(Spacing(8.0F)),
+          SkillDialogButton(app::strings::extensions_skill_install, true,
+                            !draft->busy,
+                            [presentation, services, detail, draft, tasks,
+                             dialog, toast] mutable {
+                              tasks.Launch(InstallGitHubSkill(
+                                  presentation, std::move(services), detail,
+                                  draft, dialog, toast));
+                            }),
       });
 }
 
-[[huxerui::composable]] View SkillPathDialog(
-    DialogContext dialog, const ExtensionPresentation *presentation,
-    ExtensionScreenServices services, State<DetailState> detail,
-    State<SkillDraftState> draft, TaskScope tasks, ToastHandle toast) {
+[[huxerui::composable]] View
+SkillPathDialog(DialogContext dialog, const ExtensionPresentation *presentation,
+                ExtensionScreenServices services, State<DetailState> detail,
+                State<SkillDraftState> draft, TaskScope tasks,
+                ToastHandle toast) {
   return SkillDialogPanel(
       app::strings::extensions_skill_dialog_path,
       {
           SkillDraftField(
-              draft->source,
-              app::strings::extensions_skill_field_source_path,
+              draft->source, app::strings::extensions_skill_field_source_path,
               app::strings::extensions_skill_hint_source_path, false,
               ChangeSkillDraft(draft, &SkillDraftState::source),
               app::strings::extensions_skill_helper_source_path),
@@ -1033,14 +1054,14 @@ auto ChangeSkillDraft(State<SkillDraftState> state, Member member) {
               SkillLocationOption(
                   app::strings::extensions_skill_location_global,
                   domain::SkillLocation::app, draft),
-          }.With(Spacing(8.0F)),
+          }
+              .With(Spacing(8.0F)),
           SkillDialogButton(
               app::strings::extensions_skill_install, true, !draft->busy,
               [presentation, services, detail, draft, tasks, dialog,
                toast] mutable {
-                tasks.Launch(InstallPathSkill(
-                    presentation, std::move(services), detail, draft, dialog,
-                    toast));
+                tasks.Launch(InstallPathSkill(presentation, std::move(services),
+                                              detail, draft, dialog, toast));
               }),
       });
 }
@@ -1049,21 +1070,23 @@ void ResetSkillDraft(State<SkillDraftState> state) {
   state = SkillDraftState{};
 }
 
-void OpenExtensionEditor(
-    const ExtensionPresentation *presentation, const ExtensionScreenServices &,
-    State<DetailState>, State<SkillDraftState>, TaskScope, BottomSheetHandle,
-    DialogHandle, std::shared_ptr<FilePicker>,
-    RouteNavigationController<domain::AppRoute> navigation, ToastHandle) {
+void OpenExtensionEditor(const ExtensionPresentation *presentation,
+                         const ExtensionScreenServices &, State<DetailState>,
+                         State<SkillDraftState>, TaskScope, BottomSheetHandle,
+                         DialogHandle, std::shared_ptr<FilePicker>,
+                         RouteNavigationController<domain::AppRoute> navigation,
+                         ToastHandle) {
   navigation.Push(presentation->editor_route(std::nullopt));
 }
 
-void OpenSkillActions(
-    const ExtensionPresentation *presentation,
-    const ExtensionScreenServices &services, State<DetailState> detail,
-    State<SkillDraftState> skill_draft, TaskScope tasks,
-    BottomSheetHandle sheets, DialogHandle dialogs,
-    std::shared_ptr<FilePicker> picker,
-    RouteNavigationController<domain::AppRoute>, ToastHandle toast) {
+void OpenSkillActions(const ExtensionPresentation *presentation,
+                      const ExtensionScreenServices &services,
+                      State<DetailState> detail,
+                      State<SkillDraftState> skill_draft, TaskScope tasks,
+                      BottomSheetHandle sheets, DialogHandle dialogs,
+                      std::shared_ptr<FilePicker> picker,
+                      RouteNavigationController<domain::AppRoute>,
+                      ToastHandle toast) {
   if (!services.skills || !services.skill_roots) {
     toast.Show(app::strings::extensions_skill_service_unavailable);
     return;
@@ -1089,49 +1112,49 @@ void OpenSkillActions(
           dialogs.Show(SkillGitHubDialog, presentation, services, detail,
                        skill_draft, tasks, toast);
         }));
-    rows.push_back(SheetRow(
-        app::strings::extensions_skill_create,
-        app::strings::extensions_skill_create_desc, colors::text,
-        [presentation, services, detail, skill_draft, tasks, dialogs, toast,
-         sheet] {
-          sheet.Dismiss();
-          ResetSkillDraft(skill_draft);
-          dialogs.Show(SkillCreateDialog, presentation, services, detail,
-                       skill_draft, tasks, toast);
-        }));
-    rows.push_back(SheetRow(
-        app::strings::extensions_skill_install_path,
-        app::strings::extensions_skill_install_path_desc, colors::text,
-        [presentation, services, detail, skill_draft, tasks, dialogs, toast,
-         sheet] {
-          sheet.Dismiss();
-          ResetSkillDraft(skill_draft);
-          dialogs.Show(SkillPathDialog, presentation, services, detail,
-                       skill_draft, tasks, toast);
-        }));
+    rows.push_back(
+        SheetRow(app::strings::extensions_skill_create,
+                 app::strings::extensions_skill_create_desc, colors::text,
+                 [presentation, services, detail, skill_draft, tasks, dialogs,
+                  toast, sheet] {
+                   sheet.Dismiss();
+                   ResetSkillDraft(skill_draft);
+                   dialogs.Show(SkillCreateDialog, presentation, services,
+                                detail, skill_draft, tasks, toast);
+                 }));
+    rows.push_back(
+        SheetRow(app::strings::extensions_skill_install_path,
+                 app::strings::extensions_skill_install_path_desc, colors::text,
+                 [presentation, services, detail, skill_draft, tasks, dialogs,
+                  toast, sheet] {
+                   sheet.Dismiss();
+                   ResetSkillDraft(skill_draft);
+                   dialogs.Show(SkillPathDialog, presentation, services, detail,
+                                skill_draft, tasks, toast);
+                 }));
     if (!detail->items.empty()) {
-      rows.push_back(SheetRow(
-          app::strings::screen_extension_multi_select,
-          app::strings::screen_extension_multi_select_desc, colors::text,
-          [detail, sheet] {
-            auto next = detail.Get();
-            next.multi_select = true;
-            next.marked.clear();
-            next.marked.push_back(next.items.front().id);
-            detail = std::move(next);
-            sheet.Dismiss();
-          }));
+      rows.push_back(SheetRow(app::strings::screen_extension_multi_select,
+                              app::strings::screen_extension_multi_select_desc,
+                              colors::text, [detail, sheet] {
+                                auto next = detail.Get();
+                                next.multi_select = true;
+                                next.marked.clear();
+                                next.marked.push_back(next.items.front().id);
+                                detail = std::move(next);
+                                sheet.Dismiss();
+                              }));
     }
     return SheetPanel(app::strings::extensions_skill_sheet_title,
                       std::move(rows));
   });
 }
 
-void ShowUnavailableAction(
-    const ExtensionPresentation *presentation, const ExtensionScreenServices &,
-    State<DetailState>, State<SkillDraftState>, TaskScope, BottomSheetHandle,
-    DialogHandle, std::shared_ptr<FilePicker>,
-    RouteNavigationController<domain::AppRoute>, ToastHandle toast) {
+void ShowUnavailableAction(const ExtensionPresentation *presentation,
+                           const ExtensionScreenServices &, State<DetailState>,
+                           State<SkillDraftState>, TaskScope, BottomSheetHandle,
+                           DialogHandle, std::shared_ptr<FilePicker>,
+                           RouteNavigationController<domain::AppRoute>,
+                           ToastHandle toast) {
   toast.Show(presentation->empty_message);
 }
 
@@ -1141,16 +1164,14 @@ void OpenSkillStore(const ExtensionScreenServices &,
   navigation.Push(domain::AppRoute::skill_store);
 }
 
-void ShareSkillWorkspace(
-    const ExtensionScreenServices &services,
-    RouteNavigationController<domain::AppRoute>, ToastHandle toast) {
+void ShareSkillWorkspace(const ExtensionScreenServices &services,
+                         RouteNavigationController<domain::AppRoute>,
+                         ToastHandle toast) {
   if (!services.workspace_share || !services.workspace_share->OpenHome())
     toast.Show(app::strings::screen_extension_unavailable);
 }
 
-bool AlwaysSupplementAvailable(const ExtensionScreenServices &) {
-  return true;
-}
+bool AlwaysSupplementAvailable(const ExtensionScreenServices &) { return true; }
 
 bool WorkspaceShareAvailable(const ExtensionScreenServices &services) {
   return static_cast<bool>(services.workspace_share);
@@ -1218,26 +1239,27 @@ Task<void> DeleteSelected(const ExtensionPresentation *presentation,
   co_await ReloadDetail(presentation, std::move(services), state);
 }
 
-void ShowDeleteConfirmation(
-    const ExtensionPresentation *presentation,
-    ExtensionScreenServices services, State<DetailState> state,
-    TaskScope tasks, BottomSheetHandle sheets, std::vector<std::string> ids,
-    std::string item_name) {
-  sheets.Show([presentation, services, state, tasks,
-               ids, item_name = std::move(item_name)](BottomSheetContext sheet) {
+void ShowDeleteConfirmation(const ExtensionPresentation *presentation,
+                            ExtensionScreenServices services,
+                            State<DetailState> state, TaskScope tasks,
+                            BottomSheetHandle sheets,
+                            std::vector<std::string> ids,
+                            std::string item_name) {
+  sheets.Show([presentation, services, state, tasks, ids,
+               item_name = std::move(item_name)](BottomSheetContext sheet) {
     std::vector<View> rows;
-    rows.push_back(SheetRow(app::strings::common_cancel, "", colors::text,
-                            [sheet] { sheet.Dismiss(); }));
+    rows.push_back(SheetRow(app::strings::common_cancel, std::nullopt,
+                            colors::text, [sheet] { sheet.Dismiss(); }));
     rows.push_back(SheetRow(
         app::strings::screen_extension_delete,
         app::strings::screen_extension_delete_confirm_desc, colors::danger,
         [sheet, presentation, services, state, tasks, ids]() mutable {
           sheet.Dismiss();
-          tasks.Launch([presentation, services, state,
-                        ids]() mutable -> Task<void> {
-            co_await DeleteSelected(presentation, std::move(services), state,
-                                    std::move(ids));
-          });
+          tasks.Launch(
+              [presentation, services, state, ids]() mutable -> Task<void> {
+                co_await DeleteSelected(presentation, std::move(services),
+                                        state, std::move(ids));
+              });
         }));
     return ConfirmationSheetPanel(
         app::strings::screen_extension_delete_title,
@@ -1247,32 +1269,31 @@ void ShowDeleteConfirmation(
   });
 }
 
-void ShowSkillDeleteManyConfirmation(
-    const ExtensionPresentation *presentation,
-    ExtensionScreenServices services, State<DetailState> state,
-    TaskScope tasks, BottomSheetHandle sheets) {
+void ShowSkillDeleteManyConfirmation(const ExtensionPresentation *presentation,
+                                     ExtensionScreenServices services,
+                                     State<DetailState> state, TaskScope tasks,
+                                     BottomSheetHandle sheets) {
   const auto ids = state->marked;
-  sheets.Show([presentation, services, state, tasks, ids](
-                  BottomSheetContext sheet) mutable {
+  sheets.Show([presentation, services, state, tasks,
+               ids](BottomSheetContext sheet) mutable {
     std::vector<View> rows;
-    rows.push_back(SheetRow(app::strings::common_cancel, "", colors::text,
-                            [sheet] { sheet.Dismiss(); }));
+    rows.push_back(SheetRow(app::strings::common_cancel, std::nullopt,
+                            colors::text, [sheet] { sheet.Dismiss(); }));
     rows.push_back(SheetRow(
         app::strings::screen_extension_delete,
         app::strings::extensions_skill_delete_selected_warning, colors::danger,
         [sheet, presentation, services, state, tasks, ids]() mutable {
           sheet.Dismiss();
-          tasks.Launch([presentation, services, state,
-                        ids]() mutable -> Task<void> {
-            co_await DeleteSelected(presentation, std::move(services), state,
-                                    std::move(ids));
-          });
+          tasks.Launch(
+              [presentation, services, state, ids]() mutable -> Task<void> {
+                co_await DeleteSelected(presentation, std::move(services),
+                                        state, std::move(ids));
+              });
         }));
     return ConfirmationSheetPanel(
         app::strings::extensions_skill_delete_selected_title,
         StringVariant::Format(
-            app::strings::extensions_skill_delete_selected_message,
-            ids.size()),
+            app::strings::extensions_skill_delete_selected_message, ids.size()),
         std::move(rows));
   });
 }
@@ -1300,7 +1321,7 @@ View SkillMultiSelectBar(const ExtensionPresentation *presentation,
           .OnClick([presentation, services, state, tasks, sheets] {
             if (!state->marked.empty())
               ShowSkillDeleteManyConfirmation(presentation, services, state,
-                                               tasks, sheets);
+                                              tasks, sheets);
           })
           .With(Focusable(), PointerCursor(PointerCursorKind::Hand)),
   }
@@ -1310,26 +1331,25 @@ View SkillMultiSelectBar(const ExtensionPresentation *presentation,
 }
 
 void OpenEditableItemMenu(
-    const ExtensionPresentation *presentation,
-    ExtensionScreenServices services, State<DetailState> state,
-    TaskScope tasks, BottomSheetHandle sheets,
+    const ExtensionPresentation *presentation, ExtensionScreenServices services,
+    State<DetailState> state, TaskScope tasks, BottomSheetHandle sheets,
     RouteNavigationController<domain::AppRoute> navigation,
     const InstalledExtension &item) {
   sheets.Show([presentation, services, state, tasks, sheets, navigation,
                item](BottomSheetContext sheet) {
     std::vector<View> rows;
-    rows.push_back(SheetRow(
-        app::strings::screen_extension_modify,
-        app::strings::screen_extension_modify_desc, colors::text,
-        [sheet, presentation, navigation, id = item.id] {
-          sheet.Dismiss();
-          navigation.Push(presentation->editor_route(id));
-        }));
+    rows.push_back(SheetRow(app::strings::screen_extension_modify,
+                            app::strings::screen_extension_modify_desc,
+                            colors::text,
+                            [sheet, presentation, navigation, id = item.id] {
+                              sheet.Dismiss();
+                              navigation.Push(presentation->editor_route(id));
+                            }));
     rows.push_back(SheetRow(
         app::strings::screen_extension_delete,
         app::strings::screen_extension_delete_desc, colors::danger,
-        [sheet, presentation, services, state, tasks,
-         sheets, id = item.id, name = item.name]() mutable {
+        [sheet, presentation, services, state, tasks, sheets, id = item.id,
+         name = item.name]() mutable {
           sheet.Dismiss();
           ShowDeleteConfirmation(presentation, std::move(services), state,
                                  tasks, sheets, {id}, std::move(name));
@@ -1338,11 +1358,11 @@ void OpenEditableItemMenu(
   });
 }
 
-void BeginSkillMultiSelect(
-    const ExtensionPresentation *, ExtensionScreenServices,
-    State<DetailState> state, TaskScope, BottomSheetHandle,
-    RouteNavigationController<domain::AppRoute>,
-    const InstalledExtension &item) {
+void BeginSkillMultiSelect(const ExtensionPresentation *,
+                           ExtensionScreenServices, State<DetailState> state,
+                           TaskScope, BottomSheetHandle,
+                           RouteNavigationController<domain::AppRoute>,
+                           const InstalledExtension &item) {
   auto next = state.Get();
   next.multi_select = true;
   next.marked.clear();
@@ -1361,11 +1381,9 @@ View InstalledRow(const InstalledExtension &item,
         Glyph(presentation->icon, 20.0F,
               marked ? colors::accent : colors::secondary),
         Column{
-            Text(item.name)
-                .Style(Label(16.0F,
-                             marked ? FontWeight::Medium
-                                    : FontWeight::Regular,
-                             marked ? colors::accent : colors::text)),
+            Text(item.name).Style(
+                Label(16.0F, marked ? FontWeight::Medium : FontWeight::Regular,
+                      marked ? colors::accent : colors::text)),
             Text(item.description)
                 .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
         }
@@ -1387,8 +1405,8 @@ View InstalledRow(const InstalledExtension &item,
 
   auto actions = [presentation, services, state, tasks, sheets, navigation,
                   item](const LongPressEvent &) {
-    std::invoke(presentation->item_long_press, presentation,
-                services, state, tasks, sheets, navigation, item);
+    std::invoke(presentation->item_long_press, presentation, services, state,
+                tasks, sheets, navigation, item);
   };
 
   return Row{
@@ -1399,9 +1417,9 @@ View InstalledRow(const InstalledExtension &item,
               .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
       }
           .With(Spacing(2.0F), Grow()),
-      Switch(item.enabled)
-          .OnChanged([presentation, services, state, tasks,
-                      id = item.id](bool enabled) mutable {
+      LegacySwitch(item.enabled,
+                   [presentation, services, state, tasks,
+                    id = item.id](bool enabled) mutable {
             tasks.Launch([presentation, services, state, id,
                           enabled]() mutable -> Task<void> {
               co_await ChangeEnabled(presentation, std::move(services), state,
@@ -1423,7 +1441,7 @@ View DetailHeader(const ExtensionPresentation *presentation,
                   RouteNavigationController<domain::AppRoute> navigation,
                   ToastHandle toast) {
   return LegacyScreenHeaderLayout{
-      Stack{Glyph(app::images::chevron_left, 20.0F, colors::text)}
+      Stack{Glyph(app::images::chevron_left, 22.0F, colors::text)}
           .OnClick([navigation] { navigation.Pop(); })
           .With(Frame{.width = 36.0F, .height = 36.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
@@ -1452,7 +1470,7 @@ View EditorHeader(StringResource title, bool busy,
                   RouteNavigationController<domain::AppRoute> navigation,
                   std::function<void()> save) {
   return LegacyScreenHeaderLayout{
-      Stack{Glyph(app::images::chevron_left, 20.0F, colors::text)}
+      Stack{Glyph(app::images::chevron_left, 22.0F, colors::text)}
           .OnClick([navigation] { navigation.Pop(); })
           .With(Frame{.width = 36.0F, .height = 36.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
@@ -1533,29 +1551,29 @@ View FormField(TextEditingValue value, StringResource title,
 }
 
 View EditorFormSection(StringResource title, View form) {
-  return Column {
-    Text(title)
-        .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
-        .With(Frame{.height = 43.625F},
-              Padding(EdgeInsets{.top = 16.0F,
-                                 .right = 16.0F,
-                                 .bottom = 12.0F,
-                                 .left = 16.0F})),
-    LegacySettingsCardFrame{
-        std::move(form).With(Background(colors::elevated), CornerRadius(12.0F)),
-    },
-  }.With(CrossAlign(CrossAxisAlignment::Stretch));
+  return Column{
+      Text(title)
+          .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
+          .With(Frame{.height = 43.625F}, Padding(EdgeInsets{.top = 16.0F,
+                                                             .right = 16.0F,
+                                                             .bottom = 12.0F,
+                                                             .left = 16.0F})),
+      LegacySettingsCardFrame{
+          std::move(form).With(Background(colors::elevated),
+                               CornerRadius(12.0F)),
+      },
+  }
+      .With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
 View EditorSelectionSection(StringVariant title, std::vector<View> rows) {
   return Column{
       Text(std::move(title))
           .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
-          .With(Frame{.height = 47.625F},
-                Padding(EdgeInsets{.top = 20.0F,
-                                   .right = 16.0F,
-                                   .bottom = 12.0F,
-                                   .left = 16.0F})),
+          .With(Frame{.height = 47.625F}, Padding(EdgeInsets{.top = 20.0F,
+                                                             .right = 16.0F,
+                                                             .bottom = 12.0F,
+                                                             .left = 16.0F})),
       LegacySettingsCardFrame{
           Column(std::move(rows))
               .With(CrossAlign(CrossAxisAlignment::Stretch),
@@ -1565,24 +1583,85 @@ View EditorSelectionSection(StringVariant title, std::vector<View> rows) {
       .With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
-View SelectionRow(ImageResource icon, StringVariant title,
-                  StringVariant description, bool selected,
-                  std::function<void(bool)> changed) {
+View AgentOptionRow(ImageResource icon, StringVariant title,
+                    StringVariant description, bool selected,
+                    std::function<void()> toggle,
+                    bool show_description = true) {
+  std::vector<View> labels;
+  labels.push_back(
+      Text(std::move(title))
+          .Style(Label(16.0F,
+                       selected ? FontWeight::Medium : FontWeight::Regular,
+                       selected ? colors::accent : colors::text)));
+  if (show_description) {
+    labels.push_back(
+        Text(std::move(description))
+            .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)));
+  }
   return Row{
-      Stack{Glyph(icon, 18.0F, colors::accent)}.With(
-          Frame{.width = 36.0F, .height = 36.0F},
-          Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-          Background(colors::accent_muted), CornerRadius(8.0F)),
+      Glyph(std::move(icon), 20.0F,
+            selected ? colors::accent : colors::secondary)
+          .With(Frame{.width = 20.0F, .height = 20.0F}),
+      Column(std::move(labels)).With(Spacing(2.0F), Grow()),
+  }
+      .OnClick(std::move(toggle))
+      .With(Frame{.min_height = 56.0F}, Spacing(12.0F),
+            Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
+            CrossAlign(CrossAxisAlignment::Center),
+            Background(selected ? colors::accent_muted : Color::Transparent()),
+            Focusable(), PointerCursor(PointerCursorKind::Hand));
+}
+
+View McpToolSwitchRow(ImageResource icon, StringVariant title,
+                      StringVariant description, bool selected,
+                      std::function<void(bool)> changed,
+                      bool show_description = true) {
+  std::vector<View> labels;
+  labels.push_back(
+      Text(std::move(title)).Style(Label(16.0F, FontWeight::Medium)));
+  if (show_description) {
+    labels.push_back(
+        Text(std::move(description))
+            .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)));
+  }
+  return Row{
+      Glyph(std::move(icon), 20.0F, colors::secondary)
+          .With(Frame{.width = 20.0F, .height = 20.0F}),
+      Column(std::move(labels)).With(Spacing(2.0F), Grow()),
+      LegacySwitch(selected, std::move(changed)),
+  }
+      .With(Spacing(12.0F), Padding(16.0F),
+            CrossAlign(CrossAxisAlignment::Center));
+}
+
+View McpQueryBusyRow() {
+  return Row{
+      ProgressCircle().With(Frame{.width = 34.0F, .height = 34.0F}),
       Column{
-          Text(std::move(title)).Style(Label(15.0F, FontWeight::Medium)),
-          Text(std::move(description))
+          Text(app::strings::screen_mcp_query_tools)
+              .Style(Label(16.0F, FontWeight::Medium)),
+          Text(app::strings::screen_mcp_query_busy_desc)
               .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
       }
           .With(Spacing(2.0F), Grow()),
-      Switch(selected).OnChanged(std::move(changed)),
   }
-      .With(Frame{.min_height = 64.0F}, Spacing(12.0F),
-            Padding(EdgeInsets::Symmetric(16.0F, 10.0F)),
+      .With(Frame{.min_height = 68.0F}, Spacing(12.0F),
+            Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
+            CrossAlign(CrossAxisAlignment::Center), Opacity(0.85F));
+}
+
+View McpToolsStateRow(StringVariant message, bool busy) {
+  std::vector<View> children;
+  if (busy) {
+    children.push_back(
+        ProgressCircle().With(Frame{.width = 22.0F, .height = 22.0F}));
+  }
+  children.push_back(
+      Text(std::move(message))
+          .Style(Label(13.0F, FontWeight::Regular, colors::tertiary)));
+  return Row(std::move(children))
+      .With(Frame{.min_height = 56.0F}, Spacing(busy ? 8.0F : 0.0F),
+            Padding(16.0F), MainAlign(MainAxisAlignment::Center),
             CrossAlign(CrossAxisAlignment::Center));
 }
 
@@ -1625,8 +1704,7 @@ Task<void> LoadAgentEditor(std::optional<std::string> id,
 
 Task<void> SaveAgent(ExtensionScreenServices services,
                      State<AgentEditorState> state,
-                     std::string validation_message,
-                     ToastHandle toast,
+                     std::string validation_message, ToastHandle toast,
                      RouteNavigationController<domain::AppRoute> navigation) {
   auto value = state->original;
   value.name = Trimmed(state->name.text);
@@ -1702,82 +1780,79 @@ Task<void> GenerateAgentDraft(
         Text(app::strings::screen_agent_let_ai_button)
             .Style(Label(16.0F, FontWeight::Medium, colors::text_on_color)));
   }
-  auto generate = Row(std::move(generate_content))
-                      .OnClick([generator, editor, writer, tasks, dialog,
-                                toast] {
-                        if (writer->busy)
-                          return;
-                        const auto description = Trimmed(writer->description.text);
-                        if (description.empty()) {
-                          toast.Show(
-                              app::strings::screen_agent_require_description);
-                          return;
-                        }
-                        auto next = writer.Get();
-                        next.busy = true;
-                        writer = std::move(next);
-                        tasks.Launch(GenerateAgentDraft(
-                            generator, editor, writer, dialog, toast,
-                            description));
-                      })
-                      .With(Frame{.min_height = 44.0F}, Spacing(8.0F),
-                            Padding(EdgeInsets::Symmetric(16.0F, 10.0F)),
-                            MainAlign(MainAxisAlignment::Center),
-                            CrossAlign(CrossAxisAlignment::Center),
-                            Background(colors::accent), CornerRadius(8.0F),
-                            Enabled(!writer->busy), Focusable(),
-                            PointerCursor(writer->busy
-                                              ? PointerCursorKind::Default
-                                              : PointerCursorKind::Hand));
-
-  auto panel = Column{
-      Row{
-          Column{
-              Text(app::strings::screen_agent_let_ai_dialog_title)
-                  .Style(Label(17.0F, FontWeight::Medium)),
-              Text(app::strings::screen_agent_ai_dialog_desc)
-                  .Style(Label(11.0F, FontWeight::Regular,
-                               colors::tertiary)),
-          }
-              .With(Spacing(2.0F), Grow()),
-          Stack{Glyph(app::images::x, 17.0F, colors::secondary)}
-              .OnClick([dialog, writer] {
-                if (!writer->busy)
-                  dialog.Dismiss();
-              })
-              .With(Frame{.width = 34.0F, .height = 34.0F},
-                    Align(HorizontalAlignment::Center,
-                          VerticalAlignment::Center),
-                    Background(colors::surface_light), CornerRadius(17.0F),
-                    Enabled(!writer->busy), Focusable(),
-                    PointerCursor(writer->busy ? PointerCursorKind::Default
-                                               : PointerCursorKind::Hand)),
-      }
-          .With(Spacing(12.0F), CrossAlign(CrossAxisAlignment::Center)),
-      TextField(writer->description)
-          .Placeholder(app::strings::screen_agent_ai_hint)
-          .Variant(TextFieldVariant::Outlined)
-          .LineLimits(TextFieldLineLimits::MultiLine(4, 10))
-          .InputConfiguration(TextInputConfiguration{
-              .type = TextInputType::Text,
-              .capitalization = TextCapitalization::Sentences,
-              .action = TextInputAction::Newline,
-              .multiline = true,
-              .secure = false,
-              .autocorrect = false,
-          })
-          .OnChanged([writer](const TextEditingValue &value) {
+  auto generate =
+      Row(std::move(generate_content))
+          .OnClick([generator, editor, writer, tasks, dialog, toast] {
+            if (writer->busy)
+              return;
+            const auto description = Trimmed(writer->description.text);
+            if (description.empty()) {
+              toast.Show(app::strings::screen_agent_require_description);
+              return;
+            }
             auto next = writer.Get();
-            next.description = value;
+            next.busy = true;
             writer = std::move(next);
+            tasks.Launch(GenerateAgentDraft(generator, editor, writer, dialog,
+                                            toast, description));
           })
-          .With(Frame{.min_height = 160.0F}, Enabled(!writer->busy)),
-      std::move(generate),
-  }
-                   .With(Frame{.max_width = 560.0F}, Padding(16.0F),
-                         Spacing(12.0F), Background(colors::elevated),
-                         CornerRadius(16.0F),
-                         CrossAlign(CrossAxisAlignment::Stretch));
+          .With(Frame{.min_height = 44.0F}, Spacing(8.0F),
+                Padding(EdgeInsets::Symmetric(16.0F, 10.0F)),
+                MainAlign(MainAxisAlignment::Center),
+                CrossAlign(CrossAxisAlignment::Center),
+                Background(colors::accent), CornerRadius(8.0F),
+                Enabled(!writer->busy), Focusable(),
+                PointerCursor(writer->busy ? PointerCursorKind::Default
+                                           : PointerCursorKind::Hand));
+
+  auto panel =
+      Column{
+          Row{
+              Column{
+                  Text(app::strings::screen_agent_let_ai_dialog_title)
+                      .Style(Label(17.0F, FontWeight::Medium)),
+                  Text(app::strings::screen_agent_ai_dialog_desc)
+                      .Style(
+                          Label(11.0F, FontWeight::Regular, colors::tertiary)),
+              }
+                  .With(Spacing(2.0F), Grow()),
+              Stack{Glyph(app::images::x, 17.0F, colors::secondary)}
+                  .OnClick([dialog, writer] {
+                    if (!writer->busy)
+                      dialog.Dismiss();
+                  })
+                  .With(Frame{.width = 34.0F, .height = 34.0F},
+                        Align(HorizontalAlignment::Center,
+                              VerticalAlignment::Center),
+                        Background(colors::surface_light), CornerRadius(17.0F),
+                        Enabled(!writer->busy), Focusable(),
+                        PointerCursor(writer->busy ? PointerCursorKind::Default
+                                                   : PointerCursorKind::Hand)),
+          }
+              .With(Spacing(12.0F), CrossAlign(CrossAxisAlignment::Center)),
+          TextField(writer->description)
+              .Placeholder(app::strings::screen_agent_ai_hint)
+              .Variant(TextFieldVariant::Outlined)
+              .LineLimits(TextFieldLineLimits::MultiLine(4, 10))
+              .InputConfiguration(TextInputConfiguration{
+                  .type = TextInputType::Text,
+                  .capitalization = TextCapitalization::Sentences,
+                  .action = TextInputAction::Newline,
+                  .multiline = true,
+                  .secure = false,
+                  .autocorrect = false,
+              })
+              .OnChanged([writer](const TextEditingValue &value) {
+                auto next = writer.Get();
+                next.description = value;
+                writer = std::move(next);
+              })
+              .With(Frame{.min_height = 160.0F}, Enabled(!writer->busy)),
+          std::move(generate),
+      }
+          .With(Frame{.max_width = 560.0F}, Padding(16.0F), Spacing(12.0F),
+                Background(colors::elevated), CornerRadius(16.0F),
+                CrossAlign(CrossAxisAlignment::Stretch));
   return Row{std::move(panel).With(Grow())}.With(
       Padding(EdgeInsets::Symmetric(16.0F, 0.0F)),
       MainAlign(MainAxisAlignment::Center));
@@ -1842,12 +1917,14 @@ Task<void> QueryMcp(ExtensionScreenServices services,
   next.querying = false;
   next.queried = true;
   if (!queried) {
-    next.error = queried.error().message;
+    next.error.clear();
+    toast.Show(queried.error().message);
   } else {
     next.tools = std::move(*queried);
     next.queried_url = request.url;
     next.error.clear();
-    toast.Show(app::strings::screen_mcp_query_success);
+    toast.Show(StringVariant::Format(app::strings::screen_mcp_query_done_toast,
+                                     next.tools.size()));
   }
   state = std::move(next);
 }
@@ -1855,8 +1932,7 @@ Task<void> QueryMcp(ExtensionScreenServices services,
 Task<void> SaveMcp(ExtensionScreenServices services,
                    State<McpEditorState> state,
                    std::string invalid_configuration_message,
-                   std::string require_query_message,
-                   ToastHandle toast,
+                   std::string require_query_message, ToastHandle toast,
                    RouteNavigationController<domain::AppRoute> navigation) {
   auto value = state->original;
   value.name = Trimmed(state->name.text);
@@ -1879,10 +1955,12 @@ Task<void> SaveMcp(ExtensionScreenServices services,
   state = std::move(next);
   auto saved = co_await services.mcps->SaveMcp(std::move(value));
   if (!saved) {
+    const auto message = saved.error().message;
     next = state.Get();
     next.saving = false;
-    next.error = saved.error().message;
+    next.error = message;
     state = std::move(next);
+    toast.Show(message);
     co_return;
   }
   if (services.on_changed)
@@ -1890,8 +1968,7 @@ Task<void> SaveMcp(ExtensionScreenServices services,
   navigation.Pop();
 }
 
-ThemeDefinition ExtensionControlOverrides(TextFieldStyle text_field,
-                                          SwitchStyle switch_style) {
+ThemeDefinition ExtensionControlOverrides(TextFieldStyle text_field) {
   text_field.variant = TextFieldVariant::Outlined;
   text_field.show_label = false;
   text_field.outlined.background = colors::surface_light;
@@ -1909,24 +1986,30 @@ ThemeDefinition ExtensionControlOverrides(TextFieldStyle text_field,
   text_field.outlined.corner_radii = CornerRadii{8.0F};
   text_field.padding = EdgeInsets::Symmetric(12.0F, 8.0F);
 
-  switch_style.width = 46.0F;
-  switch_style.height = 27.0F;
-  switch_style.minimum_interactive_height = 27.0F;
-  switch_style.state_layer_size = 27.0F;
-  switch_style.unchecked_track = colors::surface_light;
-  switch_style.checked_track = colors::accent_dim;
-  switch_style.unchecked_track_border = colors::border_light;
-  switch_style.checked_track_border = colors::accent;
-  switch_style.unchecked_thumb = colors::tertiary;
-  switch_style.checked_thumb = colors::accent;
-  switch_style.unchecked_thumb_radius = 10.5F;
-  switch_style.checked_thumb_radius = 10.5F;
-  switch_style.track_border_width = 1.0F;
-  switch_style.corner_radius = 13.5F;
-
   ThemeDefinition overrides;
   overrides.Set(std::move(text_field));
-  overrides.Set(std::move(switch_style));
+  return overrides;
+}
+
+ThemeDefinition CompactHeaderFieldOverrides(TextFieldStyle text_field) {
+  text_field.variant = TextFieldVariant::Outlined;
+  text_field.show_label = false;
+  text_field.outlined.background = colors::surface_light;
+  text_field.outlined.border = colors::border_light;
+  text_field.outlined.hovered_border = colors::border_light;
+  text_field.outlined.focused_border = colors::border_light;
+  text_field.outlined.disabled_border = colors::border_light;
+  text_field.outlined.minimum_height = 42.0F;
+  text_field.text_style = Label(13.0F);
+  text_field.placeholder_style =
+      Label(13.0F, FontWeight::Regular, colors::tertiary);
+  text_field.caret = colors::accent;
+  text_field.border_width = 1.0F;
+  text_field.focused_border_width = 1.0F;
+  text_field.outlined.corner_radii = CornerRadii{8.0F};
+  text_field.padding = EdgeInsets::Symmetric(12.0F, 8.0F);
+  ThemeDefinition overrides;
+  overrides.Set(std::move(text_field));
   return overrides;
 }
 
@@ -2044,8 +2127,7 @@ ExtensionDetailScreen(domain::ExtensionKind kind,
       }
           .With(CrossAlign(CrossAxisAlignment::Stretch),
                 Background(colors::background), SafeAreaPadding{});
-  return Theme(ExtensionControlOverrides(UseEnvironment<TextFieldStyle>(),
-                                         UseEnvironment<SwitchStyle>()),
+  return Theme(ExtensionControlOverrides(UseEnvironment<TextFieldStyle>()),
                std::move(screen));
 }
 
@@ -2110,8 +2192,9 @@ AgentExtensionEditorScreen(std::optional<std::string> id,
                       app::strings::screen_agent_hint_slug,
                       ChangeText(state, &AgentEditorState::slug), false,
                       app::strings::screen_agent_helper_slug),
-        }.With(Spacing(12.0F), Padding(16.0F),
-               CrossAlign(CrossAxisAlignment::Stretch))));
+        }
+            .With(Spacing(12.0F), Padding(16.0F),
+                  CrossAlign(CrossAxisAlignment::Stretch))));
     content.push_back(EditorFormSection(
         app::strings::screen_agent_form_behavior,
         Column{
@@ -2121,22 +2204,22 @@ AgentExtensionEditorScreen(std::optional<std::string> id,
             FormField(state->trigger, app::strings::screen_agent_field_trigger,
                       app::strings::screen_agent_hint_trigger,
                       ChangeText(state, &AgentEditorState::trigger), true),
-        }.With(Spacing(12.0F), Padding(16.0F),
-               CrossAlign(CrossAxisAlignment::Stretch))));
+        }
+            .With(Spacing(12.0F), Padding(16.0F),
+                  CrossAlign(CrossAxisAlignment::Stretch))));
 
     std::vector<View> tool_rows;
     tool_rows.reserve(state->available_tools.size());
     for (const auto &tool : state->available_tools) {
       const bool selected = Contains(state->selected_tools, tool.name);
-      tool_rows.push_back(
-          SelectionRow(app::images::settings, tool.name,
-                       std::format("{} · {}", tool.category,
-                                   tool.description),
-                       selected, [state, name = tool.name](bool) {
-                         auto next = state.Get();
-                         Toggle(next.selected_tools, name);
-                         state = std::move(next);
-                       }));
+      tool_rows.push_back(AgentOptionRow(
+          app::images::settings, tool.name,
+          std::format("{} · {}", tool.category, tool.description), selected,
+          [state, name = tool.name] {
+            auto next = state.Get();
+            Toggle(next.selected_tools, name);
+            state = std::move(next);
+          }));
     }
     content.push_back(EditorSelectionSection(
         StringVariant::Format(app::strings::screen_agent_tools_count,
@@ -2148,13 +2231,15 @@ AgentExtensionEditorScreen(std::optional<std::string> id,
 
     std::vector<View> mcp_rows;
     for (const auto &mcp : state->available_mcps) {
-      mcp_rows.push_back(SelectionRow(
+      mcp_rows.push_back(AgentOptionRow(
           app::images::mcp, mcp.name, mcp.description,
-          Contains(state->selected_mcps, mcp.id), [state, key = mcp.id](bool) {
+          Contains(state->selected_mcps, mcp.id),
+          [state, key = mcp.id] {
             auto next = state.Get();
             Toggle(next.selected_mcps, key);
             state = std::move(next);
-          }));
+          },
+          !mcp.description.empty()));
     }
     content.push_back(EditorSelectionSection(
         StringVariant::Format(app::strings::screen_agent_tools_count,
@@ -2184,8 +2269,7 @@ AgentExtensionEditorScreen(std::optional<std::string> id,
       }
           .With(CrossAlign(CrossAxisAlignment::Stretch),
                 Background(colors::background), SafeAreaPadding{});
-  return Theme(ExtensionControlOverrides(UseEnvironment<TextFieldStyle>(),
-                                         UseEnvironment<SwitchStyle>()),
+  return Theme(ExtensionControlOverrides(UseEnvironment<TextFieldStyle>()),
                std::move(screen));
 }
 
@@ -2235,51 +2319,58 @@ McpExtensionEditorScreen(std::optional<std::string> id,
                       app::strings::screen_mcp_hint_url,
                       ChangeText(state, &McpEditorState::url), false,
                       app::strings::screen_mcp_helper_url, TextInputType::Url),
-        }.With(Spacing(12.0F), Padding(16.0F),
-               CrossAlign(CrossAxisAlignment::Stretch))));
+        }
+            .With(Spacing(12.0F), Padding(16.0F),
+                  CrossAlign(CrossAxisAlignment::Stretch))));
 
     std::vector<View> header_rows;
-    header_rows.push_back(
-        DetailActionRow(app::images::plus, app::strings::screen_mcp_add_header,
-                        app::strings::screen_mcp_add_header_desc, [state] {
-                          auto next = state.Get();
-                          next.headers.push_back({
-                              .key = next.next_header_key++,
-                              .name = TextEditingValue::FromText(""),
-                              .value = TextEditingValue::FromText(""),
-                          });
-                          state = std::move(next);
-                        }));
+    header_rows.push_back(DetailActionRow(
+        app::images::plus, app::strings::screen_mcp_add_header,
+        app::strings::screen_mcp_add_header_desc,
+        [state] {
+          auto next = state.Get();
+          next.headers.push_back({
+              .key = next.next_header_key++,
+              .name = TextEditingValue::FromText(""),
+              .value = TextEditingValue::FromText(""),
+          });
+          state = std::move(next);
+        },
+        68.0F, &NoDetailAccessory));
+    const auto compact_header_field =
+        CompactHeaderFieldOverrides(UseEnvironment<TextFieldStyle>());
     for (const auto &header : state->headers) {
       const auto key = header.key;
       header_rows.push_back(
           Row{
-              TextField(header.name)
-                  .Placeholder(app::strings::screen_mcp_field_name)
-                  .Variant(TextFieldVariant::Outlined)
-                  .LineLimits(TextFieldLineLimits::SingleLine())
-                  .OnChanged([state, key](const TextEditingValue &value) {
-                    auto next = state.Get();
-                    const auto found =
-                        std::ranges::find(next.headers, key, &HeaderDraft::key);
-                    if (found != next.headers.end())
-                      found->name = value;
-                    state = std::move(next);
-                  })
-                  .With(Grow(), Frame{.min_height = 42.0F}),
-              TextField(header.value)
-                  .Placeholder(app::strings::screen_mcp_header_value_hint)
-                  .Variant(TextFieldVariant::Outlined)
-                  .LineLimits(TextFieldLineLimits::SingleLine())
-                  .OnChanged([state, key](const TextEditingValue &value) {
-                    auto next = state.Get();
-                    const auto found =
-                        std::ranges::find(next.headers, key, &HeaderDraft::key);
-                    if (found != next.headers.end())
-                      found->value = value;
-                    state = std::move(next);
-                  })
-                  .With(Grow(), Frame{.min_height = 42.0F}),
+              Theme(compact_header_field,
+                    TextField(header.name)
+                        .Placeholder(app::strings::screen_mcp_field_name)
+                        .Variant(TextFieldVariant::Outlined)
+                        .LineLimits(TextFieldLineLimits::SingleLine())
+                        .OnChanged([state, key](const TextEditingValue &value) {
+                          auto next = state.Get();
+                          const auto found = std::ranges::find(
+                              next.headers, key, &HeaderDraft::key);
+                          if (found != next.headers.end())
+                            found->name = value;
+                          state = std::move(next);
+                        }))
+                  .With(Grow(), Frame{.height = 42.0F}),
+              Theme(compact_header_field,
+                    TextField(header.value)
+                        .Placeholder(app::strings::screen_mcp_header_value_hint)
+                        .Variant(TextFieldVariant::Outlined)
+                        .LineLimits(TextFieldLineLimits::SingleLine())
+                        .OnChanged([state, key](const TextEditingValue &value) {
+                          auto next = state.Get();
+                          const auto found = std::ranges::find(
+                              next.headers, key, &HeaderDraft::key);
+                          if (found != next.headers.end())
+                            found->value = value;
+                          state = std::move(next);
+                        }))
+                  .With(Grow(), Frame{.height = 42.0F}),
               Stack{Glyph(app::images::trash_2, 16.0F, colors::tertiary)}
                   .OnClick([state, key] {
                     auto next = state.Get();
@@ -2293,32 +2384,39 @@ McpExtensionEditorScreen(std::optional<std::string> id,
                               VerticalAlignment::Center),
                         Focusable(), PointerCursor(PointerCursorKind::Hand)),
           }
-              .With(Spacing(8.0F), Padding(EdgeInsets::Symmetric(16.0F, 8.0F)),
+              .With(Spacing(8.0F), Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
                     CrossAlign(CrossAxisAlignment::Center))
               .Key(key));
     }
     content.push_back(LegacySettingsSection(
         app::strings::screen_mcp_section_headers, std::move(header_rows)));
 
+    std::vector<View> query_rows;
+    if (state->querying) {
+      query_rows.push_back(McpQueryBusyRow());
+    } else {
+      const StringVariant query_description =
+          !state->tools.empty()
+              ? StringVariant::Format(app::strings::screen_mcp_query_done_desc,
+                                      state->tools.size())
+              : StringVariant{app::strings::screen_mcp_query_empty_desc};
+      query_rows.push_back(DetailActionRow(
+          app::images::search, app::strings::screen_mcp_query_tools,
+          query_description,
+          [services, state, tasks, toast, invalid_url_message] mutable {
+            tasks.Launch([services, state, toast,
+                          invalid_url_message]() mutable -> Task<void> {
+              co_await QueryMcp(std::move(services), state, toast,
+                                std::move(invalid_url_message));
+            });
+          }));
+    }
     content.push_back(LegacySettingsSection(
-        app::strings::screen_mcp_query_section_title,
-        {DetailActionRow(
-            app::images::search, app::strings::screen_mcp_query_tools,
-            state->querying ? app::strings::screen_mcp_query_busy
-                            : app::strings::screen_mcp_query_empty_desc,
-            [services, state, tasks, toast, invalid_url_message] mutable {
-              if (state->querying)
-                return;
-              tasks.Launch([services, state, toast,
-                            invalid_url_message]() mutable -> Task<void> {
-                co_await QueryMcp(std::move(services), state, toast,
-                                  std::move(invalid_url_message));
-              });
-            })}));
+        app::strings::screen_mcp_query_section_title, std::move(query_rows)));
 
     std::vector<View> tool_rows;
     for (const auto &tool : state->tools) {
-      tool_rows.push_back(SelectionRow(
+      tool_rows.push_back(McpToolSwitchRow(
           app::images::mcp, tool.name,
           tool.description.empty()
               ? StringVariant{app::strings::screen_mcp_tool_default_desc}
@@ -2332,27 +2430,29 @@ McpExtensionEditorScreen(std::optional<std::string> id,
             state = std::move(next);
           }));
     }
-    content.push_back(LegacySettingsSection(
-        app::strings::screen_mcp_tools_list,
-        tool_rows.empty()
-            ? std::vector<View>{EmptyRow(
-                  state->queried ? app::strings::screen_mcp_query_no_tools
-                                 : app::strings::screen_mcp_query_pending)}
-            : std::move(tool_rows)));
-  }
-  if (!state->error.empty()) {
-    content.push_back(
-        Text(state->error)
-            .Style(Label(12.0F, FontWeight::Regular, colors::danger))
-            .With(Padding(16.0F)));
+    const auto enabled_tools = std::ranges::count_if(
+        state->tools,
+        [](const domain::McpToolSummary &tool) { return tool.enabled; });
+    if (state->querying) {
+      tool_rows = {McpToolsStateRow(app::strings::screen_mcp_query_busy, true)};
+    } else if (tool_rows.empty()) {
+      tool_rows = {McpToolsStateRow(
+          state->queried
+              ? StringVariant{app::strings::screen_mcp_query_no_tools}
+              : StringVariant{app::strings::screen_mcp_query_pending},
+          false)};
+    }
+    content.push_back(EditorSelectionSection(
+        StringVariant::Format(app::strings::screen_mcp_tools_count,
+                              enabled_tools),
+        std::move(tool_rows)));
   }
   content.push_back(Stack{}.With(Frame{.height = 100.0F}));
 
   View screen =
       Column{
-          EditorHeader(app::strings::screen_mcp_add_title,
-                       state->saving || state->querying, navigation,
-                       std::move(save)),
+          EditorHeader(app::strings::screen_mcp_add_title, state->saving,
+                       navigation, std::move(save)),
           Divider(),
           ScrollView(Column(std::move(content))
                          .With(CrossAlign(CrossAxisAlignment::Stretch)))
@@ -2361,8 +2461,7 @@ McpExtensionEditorScreen(std::optional<std::string> id,
       }
           .With(CrossAlign(CrossAxisAlignment::Stretch),
                 Background(colors::background), SafeAreaPadding{});
-  return Theme(ExtensionControlOverrides(UseEnvironment<TextFieldStyle>(),
-                                         UseEnvironment<SwitchStyle>()),
+  return Theme(ExtensionControlOverrides(UseEnvironment<TextFieldStyle>()),
                std::move(screen));
 }
 

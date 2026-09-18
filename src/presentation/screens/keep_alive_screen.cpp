@@ -14,6 +14,7 @@
 #include "domain/app_state.h"
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/components/legacy_settings_card_frame.h"
+#include "presentation/components/legacy_switch.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -22,6 +23,17 @@ using namespace huxerui;
 using application::KeepAlivePreferences;
 using application::KeepAliveService;
 using application::KeepAliveSystemState;
+
+struct KeepAlivePresentationState final {
+  KeepAlivePreferences preferences;
+  KeepAliveSystemState system;
+  bool preferences_loaded{};
+  bool system_loaded{};
+
+  [[nodiscard]] bool Interactive() const noexcept {
+    return preferences_loaded && system_loaded;
+  }
+};
 
 TextStyle Label(float size, FontWeight weight = FontWeight::Regular,
                 Color color = colors::text) {
@@ -53,7 +65,7 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation) {
 }
 
 View SwitchRow(ImageResource icon, StringResource title,
-               StringResource description, bool checked,
+               StringResource description, bool checked, bool interactive,
                std::function<void(bool)> changed) {
   auto row_changed = changed;
   return Row{
@@ -63,13 +75,15 @@ View SwitchRow(ImageResource icon, StringResource title,
              Text(description)
                  .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))}
           .With(Spacing(2.0F), Grow()),
-      Switch(checked).OnChanged(std::move(changed)),
+      LegacySwitch(checked, std::move(changed)),
   }
       .OnClick(
           [checked, changed = std::move(row_changed)] { changed(!checked); })
       .With(Spacing(12.0F), Padding(EdgeInsets::All(16.0F)),
-            CrossAlign(CrossAxisAlignment::Center), Focusable(),
-            PointerCursor(PointerCursorKind::Hand));
+            CrossAlign(CrossAxisAlignment::Center), Enabled(interactive),
+            Focusable(),
+            PointerCursor(interactive ? PointerCursorKind::Hand
+                                      : PointerCursorKind::Default));
 }
 
 View Section(StringResource title, std::vector<View> rows) {
@@ -98,44 +112,75 @@ View Section(StringResource title, std::vector<View> rows) {
   const auto navigation = UseNavigation<domain::AppRoute>();
   const auto service = UseService<KeepAliveService>();
   const auto toast = UseToast();
-  auto preferences = UseState(service->LoadPreferences());
-  auto system_state = UseState(KeepAliveSystemState{});
+  auto state = UseState(KeepAlivePresentationState{
+      .preferences = service->LoadPreferences(),
+  });
   auto mounted = std::make_shared<bool>(true);
-  Lifecycle([service, preferences, system_state, mounted] {
+  Lifecycle([service, state, toast, mounted] {
     service->RefreshPreferences(
-        [preferences, mounted](KeepAliveService::PreferencesResult value) {
-          if (*mounted && value)
-            preferences = *value;
+        [state, toast, mounted](KeepAliveService::PreferencesResult value) {
+          if (!*mounted)
+            return;
+          if (!value) {
+            toast.Show(value.error());
+            return;
+          }
+          state.Update([preferences = std::move(*value)](
+                           KeepAlivePresentationState &next) mutable {
+            next.preferences = std::move(preferences);
+            next.preferences_loaded = true;
+          });
         });
     service->RefreshSystemState(
-        [system_state, mounted](KeepAliveService::SystemStateResult value) {
-          if (*mounted && value)
-            system_state = *value;
+        [state, toast, mounted](KeepAliveService::SystemStateResult value) {
+          if (!*mounted)
+            return;
+          if (!value) {
+            toast.Show(value.error());
+            return;
+          }
+          state.Update([system = std::move(*value)](
+                           KeepAlivePresentationState &next) mutable {
+            next.system = std::move(system);
+            next.system_loaded = true;
+          });
         });
     return [mounted] { *mounted = false; };
   });
-  auto save = [service, preferences](bool KeepAlivePreferences::*field,
-                                     bool enabled) {
-    auto next = preferences.Get();
+  const bool interactive = state->Interactive();
+  auto save = [service, state, toast](bool KeepAlivePreferences::*field,
+                                      bool enabled) {
+    if (!state->Interactive())
+      return false;
+    auto next = state->preferences;
     next.*field = enabled;
-    preferences = next;
-    static_cast<void>(service->SavePreferences(next));
+    auto saved = service->SavePreferences(next);
+    if (!saved) {
+      toast.Show(saved.error());
+      return false;
+    }
+    state.Update([preferences = std::move(next)](
+                     KeepAlivePresentationState &value) mutable {
+      value.preferences = std::move(preferences);
+    });
+    return true;
   };
 
   std::vector<View> coding;
   coding.push_back(SwitchRow(
       app::images::zap, app::strings::screen_keep_alive_wake_lock_label,
       app::strings::screen_keep_alive_wake_lock_desc,
-      preferences->wake_lock_enabled, [save](bool enabled) {
+      state->preferences.wake_lock_enabled, interactive, [save](bool enabled) {
         save(&KeepAlivePreferences::wake_lock_enabled, enabled);
       }));
   coding.push_back(SwitchRow(
       app::images::bell, app::strings::screen_keep_alive_foreground_label,
       app::strings::screen_keep_alive_foreground_desc,
-      preferences->foreground_service_enabled,
-      [save, service, system_state, toast](bool enabled) {
-        save(&KeepAlivePreferences::foreground_service_enabled, enabled);
-        if (enabled && !system_state->notifications_granted) {
+      state->preferences.foreground_service_enabled, interactive,
+      [save, service, state, toast](bool enabled) {
+        if (!save(&KeepAlivePreferences::foreground_service_enabled, enabled))
+          return;
+        if (enabled && !state->system.notifications_granted) {
           service->RequestNotificationPermission();
           toast.Show(
               app::strings::screen_keep_alive_notification_permission_hint);
@@ -144,10 +189,11 @@ View Section(StringResource title, std::vector<View> rows) {
   coding.push_back(SwitchRow(
       app::images::music, app::strings::screen_keep_alive_silent_audio_label,
       app::strings::screen_keep_alive_silent_audio_desc,
-      preferences->silent_audio_enabled,
-      [save, service, system_state, toast](bool enabled) {
-        save(&KeepAlivePreferences::silent_audio_enabled, enabled);
-        if (enabled && !system_state->notifications_granted) {
+      state->preferences.silent_audio_enabled, interactive,
+      [save, service, state, toast](bool enabled) {
+        if (!save(&KeepAlivePreferences::silent_audio_enabled, enabled))
+          return;
+        if (enabled && !state->system.notifications_granted) {
           service->RequestNotificationPermission();
           toast.Show(
               app::strings::screen_keep_alive_notification_permission_hint);
@@ -158,9 +204,11 @@ View Section(StringResource title, std::vector<View> rows) {
       SwitchRow(app::images::battery_charging,
                 app::strings::screen_keep_alive_ignore_battery_label,
                 app::strings::screen_keep_alive_ignore_battery_desc,
-                system_state->battery_optimization_ignored,
-                [service, system_state](bool enabled) {
-                  if (enabled && !system_state->battery_optimization_ignored)
+                state->system.battery_optimization_ignored, interactive,
+                [service, state](bool enabled) {
+                  if (!state->Interactive())
+                    return;
+                  if (enabled && !state->system.battery_optimization_ignored)
                     service->RequestIgnoreBatteryOptimizations();
                 }));
 

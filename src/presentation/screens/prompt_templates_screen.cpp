@@ -59,7 +59,8 @@ const std::array kPromptTemplateTextResources{
     app::strings::prompt_template_context_compaction_summary_prefix_title,
     app::strings::prompt_template_context_compaction_summary_prefix_description,
     app::strings::prompt_template_context_compaction_responses_fallback_title,
-    app::strings::prompt_template_context_compaction_responses_fallback_description,
+    app::strings::
+        prompt_template_context_compaction_responses_fallback_description,
     app::strings::prompt_template_source_builtin_chat,
     app::strings::prompt_template_source_builtin_plan,
     app::strings::prompt_template_source_builtin_agent,
@@ -75,6 +76,7 @@ const auto kPromptTemplatePresentations =
 struct EditorState final {
   domain::PromptTemplateItem item;
   TextEditingValue editing;
+  bool busy{};
 
   bool operator==(const EditorState &) const = default;
 };
@@ -85,7 +87,28 @@ TextStyle Label(float size, FontWeight weight = FontWeight::Regular,
 }
 
 View Glyph(ImageResource icon, float size, Color tint) {
-  return Image(std::move(icon)).Tint(tint).With(Frame{.width = size, .height = size});
+  return Image(std::move(icon))
+      .Tint(tint)
+      .With(Frame{.width = size, .height = size});
+}
+
+TextFieldStyle PromptEditorFieldStyle() {
+  auto style = TextFieldStyle::Default();
+  style.variant = TextFieldVariant::Standard;
+  style.show_label = false;
+  style.standard.background = colors::code;
+  style.standard.border = colors::code_border;
+  style.standard.hovered_border = colors::code_border;
+  style.standard.focused_border = colors::code_border;
+  style.standard.corner_radii = CornerRadii{8.0F};
+  style.standard.minimum_height = 220.0F;
+  style.text_style = TextStyle{Font::Monospace(13.0F), colors::text};
+  style.placeholder_style = TextStyle{Font::Monospace(13.0F), colors::tertiary};
+  style.padding = EdgeInsets::All(12.0F);
+  style.caret = colors::accent;
+  style.selection = colors::accent_muted_strong;
+  style.focused_border_width = 1.0F;
+  return style;
 }
 
 View Header(const RouteNavigationController<domain::AppRoute> &navigation) {
@@ -97,16 +120,20 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation) {
                 Focusable(), PointerCursor(PointerCursorKind::Hand)),
       Stack{Text(app::strings::screen_prompt_templates_title)
                 .Style(Label(17.0F, FontWeight::Bold))}
-          .With(Grow(), Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
+          .With(Grow(),
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
       Stack{}.With(Frame{.width = 36.0F, .height = 36.0F}),
-  }.With(Frame{.min_height = 60.0F}, Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
-         Background(colors::background));
+  }
+      .With(Frame{.min_height = 60.0F},
+            Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
+            Background(colors::background));
 }
 
 std::string Variables(const domain::PromptTemplateDefinition &definition) {
   std::string result;
   for (const auto &variable : definition.variables) {
-    if (!result.empty()) result += ", ";
+    if (!result.empty())
+      result += ", ";
     result += "{{" + variable + "}}";
   }
   return result;
@@ -116,24 +143,28 @@ View Section(StringVariant title, View body) {
   return Column{
       Text(std::move(title))
           .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
-          .With(Padding(EdgeInsets{.top = 20.0F, .right = 16.0F,
-                                   .bottom = 12.0F, .left = 16.0F})),
+          .With(Padding(EdgeInsets{
+              .top = 20.0F, .right = 16.0F, .bottom = 12.0F, .left = 16.0F})),
       LegacySettingsCardFrame{std::move(body).With(
           CornerRadius(12.0F), Background(colors::elevated))},
-  }.With(CrossAlign(CrossAxisAlignment::Stretch));
+  }
+      .With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
-View ActionButton(ImageResource icon, StringResource label, std::function<void()> action) {
+View ActionButton(ImageResource icon, StringResource label,
+                  std::function<void()> action) {
   return Row{
       Glyph(std::move(icon), 16.0F, colors::secondary),
       Text(label).Style(Label(11.0F, FontWeight::Regular, colors::secondary)),
-  }.OnClick(std::move(action))
+  }
+      .OnClick(std::move(action))
       .With(Frame{.height = 34.0F, .min_width = 72.0F}, Spacing(5.0F),
             Padding(EdgeInsets::Symmetric(8.0F, 0.0F)),
             CrossAlign(CrossAxisAlignment::Center),
-            MainAlign(MainAxisAlignment::Center), Background(colors::surface_light),
-            CornerRadius(8.0F), Border{colors::border_light, 1.0F},
-            Focusable(), PointerCursor(PointerCursorKind::Hand));
+            MainAlign(MainAxisAlignment::Center),
+            Background(colors::surface_light), CornerRadius(8.0F),
+            Border{colors::border_light, 1.0F}, Focusable(),
+            PointerCursor(PointerCursorKind::Hand));
 }
 
 View Editor(std::size_t index, StringVariant description, std::string source,
@@ -143,60 +174,91 @@ View Editor(std::size_t index, StringVariant description, std::string source,
   const auto snapshot = editors->at(index);
   const auto &definition = snapshot.item.definition;
   const auto save = [index, editors, repository, tasks, toast] {
+    if (editors->at(index).busy)
+      return;
     const auto id = editors->at(index).item.definition.id;
     const auto value = editors->at(index).editing.text;
-    editors.Update([index, &value](auto &next) {
-      auto &editor = next.at(index);
-      editor.item.current_text = value;
-      editor.item.customized = value != editor.item.definition.default_text;
-    });
-    tasks.Launch([repository, id, value, toast]() -> Task<void> {
+    editors.Update([index](auto &next) { next.at(index).busy = true; });
+    tasks.Launch([repository, id, value, index, editors,
+                  toast]() -> Task<void> {
       auto result = co_await repository->Save(id, value);
-      if (!result) toast.Show(result.error().message);
+      if (!result) {
+        editors.Update([index](auto &next) { next.at(index).busy = false; });
+        toast.Show(result.error().message);
+        co_return;
+      }
+      editors.Update([index, value](auto &next) {
+        auto &editor = next.at(index);
+        editor.busy = false;
+        editor.item.current_text = value;
+        editor.item.customized = value != editor.item.definition.default_text;
+      });
+      toast.Show(app::strings::screen_prompt_templates_toast_saved);
     });
-    toast.Show(app::strings::screen_prompt_templates_toast_saved);
   };
   const auto reset = [index, editors, repository, tasks, toast] {
+    if (editors->at(index).busy)
+      return;
     const auto id = editors->at(index).item.definition.id;
     const auto default_text = editors->at(index).item.definition.default_text;
-    editors.Update([index, &default_text](auto &next) {
-      auto &editor = next.at(index);
-      editor.editing = TextEditingValue::FromText(default_text);
-      editor.item.current_text = default_text;
-      editor.item.customized = false;
-    });
-    tasks.Launch([repository, id, toast]() -> Task<void> {
+    editors.Update([index](auto &next) { next.at(index).busy = true; });
+    tasks.Launch([repository, id, default_text, index, editors,
+                  toast]() -> Task<void> {
       auto result = co_await repository->Reset(id);
-      if (!result) toast.Show(result.error().message);
+      if (!result) {
+        editors.Update([index](auto &next) { next.at(index).busy = false; });
+        toast.Show(result.error().message);
+        co_return;
+      }
+      editors.Update([index, default_text](auto &next) {
+        auto &editor = next.at(index);
+        editor.busy = false;
+        editor.editing = TextEditingValue::FromText(default_text);
+        editor.item.current_text = default_text;
+        editor.item.customized = false;
+      });
+      toast.Show(app::strings::screen_prompt_templates_toast_reset);
     });
-    toast.Show(app::strings::screen_prompt_templates_toast_reset);
   };
 
-  auto field = TextField(snapshot.editing)
-      .Variant(TextFieldVariant::Standard)
-      .LineLimits(TextFieldLineLimits::MultiLine(10))
-      .InputConfiguration(TextInputConfiguration{
-          .type = TextInputType::Text, .capitalization = TextCapitalization::None,
-          .action = TextInputAction::Newline, .multiline = true,
-          .secure = false, .autocorrect = false})
-      .VerticalAlign(TextVerticalAlign::Top)
-      .OnChanged([index, editors](const TextEditingValue &value) {
-        editors.Update([index, &value](auto &next) { next.at(index).editing = value; });
-      })
-      .With(Frame{.min_height = 220.0F}, FontSize(13.0F), Foreground(colors::text),
-            Padding(EdgeInsets::All(12.0F)), Background(colors::code),
-            CornerRadius(8.0F), Border{colors::code_border, 1.0F});
+  ThemeDefinition field_theme;
+  field_theme.Set(PromptEditorFieldStyle());
+  auto field =
+      Theme(field_theme,
+            TextField(snapshot.editing)
+                .LineLimits(TextFieldLineLimits::MultiLine())
+                .InputConfiguration(TextInputConfiguration{
+                    .type = TextInputType::Text,
+                    .capitalization = TextCapitalization::None,
+                    .action = TextInputAction::Newline,
+                    .multiline = true,
+                    .secure = false,
+                    .autocorrect = false})
+                .VerticalAlign(TextVerticalAlign::Top)
+                .OnChanged([index, editors](const TextEditingValue &value) {
+                  editors.Update([index, &value](auto &next) {
+                    next.at(index).editing = value;
+                  });
+                })
+                .With(Frame{.min_height = 220.0F}, Enabled(!snapshot.busy)));
 
-  auto actions = Row{
-      Text(snapshot.item.customized ? app::strings::screen_prompt_templates_status_custom
-                                    : app::strings::screen_prompt_templates_status_built_in)
-          .Style(Label(11.0F, FontWeight::Regular,
-                       snapshot.item.customized ? colors::accent : colors::tertiary))
-          .With(Grow()),
-      ActionButton(app::images::rotate_ccw, app::strings::common_reset, reset),
-      ActionButton(app::images::save, app::strings::common_save, save)
-          .With(Padding(EdgeInsets{.left = 8.0F})),
-  }.With(Frame{.height = 34.0F}, CrossAlign(CrossAxisAlignment::Center));
+  auto actions =
+      Row{
+          Text(snapshot.item.customized
+                   ? app::strings::screen_prompt_templates_status_custom
+                   : app::strings::screen_prompt_templates_status_built_in)
+              .Style(Label(11.0F, FontWeight::Regular,
+                           snapshot.item.customized ? colors::accent
+                                                    : colors::tertiary))
+              .With(Grow()),
+          ActionButton(app::images::rotate_ccw, app::strings::common_reset,
+                       reset)
+              .With(Enabled(!snapshot.busy)),
+          ActionButton(app::images::save, app::strings::common_save, save)
+              .With(Enabled(!snapshot.busy)),
+      }
+          .With(Frame{.height = 34.0F}, Spacing(8.0F),
+                CrossAlign(CrossAxisAlignment::Center));
 
   return Column{
       Text(std::move(description))
@@ -207,7 +269,9 @@ View Editor(std::size_t index, StringVariant description, std::string source,
           .With(Padding(EdgeInsets{.top = 8.0F})),
       std::move(field).With(Padding(EdgeInsets{.top = 12.0F})),
       std::move(actions).With(Padding(EdgeInsets{.top = 12.0F})),
-  }.With(Padding(EdgeInsets::All(16.0F)), CrossAlign(CrossAxisAlignment::Stretch));
+  }
+      .With(Padding(EdgeInsets::All(16.0F)),
+            CrossAlign(CrossAxisAlignment::Stretch));
 }
 } // namespace
 
@@ -228,15 +292,16 @@ View Editor(std::size_t index, StringVariant description, std::string source,
       next.reserve(loaded->size());
       for (auto &item : *loaded) {
         auto editing = TextEditingValue::FromText(item.current_text);
-        next.push_back({.item = std::move(item),
-                        .editing = std::move(editing)});
+        next.push_back(
+            {.item = std::move(item), .editing = std::move(editing)});
       }
       editors = std::move(next);
     });
   });
 
   std::vector<View> content;
-  std::string intro = UseString(app::strings::screen_prompt_templates_variables);
+  std::string intro =
+      UseString(app::strings::screen_prompt_templates_variables);
   for (std::size_t index = 0; index < editors->size(); ++index) {
     const auto &definition = editors->at(index).item.definition;
     const auto *presentation = FindPromptTemplatePresentation(
@@ -252,13 +317,15 @@ View Editor(std::size_t index, StringVariant description, std::string source,
              UseString(description);
     const auto variables = Variables(definition);
     if (!variables.empty()) {
-      intro += UseString(app::strings::screen_prompt_templates_item_variables, variables);
+      intro += UseString(app::strings::screen_prompt_templates_item_variables,
+                         variables);
     }
   }
-  content.push_back(Section(
-      app::strings::screen_prompt_templates_section,
-      Text(intro).Style(Label(13.0F, FontWeight::Regular, colors::secondary))
-          .With(Padding(EdgeInsets::All(16.0F))))) ;
+  content.push_back(
+      Section(app::strings::screen_prompt_templates_section,
+              Text(intro)
+                  .Style(Label(13.0F, FontWeight::Regular, colors::secondary))
+                  .With(Padding(EdgeInsets::All(16.0F)))));
   for (std::size_t index = 0; index < editors->size(); ++index) {
     const auto &definition = editors->at(index).item.definition;
     const auto *presentation = FindPromptTemplatePresentation(
@@ -273,20 +340,24 @@ View Editor(std::size_t index, StringVariant description, std::string source,
     if (presentation && presentation->builtin_source) {
       source = UseString(*presentation->builtin_source);
     }
-    content.push_back(Section(title,
-                              Editor(index, description, std::move(source), editors,
-                                     repository, tasks, toast))
-                          .Key(editors->at(index).item.definition.id));
+    content.push_back(
+        Section(title, Editor(index, description, std::move(source), editors,
+                              repository, tasks, toast))
+            .Key(editors->at(index).item.definition.id));
   }
   content.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 100.0F}));
 
   return Column{
-      Header(navigation), Divider(),
+      Header(navigation),
+      Divider(),
       ScrollView(Column(std::move(content))
-          .With(CrossAlign(CrossAxisAlignment::Stretch), Background(colors::background)))
-          .ScrollAxis(Axis::Vertical).With(Grow()),
-  }.With(CrossAlign(CrossAxisAlignment::Stretch), Background(colors::background),
-         SafeAreaPadding{});
+                     .With(CrossAlign(CrossAxisAlignment::Stretch),
+                           Background(colors::background)))
+          .ScrollAxis(Axis::Vertical)
+          .With(Grow()),
+  }
+      .With(CrossAlign(CrossAxisAlignment::Stretch),
+            Background(colors::background), SafeAreaPadding{});
 }
 
 } // namespace linecode::presentation

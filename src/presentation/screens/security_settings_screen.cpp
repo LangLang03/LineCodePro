@@ -10,6 +10,7 @@
 
 #include "domain/app_state.h"
 #include "presentation/components/legacy_settings_page.h"
+#include "presentation/components/legacy_switch.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -91,7 +92,7 @@ View SwitchRow(ImageResource icon, StringResource title,
               .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
       }
           .With(Spacing(2.0F), Grow()),
-      Switch(checked).OnChanged(std::move(changed)),
+      LegacySwitch(checked, std::move(changed)),
   }
       .OnClick(
           [checked, changed = std::move(row_changed)] { changed(!checked); })

@@ -68,6 +68,7 @@ struct MemoryScreenPresentation final {
 [[huxerui::composable]] huxerui::View MemoryScreen(
     std::shared_ptr<application::MemoryStore> store,
     std::string project_id,
-    MemoryScreenPresentation presentation = {});
+    MemoryScreenPresentation presentation = {},
+    std::string project_display = {});
 
 } // namespace linecode::presentation

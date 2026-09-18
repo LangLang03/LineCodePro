@@ -36,7 +36,7 @@
         {"type": "expect_labeled_editable_text", "label": "模型 ID", "value": "linecode-test-model"},
         {"type": "keyevent", "key": "BACK"},
         {"type": "tap_text", "value": "测试"},
-        {"type": "sleep", "seconds": 1.5},
+        {"type": "wait_for_text", "value": "测试结果", "timeout_seconds": 12.0},
         {"type": "expect_text", "value": "测试结果"},
         {"type": "expect_text", "value": "原始响应："},
         {"type": "expect_text", "value": "这是 LineCode 自动化测试的固定回复。"},
@@ -63,7 +63,7 @@
         {"type": "text", "value": "test-key"},
         {"type": "keyevent", "key": "BACK"},
         {"type": "tap_text", "value": "查询"},
-        {"type": "sleep", "seconds": 1.2},
+        {"type": "wait_for_text", "value": "测试失败：", "timeout_seconds": 12.0},
         {"type": "expect_text", "value": "选择模型"},
         {"type": "expect_text", "value": "linecode-test-model"},
         {"type": "expect_text", "value": "自定义 ID…"}
@@ -146,7 +146,7 @@
         {"type": "expect_text", "value": "linecode-test-model"},
         {"type": "tap_text", "value": "LifecycleModel"},
         {"type": "sleep", "seconds": 0.5},
-        {"type": "tap", "x": 75, "y": 205},
+        {"type": "keyevent", "key": "BACK"},
         {"type": "sleep", "seconds": 0.6},
         {"type": "expect_text", "value": "输入消息…"},
         {"type": "expect_no_text", "value": "请先到设置 → 模型管理配置模型"}
@@ -167,7 +167,7 @@
         {"type": "sleep", "seconds": 0.5},
         {"type": "tap_text", "value": "修改"},
         {"type": "sleep", "seconds": 0.7},
-        {"type": "expect_text", "value": "编辑模型"},
+        {"type": "expect_text", "value": "修改模型"},
         {"type": "expect_labeled_editable_text", "label": "名称", "value": "LifecycleModel"},
         {"type": "expect_labeled_editable_text", "label": "Base URL", "value": "http://10.0.2.2:18080/v1"},
         {"type": "expect_labeled_editable_text", "label": "模型 ID", "value": "linecode-test-model"},
@@ -240,7 +240,7 @@
         {"type": "sleep", "seconds": 0.8},
         {"type": "expect_text", "value": "还没有模型"},
         {"type": "expect_no_text", "value": "LifecycleEdited"},
-        {"type": "tap", "x": 75, "y": 205},
+        {"type": "keyevent", "key": "BACK"},
         {"type": "sleep", "seconds": 0.6},
         {"type": "expect_text", "value": "请先到设置 → 模型管理配置模型"}
       ]

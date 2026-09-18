@@ -7,6 +7,13 @@
 
 namespace linecode::presentation {
 
+std::string WorkspaceDisplayPath(std::string_view path) {
+  constexpr std::string_view file_scheme = "file://";
+  if (path.starts_with(file_scheme))
+    path.remove_prefix(file_scheme.size());
+  return std::string{path};
+}
+
 std::expected<std::string, std::string>
 WorkspaceRelativePath(std::string_view root, std::string_view absolute_path) {
   if (root.empty() || absolute_path.empty())

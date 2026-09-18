@@ -1317,6 +1317,7 @@ add_executable(ssh_backend_tests
         ../src/application/ssh_project_workspace.cpp
         ../src/application/ssh_runtime_service.cpp
         ../src/application/ssh_tool_registry.cpp
+        ../src/application/tool_text_catalog.cpp
         ../src/application/ssh_workspace_service.cpp
         ../src/domain/ssh_config.cpp
         ../src/infrastructure/archive_json.cpp
@@ -1390,6 +1391,21 @@ else ()
 endif ()
 add_test(NAME skill_hub_reading_settings_tests
         COMMAND skill_hub_reading_settings_tests)
+
+add_executable(user_agreement_tests
+        user_agreement_tests.cpp
+        ../src/application/user_agreement.cpp)
+target_include_directories(user_agreement_tests PRIVATE ../src)
+target_compile_features(user_agreement_tests PRIVATE cxx_std_23)
+target_link_libraries(user_agreement_tests PRIVATE
+        HuxerUI::testing HuxerUI::huxerui)
+if (MSVC)
+    target_compile_options(user_agreement_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(user_agreement_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME user_agreement_tests COMMAND user_agreement_tests)
 
 add_executable(markdown_link_policy_tests
         markdown_link_policy_tests.cpp

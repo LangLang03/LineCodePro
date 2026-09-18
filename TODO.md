@@ -798,6 +798,67 @@ python3 tools/ui_parity_test.py \
 - SSH 模式切换后进程存活；SSH 设置调用真实连接测试并返回真实网络错误，不再返回 unavailable/假成功。
 - 聊天页 Slash 状态机、长按操作、引用、召回与持久化截断已经实现；assistant 正文已经切换到 Markdown block renderer。消息工具时间线、推理折叠块、导出格式选择器和滚动尾随仍未完成。
 
+## 用户实测反馈（第 41 轮，必须逐项处理）
+
+按严重度排序。**崩溃类最高优先**，其次是数据与功能缺失，最后是视觉。
+
+### A. 崩溃（最高优先）
+- [ ] **点击「教程」直接崩溃**
+- [ ] **MCP 点击「添加自定义请求头」直接崩溃**
+- [ ] **「编辑提示词」直接崩溃**
+
+### B. 功能缺失 / 数据
+- [x] **SSH 其实已完整接线；真正的问题是报错信息把人引向错误方向**（第 41 轮查清并修复）：
+      核实结果——`Libssh2Transport`（934 个 libssh2/mbedTLS 符号已编入 so）、
+      `SshRuntimeService`/`SshWorkspaceService`/`PersistedSshSettings` 全部构造并接线，
+      SSH 表单可打开、**保存也能落库**（`@lineai_ssh_config` 实测写入成功）。
+      **根因**：`SshConfig::IsConfigured()` 要求
+      `host非空 && port>0 && username非空 && (password非空 || privateKey非空)`，
+      而用户只填了 host/port/username → 判定为"未配置"，
+      工具返回硬编码英文 **`SSH is not configured`**。
+      这条消息有两处害处：**用户明明配置了却被告知"未配置"**（把人引回已经填好的界面），
+      且**中文应用里出现英文**。
+      **修复**：新增 `domain::SshConfigGap`（区分缺 host / port / username / 凭据）
+      与 6 条本地化文案（`tool_ssh_*`，目录 70→76 键），
+      `SshToolRegistry` 现在按缺项给出具体提示并接入 `ToolTextLanguage`。
+      **真机对比证据**：同一无凭据配置下
+      修复前返回 `SSH is not configured`，
+      修复后返回 **`SSH 尚未配置：还缺密码或私钥。Host、Port、Username 已保存。`**
+      *副产物*：确认 `ssh_tool_registry` 注册的工具名就是 `shell_execute`
+      （SSH 模式下同名工具路由到远端），设计正确。
+- [ ] **SSH 待补**：真机**成功连接**一个真实 SSH 服务端（本机无 sshd，
+      仅验证到"缺凭据"这一层）；以及 Skills 安装到 SSH 的端到端
+- [ ] **老版本升级后数据不加载**（覆盖安装旧版数据读不出来）
+- [ ] **查询 MCP TOOL 只转圈、无结果**
+- [ ] **缺少很多工具与卡片**
+- [ ] **添加模型后回主页仍显示「添加模型」**（未刷新/未识别已配置）
+- [ ] 需要**通盘分析 Agent 核心、MCP、Skills**
+
+### C. 视觉 / 交互
+- [ ] **全局不应出现按钮点击阴影/涟漪**
+- [ ] **未处理屏幕顶部状态栏与底部三大金刚键**（insets）
+- [ ] **记忆添加窗口样式不一致**；**每个记忆卡片没有圆角**
+- [ ] **日志列表**同样缺圆角
+- [ ] **「开源许可列表」这几个字不居中**
+- [ ] **抽屉应整体上提**，最后一行字被截断看不全
+- [ ] **Markdown 预览问题很多**
+- [ ] **表格没有圆角**、**代码框有问题**
+- [ ] **Agent 卡片有问题**
+- [ ] **让 AI 写 Agent 的 UI 不对**
+- [ ] **选择可选 Tool 时应显示中文翻译，而不是英文**
+
+### D. 验证能力缺口
+- [ ] **无法验证「处理中」状态是否显示正常、是否与旧版一致**
+- [ ] **无法验证展开后的工具调用能否展开**
+  （需要 fixture 支持延迟响应以截取瞬时状态——已加 `--response-delay`）
+
+### E. 工具链
+- [x] 已修：DSH 的 commandcode provider 硬编码 `inputModalities: ['text']`，
+      导致我无法读图。已改为按配置声明（`imageModels`，支持 `*` 通配），
+      并在 `~/.dsh/settings.yaml` 声明当前模型。**补丁已独立验证正确，
+      但需重启 DSH 生效**（模块与设置在启动时载入）。
+      改动文件：provider 的 `lib/adapter.js`、`lib/index.js`（原件已备份为 `.orig`）。
+
 ## 最终交付门槛
 
 - [x] 格式化与 `git diff --check` 通过：全仓差异无空白错误；

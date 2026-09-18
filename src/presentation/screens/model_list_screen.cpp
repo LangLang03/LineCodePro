@@ -1,9 +1,11 @@
 #include "presentation/screens/model_list_screen.h"
 
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -170,6 +172,14 @@ View ModelCard(const domain::ModelConfig &model, State<ModelListState> state,
                const std::shared_ptr<application::ModelStore> &store,
                const TaskScope &tasks, const BottomSheetHandle &sheets,
                const ModelListActions &actions) {
+  constexpr std::array custom_provider_labels{std::string_view{"Custom"},
+                                               std::string_view{"自定义"}};
+  const StringVariant provider_label =
+      model.provider_label.empty() ||
+              std::ranges::contains(custom_provider_labels,
+                                    std::string_view{model.provider_label})
+          ? StringVariant{ModelProtocolPresentationFor(model.protocol).name}
+          : StringVariant{model.provider_label};
   const bool current = state->selected_id == model.id;
   const bool marked = Marked(state.Get(), model.id);
   std::vector<View> trailing;
@@ -232,7 +242,7 @@ View ModelCard(const domain::ModelConfig &model, State<ModelListState> state,
   };
 
   return Row{
-      Text(model.provider_label)
+      Text(provider_label)
           .Style(Label(11.0F, FontWeight::Bold, colors::text_on_color))
           .With(Padding(EdgeInsets::Symmetric(8.0F, 4.0F)),
                 Background(ModelProtocolPresentationFor(model.protocol)
@@ -322,7 +332,7 @@ ModelListScreen(std::shared_ptr<application::ModelStore> store,
   } else if (!state->loading && state->models.empty()) {
     cards.push_back(
         Text(app::strings::model_list_empty)
-            .Style(Label(14.0F, FontWeight::Regular, colors::tertiary)));
+            .Style(Label(13.0F, FontWeight::Regular, colors::tertiary)));
   }
   for (const auto &model : state->models) {
     cards.push_back(

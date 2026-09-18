@@ -23,16 +23,14 @@ huxerui::Color ToColor(domain::PackedColor value,
   if (alpha == 0xFF && value != background) {
     const auto restore_channel = [](int desired, int backdrop) {
       return std::clamp(
-          static_cast<int>(std::lround(
-              (8.0F * static_cast<float>(desired) -
-               static_cast<float>(backdrop)) /
-              7.0F)),
+          static_cast<int>(std::lround((8.0F * static_cast<float>(desired) -
+                                        static_cast<float>(backdrop)) /
+                                       7.0F)),
           0, 255);
     };
-    red = restore_channel(red,
-                          static_cast<int>((background >> 16U) & 0xFFU));
-    green = restore_channel(green,
-                            static_cast<int>((background >> 8U) & 0xFFU));
+    red = restore_channel(red, static_cast<int>((background >> 16U) & 0xFFU));
+    green =
+        restore_channel(green, static_cast<int>((background >> 8U) & 0xFFU));
     blue = restore_channel(blue, static_cast<int>(background & 0xFFU));
     const int desired_red = static_cast<int>((value >> 16U) & 0xFFU);
     const int desired_green = static_cast<int>((value >> 8U) & 0xFFU);
@@ -49,13 +47,13 @@ huxerui::Color ToColor(domain::PackedColor value,
     if (desired_blue > 240)
       blue = std::max(blue - 1, 0);
   } else if (alpha != 0xFF) {
-    alpha = std::clamp(static_cast<int>(std::lround(
-                           static_cast<float>(alpha) * 8.0F / 7.0F)),
-                       0, 255);
+    alpha = std::clamp(
+        static_cast<int>(std::lround(static_cast<float>(alpha) * 8.0F / 7.0F)),
+        0, 255);
   }
 #endif
-  return huxerui::Color::Rgb(
-      red, green, blue, static_cast<float>(alpha) / 255.0F);
+  return huxerui::Color::Rgb(red, green, blue,
+                             static_cast<float>(alpha) / 255.0F);
 }
 
 } // namespace
@@ -64,10 +62,15 @@ LineColors LineColors::Default() {
   return LineColorsForPalette(domain::PaletteForMode(domain::ThemeMode::light));
 }
 
+huxerui::Color LineColorForPacked(domain::PackedColor value,
+                                  domain::PackedColor background) {
+  return ToColor(value, background);
+}
+
 LineColors LineColorsForPalette(const domain::ThemePalette &palette) {
   const auto background = palette[domain::ThemeColorRole::background];
   const auto color = [&palette, background](domain::ThemeColorRole role) {
-    return ToColor(palette[role], background);
+    return LineColorForPacked(palette[role], background);
   };
   return {
       .background = color(domain::ThemeColorRole::background),
@@ -167,16 +170,17 @@ huxerui::DialogStyle LineDialogStyle(const LineColors &line_colors) {
   dialog.title_style = huxerui::TextStyle{
       huxerui::Font::System(20.0F).WithWeight(huxerui::FontWeight::Bold),
       line_colors.text};
-  dialog.message_style = huxerui::TextStyle{
-      huxerui::Font::System(16.0F), line_colors.text};
-  dialog.positive_action_style = huxerui::TextStyle{
-      huxerui::Font::System(14.0F), line_colors.text};
-  dialog.negative_action_style = huxerui::TextStyle{
-      huxerui::Font::System(14.0F), line_colors.text};
+  dialog.message_style =
+      huxerui::TextStyle{huxerui::Font::System(16.0F), line_colors.text};
+  dialog.positive_action_style =
+      huxerui::TextStyle{huxerui::Font::System(14.0F), line_colors.text};
+  dialog.negative_action_style =
+      huxerui::TextStyle{huxerui::Font::System(14.0F), line_colors.text};
   dialog.positive_action_background = huxerui::Color::Transparent();
   dialog.negative_action_background = huxerui::Color::Transparent();
   dialog.minimum_action_height = 48.0F;
   dialog.corner_radii = huxerui::CornerRadii{24.0F};
+  dialog.minimum_width = 560.0F;
   dialog.maximum_width = 560.0F;
   dialog.viewport_margin = 16.0F;
   // Legacy Android AlertDialog is static once presented.  The SDK's default
@@ -195,18 +199,15 @@ huxerui::BottomSheetStyle LineBottomSheetStyle(const LineColors &line_colors) {
   // Android AlertDialog dim instead.
   bottom_sheet.scrim = line_colors.overlay;
   bottom_sheet.background = huxerui::Color::Transparent();
-  bottom_sheet.shadow =
-      huxerui::Shadow{.color = huxerui::Color::Transparent()};
+  bottom_sheet.shadow = huxerui::Shadow{.color = huxerui::Color::Transparent()};
   bottom_sheet.corner_radii = huxerui::CornerRadii(24.0F);
   bottom_sheet.drag_handle = huxerui::Color::Transparent();
   // The legacy panel is capped at 560dp and sits inside 16dp side insets.
   bottom_sheet.maximum_width = 592.0F;
   bottom_sheet.enter =
-      huxerui::TweenSpec{.duration = 0.18,
-                         .easing = huxerui::Easing::EaseOut};
+      huxerui::TweenSpec{.duration = 0.18, .easing = huxerui::Easing::EaseOut};
   bottom_sheet.exit =
-      huxerui::TweenSpec{.duration = 0.15,
-                         .easing = huxerui::Easing::EaseIn};
+      huxerui::TweenSpec{.duration = 0.15, .easing = huxerui::Easing::EaseIn};
   return bottom_sheet;
 }
 
@@ -250,15 +251,18 @@ huxerui::ThemeDefinition LineThemeDefinition(const LineColors &line_colors) {
   toggle.width = 46.5F;
   toggle.height = 27.0F;
   toggle.minimum_interactive_height = 27.0F;
-  toggle.state_layer_size = 27.0F;
-  toggle.unchecked_track = line_colors.elevated;
-  toggle.checked_track = line_colors.elevated;
+  toggle.state_layer_size = 0.0F;
+  toggle.unchecked_track = huxerui::Color::Transparent();
+  toggle.checked_track = huxerui::Color::Transparent();
+  toggle.unchecked_track_border = huxerui::Color::Transparent();
+  toggle.checked_track_border = huxerui::Color::Transparent();
   toggle.unchecked_thumb = line_colors.tertiary;
   toggle.checked_thumb = line_colors.accent;
   toggle.unchecked_thumb_radius = 10.0F;
   toggle.checked_thumb_radius = 10.0F;
+  toggle.track_border_width = 0.0F;
   toggle.corner_radius = 13.5F;
-  toggle.animation_duration = 0.0;
+  toggle.animation_duration = 0.18;
   definition.Set(std::move(toggle));
 
   auto divider = huxerui::DividerStyle::Default();

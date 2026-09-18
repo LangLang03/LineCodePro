@@ -274,13 +274,13 @@ constexpr std::array<ToolTextEntry, kToolTextKeyCount> kToolTextEntries{{
     {
         .key = ToolTextKey::tool_call_action_list_dir,
         .name = "tool_call_action_list_dir",
-        .english = "List directory",
+        .english = "List dir",
         .chinese = "列目录",
     },
     {
         .key = ToolTextKey::tool_call_action_match,
         .name = "tool_call_action_match",
-        .english = "Search files",
+        .english = "Match",
         .chinese = "匹配",
     },
     {
@@ -444,6 +444,42 @@ constexpr std::array<ToolTextEntry, kToolTextKeyCount> kToolTextEntries{{
         .name = "tool_custom_agent_failed",
         .english = "Custom Agent execution failed: {0}",
         .chinese = "自定义 Agent 执行失败: {0}",
+    },
+    {
+        .key = ToolTextKey::tool_ssh_not_configured,
+        .name = "tool_ssh_not_configured",
+        .english = "SSH is not configured. Open Settings, choose the SSH Shell execution target and fill in the SSH connection settings.",
+        .chinese = "SSH 尚未配置。请到「设置 → 工具与执行」把执行目标切到 SSH Shell，并填写 SSH 连接设置。",
+    },
+    {
+        .key = ToolTextKey::tool_ssh_missing_host,
+        .name = "tool_ssh_missing_host",
+        .english = "SSH is not configured: the host is empty.",
+        .chinese = "SSH 尚未配置：未填写 Host。",
+    },
+    {
+        .key = ToolTextKey::tool_ssh_missing_port,
+        .name = "tool_ssh_missing_port",
+        .english = "SSH is not configured: the port is invalid.",
+        .chinese = "SSH 尚未配置：端口无效。",
+    },
+    {
+        .key = ToolTextKey::tool_ssh_missing_username,
+        .name = "tool_ssh_missing_username",
+        .english = "SSH is not configured: the username is empty.",
+        .chinese = "SSH 尚未配置：未填写 Username。",
+    },
+    {
+        .key = ToolTextKey::tool_ssh_missing_credentials,
+        .name = "tool_ssh_missing_credentials",
+        .english = "SSH is not configured: provide a password or a private key. The host, port and username are already saved.",
+        .chinese = "SSH 尚未配置：还缺密码或私钥。Host、Port、Username 已保存。",
+    },
+    {
+        .key = ToolTextKey::tool_ssh_command_empty,
+        .name = "tool_ssh_command_empty",
+        .english = "SSH command is empty.",
+        .chinese = "SSH 命令为空。",
     },
     {
         .key = ToolTextKey::tool_agent_output_empty,

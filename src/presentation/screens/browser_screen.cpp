@@ -110,7 +110,7 @@ bool IsLocalHttpHost(std::string_view host) {
          ((*address)[0] == 192 && (*address)[1] == 168);
 }
 
-bool IsAllowedBrowserUrl(std::string_view value) {
+bool IsAllowedBrowserUrl(std::string_view value, bool allow_any_http) {
   const auto uri = Uri::Parse(value);
   if (!uri) {
     return false;
@@ -120,7 +120,8 @@ bool IsAllowedBrowserUrl(std::string_view value) {
     return false;
   }
   const std::string scheme = LowerAscii(uri->Scheme());
-  return scheme == "https" || (scheme == "http" && IsLocalHttpHost(*host));
+  return scheme == "https" ||
+         (scheme == "http" && (allow_any_http || IsLocalHttpHost(*host)));
 }
 
 View Header(const RouteNavigationController<domain::AppRoute> &navigation) {
@@ -147,57 +148,48 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation) {
             Background(colors::background));
 }
 
-View UnsupportedBrowserContent() {
-  return Stack{
-      Text(app::strings::in_app_browser_unsupported_url)
-          .Style(Label(13.0F, FontWeight::Regular, colors::secondary))
-          .Align(TextAlign::Center),
-  }
-      .With(Grow(), Padding(28.0F),
-            Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-            Background(colors::background));
-}
+inline constexpr std::string_view kUnsupportedUrlData =
+    "data:text/plain,Unsupported%20URL";
 
 } // namespace
 
 [[huxerui::composable]] View BrowserScreen(const domain::BrowserRoute &route) {
   const auto navigation = UseNavigation<domain::AppRoute>();
-  auto requested_url = UseState(route.url);
-  auto browser_state = UseState(WebViewNavigationState{.url = route.url});
+  const bool initial_url_allowed =
+      IsAllowedBrowserUrl(route.url, route.allow_any_http);
+  const auto line_colors = UseEnvironment<LineColors>();
+  auto requested_url = UseState(
+      initial_url_allowed ? route.url : std::string{kUnsupportedUrlData});
   const WebViewController controller = UseWebViewController();
 
-  const std::string address =
-      browser_state->url.empty() ? route.url : browser_state->url;
   View browser =
-      IsAllowedBrowserUrl(route.url)
-          ? WebView({.url = requested_url.Get(),
-                     .java_script_enabled = route.java_script_enabled},
-                    controller)
-                .On<WebViewEvents::NavigationRequested>(
-                    [](const WebViewNavigationRequest &request) {
-                      return !request.is_main_frame ||
-                             IsAllowedBrowserUrl(request.url);
-                    })
-                .On<WebViewEvents::NavigationChanged>(
-                    [requested_url,
-                     browser_state](const WebViewNavigationState &state) {
-                      if (!state.url.empty()) {
-                        requested_url = state.url;
-                      }
-                      browser_state = state;
-                    })
-                .With(Grow(), Frame{.min_height = 1.0F}, ClipChildren(),
-                      Semantics{.label =
-                                    app::strings::in_app_browser_content_desc})
-          : UnsupportedBrowserContent();
+      WebView({.url = requested_url.Get(),
+               .java_script_enabled = route.java_script_enabled,
+               .dom_storage_enabled = true,
+               .background_color = line_colors.background},
+              controller)
+          .On<WebViewEvents::NavigationRequested>(
+              [allow_any_http = route.allow_any_http,
+               initial_url_allowed](const WebViewNavigationRequest &request) {
+                if (!initial_url_allowed && request.url == kUnsupportedUrlData)
+                  return true;
+                return IsAllowedBrowserUrl(request.url, allow_any_http);
+              })
+          .With(Grow(), Frame{.min_height = 1.0F}, ClipChildren(),
+                Semantics{.label = app::strings::in_app_browser_content_desc});
 
   return Column{
       Header(navigation),
       Divider(),
-      Text(address)
-          .Style(Label(13.0F, FontWeight::Regular, colors::secondary))
-          .With(Padding(EdgeInsets{
-              .top = 0.0F, .right = 28.0F, .bottom = 16.0F, .left = 28.0F})),
+      Column{Text(route.url)
+                 .Style(Label(13.0F, FontWeight::Regular, colors::secondary))
+                 // Public HuxerUI Text currently has no one-line/middle-
+                 // ellipsis API; preserve one-line geometry and clip overflow.
+                 .With(Frame{.height = 18.0F}, ClipChildren())}
+          .With(
+              Padding(EdgeInsets{
+                  .top = 0.0F, .right = 28.0F, .bottom = 16.0F, .left = 28.0F}),
+              CrossAlign(CrossAxisAlignment::Stretch)),
       browser,
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch),

@@ -30,6 +30,11 @@ enum class ChatMoreAction : std::uint8_t {
   clear_chat,
 };
 
+enum class ChatCompactionAction : std::uint8_t {
+  confirm,
+  cancel,
+};
+
 enum class ChatPermissionMode : std::uint8_t {
   automatic,
   confirm,
@@ -139,6 +144,10 @@ ChatContextMenu(const ChatContextMenuState &state,
 [[nodiscard]] huxerui::View
 ChatMoreMenu(const ChatMoreMenuState &state,
              ChatOverlayCallbacks<ChatMoreAction> callbacks);
+
+[[nodiscard]] huxerui::View
+ChatCompactionMenu(bool visible,
+                   ChatOverlayCallbacks<ChatCompactionAction> callbacks);
 
 [[nodiscard]] huxerui::View
 ChatPermissionMenu(const ChatPermissionMenuState &state,

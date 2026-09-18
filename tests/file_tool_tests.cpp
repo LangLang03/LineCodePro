@@ -494,9 +494,15 @@ private:
     for (const auto &child : children) {
       if (results.size() >= maximum)
         return;
-      const std::string relative = directory == "."
-                                       ? child.name
-                                       : std::string{directory} + "/" + child.name;
+      std::string relative;
+      if (directory == ".") {
+        relative = child.name;
+      } else {
+        relative.reserve(directory.size() + 1U + child.name.size());
+        relative.append(directory);
+        relative.push_back('/');
+        relative.append(child.name);
+      }
       const std::string reported =
           base == "." ? relative : relative.substr(base.size() + 1U);
       if (child.kind == application::ToolFileKind::directory) {
@@ -602,7 +608,8 @@ FindTool(const application::FileToolRegistry &registry, std::string_view name) {
 void CheckDescriptor(const application::FileToolRegistry &registry,
                      std::string_view name, std::string_view description,
                      std::string_view schema,
-                     std::initializer_list<std::string_view> required) {
+                     std::initializer_list<std::string_view> required,
+                     bool selected_by_default = false) {
   const auto *tool = FindTool(registry, name);
   assert(tool != nullptr);
   assert(tool->description == description);
@@ -611,7 +618,7 @@ void CheckDescriptor(const application::FileToolRegistry &registry,
   assert(!tool->allowed_in_read_only);
   assert(!tool->permanent_grant_supported);
   assert(tool->agent_selectable);
-  assert(!tool->agent_selected_by_default);
+  assert(tool->agent_selected_by_default == selected_by_default);
 
   auto parsed = json::Parse(tool->parameters_json);
   assert(parsed);
@@ -715,14 +722,15 @@ huxerui::Task<void> RunFileToolChecks(std::shared_ptr<Scenario> scenario) {
   assert(refreshed);
   assert(scenario->tools->Tools().size() == 6U);
   CheckDescriptor(tools, "file_read", kFileReadDescription, kFileReadSchema,
-                  {"file_path"});
+                  {"file_path"}, true);
   CheckDescriptor(tools, "file_write", kFileWriteDescription, kFileWriteSchema,
                   {"content", "file_path"});
   CheckDescriptor(tools, "file_edit", kFileEditDescription, kFileEditSchema,
                   {"file_path", "new_string", "old_string"});
   CheckDescriptor(tools, "file_delete", kFileDeleteDescription,
                   kFileDeleteSchema, {"paths", "reason"});
-  CheckDescriptor(tools, "glob", kGlobDescription, kGlobSchema, {"pattern"});
+  CheckDescriptor(tools, "glob", kGlobDescription, kGlobSchema, {"pattern"},
+                  true);
   CheckDescriptor(tools, "list_dir", kListDirectoryDescription,
                   kListDirectorySchema, {});
 
@@ -1068,7 +1076,7 @@ huxerui::Task<void> RunFileToolChecks(std::shared_ptr<Scenario> scenario) {
   assert(chinese_refreshed);
   assert(scenario->chinese_tools->Tools().size() == 6U);
   CheckDescriptor(chinese, "file_read", kFileReadDescription, kFileReadSchema,
-                  {"file_path"});
+                  {"file_path"}, true);
   auto chinese_invoked =
       co_await scenario->chinese_tools->Invoke("file_read",
                                                R"({"file_path":"missing.txt"})");

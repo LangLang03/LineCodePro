@@ -106,6 +106,12 @@ std::string_view ChatSession::CurrentConversationId() const noexcept {
 
 void ChatSession::StartNewConversation() { store_->StartNewConversation(); }
 
+void ChatSession::DeleteCurrentConversation() {
+  const std::string current_id{store_->CurrentConversationId()};
+  if (!current_id.empty())
+    store_->DeleteConversation(current_id);
+}
+
 void ChatSession::SelectConversation(std::string_view id) {
   if (!id.empty()) {
     store_->SelectConversation(id);

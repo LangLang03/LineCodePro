@@ -30,8 +30,8 @@ int main() {
              ModelProtocol::codex_responses) == "https://api.openai.com/v1");
   assert(linecode::domain::DefaultModelBaseUrl(
              ModelProtocol::anthropic_messages) == "https://api.anthropic.com");
-  assert(linecode::domain::DefaultModelBaseUrl(ModelProtocol::local_gguf)
-             .empty());
+  assert(
+      linecode::domain::DefaultModelBaseUrl(ModelProtocol::local_gguf).empty());
   assert(linecode::domain::SupportsDedicatedCompression(
       ModelProtocol::openai_compatible));
   assert(!linecode::domain::SupportsDedicatedCompression(
@@ -124,20 +124,17 @@ int main() {
 
   local.name = "Qwen local";
   const auto local_result = ModelFormService::Build(local);
-  assert(local_result.has_value());
-  assert(local_result->name == "Qwen local");
-  assert(local_result->model_id.empty());
-  assert(local_result->base_url.empty());
-  assert(local_result->api_key.empty());
-  assert(local_result->protocol == ModelProtocol::local_gguf);
-  assert(local_result->context_size == 4096);
-  assert(ModelFormService::CanSave(local));
+  assert(!local_result.has_value());
+  assert(local_result.error().code ==
+         ModelValidationCode::local_backend_unavailable);
+  assert(!ModelFormService::CanSave(local));
 
   auto local_route_draft = local;
   local_route_draft.protocol = ModelProtocol::openai_compatible;
   const auto normalized_local = ModelFormService::Build(local_route_draft);
-  assert(normalized_local.has_value());
-  assert(normalized_local->protocol == ModelProtocol::local_gguf);
+  assert(!normalized_local.has_value());
+  assert(normalized_local.error().code ==
+         ModelValidationCode::local_backend_unavailable);
 
   const auto local_probe = ModelFormService::BuildForProbe(local);
   assert(!local_probe.has_value());
@@ -148,7 +145,7 @@ int main() {
   const auto unnamed_local = ModelFormService::Build(local);
   assert(!unnamed_local.has_value());
   assert(unnamed_local.error().code ==
-         ModelValidationCode::missing_name_or_model_id);
+         ModelValidationCode::local_backend_unavailable);
 
   auto stored = *ModelFormService::Build(ValidDraft());
   stored.id = "stable-model-id";

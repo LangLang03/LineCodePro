@@ -15,6 +15,7 @@
 #include "domain/app_state.h"
 #include "domain/terminal_provider.h"
 #include "presentation/components/legacy_settings_page.h"
+#include "presentation/components/legacy_switch.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -86,7 +87,9 @@ View ScannedRow(const domain::ScannedTerminalProvider &provider,
       .OnClick(std::move(action))
       .With(Frame{.min_height = 48.0F},
             Padding(EdgeInsets::Symmetric(12.0F, 8.0F)), Spacing(8.0F),
-            CrossAlign(CrossAxisAlignment::Center), Focusable(),
+            CrossAlign(CrossAxisAlignment::Center),
+            Background(colors::elevated), Border(colors::border_light, 1.0F),
+            CornerRadius(8.0F), Focusable(),
             PointerCursor(PointerCursorKind::Hand));
 }
 
@@ -101,7 +104,7 @@ View InstalledRow(const domain::TerminalProviderConfig &provider,
               .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
       }
           .With(Spacing(2.0F), Grow()),
-      Switch(provider.enabled).OnChanged(std::move(on_enabled)),
+      LegacySwitch(provider.enabled, std::move(on_enabled)),
   }
       .With(LongPressGesture{})
       .On<LongPressEvents::Started>(std::move(on_delete))
@@ -142,7 +145,7 @@ View ConfirmationSheet(StringVariant title, StringVariant description,
       Text(std::move(title))
           .Style(Label(17.0F, FontWeight::Bold))
           .With(Padding(
-              EdgeInsets{.right = 24.0F, .bottom = 12.0F, .left = 24.0F})),
+              EdgeInsets{.right = 16.0F, .bottom = 12.0F, .left = 16.0F})),
       Text(std::move(description))
           .Style(Label(13.0F, FontWeight::Regular, colors::tertiary))
           .With(Padding(

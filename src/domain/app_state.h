@@ -20,6 +20,7 @@ namespace linecode::domain {
 struct BrowserRoute final {
   std::string url;
   bool java_script_enabled = false;
+  bool allow_any_http = false;
 
   bool operator==(const BrowserRoute &) const = default;
 };
@@ -73,9 +74,11 @@ public:
   explicit AppRoute(BrowserRoute browser) : value_(std::move(browser)) {}
 
   [[nodiscard]] static AppRoute Browser(std::string url,
-                                        bool java_script_enabled = false) {
+                                        bool java_script_enabled = false,
+                                        bool allow_any_http = false) {
     return AppRoute(BrowserRoute{.url = std::move(url),
-                                 .java_script_enabled = java_script_enabled});
+                                 .java_script_enabled = java_script_enabled,
+                                 .allow_any_http = allow_any_http});
   }
 
   [[nodiscard]] static AppRoute ImageModelPicker(ImageModelPurpose purpose) {

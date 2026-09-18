@@ -15,6 +15,7 @@
 #include "domain/app_state.h"
 #include "domain/mcp_execution_settings.h"
 #include "presentation/components/legacy_screen_header_layout.h"
+#include "presentation/components/legacy_switch.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -47,6 +48,14 @@ using ModeSupplementFactory =
 struct ModeSupplementPresentation final {
   domain::McpExecutionMode mode;
   ModeSupplementFactory factory;
+};
+
+struct McpSettingsPresentationState final {
+  domain::McpExecutionSettings settings{domain::DefaultMcpExecutionSettings()};
+  bool loaded{};
+  bool busy{true};
+
+  [[nodiscard]] bool Interactive() const noexcept { return loaded && !busy; }
 };
 
 // Presentation is an extensible catalog. Rendering contains no knowledge of
@@ -175,7 +184,7 @@ View Card(View content) {
 }
 
 View ModeButton(const ModePresentation &presentation,
-                domain::McpExecutionMode selected,
+                domain::McpExecutionMode selected, bool interactive,
                 std::function<void(domain::McpExecutionMode)> changed) {
   const bool active = presentation.mode == selected;
   return Stack{
@@ -189,20 +198,22 @@ View ModeButton(const ModePresentation &presentation,
       .With(Grow(), Frame{.min_height = 36.0F},
             Align(HorizontalAlignment::Center, VerticalAlignment::Center),
             Background(active ? colors::accent : Color::Transparent()),
-            CornerRadius(8.0F), Focusable(),
-            PointerCursor(PointerCursorKind::Hand));
+            CornerRadius(8.0F), Enabled(interactive), Focusable(),
+            PointerCursor(interactive ? PointerCursorKind::Hand
+                                      : PointerCursorKind::Default));
 }
 
 View ExecutionCard(domain::McpExecutionMode selected,
                    domain::McpExecutionCapabilities capabilities,
+                   bool interactive,
                    std::function<void(domain::McpExecutionMode)> changed) {
   std::vector<View> buttons;
   buttons.reserve(kModePresentations.size());
   for (const auto &presentation : kModePresentations) {
     if (!domain::IsMcpExecutionModeAvailable(presentation.mode, capabilities))
       continue;
-    buttons.push_back(
-        ModeButton(presentation, selected, changed).Key(presentation.mode));
+    buttons.push_back(ModeButton(presentation, selected, interactive, changed)
+                          .Key(presentation.mode));
   }
 
   return Card(Column{
@@ -211,7 +222,7 @@ View ExecutionCard(domain::McpExecutionMode selected,
       Row(buttons).With(Frame{.height = 42.0F}, Padding(3.0F),
                         Background(colors::surface_light), CornerRadius(8.0F)),
       Text(ModeVisual(selected).description)
-          .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
+          .Style(Label(10.5F, FontWeight::Regular, colors::tertiary)),
   }
                   .With(Spacing(8.0F),
                         CrossAlign(CrossAxisAlignment::Stretch)));
@@ -276,7 +287,7 @@ const std::array kModeSupplements{
 };
 
 View ToolCard(const domain::McpToolGroupState &group,
-              const ToolGroupVisual &visual,
+              const ToolGroupVisual &visual, bool interactive,
               std::function<void(bool)> changed) {
   return Card(Row{
       Stack{
@@ -292,10 +303,10 @@ View ToolCard(const domain::McpToolGroupState &group,
               .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
       }
           .With(Spacing(2.0F), Grow()),
-      Switch(group.enabled).OnChanged(std::move(changed)),
+      LegacySwitch(group.enabled, std::move(changed)),
   }
-                  .With(Spacing(12.0F),
-                        CrossAlign(CrossAxisAlignment::Center)));
+                  .With(Spacing(12.0F), CrossAlign(CrossAxisAlignment::Center),
+                        Enabled(interactive)));
 }
 
 } // namespace
@@ -308,79 +319,120 @@ View ToolCard(const domain::McpToolGroupState &group,
   const auto navigation = UseNavigation<domain::AppRoute>();
   const auto tasks = UseTaskScope();
   const auto toast = UseToast();
-  auto settings = UseState(domain::DefaultMcpExecutionSettings());
+  auto state = UseState(McpSettingsPresentationState{});
 
-  Lifecycle([tasks, service, settings, toast] {
-    tasks.Launch([service, settings, toast]() -> Task<void> {
+  Lifecycle([tasks, service, state, toast] {
+    tasks.Launch([service, state, toast]() -> Task<void> {
       auto loaded = co_await service->Load();
-      if (loaded)
-        settings = std::move(*loaded);
-      else
+      if (loaded) {
+        state.Update([settings = std::move(*loaded)](
+                         McpSettingsPresentationState &next) mutable {
+          next.settings = std::move(settings);
+          next.loaded = true;
+          next.busy = false;
+        });
+      } else {
+        state.Update([](McpSettingsPresentationState &next) {
+          next.loaded = false;
+          next.busy = false;
+        });
         toast.Show(loaded.error().message);
+      }
     });
   });
 
-  auto change_mode = [tasks, service, settings, toast,
+  auto change_mode = [tasks, service, state, toast,
                       on_mode_changed](domain::McpExecutionMode mode) {
-    const auto previous = settings.Get();
-    settings.Update([mode](auto &value) { value.mode = mode; });
-    tasks.Launch([service, settings, toast, previous, on_mode_changed,
+    if (!state->Interactive() || state->settings.mode == mode)
+      return;
+    const auto previous = state->settings;
+    state.Update([mode](McpSettingsPresentationState &next) {
+      next.settings.mode = mode;
+      next.busy = true;
+    });
+    tasks.Launch([service, state, toast, previous, on_mode_changed,
                   mode]() -> Task<void> {
       auto saved = co_await service->SetMode(mode);
       if (!saved) {
-        settings = previous;
+        state.Update([previous](McpSettingsPresentationState &next) {
+          next.settings = previous;
+          next.busy = false;
+        });
         toast.Show(saved.error().message);
         co_return;
       }
       auto loaded = co_await service->Load();
       if (loaded) {
-        settings = std::move(*loaded);
+        state.Update([settings = std::move(*loaded)](
+                         McpSettingsPresentationState &next) mutable {
+          next.settings = std::move(settings);
+          next.loaded = true;
+          next.busy = false;
+        });
         if (on_mode_changed)
           std::invoke(on_mode_changed);
       } else {
-        settings = previous;
+        state.Update([previous](McpSettingsPresentationState &next) {
+          next.settings = previous;
+          next.loaded = false;
+          next.busy = false;
+        });
         toast.Show(loaded.error().message);
       }
     });
   };
 
+  const auto &settings = state->settings;
+  const bool interactive = state->Interactive();
   std::vector<View> cards;
-  cards.push_back(ExecutionCard(settings->mode, capabilities, change_mode));
-  const auto supplement = std::ranges::find(kModeSupplements, settings->mode,
+  cards.push_back(
+      ExecutionCard(settings.mode, capabilities, interactive, change_mode));
+  const auto supplement = std::ranges::find(kModeSupplements, settings.mode,
                                             &ModeSupplementPresentation::mode);
   if (supplement != kModeSupplements.end()) {
     cards.push_back(std::invoke(supplement->factory, navigation, capabilities,
                                 platform_capabilities));
   }
-  for (const auto &group : settings->groups) {
+  for (const auto &group : settings.groups) {
     if (!domain::SupportsMcpExecutionMode(group.supported_modes,
-                                          settings->mode)) {
+                                          settings.mode)) {
       continue;
     }
-    const auto visual = GroupVisual(group.id, settings->mode);
+    const auto visual = GroupVisual(group.id, settings.mode);
     if (!visual)
       continue;
     cards.push_back(
-        ToolCard(group, *visual,
-                 [tasks, service, settings, toast, id = group.id,
-                  mode = settings->mode](bool enabled) {
-                   const auto previous = settings.Get();
-                   settings.Update([&](auto &value) {
-                     const auto found = std::ranges::find(
-                         value.groups, id, &domain::McpToolGroupState::id);
-                     if (found != value.groups.end())
-                       found->enabled = enabled;
-                   });
-                   tasks.Launch([service, settings, toast, previous, mode, id,
-                                 enabled]() -> Task<void> {
-                     auto saved = co_await service->SetToolGroupEnabled(
-                         mode, id, enabled);
-                     if (!saved) {
-                       settings = previous;
-                       toast.Show(saved.error().message);
-                     }
-                   });
-                 })
+        ToolCard(
+            group, *visual, interactive,
+            [tasks, service, state, toast, id = group.id,
+             mode = settings.mode](bool enabled) {
+              if (!state->Interactive())
+                return;
+              const auto previous = state->settings;
+              state.Update([&](McpSettingsPresentationState &next) {
+                const auto found = std::ranges::find(
+                    next.settings.groups, id, &domain::McpToolGroupState::id);
+                if (found != next.settings.groups.end())
+                  found->enabled = enabled;
+                next.busy = true;
+              });
+              tasks.Launch([service, state, toast, previous, mode, id,
+                            enabled]() -> Task<void> {
+                auto saved =
+                    co_await service->SetToolGroupEnabled(mode, id, enabled);
+                if (!saved) {
+                  state.Update([previous](McpSettingsPresentationState &next) {
+                    next.settings = previous;
+                    next.busy = false;
+                  });
+                  toast.Show(saved.error().message);
+                  co_return;
+                }
+                state.Update([](McpSettingsPresentationState &next) {
+                  next.busy = false;
+                });
+              });
+            })
             .Key(group.id));
   }
   cards.push_back(Stack{}.With(Frame{.height = 88.0F}));

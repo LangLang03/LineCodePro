@@ -979,6 +979,7 @@ struct FileToolDescriptor final {
   std::string_view description;
   std::string_view parameters_json;
   bool allowed_in_read_only;
+  bool agent_selected_by_default;
   FileToolExecutor execute;
 };
 
@@ -991,6 +992,7 @@ const std::array<FileToolDescriptor, 6> kFileTools{{
         .description = kFileReadDescription,
         .parameters_json = kFileReadSchema,
         .allowed_in_read_only = false,
+        .agent_selected_by_default = true,
         .execute = &ExecuteFileRead,
     },
     {
@@ -998,6 +1000,7 @@ const std::array<FileToolDescriptor, 6> kFileTools{{
         .description = kFileWriteDescription,
         .parameters_json = kFileWriteSchema,
         .allowed_in_read_only = false,
+        .agent_selected_by_default = false,
         .execute = &ExecuteFileWrite,
     },
     {
@@ -1005,6 +1008,7 @@ const std::array<FileToolDescriptor, 6> kFileTools{{
         .description = kFileEditDescription,
         .parameters_json = kFileEditSchema,
         .allowed_in_read_only = false,
+        .agent_selected_by_default = false,
         .execute = &ExecuteFileEdit,
     },
     {
@@ -1012,6 +1016,7 @@ const std::array<FileToolDescriptor, 6> kFileTools{{
         .description = kFileDeleteDescription,
         .parameters_json = kFileDeleteSchema,
         .allowed_in_read_only = false,
+        .agent_selected_by_default = false,
         .execute = &ExecuteFileDelete,
     },
     {
@@ -1019,6 +1024,7 @@ const std::array<FileToolDescriptor, 6> kFileTools{{
         .description = kGlobDescription,
         .parameters_json = kGlobSchema,
         .allowed_in_read_only = false,
+        .agent_selected_by_default = true,
         .execute = &ExecuteGlob,
     },
     {
@@ -1026,6 +1032,7 @@ const std::array<FileToolDescriptor, 6> kFileTools{{
         .description = kListDirectoryDescription,
         .parameters_json = kListDirectorySchema,
         .allowed_in_read_only = false,
+        .agent_selected_by_default = false,
         .execute = &ExecuteListDirectory,
     },
 }};
@@ -1040,6 +1047,7 @@ RegisteredTool CatalogEntry(const FileToolDescriptor &descriptor) {
       // permanent grant can be narrowed to a stable, reusable action key.
       .permanent_grant_supported = false,
       .category = std::string{kFileOpsGroupId},
+      .agent_selected_by_default = descriptor.agent_selected_by_default,
   };
 }
 

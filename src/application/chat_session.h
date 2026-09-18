@@ -55,6 +55,7 @@ public:
   Conversations() const noexcept;
   [[nodiscard]] std::string_view CurrentConversationId() const noexcept;
   void StartNewConversation();
+  void DeleteCurrentConversation();
   void SelectConversation(std::string_view id);
   void DeleteConversation(std::string_view id);
 

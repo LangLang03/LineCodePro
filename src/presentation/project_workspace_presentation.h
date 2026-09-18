@@ -17,7 +17,10 @@
 
 namespace linecode::application {
 class ProjectWorkspaceController;
-}
+class StoragePermissionService;
+class McpExecutionSettingsService;
+class SshSettingsService;
+} // namespace linecode::application
 
 namespace linecode::presentation {
 
@@ -41,6 +44,7 @@ struct WorkspaceClipboard final {
 
 [[nodiscard]] std::expected<std::string, std::string>
 WorkspaceRelativePath(std::string_view root, std::string_view absolute_path);
+[[nodiscard]] std::string WorkspaceDisplayPath(std::string_view path);
 
 [[nodiscard]] DrawerFileNode
 ToDrawerFileNode(const domain::ProjectFileNode &node);
@@ -56,13 +60,24 @@ public:
       huxerui::State<DrawerModel> drawer,
       huxerui::State<WorkspaceClipboard> clipboard, huxerui::TaskScope tasks,
       huxerui::BottomSheetHandle sheets, huxerui::DialogHandle dialogs,
-      huxerui::ToastHandle toast, std::shared_ptr<huxerui::FilePicker> picker);
+      huxerui::ToastHandle toast, std::shared_ptr<huxerui::FilePicker> picker,
+      std::shared_ptr<application::StoragePermissionService> storage_permission,
+      huxerui::State<bool> external_storage_granted,
+      huxerui::State<bool> termux_ssh_mode,
+      std::shared_ptr<application::McpExecutionSettingsService>
+          execution_settings,
+      std::shared_ptr<application::SshSettingsService> ssh_settings);
 
   void Refresh() const;
   void ShowProjectPicker() const;
   void SelectProject(std::string id) const;
   void ShowCreateProjectDialog() const;
   void OpenExternalProject() const;
+  void OpenStorageManagement() const;
+  [[nodiscard]] bool ExternalStorageGranted() const {
+    return external_storage_granted_.Get();
+  }
+  [[nodiscard]] bool IsTermuxSshMode() const { return termux_ssh_mode_.Get(); }
   void ConfirmDeleteProject(domain::ProjectRecord project) const;
 
   void ToggleNode(const DrawerFileTarget &target) const;
@@ -84,6 +99,11 @@ private:
   huxerui::DialogHandle dialogs_;
   huxerui::ToastHandle toast_;
   std::shared_ptr<huxerui::FilePicker> picker_;
+  std::shared_ptr<application::StoragePermissionService> storage_permission_;
+  huxerui::State<bool> external_storage_granted_;
+  huxerui::State<bool> termux_ssh_mode_;
+  std::shared_ptr<application::McpExecutionSettingsService> execution_settings_;
+  std::shared_ptr<application::SshSettingsService> ssh_settings_;
 };
 
 } // namespace linecode::presentation

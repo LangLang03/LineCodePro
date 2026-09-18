@@ -12,6 +12,7 @@
 #include "domain/app_state.h"
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/components/legacy_settings_card_frame.h"
+#include "presentation/components/legacy_switch.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -71,7 +72,7 @@ View SwitchRow(ImageResource icon, StringResource title, StringResource descript
       Column{Text(title).Style(Label(16.0F, FontWeight::Medium)),
              Text(description).Style(Label(11.0F, FontWeight::Regular, colors::tertiary))}
           .With(Spacing(2.0F), Grow()),
-      Switch(checked).OnChanged(std::move(changed)),
+      LegacySwitch(checked, std::move(changed)),
   }.OnClick([checked, changed = std::move(row_changed)] { changed(!checked); })
       .With(Frame{.min_height = minimum_height}, Spacing(12.0F),
             Padding(EdgeInsets::All(16.0F)),

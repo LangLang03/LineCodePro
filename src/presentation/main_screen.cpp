@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <expected>
 #include <filesystem>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <string_view>
@@ -16,6 +17,7 @@
 #include "application/behavior_settings_repository.h"
 #include "application/chat_mode_service.h"
 #include "application/chat_session.h"
+#include "application/context_compaction.h"
 #include "application/generation_controller.h"
 #include "application/mcp_execution_settings.h"
 #include "application/memory_context_service.h"
@@ -29,12 +31,12 @@
 #include "application/ports/memory_store.h"
 #include "application/ports/model_store.h"
 #include "application/ports/storage_permission.h"
-#include "application/project_workspace_service.h"
 #include "application/ports/todo_state_store.h"
-#include "application/context_compaction.h"
+#include "application/project_workspace_service.h"
 #include "application/prompt_request_composer.h"
 #include "application/ssh_settings_service.h"
 #include "application/tool_permission_service.h"
+#include "application/user_agreement.h"
 #include "domain/app_state.h"
 #include "domain/memory_rag.h"
 #include "presentation/components/chat_screen.h"
@@ -57,8 +59,8 @@
 #include "presentation/screens/output_settings_screen.h"
 #include "presentation/screens/prompt_templates_screen.h"
 #include "presentation/screens/security_settings_screen.h"
-#include "presentation/screens/shell_command_screen.h"
 #include "presentation/screens/settings_screen.h"
+#include "presentation/screens/shell_command_screen.h"
 #include "presentation/screens/skill_hub_screens.h"
 #include "presentation/screens/ssh_settings_screen.h"
 #include "presentation/screens/storage_screen.h"
@@ -74,6 +76,92 @@
 
 namespace linecode::presentation {
 namespace {
+
+using namespace huxerui;
+
+enum class AgreementPhase : std::uint8_t {
+  loading,
+  required,
+  saving,
+  accepted,
+};
+
+Task<void> LoadAgreement(std::shared_ptr<application::UserAgreement> agreement,
+                         State<AgreementPhase> phase) {
+  phase = co_await agreement->ShouldShow() ? AgreementPhase::required
+                                           : AgreementPhase::accepted;
+}
+
+View AgreementAction(StringVariant label, Color color, bool enabled,
+                     std::function<void()> action) {
+  return Text(std::move(label))
+      .Style(
+          TextStyle{Font::System(16.0F).WithWeight(FontWeight::Medium), color})
+      .Align(TextAlign::Center)
+      .OnClick([enabled, action = std::move(action)] {
+        if (enabled && action)
+          std::invoke(action);
+      })
+      .With(Frame{.min_height = 48.0F},
+            Padding(EdgeInsets::Symmetric(16.0F, 12.0F)), Enabled{enabled},
+            Opacity(enabled ? 1.0F : 0.45F), Focusable(),
+            PointerCursor(enabled ? PointerCursorKind::Hand
+                                  : PointerCursorKind::Default));
+}
+
+View AgreementScreen(const LineColors &colors,
+                     std::shared_ptr<application::UserAgreement> agreement,
+                     State<AgreementPhase> phase, TaskScope tasks,
+                     ApplicationHandle application) {
+  const bool enabled = phase.Get() == AgreementPhase::required;
+  auto accept = [agreement = std::move(agreement), phase, tasks] {
+    if (phase.Get() != AgreementPhase::required)
+      return;
+    phase = AgreementPhase::saving;
+    tasks.Launch([agreement, phase]() -> Task<void> {
+      phase = co_await agreement->Accept() ? AgreementPhase::accepted
+                                           : AgreementPhase::required;
+    });
+  };
+
+  View panel =
+      Column{
+          Text(app::strings::user_agreement_title)
+              .Style(TextStyle{Font::System(17.0F).WithWeight(FontWeight::Bold),
+                               colors.text})
+              .With(Frame{.min_height = 24.4F}),
+          Column{
+              Divider(),
+          }
+              .With(Padding(EdgeInsets{.top = 12.4F, .bottom = 12.0F})),
+          ScrollView(Text(app::strings::user_agreement_text)
+                         .Style(TextStyle{Font::System(16.0F), colors.text}))
+              .ScrollAxis(Axis::Vertical)
+              .With(Grow(), Padding(EdgeInsets{.bottom = 12.0F})),
+          Row{
+              Spacer(),
+              AgreementAction(app::strings::user_agreement_disagree,
+                              colors.secondary, enabled,
+                              [application] { application.Quit(); }),
+              AgreementAction(app::strings::user_agreement_agree, colors.accent,
+                              enabled, std::move(accept)),
+          }
+              .With(Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center)),
+      }
+          .With(Padding(EdgeInsets{.top = 25.5F,
+                                   .right = 24.0F,
+                                   .bottom = 25.5F,
+                                   .left = 24.0F}),
+                CrossAlign(CrossAxisAlignment::Stretch),
+                Background(colors.background), CornerRadius(24.0F));
+
+  return Stack{
+      std::move(panel),
+  }
+      .On<ViewEvents::BackRequested>([] {})
+      .With(Align(HorizontalAlignment::Stretch, VerticalAlignment::Stretch),
+            Background(Color::Rgb(0, 0, 0, 0.60F)), SafeAreaPadding{});
+}
 
 std::vector<DrawerConversation>
 ToDrawerConversations(const application::ChatSession &session) {
@@ -221,7 +309,9 @@ huxerui::View HomeScreen(
         behavior_settings,
     std::shared_ptr<application::TodoStateStore> todo_state,
     std::shared_ptr<application::SkillRepository> skills,
-    std::shared_ptr<application::McpExecutionSettingsService> execution_settings,
+    std::shared_ptr<application::McpExecutionSettingsService>
+        execution_settings,
+    std::shared_ptr<application::SshSettingsService> ssh_settings,
     std::shared_ptr<application::ContextCompactionService> compaction_service,
     std::shared_ptr<application::DiffStore> diff_store,
     std::shared_ptr<application::DiffReviewService> diff_review,
@@ -232,6 +322,7 @@ huxerui::View HomeScreen(
     huxerui::State<application::ChatInteractionModeState> interaction_mode,
     domain::InputSettings input_settings, std::string linecode_root,
     huxerui::State<ProjectWorkspacePresentationState> workspace_state,
+    huxerui::State<bool> termux_ssh_mode,
     huxerui::State<std::optional<bool>> selected_model_available,
     std::shared_ptr<application::GenerationController> generation,
     huxerui::State<huxerui::TaskHandle> active_generation,
@@ -246,20 +337,27 @@ huxerui::View HomeScreen(
   auto session = UseState(std::move(initial_session));
   auto drawer_model = UseState(DrawerModel{});
   auto workspace_clipboard = UseState(WorkspaceClipboard{});
+  auto external_storage_granted = UseState(false);
   const auto tasks = UseTaskScope();
   const auto sheets = UseBottomSheet();
   const auto dialogs = UseDialog();
   const auto toast = UseToast();
   const auto picker = UseService<FilePicker>();
-  const ProjectWorkspaceCoordinator workspace_coordinator{project_workspace,
-                                                          workspace_state,
-                                                          drawer_model,
-                                                          workspace_clipboard,
-                                                          tasks,
-                                                          sheets,
-                                                          dialogs,
-                                                          toast,
-                                                          picker};
+  const ProjectWorkspaceCoordinator workspace_coordinator{
+      project_workspace,
+      workspace_state,
+      drawer_model,
+      workspace_clipboard,
+      tasks,
+      sheets,
+      dialogs,
+      toast,
+      picker,
+      storage_permission,
+      external_storage_granted,
+      termux_ssh_mode,
+      execution_settings,
+      ssh_settings};
 
   Lifecycle(
       [tasks, workspace_coordinator, model_store, selected_model_available] {
@@ -356,20 +454,20 @@ huxerui::View HomeScreen(
 
   View centered_chat =
       Stack{
-          ChatScreen([drawer_open] { drawer_open = true; }, draft,
-                     session.Get(), generation, model_store, completion_loop,
-                     storage_permission, selected_model_available.Get(),
-                     active_generation, revision, pending_messages,
-                     drawer_model, memory_context, behavior_settings,
-                     todo_state, skills, execution_settings,
-                     compaction_service, diff_store, diff_review,
-                     output_settings, tool_permissions, tool_reviews,
-                     chat_modes, interaction_mode,
-                     input_settings, project_id, std::move(prompt_context),
-                     visible_drawer.project_label,
-                     [workspace_coordinator] {
-                       workspace_coordinator.ShowProjectPicker();
-                     })
+          ChatScreen(
+              [drawer_open] { drawer_open = true; }, draft, session.Get(),
+              generation, model_store, completion_loop, storage_permission,
+              selected_model_available.Get(), active_generation, revision,
+              pending_messages, drawer_model, memory_context, behavior_settings,
+              todo_state, skills, execution_settings, compaction_service,
+              diff_store, diff_review, output_settings, tool_permissions,
+              tool_reviews, chat_modes, interaction_mode, input_settings,
+              project_id, std::move(prompt_context),
+              visible_drawer.project_label,
+              [workspace_coordinator] {
+                workspace_coordinator.ShowProjectPicker();
+              },
+              [workspace_coordinator] { workspace_coordinator.Refresh(); })
               .With(Frame{.max_width = 792.0F}),
       }
           .With(Align(HorizontalAlignment::Center, VerticalAlignment::Stretch),
@@ -397,6 +495,7 @@ huxerui::View MainScreen(
     std::shared_ptr<application::PromptTemplateRepository> prompt_templates,
     std::shared_ptr<application::McpCompletionLoop> completion_loop,
     std::shared_ptr<application::OutputSettingsService> output_settings_service,
+    std::shared_ptr<application::UserAgreement> user_agreement,
     std::shared_ptr<application::ThemeSettingsService> theme_service,
     huxerui::State<application::ThemeSettingsState> theme_settings,
     std::shared_ptr<application::McpExecutionSettingsService> mcp_settings,
@@ -408,7 +507,8 @@ huxerui::View MainScreen(
     std::shared_ptr<application::MemoryStore> memory_store,
     std::shared_ptr<application::TodoStateStore> todo_state,
     std::shared_ptr<application::SkillRepository> skills,
-    std::shared_ptr<application::McpExecutionSettingsService> execution_settings,
+    std::shared_ptr<application::McpExecutionSettingsService>
+        execution_settings,
     std::shared_ptr<application::ContextCompactionService> compaction_service,
     std::shared_ptr<application::DiffStore> diff_store,
     std::shared_ptr<application::DiffReviewService> diff_review,
@@ -446,15 +546,20 @@ huxerui::View MainScreen(
   auto active_input_settings = UseState(domain::InputSettings{});
   auto interaction_mode = UseState(application::ChatInteractionModeState{});
   auto workspace_state = UseState(ProjectWorkspacePresentationState{});
+  auto termux_ssh_mode = UseState(false);
+  auto agreement_phase = UseState(AgreementPhase::loading);
   auto memory_context =
       UseState(std::make_shared<application::MemoryContextService>(
           memory_store,
           std::make_shared<domain::ExplicitMemoryExtractionPolicy>(),
           std::make_shared<application::LegacyMemoryPromptRenderer>()));
   const auto settings_tasks = UseTaskScope();
+  const auto application = UseApplication();
+  const auto line_colors = UseEnvironment<LineColors>();
 
   Lifecycle([settings_tasks, input_settings, active_input_settings, chat_modes,
-             interaction_mode] {
+             interaction_mode, user_agreement, agreement_phase] {
+    settings_tasks.Launch(LoadAgreement(user_agreement, agreement_phase));
     settings_tasks.Launch(
         [input_settings, active_input_settings]() -> Task<void> {
           const auto loaded = co_await input_settings->Load();
@@ -468,32 +573,39 @@ huxerui::View MainScreen(
     });
   });
 
+  if (agreement_phase.Get() != AgreementPhase::accepted) {
+    if (agreement_phase.Get() == AgreementPhase::loading) {
+      return Stack{}.With(Background(line_colors.background),
+                          SafeAreaPadding{});
+    }
+    return AgreementScreen(line_colors, user_agreement, agreement_phase,
+                           settings_tasks, application);
+  }
+
   auto root =
       [initial_session, project_workspace = std::move(project_workspace),
        model_store, completion_loop = std::move(completion_loop),
        storage_permission = std::move(storage_permission),
        memory_context = memory_context.Get(), ai_behavior_settings,
        todo_state = std::move(todo_state), skills = std::move(skills),
-       execution_settings = std::move(execution_settings),
+       execution_settings = std::move(execution_settings), ssh_settings,
        compaction_service = std::move(compaction_service),
        diff_store = std::move(diff_store), diff_review = std::move(diff_review),
-       output_settings_service,
-       tool_permissions, tool_reviews, chat_modes, interaction_mode,
-       active_input_settings,
-       linecode_root, workspace_state, selected_model_available,
-       generation = generation.Get(), active_generation, chat_revision,
+       output_settings_service, tool_permissions, tool_reviews, chat_modes,
+       interaction_mode, active_input_settings, linecode_root, workspace_state,
+       termux_ssh_mode, selected_model_available, generation = generation.Get(),
+       active_generation, chat_revision,
        pending_messages = pending_messages.Get(),
        workspace_revision]() -> View {
-    return HomeScreen(initial_session, project_workspace, model_store,
-                      completion_loop, storage_permission, memory_context,
-                      ai_behavior_settings, todo_state, skills,
-                      execution_settings, compaction_service, diff_store,
-                      diff_review, output_settings_service,
-                      tool_permissions, tool_reviews, chat_modes,
-                      interaction_mode, active_input_settings.Get(),
-                      linecode_root, workspace_state, selected_model_available,
-                      generation, active_generation, pending_messages,
-                      chat_revision, workspace_revision);
+    return HomeScreen(
+        initial_session, project_workspace, model_store, completion_loop,
+        storage_permission, memory_context, ai_behavior_settings, todo_state,
+        skills, execution_settings, ssh_settings, compaction_service,
+        diff_store, diff_review, output_settings_service, tool_permissions,
+        tool_reviews, chat_modes, interaction_mode, active_input_settings.Get(),
+        linecode_root, workspace_state, termux_ssh_mode,
+        selected_model_available, generation, active_generation,
+        pending_messages, chat_revision, workspace_revision);
   };
 
   auto destination =
@@ -501,8 +613,7 @@ huxerui::View MainScreen(
        model_catalog = std::move(model_catalog),
        ai_behavior_settings = std::move(ai_behavior_settings),
        input_settings = std::move(input_settings), active_input_settings,
-       prompt_templates = std::move(prompt_templates),
-       output_settings_service,
+       prompt_templates = std::move(prompt_templates), output_settings_service,
        theme_service = std::move(theme_service), theme_settings,
        mcp_settings = std::move(mcp_settings),
        tool_settings = std::move(tool_settings),
@@ -523,16 +634,16 @@ huxerui::View MainScreen(
        data_archive = std::move(data_archive),
        data_callbacks = std::move(data_callbacks), selected_model_available,
        generation = generation.Get(), active_generation, chat_revision,
-       workspace_revision, tool_settings_revision,
-       extension_revision](domain::AppRoute route) mutable -> View {
+       workspace_revision, tool_settings_revision, extension_revision,
+       linecode_root](domain::AppRoute route) mutable -> View {
     auto current_skill_hub_services = skill_hub_services;
     current_skill_hub_services.roots.project =
         workspace_state->selected &&
                 workspace_state->selected->source !=
                     domain::ProjectSource::ssh &&
                 !workspace_state->selected->path.empty()
-            ? std::optional<huxerui::File>{
-                  huxerui::File{workspace_state->selected->path}}
+            ? std::optional<huxerui::File>{huxerui::File{
+                  workspace_state->selected->path}}
             : std::nullopt;
     if (const auto *detail = route.SkillStoreDetailValue()) {
       return SkillStoreDetailScreen(current_skill_hub_services, *detail);
@@ -652,8 +763,12 @@ huxerui::View MainScreen(
       const std::string project_id =
           workspace_state->selected ? workspace_state->selected->id
                                     : std::string{domain::default_project_id};
+      const std::string project_display =
+          workspace_state->selected && !workspace_state->selected->path.empty()
+              ? workspace_state->selected->path
+              : (std::filesystem::path{linecode_root} / "home").string();
       return MemoryScreen(memory_store, project_id,
-                          LocalizedMemoryPresentation());
+                          LocalizedMemoryPresentation(), project_display);
     }
     if (route == domain::AppRoute::prompt_templates) {
       return PromptTemplatesScreen(prompt_templates);
@@ -718,7 +833,7 @@ huxerui::View MainScreen(
       return DataSettingsScreen(data_archive, std::move(callbacks));
     }
     if (route == domain::AppRoute::about) {
-      return AboutScreen(domain::AppRoute::licenses);
+      return AboutScreen(domain::AppRoute::licenses, output_settings_service);
     }
     if (route == domain::AppRoute::licenses) {
       return LicensesScreen();

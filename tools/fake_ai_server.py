@@ -85,12 +85,14 @@ class FixtureServer(ThreadingHTTPServer):
         reply: str = DEFAULT_REPLY,
         log_requests: bool = True,
         read_timeout: float = REQUEST_READ_TIMEOUT_SECONDS,
+        response_delay: float = 0.0,
         request_log: Path | None = None,
     ) -> None:
         super().__init__(address, FakeAiHandler)
         self.reply = reply
         self.log_requests = log_requests
         self.read_timeout = read_timeout
+        self.response_delay = response_delay
         self.request_log = request_log
         self.request_log_lock = threading.Lock()
         # Counts completions failed by FAIL_TOOL_TRIGGER so the retry path is
@@ -279,6 +281,9 @@ class FakeAiHandler(BaseHTTPRequestHandler):
         self.send_not_found()
 
     def do_POST(self) -> None:  # noqa: N802
+        delay = self.fixture_server.response_delay
+        if delay > 0:
+            time.sleep(delay)
         try:
             request = self.read_request_json()
         except RequestBodyError as error:
@@ -869,6 +874,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reply", default=DEFAULT_REPLY)
     parser.add_argument("--quiet", action="store_true", help="disable per-request logs")
     parser.add_argument(
+        "--response-delay",
+        type=float,
+        default=0.0,
+        help=(
+            "seconds to wait before answering. Transient UI states -- the "
+            "working indicator, a running tool card -- cannot be screenshotted "
+            "against an instant reply, so holding the response is the only way "
+            "to compare them."
+        ),
+    )
+    parser.add_argument(
         "--request-log",
         type=Path,
         help="append each parsed POST body as one JSON line for integration assertions",
@@ -889,6 +905,7 @@ def main() -> None:
     args = parse_args()
     server = FixtureServer(
         (args.host, args.port), reply=args.reply, log_requests=not args.quiet,
+        response_delay=args.response_delay,
         request_log=args.request_log,
     )
 

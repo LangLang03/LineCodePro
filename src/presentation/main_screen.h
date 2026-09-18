@@ -44,6 +44,7 @@ class ToolPermissionService;
 class TermuxIntegrationGateway;
 class TerminalProviderDiscovery;
 class TerminalProviderStore;
+class UserAgreement;
 } // namespace linecode::application
 
 namespace linecode::presentation {
@@ -61,6 +62,7 @@ huxerui::View MainScreen(
     std::shared_ptr<application::PromptTemplateRepository> prompt_templates,
     std::shared_ptr<application::McpCompletionLoop> completion_loop,
     std::shared_ptr<application::OutputSettingsService> output_settings_service,
+    std::shared_ptr<application::UserAgreement> user_agreement,
     std::shared_ptr<application::ThemeSettingsService> theme_service,
     huxerui::State<application::ThemeSettingsState> theme_settings,
     std::shared_ptr<application::McpExecutionSettingsService> mcp_settings,

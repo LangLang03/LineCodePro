@@ -456,6 +456,19 @@ def execute_action(config: Config, action: dict[str, Any], label: str) -> list[s
                     f"expect_control_checked failed after {label_text!r}: "
                     f"expected {expected}, got {actual}"
                 )
+    elif kind == "wait_for_text":
+        expected = str(action["value"])
+        timeout = float(action.get("timeout_seconds", 10.0))
+        deadline = time.monotonic() + timeout
+        found = False
+        while time.monotonic() < deadline:
+            xml, _ = dump_ui(config)
+            if expected in all_visible_text(xml):
+                found = True
+                break
+            time.sleep(0.2)
+        if not found:
+            failures.append(f"wait_for_text timed out for {expected!r}")
     elif kind in {"expect_text", "expect_no_text", "expect_activity"}:
         xml, activities = dump_ui(config)
         haystack = activities if kind == "expect_activity" else all_visible_text(xml)

@@ -53,6 +53,7 @@
 #include "application/terminal_provider_tool_registry.h"
 #include "application/theme_settings.h"
 #include "application/tool_permission_service.h"
+#include "application/user_agreement.h"
 #if defined(__ANDROID__)
 #include "application/ports/keep_alive.h"
 #include "application/ports/todo_state_store.h"
@@ -247,6 +248,8 @@ huxerui::View PlatformServicesHost() {
       huxerui::UseState(std::shared_ptr<application::AsyncSettingsStore>{
           std::make_shared<infrastructure::SQLiteSettingsStore>(
               database_file)});
+  auto user_agreement = huxerui::UseState(
+      std::make_shared<application::UserAgreement>(settings_store.Get()));
   auto skill_hub_reading =
       huxerui::UseState(std::make_shared<application::SkillHubReadingSettings>(
           settings_store.Get()));
@@ -326,8 +329,14 @@ huxerui::View PlatformServicesHost() {
                   infrastructure::HuxImageGenerationGateway>(http))});
   std::vector<std::shared_ptr<application::ToolRegistry>> tool_sources{
       mcp_extension_tools.Get(), image_generation_tools.Get()};
+  // `UseString` validates the placeholder count, so a zero-placeholder probe
+  // must be resolved without arguments (passing a fallback is a runtime error,
+  // not a default).
+  const auto tool_text_language = application::ToolTextLanguageFor(
+      UseString(::app::strings::app_locale_probe));
   tool_sources.push_back(std::make_shared<application::SshToolRegistry>(
-      mcp_settings.Get(), ssh_settings.Get(), ssh_runtime.Get()));
+      mcp_settings.Get(), ssh_settings.Get(), ssh_runtime.Get(),
+      tool_text_language));
   if (terminal_provider_gateway) {
     tool_sources.push_back(
         std::make_shared<application::TerminalProviderToolRegistry>(
@@ -481,11 +490,6 @@ huxerui::View PlatformServicesHost() {
   // Tool-internal messages are shown to the user on failure, so they follow
   // the UI language. A locale is only observable by resolving a resource
   // during composition, hence the probe.
-  // `UseString` validates the placeholder count, so a zero-placeholder probe
-  // must be resolved without arguments (passing a fallback is a runtime error,
-  // not a default).
-  const auto tool_text_language = application::ToolTextLanguageFor(
-      UseString(::app::strings::app_locale_probe));
   auto file_tools = huxerui::UseState(
       std::shared_ptr<application::ToolRegistry>{
           std::make_shared<application::FileToolRegistry>(
@@ -568,6 +572,7 @@ huxerui::View PlatformServicesHost() {
        input_settings = input_settings.Get(),
        prompt_templates = prompt_templates.Get(),
        output_settings_service = output_settings_service.Get(),
+       user_agreement = user_agreement.Get(),
        completion_loop = completion_loop.Get(),
        theme_service = theme_service.Get(), theme_settings,
        mcp_settings = mcp_settings.Get(), tool_settings = tool_settings.Get(),
@@ -610,7 +615,8 @@ huxerui::View PlatformServicesHost() {
         return presentation::MainScreen(
             initial_session, project_workspace, model_store, model_catalog,
             ai_behavior_settings, input_settings, prompt_templates,
-            completion_loop, output_settings_service, theme_service,
+            completion_loop, output_settings_service, user_agreement,
+            theme_service,
             theme_settings, mcp_settings, tool_settings, tool_permissions,
             tool_reviews, chat_modes, ssh_settings, memory_store, todo_state,
             skills,

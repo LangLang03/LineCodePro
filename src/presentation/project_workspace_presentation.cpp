@@ -10,9 +10,13 @@
 #include <app_resources.h>
 #include <huxerui/huxerui.h>
 
+#include "application/mcp_execution_settings.h"
 #include "application/ports/project_workspace_controller.h"
+#include "application/ports/storage_permission.h"
 #include "application/ssh_project_workspace.h"
+#include "application/ssh_settings_service.h"
 #include "presentation/line_theme.h"
+#include "presentation/platform_features.h"
 
 namespace linecode::presentation {
 namespace {
@@ -372,9 +376,14 @@ NameDialog(DialogContext dialog, StringVariant title, StringVariant message,
 
 View ProjectRow(BottomSheetContext sheet, const domain::ProjectRecord &project,
                 const ProjectWorkspaceCoordinator &coordinator) {
-  View row = SheetRow(project.label,
-                      project.path.empty() ? project.description : project.path,
-                      project.selected, [sheet, coordinator, id = project.id] {
+  const auto display_path = WorkspaceDisplayPath(project.path);
+  const StringVariant description =
+      !display_path.empty() ? StringVariant{display_path}
+      : project.source == domain::ProjectSource::ssh
+          ? StringVariant{app::strings::workspace_ssh_login_directory}
+          : StringVariant{project.description};
+  View row = SheetRow(project.label, description, project.selected,
+                      [sheet, coordinator, id = project.id] {
                         sheet.Dismiss();
                         coordinator.SelectProject(id);
                       });
@@ -395,26 +404,46 @@ ProjectSheet(BottomSheetContext sheet,
              State<ProjectWorkspacePresentationState> state,
              ProjectWorkspaceCoordinator coordinator) {
   std::vector<View> rows;
-  rows.reserve(state->projects.size() + 2);
+  rows.reserve(state->projects.size() + 3);
   for (const auto &project : state->projects)
     rows.push_back(ProjectRow(sheet, project, coordinator));
   const bool ssh_mode =
       state->selected && state->selected->source == domain::ProjectSource::ssh;
-  if (!ssh_mode) {
-    rows.push_back(SheetRow(app::strings::workspace_open_local,
-                            app::strings::workspace_open_local_desc, false,
-                            [sheet, coordinator] {
-                              sheet.Dismiss();
-                              coordinator.OpenExternalProject();
-                            }));
+  const bool local_project_available =
+      !ssh_mode || coordinator.IsTermuxSshMode();
+  if (local_project_available) {
+    rows.push_back(SheetRow(
+        app::strings::workspace_open_local,
+        ssh_mode ? StringVariant(app::strings::workspace_open_local_ssh_desc)
+                 : StringVariant(app::strings::workspace_open_local_desc),
+        false, [sheet, coordinator] {
+          sheet.Dismiss();
+          coordinator.OpenExternalProject();
+        }));
   }
-  rows.push_back(SheetRow(app::strings::workspace_create,
-                          app::strings::workspace_create_desc, false,
-                          [sheet, coordinator] {
-                            sheet.Dismiss();
-                            coordinator.ShowCreateProjectDialog();
-                          }));
-  return SheetPanel(app::strings::workspace_title, std::move(rows));
+  rows.push_back(
+      SheetRow(app::strings::workspace_create,
+               ssh_mode ? StringVariant(app::strings::workspace_create_ssh_desc)
+                        : StringVariant(app::strings::workspace_create_desc),
+               false, [sheet, coordinator] {
+                 sheet.Dismiss();
+                 coordinator.ShowCreateProjectDialog();
+               }));
+  if (local_project_available &&
+      FeatureAvailable<PlatformFeature::android_storage_permission>) {
+    rows.push_back(SheetRow(
+        app::strings::permission_mode_manage_all_files,
+        coordinator.ExternalStorageGranted()
+            ? StringVariant(app::strings::permission_mode_storage_granted)
+            : StringVariant(app::strings::permission_mode_storage_required),
+        coordinator.ExternalStorageGranted(), [sheet, coordinator] {
+          sheet.Dismiss();
+          coordinator.OpenStorageManagement();
+        }));
+  }
+  return SheetPanel(ssh_mode ? StringVariant(app::strings::workspace_title_ssh)
+                             : StringVariant(app::strings::workspace_title),
+                    std::move(rows));
 }
 
 } // namespace
@@ -424,11 +453,21 @@ ProjectWorkspaceCoordinator::ProjectWorkspaceCoordinator(
     State<ProjectWorkspacePresentationState> state, State<DrawerModel> drawer,
     State<WorkspaceClipboard> clipboard, TaskScope tasks,
     BottomSheetHandle sheets, DialogHandle dialogs, ToastHandle toast,
-    std::shared_ptr<FilePicker> picker)
+    std::shared_ptr<FilePicker> picker,
+    std::shared_ptr<application::StoragePermissionService> storage_permission,
+    State<bool> external_storage_granted, State<bool> termux_ssh_mode,
+    std::shared_ptr<application::McpExecutionSettingsService>
+        execution_settings,
+    std::shared_ptr<application::SshSettingsService> ssh_settings)
     : service_(std::move(service)), state_(state), drawer_(drawer),
       clipboard_(clipboard), tasks_(std::move(tasks)),
       sheets_(std::move(sheets)), dialogs_(std::move(dialogs)),
-      toast_(std::move(toast)), picker_(std::move(picker)) {}
+      toast_(std::move(toast)), picker_(std::move(picker)),
+      storage_permission_(std::move(storage_permission)),
+      external_storage_granted_(external_storage_granted),
+      termux_ssh_mode_(termux_ssh_mode),
+      execution_settings_(std::move(execution_settings)),
+      ssh_settings_(std::move(ssh_settings)) {}
 
 void ProjectWorkspaceCoordinator::Refresh() const {
   if (!service_)
@@ -441,8 +480,49 @@ void ProjectWorkspaceCoordinator::Refresh() const {
 
 void ProjectWorkspaceCoordinator::ShowProjectPicker() const {
   Refresh();
-  sheets_.Show([state = state_, coordinator = *this](BottomSheetContext sheet) {
-    return ProjectSheet(sheet, state, coordinator);
+  const auto present = [sheets = sheets_, state = state_, coordinator = *this] {
+    sheets.Show([state, coordinator](BottomSheetContext sheet) {
+      return ProjectSheet(sheet, state, coordinator);
+    });
+  };
+  const auto present_after_permission = [permission = storage_permission_,
+                                         granted = external_storage_granted_,
+                                         toast = toast_, present] {
+    if constexpr (FeatureAvailable<
+                      PlatformFeature::android_storage_permission>) {
+      if (permission) {
+        permission->Query([granted, toast, present](
+                              application::StoragePermissionResult result) {
+          if (result.Succeeded()) {
+            granted = result.granted;
+          } else {
+            toast.Show(result.error);
+          }
+          present();
+        });
+        return;
+      }
+    }
+    present();
+  };
+  if (!execution_settings_ || !ssh_settings_) {
+    termux_ssh_mode_ = false;
+    present_after_permission();
+    return;
+  }
+  tasks_.Launch([execution_settings = execution_settings_,
+                 ssh_settings = ssh_settings_,
+                 termux_ssh_mode = termux_ssh_mode_,
+                 present_after_permission]() -> Task<void> {
+    const auto execution = co_await execution_settings->Load();
+    if (!execution || execution->mode != domain::McpExecutionMode::ssh) {
+      termux_ssh_mode = false;
+      present_after_permission();
+      co_return;
+    }
+    const auto ssh = co_await ssh_settings->Load();
+    termux_ssh_mode = ssh && domain::IsTermuxSshHost(ssh->host);
+    present_after_permission();
   });
 }
 
@@ -503,6 +583,20 @@ void ProjectWorkspaceCoordinator::OpenExternalProject() const {
     }
     co_await RefreshWorkspace(service, state, drawer, toast, true);
   });
+}
+
+void ProjectWorkspaceCoordinator::OpenStorageManagement() const {
+  if (!storage_permission_)
+    return;
+  storage_permission_->OpenManagementSettings(
+      [granted = external_storage_granted_,
+       toast = toast_](application::StoragePermissionResult result) {
+        if (!result.Succeeded()) {
+          toast.Show(result.error);
+          return;
+        }
+        granted = result.granted;
+      });
 }
 
 void ProjectWorkspaceCoordinator::ConfirmDeleteProject(

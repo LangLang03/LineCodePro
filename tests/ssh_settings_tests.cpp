@@ -35,6 +35,10 @@ void VerifyDefaultsAndNormalization() {
   assert(ParseSshPort(" 8022\n") == 8022);
   assert(ParseSshPort("0") == 8022);
   assert(ParseSshPort("invalid") == 8022);
+  assert(IsTermuxSshHost("127.0.0.1"));
+  assert(IsTermuxSshHost(" localhost "));
+  assert(IsTermuxSshHost("LOCALHOST"));
+  assert(!IsTermuxSshHost("192.168.1.2"));
 }
 
 void VerifyLegacyCodec() {
@@ -52,7 +56,8 @@ void VerifyLegacyCodec() {
   assert(decoded);
   assert(*decoded == config);
 
-  const auto partial = infrastructure::DecodeSshConfig(R"({"username":" user "})");
+  const auto partial =
+      infrastructure::DecodeSshConfig(R"({"username":" user "})");
   assert(partial);
   assert(partial->host == domain::kDefaultSshHost);
   assert(partial->port == domain::kDefaultSshPort);

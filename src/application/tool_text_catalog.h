@@ -100,11 +100,17 @@ enum class ToolTextKey : std::uint8_t {
   tool_custom_agent_task_empty,
   tool_custom_agent_runner_not_available,
   tool_custom_agent_failed,
+  tool_ssh_not_configured,
+  tool_ssh_missing_host,
+  tool_ssh_missing_port,
+  tool_ssh_missing_username,
+  tool_ssh_missing_credentials,
+  tool_ssh_command_empty,
   tool_agent_output_empty,
 };
 
 // Number of ToolTextKey values, and the row count of the generated table.
-inline constexpr std::size_t kToolTextKeyCount = 70;
+inline constexpr std::size_t kToolTextKeyCount = 76;
 
 // Packaged resource key of a catalog entry, such as "tool_file_read_failed".
 [[nodiscard]] std::string_view ToolTextName(ToolTextKey key) noexcept;

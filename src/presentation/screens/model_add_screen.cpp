@@ -2,10 +2,8 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <chrono>
 #include <functional>
-#include <numbers>
 #include <optional>
 #include <string>
 #include <utility>
@@ -15,8 +13,9 @@
 #include <huxerui/huxerui.h>
 
 #include "presentation/components/legacy_screen_header_layout.h"
-#include "presentation/model_form_presentation.h"
+#include "presentation/components/legacy_switch.h"
 #include "presentation/line_theme.h"
+#include "presentation/model_form_presentation.h"
 #include "presentation/model_protocol_presentation.h"
 
 namespace linecode::presentation {
@@ -43,7 +42,10 @@ struct ModelFormState final {
   bool local{};
   bool protocol_locked{};
   bool preset_mode{};
-  bool busy{};
+  bool primary_querying{};
+  bool compression_querying{};
+  bool probing{};
+  bool saving{};
   bool attempted_save{};
   LocalAcceleration acceleration{LocalAcceleration::automatic};
   std::vector<std::string> primary_catalog;
@@ -52,30 +54,30 @@ struct ModelFormState final {
 };
 
 using CatalogMember = std::vector<std::string> ModelFormState::*;
-using SelectionMember =
-    ModelSelectionSlots<TextEditingValue> ModelFormState::*;
+using SelectionMember = ModelSelectionSlots<TextEditingValue> ModelFormState::*;
+using QueryingMember = bool ModelFormState::*;
 
-void CompletePrimarySelection(ModelFormState& state, bool custom) {
+void CompletePrimarySelection(ModelFormState &state, bool custom) {
   if (!custom && state.preset_mode && state.name.text.empty()) {
-    state.name =
-        TextEditingValue::FromText(state.primary_id.catalog.text);
+    state.name = TextEditingValue::FromText(state.primary_id.catalog.text);
   }
 }
 
-void CompleteCompressionSelection(ModelFormState&, bool) {}
+void CompleteCompressionSelection(ModelFormState &, bool) {}
 
-void CompletePrimaryCatalogLoad(ModelFormState& state) {
+void CompletePrimaryCatalogLoad(ModelFormState &state) {
   state.primary_id.SetCustom(false);
 }
 
-void CompleteCompressionCatalogLoad(ModelFormState&) {}
+void CompleteCompressionCatalogLoad(ModelFormState &) {}
 
 struct CatalogTargetPolicy final {
   CatalogTarget target;
   CatalogMember catalog;
   SelectionMember selection;
-  void (*after_selection)(ModelFormState&, bool);
-  void (*after_load)(ModelFormState&);
+  QueryingMember querying;
+  void (*after_selection)(ModelFormState &, bool);
+  void (*after_load)(ModelFormState &);
 };
 
 const std::array catalog_target_policies{
@@ -83,6 +85,7 @@ const std::array catalog_target_policies{
         CatalogTarget::primary,
         &ModelFormState::primary_catalog,
         &ModelFormState::primary_id,
+        &ModelFormState::primary_querying,
         CompletePrimarySelection,
         CompletePrimaryCatalogLoad,
     },
@@ -90,12 +93,13 @@ const std::array catalog_target_policies{
         CatalogTarget::compression,
         &ModelFormState::compression_catalog,
         &ModelFormState::compression_id,
+        &ModelFormState::compression_querying,
         CompleteCompressionSelection,
         CompleteCompressionCatalogLoad,
     },
 };
 
-[[nodiscard]] const CatalogTargetPolicy&
+[[nodiscard]] const CatalogTargetPolicy &
 CatalogPolicyFor(CatalogTarget target) noexcept {
   const auto found = std::ranges::find(catalog_target_policies, target,
                                        &CatalogTargetPolicy::target);
@@ -134,21 +138,19 @@ struct LocalAccelerationPresentation final {
 };
 
 const std::array local_acceleration_presentations{
-    LocalAccelerationPresentation{LocalAcceleration::automatic,
-                                  app::strings::model_form_acceleration_auto,
-                                  ModelFormLayoutMetrics::toggle_height,
-                                  ModelFormLayoutMetrics::
-                                      toggle_baseline_padding},
-    LocalAccelerationPresentation{LocalAcceleration::cpu,
-                                  app::strings::model_form_acceleration_cpu,
-                                  ModelFormLayoutMetrics::latin_toggle_height,
-                                  ModelFormLayoutMetrics::
-                                      latin_toggle_baseline_padding},
-    LocalAccelerationPresentation{LocalAcceleration::npu,
-                                  app::strings::model_form_acceleration_npu,
-                                  ModelFormLayoutMetrics::latin_toggle_height,
-                                  ModelFormLayoutMetrics::
-                                      latin_toggle_baseline_padding},
+    LocalAccelerationPresentation{
+        LocalAcceleration::automatic,
+        app::strings::model_form_acceleration_auto,
+        ModelFormLayoutMetrics::toggle_height,
+        ModelFormLayoutMetrics::toggle_baseline_padding},
+    LocalAccelerationPresentation{
+        LocalAcceleration::cpu, app::strings::model_form_acceleration_cpu,
+        ModelFormLayoutMetrics::latin_toggle_height,
+        ModelFormLayoutMetrics::latin_toggle_baseline_padding},
+    LocalAccelerationPresentation{
+        LocalAcceleration::npu, app::strings::model_form_acceleration_npu,
+        ModelFormLayoutMetrics::latin_toggle_height,
+        ModelFormLayoutMetrics::latin_toggle_baseline_padding},
 };
 
 TextStyle Label(float size, FontWeight weight = FontWeight::Regular,
@@ -181,10 +183,8 @@ ModelFormState MakeState(const application::ModelDraft &draft,
       .context_size = TextEditingValue::FromText(draft.context_size),
       .compression_id =
           ModelSelectionSlots<TextEditingValue>{
-              .manual =
-                  TextEditingValue::FromText(draft.compression_model_id),
-              .catalog =
-                  TextEditingValue::FromText(draft.compression_model_id),
+              .manual = TextEditingValue::FromText(draft.compression_model_id),
+              .catalog = TextEditingValue::FromText(draft.compression_model_id),
               .custom = !draft.compression_model_id.empty(),
           },
       .compression_enabled = draft.compression_enabled,
@@ -257,14 +257,14 @@ StringVariant ValidationMessage(application::ModelValidationCode code) {
 
 View HeaderAction(StringVariant label, bool enabled,
                   std::function<void()> action) {
-  return Stack {
-    Text(std::move(label))
-        .Style(Label(16.0F, FontWeight::Medium,
-                     enabled ? colors::accent : colors::tertiary))
-        // Android's centered TextView paints this font about 1.5dp below the
-        // geometric center of its line box.
-        .With(Padding(EdgeInsets{
-            .top = ModelFormLayoutMetrics::header_action_baseline_padding})),
+  return Stack{
+      Text(std::move(label))
+          .Style(Label(16.0F, FontWeight::Medium,
+                       enabled ? colors::accent : colors::tertiary))
+          // Android's centered TextView paints this font about 1.5dp below the
+          // geometric center of its line box.
+          .With(Padding(EdgeInsets{
+              .top = ModelFormLayoutMetrics::header_action_baseline_padding})),
   }
       .OnClick([enabled, action = std::move(action)] {
         if (enabled && action) {
@@ -286,10 +286,14 @@ View HeaderAction(StringVariant label, bool enabled,
 }
 
 View SectionLabel(StringVariant text, float bottom = 8.0F) {
-  return Text(std::move(text))
-      .Style(Label(14.0F, FontWeight::Medium, colors::secondary))
-      .With(Padding(EdgeInsets{
-          .top = 16.0F, .right = 0.0F, .bottom = bottom, .left = 0.0F}));
+  // The legacy label uses LayoutParams margins. Keep those gaps as siblings
+  // so the Text's own bounds contain only the painted label.
+  return Column{
+      Stack{}.With(Frame{.height = 16.0F}),
+      Text(std::move(text))
+          .Style(Label(13.0F, FontWeight::Medium, colors::secondary)),
+      Stack{}.With(Frame{.height = bottom}),
+  };
 }
 
 View SupportingText(StringVariant text, float top = 8.0F) {
@@ -338,14 +342,14 @@ View ProtocolSelector(State<ModelFormState> state, ToastHandle toast) {
   for (const auto &presentation : model_protocol_presentations) {
     const auto protocol = presentation.protocol;
     const bool selected = state->protocol == protocol;
-    const auto decision = ResolveProtocolTabDecision(
-        state->protocol, protocol, state->protocol_locked);
+    const auto decision = ResolveProtocolTabDecision(state->protocol, protocol,
+                                                     state->protocol_locked);
     items.push_back(
         Stack{
             Text(presentation.name)
-                .Style(Label(16.0F, FontWeight::Bold,
-                             selected ? colors::text_on_color
-                                      : colors::secondary))
+                .Style(
+                    Label(16.0F, FontWeight::Bold,
+                          selected ? colors::text_on_color : colors::secondary))
                 .Align(TextAlign::Center),
         }
             .OnClick([state, toast, protocol, decision] {
@@ -372,31 +376,30 @@ View ProtocolSelector(State<ModelFormState> state, ToastHandle toast) {
               next.error.clear();
               state = std::move(next);
             })
-            .With(Frame{.min_height = 46.0F}, Grow(),
+            .With(Frame{.height = 46.0F}, Grow(),
                   Align(HorizontalAlignment::Center, VerticalAlignment::Center),
                   Background(selected ? colors::accent : colors::surface_light),
                   CornerRadius(12.0F), Enabled{decision.enabled},
                   Opacity(decision.enabled ? 1.0F : 0.45F),
-                  PointerCursor(decision.enabled ? PointerCursorKind::Hand
-                                                 : PointerCursorKind::Default)));
+                  PointerCursor(decision.enabled
+                                    ? PointerCursorKind::Hand
+                                    : PointerCursorKind::Default)));
   }
   return Row(std::move(items)).With(Spacing(8.0F));
 }
 
 View SwitchHeader(StringVariant label,
                   std::optional<StringVariant> switch_label, bool checked,
-                  bool enabled, float top,
-                  std::function<void(bool)> changed) {
+                  bool enabled, float top, std::function<void(bool)> changed) {
   std::vector<View> trailing;
   if (switch_label.has_value()) {
-    trailing.push_back(Text(std::move(*switch_label))
-                           .Style(Label(13.0F, FontWeight::Medium,
-                                        colors::secondary)));
+    trailing.push_back(
+        Text(std::move(*switch_label))
+            .Style(Label(13.0F, FontWeight::Medium, colors::secondary)));
   }
-  trailing.push_back(Switch(checked)
-                         .OnChanged(std::move(changed))
-                         .With(Enabled{enabled},
-                               Opacity(enabled ? 1.0F : 0.45F)));
+  trailing.push_back(
+      LegacySwitch(checked, std::move(changed))
+          .With(Enabled{enabled}, Opacity(enabled ? 1.0F : 0.45F)));
   return Row{
       Text(std::move(label))
           .Style(Label(13.0F, FontWeight::Medium, colors::secondary))
@@ -408,29 +411,18 @@ View SwitchHeader(StringVariant label,
             CrossAlign(CrossAxisAlignment::Center));
 }
 
-View SearchGlyph(Color tint) {
-  return Canvas([tint](PaintContext &paint, Size) {
-           constexpr float kPi = std::numbers::pi_v<float>;
-           const StrokeStyle stroke{.width = 1.8F, .cap = StrokeCap::Round};
-           paint.DrawArc(Point{6.5F, 6.5F}, 4.5F, 0.0F, 2.0F * kPi, tint,
-                         stroke);
-           paint.DrawLine(Point{9.75F, 9.75F}, Point{14.0F, 14.0F}, tint,
-                          stroke);
-         })
-      .With(Frame{.width = 16.0F, .height = 16.0F});
-}
-
 View QueryButton(bool enabled, bool busy, std::function<void()> action) {
   const bool highlighted = enabled || busy;
+  const bool interactive = enabled && !busy;
   const Color tint = highlighted ? colors::text_on_color : colors::tertiary;
   return Row{
-      SearchGlyph(tint),
+      Glyph(app::images::search, 16.0F, tint),
       Text(busy ? StringVariant{app::strings::model_form_query_loading}
                 : StringVariant{app::strings::model_form_query})
           .Style(Label(16.0F, FontWeight::Bold, tint)),
   }
-      .OnClick([enabled, action = std::move(action)] {
-        if (enabled && action)
+      .OnClick([interactive, action = std::move(action)] {
+        if (interactive && action)
           std::invoke(action);
       })
       .With(Frame{.height = 48.0F, .min_width = 76.0F}, Spacing(4.0F),
@@ -438,14 +430,14 @@ View QueryButton(bool enabled, bool busy, std::function<void()> action) {
             CrossAlign(CrossAxisAlignment::Center),
             Align(HorizontalAlignment::Center, VerticalAlignment::Center),
             Background(highlighted ? colors::accent : colors::surface_light),
-            CornerRadius(12.0F), Enabled{enabled},
-            PointerCursor(enabled ? PointerCursorKind::Hand
-                                  : PointerCursorKind::Default));
+            CornerRadius(12.0F), Enabled{interactive},
+            PointerCursor(interactive ? PointerCursorKind::Hand
+                                      : PointerCursorKind::Default));
 }
 
 void SelectCatalogItem(State<ModelFormState> state, CatalogTarget target,
                        std::string model, bool custom) {
-  const auto& policy = CatalogPolicyFor(target);
+  const auto &policy = CatalogPolicyFor(target);
   auto next = state.Get();
   auto &selection = next.*policy.selection;
   if (custom)
@@ -470,7 +462,7 @@ constexpr std::array picker_row_presentations{
     PickerRowPresentation{PickerRowKind::custom_entry, colors::accent, false},
 };
 
-[[nodiscard]] const PickerRowPresentation&
+[[nodiscard]] const PickerRowPresentation &
 PickerRowVisual(PickerRowKind kind) noexcept {
   const auto found = std::ranges::find(picker_row_presentations, kind,
                                        &PickerRowPresentation::kind);
@@ -481,7 +473,7 @@ PickerRowVisual(PickerRowKind kind) noexcept {
 
 View PickerRow(BottomSheetContext sheet, StringVariant label, bool selected,
                PickerRowKind kind, std::function<void()> choose) {
-  const auto& presentation = PickerRowVisual(kind);
+  const auto &presentation = PickerRowVisual(kind);
   return Row{
       Text(std::move(label))
           .Style(Label(16.0F, FontWeight::Regular, presentation.text_color))
@@ -503,45 +495,46 @@ View PickerRow(BottomSheetContext sheet, StringVariant label, bool selected,
 
 void ShowModelPicker(const BottomSheetHandle &sheets,
                      State<ModelFormState> state, CatalogTarget target) {
-  const auto& policy = CatalogPolicyFor(target);
+  const auto &policy = CatalogPolicyFor(target);
   const auto models = state.Get().*policy.catalog;
   const std::string selected = (state.Get().*policy.selection).catalog.text;
   sheets.Show([models, selected, state, target](BottomSheetContext sheet) {
     std::vector<View> rows;
     rows.reserve(models.size() + 1);
     for (const auto &model : models) {
-      rows.push_back(PickerRow(
-          sheet, model, model == selected, PickerRowKind::catalog_entry,
-          [state, target, model] {
-            SelectCatalogItem(state, target, model, false);
-          }));
+      rows.push_back(PickerRow(sheet, model, model == selected,
+                               PickerRowKind::catalog_entry,
+                               [state, target, model] {
+                                 SelectCatalogItem(state, target, model, false);
+                               }));
     }
     rows.push_back(PickerRow(
         sheet, app::strings::model_form_custom_model_picker, false,
         PickerRowKind::custom_entry,
         [state, target] { SelectCatalogItem(state, target, {}, true); }));
 
-    View panel = Column{
-        Row{Spacer(),
-            Stack{}.With(Frame{.width = 36.0F, .height = 4.0F},
-                         Background(colors::tertiary), CornerRadius(2.0F)),
-            Spacer()}
-            .With(Padding(EdgeInsets{.top = 8.0F, .bottom = 4.0F})),
-        Text(app::strings::model_form_picker_title)
-            .Style(Label(17.0F, FontWeight::Bold))
-            .With(Padding(EdgeInsets{
-                .right = 16.0F, .bottom = 12.0F, .left = 16.0F})),
-        Stack{}.With(Frame{.height = 1.0F},
-                     Background(colors::border_light)),
-        ScrollView(Column(std::move(rows))
-                       .With(CrossAlign(CrossAxisAlignment::Stretch)))
-            .ScrollAxis(Axis::Vertical)
-            .With(Frame{.max_height = 420.0F}, ScrollBar()),
-        Stack{}.With(Frame{.width = 1.0F, .height = 12.0F}),
-    }
-        .With(Frame{.max_width = 560.0F}, Background(colors::elevated),
-              CornerRadius(CornerRadii::Top(16.0F)), ClipChildren(),
-              CrossAlign(CrossAxisAlignment::Stretch));
+    View panel =
+        Column{
+            Row{Spacer(),
+                Stack{}.With(Frame{.width = 36.0F, .height = 4.0F},
+                             Background(colors::tertiary), CornerRadius(2.0F)),
+                Spacer()}
+                .With(Padding(EdgeInsets{.top = 8.0F, .bottom = 4.0F})),
+            Text(app::strings::model_form_picker_title)
+                .Style(Label(17.0F, FontWeight::Bold))
+                .With(Padding(EdgeInsets{
+                    .right = 16.0F, .bottom = 12.0F, .left = 16.0F})),
+            Stack{}.With(Frame{.height = 1.0F},
+                         Background(colors::border_light)),
+            ScrollView(Column(std::move(rows))
+                           .With(CrossAlign(CrossAxisAlignment::Stretch)))
+                .ScrollAxis(Axis::Vertical)
+                .With(Frame{.max_height = 420.0F}, ScrollBar()),
+            Stack{}.With(Frame{.width = 1.0F, .height = 12.0F}),
+        }
+            .With(Frame{.max_width = 560.0F}, Background(colors::elevated),
+                  CornerRadius(CornerRadii::Top(16.0F)), ClipChildren(),
+                  CrossAlign(CrossAxisAlignment::Stretch));
 
     // ModelPickerDialog leaves the legacy 16dp horizontal dialog inset. The
     // presentation host itself is intentionally transparent, so apply that
@@ -552,12 +545,13 @@ void ShowModelPicker(const BottomSheetHandle &sheets,
   });
 }
 
-Task<void> QueryModels(
-    std::shared_ptr<application::ModelCatalogGateway> catalog,
-    State<ModelFormState> state, CatalogTarget target,
-    BottomSheetHandle sheets, ToastHandle toast) {
+Task<void>
+QueryModels(std::shared_ptr<application::ModelCatalogGateway> catalog,
+            State<ModelFormState> state, CatalogTarget target,
+            BottomSheetHandle sheets, ToastHandle toast) {
+  const auto &policy = CatalogPolicyFor(target);
   auto next = state.Get();
-  next.busy = true;
+  next.*policy.querying = true;
   next.error.clear();
   state = std::move(next);
 
@@ -567,7 +561,7 @@ Task<void> QueryModels(
       draft.api_key);
   const bool has_models = result && !result->empty();
   next = state.Get();
-  next.busy = false;
+  next.*policy.querying = false;
   if (!result) {
     next.error = result.error().message;
     toast.Show(result.error().message);
@@ -575,7 +569,6 @@ Task<void> QueryModels(
     next.error.clear();
     toast.Show(app::strings::model_form_query_empty);
   } else {
-    const auto& policy = CatalogPolicyFor(target);
     next.*policy.catalog = std::move(*result);
     std::invoke(policy.after_load, next);
   }
@@ -594,7 +587,7 @@ Task<void> ProbeModel(std::shared_ptr<application::ModelCatalogGateway> catalog,
     co_return;
   }
   auto next = state.Get();
-  next.busy = true;
+  next.probing = true;
   state = std::move(next);
   const auto started = std::chrono::steady_clock::now();
   auto result = co_await catalog->Probe(*built);
@@ -602,26 +595,30 @@ Task<void> ProbeModel(std::shared_ptr<application::ModelCatalogGateway> catalog,
                            std::chrono::steady_clock::now() - started)
                            .count();
   next = state.Get();
-  next.busy = false;
+  next.probing = false;
   if (result) {
     next.error.clear();
     state = std::move(next);
-    const bool has_data = std::ranges::any_of(
-        result->response,
-        [](const unsigned char value) { return std::isspace(value) == 0; });
-    dialogs.Show(
-        app::strings::model_form_test_result_title,
-        StringVariant::Format(
-            has_data ? app::strings::model_form_test_result_success
-                     : app::strings::model_form_test_result_success_no_data,
-            elapsed, result->response),
-        app::strings::model_form_test_result_confirm,
-        app::strings::common_cancel);
+    const auto first = result->response.find_first_not_of(" \t\n\r");
+    const auto last = result->response.find_last_not_of(" \t\n\r");
+    const std::string response =
+        first == std::string::npos
+            ? std::string{}
+            : result->response.substr(first, last - first + 1U);
+    const bool has_data = !response.empty();
+    dialogs.Show(app::strings::model_form_test_result_title,
+                 StringVariant::Format(
+                     has_data
+                         ? app::strings::model_form_test_result_success
+                         : app::strings::model_form_test_result_success_no_data,
+                     elapsed, response),
+                 app::strings::model_form_test_result_confirm,
+                 app::strings::common_cancel);
   } else {
     next.error = result.error().message;
     state = std::move(next);
     toast.Show(StringVariant::Format(app::strings::model_form_test_result_error,
-                                    result.error().message, elapsed));
+                                     result.error().message, elapsed));
   }
 }
 
@@ -635,12 +632,12 @@ Task<void> SaveModel(std::shared_ptr<application::ModelStore> store,
     co_return;
   }
   auto next = state.Get();
-  next.busy = true;
+  next.saving = true;
   state = std::move(next);
   auto saved = co_await store->Save(*built);
   if (!saved) {
     next = state.Get();
-    next.busy = false;
+    next.saving = false;
     next.error = saved.error().message;
     state = std::move(next);
     toast.Show(saved.error().message);
@@ -649,13 +646,15 @@ Task<void> SaveModel(std::shared_ptr<application::ModelStore> store,
   auto selected = co_await store->Select(saved->id);
   if (!selected) {
     next = state.Get();
-    next.busy = false;
+    next.saving = false;
     next.error = selected.error().message;
     state = std::move(next);
     toast.Show(selected.error().message);
     co_return;
   }
-  toast.Show(app::strings::model_form_saved);
+  next = state.Get();
+  next.saving = false;
+  state = std::move(next);
   if (actions.on_saved) {
     std::invoke(actions.on_saved, std::move(*saved));
   }
@@ -667,8 +666,9 @@ View ModelSelector(TextEditingValue selection, bool enabled, bool busy,
   auto selector_action = action;
   return Row{
       Row{
-          Text(empty ? StringVariant{app::strings::model_form_select_model_first}
-                     : StringVariant{selection.text})
+          Text(empty
+                   ? StringVariant{app::strings::model_form_select_model_first}
+                   : StringVariant{selection.text})
               .Style(Label(16.0F, FontWeight::Regular,
                            empty ? colors::tertiary : colors::text))
               .With(Grow()),
@@ -696,26 +696,21 @@ View LocalForm(State<ModelFormState> state, ToastHandle toast) {
   acceleration.reserve(local_acceleration_presentations.size());
   for (const auto &presentation : local_acceleration_presentations) {
     const bool selected = state->acceleration == presentation.mode;
-    acceleration.push_back(
-        Stack {
-          Text(presentation.label)
-              .Style(Label(16.0F, FontWeight::Bold,
-                           selected ? colors::text_on_color
-                                    : colors::secondary))
-              // Match Android TextView's optical baseline inside the 46dp
-              // toggle instead of centering only the glyph bounds.
-              .With(Padding(EdgeInsets{
-                  .top = presentation.baseline_padding})),
-        }
-            .OnClick([state, mode = presentation.mode] {
-              auto next = state.Get();
-              next.acceleration = mode;
-              state = std::move(next);
-            })
-            .With(Frame{.height = presentation.height}, Grow(),
-                  Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                  Background(selected ? colors::accent : colors::surface_light),
-                  CornerRadius(12.0F), PointerCursor(PointerCursorKind::Hand)));
+    acceleration.push_back(Stack{
+        Text(presentation.label)
+            .Style(Label(16.0F, FontWeight::Bold,
+                         selected ? colors::text_on_color : colors::secondary))
+            // Match Android TextView's optical baseline inside the 46dp
+            // toggle instead of centering only the glyph bounds.
+            .With(Padding(EdgeInsets{.top = presentation.baseline_padding})),
+    }
+                               .With(
+                                   Frame{.height = presentation.height}, Grow(),
+                                   Align(HorizontalAlignment::Center,
+                                         VerticalAlignment::Center),
+                                   Background(selected ? colors::accent
+                                                       : colors::surface_light),
+                                   CornerRadius(12.0F)));
   }
 
   return Column{
@@ -750,13 +745,12 @@ View LocalForm(State<ModelFormState> state, ToastHandle toast) {
                 app::strings::model_form_local_context_size,
                 app::strings::model_form_local_context_placeholder,
                 ChangeText(state, &ModelFormState::context_size),
-                ValidationResult::None(), TextInputType::Text),
+                ValidationResult::None(), TextInputType::Number),
       SupportingText(app::strings::model_form_local_context_hint),
       // HuxerUI's label line box is 1dp taller than the legacy TextView here;
       // trim the following gap so the 46dp toggle row keeps the same bounds.
-      SectionLabel(
-          app::strings::model_form_acceleration,
-          ModelFormLayoutMetrics::acceleration_label_bottom_padding),
+      SectionLabel(app::strings::model_form_acceleration,
+                   ModelFormLayoutMetrics::acceleration_label_bottom_padding),
       // Android LinearLayout baseline-aligns Latin CPU/NPU toggles four pixels
       // below the Chinese automatic toggle on the parity density. Preserve
       // that measured geometry by bottom-aligning their shorter frames.
@@ -779,9 +773,9 @@ ModelAddScreen(ModelAddScreenOptions options,
       editing
           ? application::ModelFormService::Edit(*options.editing)
           : application::ModelFormService::New(options.preset, options.local);
-  auto state = UseState(MakeState(initial_draft,
-                                  editing || options.preset.has_value(),
-                                  options.preset.has_value()));
+  auto state =
+      UseState(MakeState(initial_draft, editing || options.preset.has_value(),
+                         options.preset.has_value()));
   const auto tasks = UseTaskScope();
   const auto toast = UseToast();
   const auto dialogs = UseDialog();
@@ -789,11 +783,12 @@ ModelAddScreen(ModelAddScreenOptions options,
 
   const auto current_draft = MakeDraft(state.Get());
   const auto validation = application::ModelFormService::Build(current_draft);
-  const bool can_save = !state->busy && validation.has_value();
-  const bool can_query =
-      !state->busy && application::ModelFormService::CanQuery(current_draft);
+  const bool can_save = validation.has_value();
+  const bool can_query = application::ModelFormService::CanQuery(current_draft);
 
   auto save = [store, state, tasks, toast, actions] {
+    if (state->saving)
+      return;
     auto next = state.Get();
     next.attempted_save = true;
     state = std::move(next);
@@ -802,6 +797,8 @@ ModelAddScreen(ModelAddScreenOptions options,
     });
   };
   auto test = [catalog, state, tasks, toast, dialogs] {
+    if (state->probing)
+      return;
     tasks.Launch([catalog, state, toast, dialogs]() -> Task<void> {
       co_await ProbeModel(catalog, state, toast, dialogs);
     });
@@ -811,12 +808,12 @@ ModelAddScreen(ModelAddScreenOptions options,
       ShowModelPicker(sheets, state, CatalogTarget::primary);
       return;
     }
-    if (!can_query) {
-      toast.Show(app::strings::model_form_query_requirements);
+    if (!can_query || state->primary_querying) {
       return;
     }
     tasks.Launch([catalog, state, sheets, toast]() -> Task<void> {
-      co_await QueryModels(catalog, state, CatalogTarget::primary, sheets, toast);
+      co_await QueryModels(catalog, state, CatalogTarget::primary, sheets,
+                           toast);
     });
   };
   auto query_compression = [catalog, state, tasks, toast, sheets, can_query] {
@@ -824,8 +821,7 @@ ModelAddScreen(ModelAddScreenOptions options,
       ShowModelPicker(sheets, state, CatalogTarget::compression);
       return;
     }
-    if (!can_query) {
-      toast.Show(app::strings::model_form_query_requirements);
+    if (!can_query || state->compression_querying) {
       return;
     }
     tasks.Launch([catalog, state, sheets, toast]() -> Task<void> {
@@ -838,11 +834,10 @@ ModelAddScreen(ModelAddScreenOptions options,
   form.reserve(30);
   form.push_back(SectionLabel(
       (state->protocol_locked || state->local)
-          ? StringVariant::Format(app::strings::model_form_provider_named,
-                                  state->local
-                                      ? UseString(
-                                            app::strings::model_protocol_local)
-                                      : state->provider_label)
+          ? StringVariant::Format(
+                app::strings::model_form_provider_named,
+                state->local ? UseString(app::strings::model_protocol_local)
+                             : state->provider_label)
           : StringVariant{app::strings::model_form_provider}));
   form.push_back(ProtocolSelector(state, toast));
 
@@ -862,20 +857,20 @@ ModelAddScreen(ModelAddScreenOptions options,
         ChangeText(state, &ModelFormState::name)));
 
     form.push_back(SectionLabel(app::strings::model_form_base_url));
-    form.push_back(FormField(
-        state->base_url, app::strings::model_form_base_url,
-        options.preset ? StringVariant{options.preset->placeholder}
-                       : BaseUrlPlaceholder(state->protocol),
-        ChangeConnectionText(state, &ModelFormState::base_url),
-        ValidationResult::None(), TextInputType::Url));
+    form.push_back(
+        FormField(state->base_url, app::strings::model_form_base_url,
+                  options.preset ? StringVariant{options.preset->placeholder}
+                                 : BaseUrlPlaceholder(state->protocol),
+                  ChangeConnectionText(state, &ModelFormState::base_url),
+                  ValidationResult::None(), TextInputType::Url));
     form.push_back(SupportingText(BaseUrlHint(state->protocol)));
 
     form.push_back(SectionLabel(app::strings::model_form_api_key));
-    form.push_back(FormField(
-        state->api_key, app::strings::model_form_api_key,
-        app::strings::model_form_api_key_hint,
-        ChangeConnectionText(state, &ModelFormState::api_key),
-        ValidationResult::None(), TextInputType::Text, true));
+    form.push_back(
+        FormField(state->api_key, app::strings::model_form_api_key,
+                  app::strings::model_form_api_key_hint,
+                  ChangeConnectionText(state, &ModelFormState::api_key),
+                  ValidationResult::None(), TextInputType::Text, true));
 
     form.push_back(SwitchHeader(
         app::strings::model_form_model_id,
@@ -886,22 +881,21 @@ ModelAddScreen(ModelAddScreenOptions options,
           state = std::move(next);
         }));
     if (state->primary_id.custom) {
-      form.push_back(FormField(
-          state->primary_id.manual, app::strings::model_form_model_id,
-          app::strings::model_form_model_id_hint,
-          ChangeManualSelection(state, &ModelFormState::primary_id)));
+      form.push_back(
+          FormField(state->primary_id.manual, app::strings::model_form_model_id,
+                    app::strings::model_form_model_id_hint,
+                    ChangeManualSelection(state, &ModelFormState::primary_id)));
     } else {
       form.push_back(ModelSelector(state->primary_id.catalog, can_query,
-                                   state->busy, query_primary));
+                                   state->primary_querying, query_primary));
     }
 
     form.push_back(SectionLabel(app::strings::model_form_tool_limit));
-    form.push_back(
-        FormField(state->tool_limit, app::strings::model_form_tool_limit,
-                  app::strings::model_form_tool_limit_placeholder,
-                  ChangeText(state, &ModelFormState::tool_limit),
-                  ValidationResult::None(),
-                  TextInputType::Number));
+    form.push_back(FormField(state->tool_limit,
+                             app::strings::model_form_tool_limit,
+                             app::strings::model_form_tool_limit_placeholder,
+                             ChangeText(state, &ModelFormState::tool_limit),
+                             ValidationResult::None(), TextInputType::Number));
     form.push_back(SupportingText(app::strings::model_form_tool_limit_hint));
 
     form.push_back(SectionLabel(app::strings::model_form_context_size));
@@ -912,23 +906,23 @@ ModelAddScreen(ModelAddScreenOptions options,
     form.push_back(SupportingText(app::strings::model_form_context_hint));
 
     if (domain::SupportsDedicatedCompression(state->protocol)) {
-      form.push_back(SwitchHeader(
-          app::strings::model_form_compression, std::nullopt,
-          state->compression_enabled, true, 16.0F, [state](bool value) {
-            auto next = state.Get();
-            next.compression_enabled = value;
-            state = std::move(next);
-          }));
+      form.push_back(SwitchHeader(app::strings::model_form_compression,
+                                  std::nullopt, state->compression_enabled,
+                                  true, 16.0F, [state](bool value) {
+                                    auto next = state.Get();
+                                    next.compression_enabled = value;
+                                    state = std::move(next);
+                                  }));
       if (state->compression_enabled) {
-        form.push_back(SupportingText(
-            app::strings::model_form_compression_hint, 0.0F));
-        form.push_back(SwitchHeader(
-            app::strings::model_form_compression_auto, std::nullopt,
-            state->compression_auto, true, 12.0F, [state](bool value) {
-              auto next = state.Get();
-              next.compression_auto = value;
-              state = std::move(next);
-            }));
+        form.push_back(
+            SupportingText(app::strings::model_form_compression_hint, 0.0F));
+        form.push_back(SwitchHeader(app::strings::model_form_compression_auto,
+                                    std::nullopt, state->compression_auto, true,
+                                    12.0F, [state](bool value) {
+                                      auto next = state.Get();
+                                      next.compression_auto = value;
+                                      state = std::move(next);
+                                    }));
         form.push_back(SwitchHeader(
             app::strings::model_form_compression_id,
             StringVariant{app::strings::model_form_compression_custom},
@@ -944,11 +938,10 @@ ModelAddScreen(ModelAddScreenOptions options,
                 state->compression_id.manual,
                 app::strings::model_form_compression_id,
                 app::strings::model_form_compression_id_hint,
-                ChangeManualSelection(state,
-                                      &ModelFormState::compression_id)));
+                ChangeManualSelection(state, &ModelFormState::compression_id)));
           } else {
             form.push_back(ModelSelector(state->compression_id.catalog,
-                                         can_query, state->busy,
+                                         can_query, state->compression_querying,
                                          query_compression));
           }
         }
@@ -956,55 +949,50 @@ ModelAddScreen(ModelAddScreenOptions options,
     }
   }
 
-  if (!state->error.empty()) {
-    form.push_back(Text(state->error)
-                       .Style(Label(12.0F, FontWeight::Regular, colors::danger))
-                       .With(Padding(EdgeInsets{.top = 12.0F})));
-  }
-
   std::vector<View> header_actions;
   header_actions.reserve(state->local ? 1U : 2U);
   if (!state->local) {
-    header_actions.push_back(HeaderAction(
-        app::strings::model_form_test, !state->busy, std::move(test)));
+    header_actions.push_back(
+        HeaderAction(app::strings::model_form_test, true, std::move(test)));
   }
-  header_actions.push_back(HeaderAction(app::strings::model_form_save,
-                                        can_save, std::move(save)));
+  header_actions.push_back(
+      HeaderAction(app::strings::model_form_save, can_save, std::move(save)));
 
-  View screen = Column{
-      LegacyScreenHeaderLayout{
-          Stack{Glyph(app::images::chevron_left, 20.0F, colors::text)}
-              .OnClick([callback = actions.on_back] {
-                if (callback)
-                  std::invoke(callback);
-              })
-              .With(
-                  Frame{.width = 36.0F, .height = 36.0F},
-                  Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                  Focusable(), PointerCursor(PointerCursorKind::Hand)),
-          Stack{Text(editing ? app::strings::model_form_edit_title
-                             : app::strings::model_form_add_title)
-                    .Style(Label(17.0F, FontWeight::Bold))}
-              .With(Grow(), Align(HorizontalAlignment::Center,
-                                  VerticalAlignment::Center)),
-          Row(std::move(header_actions))
-              .With(Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center)),
+  View screen =
+      Column{
+          LegacyScreenHeaderLayout{
+              Stack{Glyph(app::images::chevron_left, 22.0F, colors::text)}
+                  .OnClick([callback = actions.on_back] {
+                    if (callback)
+                      std::invoke(callback);
+                  })
+                  .With(Frame{.width = 36.0F, .height = 36.0F},
+                        Align(HorizontalAlignment::Center,
+                              VerticalAlignment::Center),
+                        Focusable(), PointerCursor(PointerCursorKind::Hand)),
+              Stack{Text(editing ? app::strings::model_form_edit_title
+                                 : app::strings::model_form_add_title)
+                        .Style(Label(17.0F, FontWeight::Bold))}
+                  .With(Grow(), Align(HorizontalAlignment::Center,
+                                      VerticalAlignment::Center)),
+              Row(std::move(header_actions))
+                  .With(Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center)),
+          }
+              .With(Frame{.min_height = 60.0F},
+                    Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
+                    Background(colors::background)),
+          Divider(),
+          ScrollView(Column(std::move(form))
+                         .With(Padding(EdgeInsets{.top = 16.0F,
+                                                  .right = 16.0F,
+                                                  .bottom = 16.0F,
+                                                  .left = 16.0F}),
+                               CrossAlign(CrossAxisAlignment::Stretch)))
+              .ScrollAxis(Axis::Vertical)
+              .With(Grow()),
       }
-          .With(Frame{.min_height = 60.0F},
-                Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
-                Background(colors::background)),
-      Divider(),
-      ScrollView(Column(std::move(form))
-                     .With(Padding(EdgeInsets{.top = 16.0F,
-                                              .right = 16.0F,
-                                              .bottom = 16.0F,
-                                              .left = 16.0F}),
-                           CrossAlign(CrossAxisAlignment::Stretch)))
-          .ScrollAxis(Axis::Vertical)
-          .With(Grow()),
-  }
-      .With(CrossAlign(CrossAxisAlignment::Stretch),
-            Background(colors::background), SafeAreaPadding{});
+          .With(CrossAlign(CrossAxisAlignment::Stretch),
+                Background(colors::background), SafeAreaPadding{});
 
   auto text_field = UseEnvironment<TextFieldStyle>();
   text_field.variant = TextFieldVariant::Outlined;
@@ -1016,33 +1004,16 @@ ModelAddScreen(ModelAddScreenOptions options,
   text_field.outlined.disabled_border = colors::border_light;
   text_field.outlined.minimum_height = 48.0F;
   text_field.text_style = Label(16.0F);
-  text_field.placeholder_style = Label(16.0F, FontWeight::Regular,
-                                       colors::tertiary);
+  text_field.placeholder_style =
+      Label(16.0F, FontWeight::Regular, colors::tertiary);
   text_field.caret = colors::accent;
   text_field.border_width = 1.0F;
   text_field.focused_border_width = 1.0F;
   text_field.outlined.corner_radii = CornerRadii{12.0F};
   text_field.padding = EdgeInsets::Symmetric(16.0F, 12.0F);
 
-  auto switch_style = UseEnvironment<SwitchStyle>();
-  switch_style.width = 46.0F;
-  switch_style.height = 27.0F;
-  switch_style.minimum_interactive_height = 27.0F;
-  switch_style.state_layer_size = 27.0F;
-  switch_style.unchecked_track = colors::surface_light;
-  switch_style.checked_track = colors::accent_dim;
-  switch_style.unchecked_track_border = colors::border_light;
-  switch_style.checked_track_border = colors::accent;
-  switch_style.unchecked_thumb = colors::tertiary;
-  switch_style.checked_thumb = colors::accent;
-  switch_style.unchecked_thumb_radius = 10.5F;
-  switch_style.checked_thumb_radius = 10.5F;
-  switch_style.track_border_width = 1.0F;
-  switch_style.corner_radius = 13.5F;
-
   ThemeDefinition overrides;
   overrides.Set(std::move(text_field));
-  overrides.Set(std::move(switch_style));
   return Theme(std::move(overrides), std::move(screen));
 }
 

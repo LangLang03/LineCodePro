@@ -43,6 +43,7 @@ KEY_PREFIXES = (
     "tool_agent_",
     "tool_pipeline_",
     "tool_custom_agent_",
+    "tool_ssh_",
 )
 
 _PROPERTY_LINE = re.compile(r"^([A-Za-z0-9_.\-]+)\s*=\s*(.*)$")

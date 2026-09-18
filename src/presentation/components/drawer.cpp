@@ -40,12 +40,6 @@ struct DrawerTabSelection final {
   std::function<void(DrawerTab)> select;
 };
 
-struct DrawerTabGeometry final {
-  float header_bottom_padding;
-  float button_height;
-  float tabs_bottom_padding;
-};
-
 using HeaderActionsFactory = void (*)(std::vector<View>&, const DrawerActions&);
 using TabBodyFactory = View (*)(State<bool>, const DrawerModel&,
                                 const DrawerActions&);
@@ -58,7 +52,6 @@ struct DrawerTabPresentation final {
   ImageResource tab_icon;
   HeaderActionsFactory append_header_actions;
   TabActivation activate;
-  DrawerTabGeometry geometry;
   TabBodyFactory body;
 };
 
@@ -157,12 +150,6 @@ const std::array kDrawerTabPresentations{
         .tab_icon = app::images::message_square,
         .append_header_actions = &AppendNoHeaderActions,
         .activate = &ActivateWithoutSideEffect,
-        .geometry =
-            {
-                .header_bottom_padding = 25.14F,
-                .button_height = 35.14F,
-                .tabs_bottom_padding = 11.62F,
-            },
         .body = &ConversationBody,
     },
     DrawerTabPresentation{
@@ -172,12 +159,6 @@ const std::array kDrawerTabPresentations{
         .tab_icon = app::images::folder_open,
         .append_header_actions = &AppendFileHeaderActions,
         .activate = &ActivateFiles,
-        .geometry =
-            {
-                .header_bottom_padding = 24.0F,
-                .button_height = 34.76F,
-                .tabs_bottom_padding = 12.0F,
-            },
         .body = &FileBody,
     },
 };
@@ -240,10 +221,7 @@ View Header(const DrawerTabPresentation& presentation,
       .With(Padding(EdgeInsets{
                 .top = HeaderTopPadding(),
                 .right = 16.0F,
-                // The legacy text-only title row is 3 physical pixels taller
-                // than HuxerUI's font-driven intrinsic row at 420 dpi.  The
-                // file header is already governed by its 32dp refresh well.
-                .bottom = presentation.geometry.header_bottom_padding,
+                .bottom = 24.0F,
                 .left = 24.0F,
             }),
             Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center));
@@ -286,7 +264,7 @@ public:
 };
 
 View DrawerTabButton(ImageResource image, StringResource label, bool active,
-                     float height, std::function<void()> action) {
+                     std::function<void()> action) {
   const Color tint = active ? colors::accent : colors::tertiary;
   return Row{
       InlineIcon(std::move(image), tint, kTabIconSize),
@@ -297,8 +275,8 @@ View DrawerTabButton(ImageResource image, StringResource label, bool active,
           .With(Frame{.height = 18.0F}),
       }
       .OnClick(std::move(action))
-      .With(Frame{.height = height}, Padding(EdgeInsets::Symmetric(0.0F, 8.0F)),
-            Spacing(4.0F), MainAlign(MainAxisAlignment::Center),
+      .With(Padding(EdgeInsets::Symmetric(0.0F, 8.0F)), Spacing(4.0F),
+            MainAlign(MainAxisAlignment::Center),
             CrossAlign(CrossAxisAlignment::Center),
             Background(active ? colors::elevated : Color::Transparent()),
             CornerRadius(6.0F), Indication(PressIndication(6.0F)), Grow(),
@@ -306,7 +284,6 @@ View DrawerTabButton(ImageResource image, StringResource label, bool active,
 }
 
 View DrawerTabs(const DrawerTabSelection& selection,
-                const DrawerTabPresentation& active_presentation,
                 const DrawerActions& actions) {
   std::vector<View> buttons;
   buttons.reserve(kDrawerTabPresentations.size());
@@ -314,7 +291,6 @@ View DrawerTabs(const DrawerTabSelection& selection,
     buttons.emplace_back(DrawerTabButton(
         presentation.tab_icon, presentation.tab_label,
         presentation.tab == selection.active,
-        active_presentation.geometry.button_height,
         [selection, tab = presentation.tab, activate = presentation.activate,
          actions] {
           if (selection.active == tab) {
@@ -328,10 +304,7 @@ View DrawerTabs(const DrawerTabSelection& selection,
                   .With(Padding(2.0F), Spacing(0.0F),
                         CrossAlign(CrossAxisAlignment::Stretch), Grow());
   return Row{std::move(tabs)}.With(
-      Padding(EdgeInsets{.right = 16.0F,
-                         .bottom =
-                             active_presentation.geometry.tabs_bottom_padding,
-                         .left = 16.0F}));
+      Padding(EdgeInsets{.right = 16.0F, .bottom = 12.0F, .left = 16.0F}));
 }
 
 View NewConversationButton(State<bool> drawer_open,
@@ -636,7 +609,7 @@ View RenderDrawer(State<bool> drawer_open, const DrawerTabSelection& selection,
   return LegacyDrawerViewport(
       Column{
           Header(presentation, actions),
-          DrawerTabs(selection, presentation, actions),
+          DrawerTabs(selection, actions),
           std::invoke(presentation.body, drawer_open, model, actions),
       }
           .With(Frame{.min_width = 240.0F, .max_width = kDrawerWidth},
@@ -649,7 +622,7 @@ View RenderDrawer(State<bool> drawer_open, const DrawerTabSelection& selection,
 DrawerStyle LegacyDrawerStyle() {
   return DrawerStyle{
       .background = colors::background,
-      .scrim = Color::Rgb(22, 26, 32, 0.26F),
+      .scrim = colors::overlay,
       .shadow = Shadow{.color = Color::Transparent()},
       .preferred_width = kDrawerWidth,
       .minimum_width = 240.0F,

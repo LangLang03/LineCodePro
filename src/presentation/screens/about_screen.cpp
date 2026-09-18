@@ -8,6 +8,8 @@
 #include <app_resources.h>
 #include <huxerui/huxerui.h>
 
+#include "application/output_settings.h"
+#include "application/ports/external_link.h"
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/line_theme.h"
 
@@ -124,9 +126,23 @@ void AppendRow(std::vector<View> &content, View row) {
 
 } // namespace
 
-[[huxerui::composable]] View AboutScreen(domain::AppRoute licenses_route,
-                                         AboutAppInfo app_info) {
+[[huxerui::composable]] View AboutScreen(
+    domain::AppRoute licenses_route,
+    std::shared_ptr<application::OutputSettingsService> output_settings,
+    AboutAppInfo app_info) {
   const auto navigation = UseNavigation<domain::AppRoute>();
+  const auto tasks = UseTaskScope();
+  const auto external_link = UseService<application::ExternalLinkService>();
+  auto link_settings = UseState(application::OutputSettingsState{});
+  Lifecycle([tasks, output_settings, link_settings] {
+    tasks.Launch([output_settings, link_settings]() -> Task<void> {
+      if (!output_settings)
+        co_return;
+      auto loaded = co_await output_settings->Load();
+      if (loaded)
+        link_settings = *loaded;
+    });
+  });
 
   std::vector<View> content;
   content.reserve(16);
@@ -140,8 +156,8 @@ void AppendRow(std::vector<View> &content, View row) {
       Text(app_info.app_name)
           .Style(Label(20.0F, FontWeight::Bold))
           .With(Padding(EdgeInsets{.top = kNameTopSpacing})),
-      Text(UseString(app::strings::screen_about_apk_label) + " " +
-           VersionValue(app_info))
+      Text::Format(app::strings::screen_about_apk_label, app_info.version_name,
+                   app_info.version_code)
           .Style(Label(16.0F, FontWeight::Regular, colors::secondary))
           .With(Padding(EdgeInsets{.top = kVersionTopSpacing})),
   }
@@ -167,9 +183,17 @@ void AppendRow(std::vector<View> &content, View row) {
   AppendRow(content,
             AboutRow(app::images::git_branch,
                      app::strings::screen_about_github_label,
-                     app::strings::screen_about_github_value, [navigation] {
-                       navigation.Push(
-                           domain::AppRoute::Browser(std::string(kProjectUrl)));
+                     app::strings::screen_about_github_value,
+                     [navigation, external_link, link_settings] {
+                       if (link_settings->browser_mode ==
+                           application::BrowserMode::external) {
+                         external_link->Open(kProjectUrl);
+                         return;
+                       }
+                       navigation.Push(domain::AppRoute::Browser(
+                           std::string(kProjectUrl),
+                           link_settings->browser_javascript_enabled,
+                           link_settings->allow_any_http));
                      }));
 
   AppendGroupTitle(content, app::strings::screen_about_section_legal);
@@ -199,6 +223,11 @@ void AppendRow(std::vector<View> &content, View row) {
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::background), SafeAreaPadding{});
+}
+
+[[huxerui::composable]] View AboutScreen(domain::AppRoute licenses_route,
+                                         AboutAppInfo app_info) {
+  return AboutScreen(std::move(licenses_route), nullptr, std::move(app_info));
 }
 
 } // namespace linecode::presentation

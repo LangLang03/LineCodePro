@@ -78,7 +78,6 @@ template <typename Action> struct MenuItem final {
   std::optional<StringVariant> description;
   bool available;
   bool selected = false;
-  float bottom_padding_extra = 0.0F;
 };
 
 template <typename Action>
@@ -130,16 +129,15 @@ View DescribedMenuRow(const MenuItem<Action> &item,
                                          VerticalAlignment::Center)));
   }
 
-  return Row(std::move(content))
+  auto row = Row(std::move(content))
+                 .With(Padding(EdgeInsets::Symmetric(16.0F, 14.0F)),
+                       CrossAlign(CrossAxisAlignment::Center));
+  return Stack{std::move(row)}
       .OnClick([callbacks = std::move(callbacks), action = item.action] {
         SelectAction(callbacks, action);
       })
       .With(Frame{.min_height = kMinimumRowHeight},
-            Padding(EdgeInsets{.top = 14.75F,
-                               .right = 16.0F,
-                               .bottom = 14.75F + item.bottom_padding_extra,
-                               .left = 16.0F}),
-            CrossAlign(CrossAxisAlignment::Center),
+            Align(HorizontalAlignment::Stretch, VerticalAlignment::Center),
             Background(item.selected ? colors::accent_muted
                                      : Color::Transparent()),
             Focusable(), PointerCursor(PointerCursorKind::Hand));
@@ -310,9 +308,8 @@ void AppendAttachmentRows(std::vector<View> &rows,
   } else {
     row = std::move(row).OnClick(
         [callback = callbacks.on_file_toggled,
-         file = ChatAttachmentFile{.path = node.path,
-                                   .name = node.name,
-                                   .source = state.source}] {
+         file = ChatAttachmentFile{
+             .path = node.path, .name = node.name, .source = state.source}] {
           if (callback) {
             std::invoke(callback, file);
           }
@@ -440,6 +437,25 @@ View ChatMoreMenu(const ChatMoreMenuState &state,
   return StandardSheet(app::strings::common_more, std::move(rows));
 }
 
+View ChatCompactionMenu(bool visible,
+                        ChatOverlayCallbacks<ChatCompactionAction> callbacks) {
+  if (!visible) {
+    return EmptyOverlay();
+  }
+
+  const std::array items{
+      MenuItem<ChatCompactionAction>{
+          ChatCompactionAction::confirm, app::strings::context_compact_confirm,
+          app::strings::context_compact_confirm_desc, true},
+      MenuItem<ChatCompactionAction>{
+          ChatCompactionAction::cancel, app::strings::common_cancel,
+          app::strings::context_compact_cancel_desc, true},
+  };
+  auto rows = BuildAvailableRows(items, callbacks,
+                                 DescribedMenuRow<ChatCompactionAction>);
+  return StandardSheet(app::strings::sheet_more_compact, std::move(rows));
+}
+
 View ChatPermissionMenu(const ChatPermissionMenuState &state,
                         ChatOverlayCallbacks<ChatPermissionAction> callbacks) {
   if (!state.visible) {
@@ -469,8 +485,7 @@ View ChatPermissionMenu(const ChatPermissionMenuState &state,
       MenuItem<ChatPermissionAction>{
           ChatPermissionAction::manage_all_files,
           app::strings::permission_mode_manage_all_files, storage_description,
-          state.manage_all_files_available, state.external_storage_granted,
-          4.2F},
+          state.manage_all_files_available, state.external_storage_granted},
       MenuItem<ChatPermissionAction>{
           ChatPermissionAction::revoke_saved_commands,
           app::strings::chat_permissions_clear, std::nullopt, true},
@@ -532,14 +547,16 @@ View ChatAttachmentPicker(const ChatAttachmentPickerState &state,
       Column{
           Row{
               Column{
-                  Text(state.source == domain::InputAttachment::source_ssh
-                           ? StringVariant{app::strings::attachment_picker_title_ssh}
-                       : state.source ==
-                               domain::InputAttachment::source_terminal_provider
-                           ? StringVariant{app::strings::
-                                               attachment_picker_title_terminal_provider}
-                           : StringVariant{app::strings::
-                                               attachment_picker_title_local})
+                  Text(
+                      state.source == domain::InputAttachment::source_ssh
+                          ? StringVariant{app::strings::
+                                              attachment_picker_title_ssh}
+                      : state.source ==
+                              domain::InputAttachment::source_terminal_provider
+                          ? StringVariant{app::strings::
+                                              attachment_picker_title_terminal_provider}
+                          : StringVariant{app::strings::
+                                              attachment_picker_title_local})
                       .Style(TextStyle{
                           Font::System(17.0F).WithWeight(FontWeight::Bold),
                           colors::text}),

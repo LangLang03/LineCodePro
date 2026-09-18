@@ -1,11 +1,16 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include <huxerui/view.h>
 
 #include "domain/app_state.h"
+
+namespace linecode::application {
+class OutputSettingsService;
+}
 
 namespace linecode::presentation {
 
@@ -19,5 +24,9 @@ struct AboutAppInfo final {
 // the destination without introducing stringly typed navigation here.
 [[huxerui::composable]] huxerui::View
 AboutScreen(domain::AppRoute licenses_route, AboutAppInfo app_info = {});
+[[huxerui::composable]] huxerui::View AboutScreen(
+    domain::AppRoute licenses_route,
+    std::shared_ptr<application::OutputSettingsService> output_settings,
+    AboutAppInfo app_info = {});
 
 } // namespace linecode::presentation

@@ -10,12 +10,12 @@
 #include <huxerui/text_input.h>
 #include <huxerui/view.h>
 
+#include "application/chat_mode_service.h"
+#include "application/ports/todo_state_store.h"
+#include "application/prompt_request_composer.h"
+#include "application/tool_review_broker.h"
 #include "domain/app_state.h"
 #include "domain/behavior_settings.h"
-#include "application/chat_mode_service.h"
-#include "application/tool_review_broker.h"
-#include "application/prompt_request_composer.h"
-#include "application/ports/todo_state_store.h"
 #include "presentation/components/drawer.h"
 
 namespace linecode::application {
@@ -64,15 +64,13 @@ namespace linecode::presentation {
     const std::shared_ptr<application::DiffStore> &diff_store,
     const std::shared_ptr<application::DiffReviewService> &diff_review,
     const std::shared_ptr<application::OutputSettingsService> &output_settings,
-    const std::shared_ptr<application::ToolPermissionService>
-        &tool_permissions,
+    const std::shared_ptr<application::ToolPermissionService> &tool_permissions,
     const std::shared_ptr<application::ToolReviewBroker> &tool_reviews,
     const std::shared_ptr<application::ChatModeService> &chat_modes,
     huxerui::State<application::ChatInteractionModeState> interaction_mode,
-    domain::InputSettings input_settings,
-    std::string current_project_id,
+    domain::InputSettings input_settings, std::string current_project_id,
     application::PromptAssemblyContext prompt_context,
-    std::string project_label,
-    std::function<void()> show_project_picker);
+    std::string project_label, std::function<void()> show_project_picker,
+    std::function<void()> refresh_workspace);
 
 } // namespace linecode::presentation
