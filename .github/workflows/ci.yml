@@ -1,9 +1,11 @@
 name: CI
 
+# Push only. A push to a branch that has an open pull request raises both the
+# `push` and the `pull_request` event, so listening to both ran every check
+# twice for one commit. Fork pull requests are not tested by this workflow;
+# their commits are not pushed here.
 on:
   push:
-    branches: [master, hui-cpp]
-  pull_request:
     branches: [master, hui-cpp]
   workflow_dispatch:
 
