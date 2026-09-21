@@ -6,7 +6,7 @@ name: CI
 # their commits are not pushed here.
 on:
   push:
-    branches: [master, hui-cpp]
+    branches: [master, dev]
   workflow_dispatch:
 
 permissions:
