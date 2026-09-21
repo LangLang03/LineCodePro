@@ -73,6 +73,12 @@ jobs:
       - name: Install HuxerUI SDK 0.3.0
         run: curl -fsSL https://github.com/HuxerUI/HuxerUI/releases/latest/download/install.sh | sh -s -- --version 0.3.0 --yes
 
+      - name: Generate HuxerUI Android library graph
+        env:
+          HUXERUI_HOME: /home/runner/.local/share/HuxerUI
+          CMAKE_BUILD_PARALLEL_LEVEL: 8
+        run: /home/runner/.local/share/HuxerUI/bin/huxerui build android --source . --profile debug
+
       - name: Make Gradle wrapper executable
         run: chmod +x platform/android/gradlew
 
