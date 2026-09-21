@@ -18,6 +18,13 @@ find_package(ZLIB REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 include(GoogleTest)
 link_libraries(GTest::gtest_main)
+# Every target here is built on HuxerUI types, so they all need the SDK's
+# include directories. Working from an installed SDK on a machine that also has
+# a system-wide copy of the headers hides a missing link -- the compiler finds
+# huxerui/*.h through /usr/local/include and the omission only shows up on a
+# clean runner. Linking at directory scope states the dependency once instead
+# of relying on each add_executable below to remember it.
+link_libraries(HuxerUI::huxerui)
 
 add_executable(linecodepro_tests
         application_tests.cpp

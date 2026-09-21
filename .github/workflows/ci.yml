@@ -77,7 +77,11 @@ jobs:
         env:
           HUXERUI_HOME: /home/runner/.local/share/HuxerUI
           CMAKE_BUILD_PARALLEL_LEVEL: 8
-        run: /home/runner/.local/share/HuxerUI/bin/huxerui build android --source . --profile debug
+        # `--source` names a HuxerUI *source checkout*, not this project, so
+        # passing the repository root made the CLI reject it as an invalid
+        # checkout. Run from the project root and let it default to the
+        # working directory.
+        run: /home/runner/.local/share/HuxerUI/bin/huxerui build android --profile debug
 
       - name: Make Gradle wrapper executable
         run: chmod +x platform/android/gradlew
