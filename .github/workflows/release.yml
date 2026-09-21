@@ -118,7 +118,13 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts
           cp platform/android/app/build/outputs/apk/release/app-release.apk "artifacts/LineCodePro-$VERSION_NAME.apk"
-          sha256sum "artifacts/LineCodePro-$VERSION_NAME.apk" > "artifacts/LineCodePro-$VERSION_NAME.apk.sha256"
+          # Checksum the bare file name from inside `artifacts`. Hashing the
+          # path wrote "artifacts/LineCodePro-....apk" into the file, which no
+          # longer matches once a user downloads the two files side by side.
+          (
+            cd artifacts
+            sha256sum "LineCodePro-$VERSION_NAME.apk" > "LineCodePro-$VERSION_NAME.apk.sha256"
+          )
           cat "artifacts/LineCodePro-$VERSION_NAME.apk.sha256"
 
       # Release notes come from `update.md`: take the block for the version
