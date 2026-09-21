@@ -1,6 +1,6 @@
 // Contract tests for the retry bookkeeping the send path relies on.
 
-#include <cassert>
+#include "gtest_support.h"
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -35,25 +35,25 @@ void ResetAttemptKeepsTheTurnRunning() {
   application::GenerationController controller{session};
 
   auto work = controller.Begin("hello");
-  assert(work.has_value());
+  EXPECT_EXPRESSION(work.has_value());
   const auto id = work->generation_id;
-  assert(controller.State().phase == application::GenerationPhase::running);
+  EXPECT_EXPRESSION(controller.State().phase == application::GenerationPhase::running);
 
   static_cast<void>(controller.Observe(id, TextDelta("partial answer")));
-  assert(controller.State().streamed_text == "partial answer");
+  EXPECT_EXPRESSION(controller.State().streamed_text == "partial answer");
 
-  assert(controller.ResetAttempt(id));
-  assert(controller.State().streamed_text.empty());
-  assert(controller.State().streamed_reasoning.empty());
-  assert(controller.State().promoted_content.empty());
-  assert(controller.State().timeline.empty());
-  assert(controller.State().error.empty());
+  EXPECT_EXPRESSION(controller.ResetAttempt(id));
+  EXPECT_EXPRESSION(controller.State().streamed_text.empty());
+  EXPECT_EXPRESSION(controller.State().streamed_reasoning.empty());
+  EXPECT_EXPRESSION(controller.State().promoted_content.empty());
+  EXPECT_EXPRESSION(controller.State().timeline.empty());
+  EXPECT_EXPRESSION(controller.State().error.empty());
   // Still running: the retry continues the same turn rather than ending it.
-  assert(controller.State().phase == application::GenerationPhase::running);
+  EXPECT_EXPRESSION(controller.State().phase == application::GenerationPhase::running);
   // Only the user's own message is there: the failed attempt left no partial
   // assistant bubble behind.
-  assert(session.Messages().size() == 1U);
-  assert(session.Messages().front().role == domain::MessageRole::user);
+  EXPECT_EXPRESSION(session.Messages().size() == 1U);
+  EXPECT_EXPRESSION(session.Messages().front().role == domain::MessageRole::user);
 }
 
 // A stale generation id must not be able to disturb the current one.
@@ -63,20 +63,20 @@ void ResetAttemptRejectsAStaleGeneration() {
   application::GenerationController controller{session};
 
   auto first = controller.Begin("one");
-  assert(first.has_value());
+  EXPECT_EXPRESSION(first.has_value());
   // A running generation has to finish before another can start, so complete
   // it and then open the second one.
   application::CompletionResponse done;
   done.text = "one";
-  assert(controller.Complete(first->generation_id, std::move(done)));
+  EXPECT_EXPRESSION(controller.Complete(first->generation_id, std::move(done)));
   auto second = controller.Begin("two");
-  assert(second.has_value());
+  EXPECT_EXPRESSION(second.has_value());
 
   static_cast<void>(
       controller.Observe(second->generation_id, TextDelta("current")));
-  assert(controller.State().streamed_text == "current");
-  assert(!controller.ResetAttempt(first->generation_id));
-  assert(controller.State().streamed_text == "current");
+  EXPECT_EXPRESSION(controller.State().streamed_text == "current");
+  EXPECT_EXPRESSION(!controller.ResetAttempt(first->generation_id));
+  EXPECT_EXPRESSION(controller.State().streamed_text == "current");
 }
 
 // Failing still ends the turn, which is what the retry loop falls back to once
@@ -87,20 +87,47 @@ void FailStillEndsTheTurn() {
   application::GenerationController controller{session};
 
   auto work = controller.Begin("hello");
-  assert(work.has_value());
+  EXPECT_EXPRESSION(work.has_value());
   const auto id = work->generation_id;
   static_cast<void>(controller.Observe(id, TextDelta("partial answer")));
-  assert(controller.Fail(id, TransportError("boom")));
-  assert(controller.State().phase == application::GenerationPhase::failed);
-  assert(controller.State().error == "boom");
+  EXPECT_EXPRESSION(controller.Fail(id, TransportError("boom")));
+  EXPECT_EXPRESSION(controller.State().phase == application::GenerationPhase::failed);
+  EXPECT_EXPRESSION(controller.State().error == "boom");
+}
+
+// The legacy app persists a terminal assistant error even when every retry
+// failed before producing a text/reasoning/tool delta.  Keeping that row in
+// the conversation is essential: otherwise the failure disappears after a
+// process restart and the restored transcript no longer matches what the user
+// saw.
+void EmptyTerminalFailureIsPersisted() {
+  application::ChatSession session{
+      std::make_unique<infrastructure::InMemoryConversationStore>()};
+  application::GenerationController controller{session};
+
+  const auto work = controller.Begin("hello");
+  EXPECT_EXPRESSION(work.has_value());
+  EXPECT_EXPRESSION(controller.Fail(work->generation_id,
+                         TransportError("all retries failed")));
+
+  const auto messages = session.Messages();
+  EXPECT_EXPRESSION(messages.size() == 2U);
+  const auto &failure = messages.back();
+  EXPECT_EXPRESSION(failure.role == domain::MessageRole::assistant);
+  EXPECT_EXPRESSION(failure.content.empty());
+  EXPECT_EXPRESSION(failure.error);
+  EXPECT_EXPRESSION(failure.error_message == "all retries failed");
+  EXPECT_EXPRESSION(failure.processing_started_at > 0);
+  EXPECT_EXPRESSION(failure.processing_finished_at >= failure.processing_started_at);
 }
 
 } // namespace
 
-int main() {
+TEST(generation_retry_tests, LegacySuite) {
   ResetAttemptKeepsTheTurnRunning();
   ResetAttemptRejectsAStaleGeneration();
   FailStillEndsTheTurn();
+  EmptyTerminalFailureIsPersisted();
   std::cout << "generation_retry_tests passed\n";
-  return 0;
+  return;
 }

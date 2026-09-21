@@ -1,5 +1,5 @@
+#include "gtest_support.h"
 #include <algorithm>
-#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -23,13 +23,13 @@ namespace {
 
 using namespace linecode;
 
-using application::MemoryStoreResult;
 using application::McpExecutionSettingsService;
+using application::MemoryStoreResult;
 using application::ProjectWorkspaceResult;
 using application::SettingsResult;
-using domain::McpExecutionSettings;
 using domain::McpExecutionMode;
 using domain::McpExecutionModeMask;
+using domain::McpExecutionSettings;
 using domain::McpToolGroupState;
 using domain::MemoryConversationTurn;
 using domain::MemoryOverview;
@@ -63,8 +63,7 @@ public:
     co_return value;
   }
 
-  huxerui::Task<SettingsResult<void>>
-  SetMode(McpExecutionMode mode) override {
+  huxerui::Task<SettingsResult<void>> SetMode(McpExecutionMode mode) override {
     value.mode = mode;
     co_return SettingsResult<void>{};
   }
@@ -180,8 +179,8 @@ public:
     co_return std::unexpected(Unsupported());
   }
 
-  huxerui::Task<ProjectWorkspaceResult<void>>
-  CreateFile(std::string, std::string) override {
+  huxerui::Task<ProjectWorkspaceResult<void>> CreateFile(std::string,
+                                                         std::string) override {
     co_return std::unexpected(Unsupported());
   }
 
@@ -200,23 +199,23 @@ public:
     co_return std::unexpected(Unsupported());
   }
 
-  huxerui::Task<ProjectWorkspaceResult<void>>
-  Rename(std::string, std::string, std::string) override {
+  huxerui::Task<ProjectWorkspaceResult<void>> Rename(std::string, std::string,
+                                                     std::string) override {
     co_return std::unexpected(Unsupported());
   }
 
-  huxerui::Task<ProjectWorkspaceResult<void>>
-  Copy(std::string, std::string, std::string) override {
+  huxerui::Task<ProjectWorkspaceResult<void>> Copy(std::string, std::string,
+                                                   std::string) override {
     co_return std::unexpected(Unsupported());
   }
 
-  huxerui::Task<ProjectWorkspaceResult<void>>
-  Move(std::string, std::string, std::string) override {
+  huxerui::Task<ProjectWorkspaceResult<void>> Move(std::string, std::string,
+                                                   std::string) override {
     co_return std::unexpected(Unsupported());
   }
 
-  huxerui::Task<ProjectWorkspaceResult<void>>
-  Delete(std::string, std::string) override {
+  huxerui::Task<ProjectWorkspaceResult<void>> Delete(std::string,
+                                                     std::string) override {
     co_return std::unexpected(Unsupported());
   }
 
@@ -244,65 +243,67 @@ std::shared_ptr<Scenario> active;
 
 namespace json = infrastructure::archive_json;
 
-void ExpectRegistryError(const std::expected<application::ToolInvocationResult,
-                                             application::ToolRegistryError>
-                             &result,
-                         application::ToolRegistryErrorCode code,
-                         std::string_view message) {
-  assert(!result);
-  assert(result.error().code == code);
-  assert(result.error().message == message);
+void ExpectRegistryError(
+    const std::expected<application::ToolInvocationResult,
+                        application::ToolRegistryError> &result,
+    application::ToolRegistryErrorCode code, std::string_view message) {
+  EXPECT_EXPRESSION(!result);
+  EXPECT_EXPRESSION(result.error().code == code);
+  EXPECT_EXPRESSION(result.error().message == message);
 }
 
 void CatalogContract(const Scenario &scenario) {
   const auto catalog = scenario.tools->Tools();
-  assert(catalog.size() == 1U);
+  EXPECT_EXPRESSION(catalog.size() == 1U);
   const auto &descriptor = catalog.front();
-  assert(descriptor.name == application::kMemoryUpdateToolName);
-  assert(descriptor.name == "memory_update");
-  assert(descriptor.description == kExpectedDescription);
-  assert(descriptor.parameters_json == kExpectedParameters);
-  assert(descriptor.category == kMemoryGroup);
+  EXPECT_EXPRESSION(descriptor.name == application::kMemoryUpdateToolName);
+  EXPECT_EXPRESSION(descriptor.name == "memory_update");
+  EXPECT_EXPRESSION(descriptor.description == kExpectedDescription);
+  EXPECT_EXPRESSION(descriptor.parameters_json == kExpectedParameters);
+  EXPECT_EXPRESSION(descriptor.category == kMemoryGroup);
   // BaseTool.isAllowedInReadonlyMode() defaults to false (BaseTool.java:29-31)
   // and MemoryUpdateTool never overrides it.
-  assert(!descriptor.allowed_in_read_only);
-  assert(!descriptor.permanent_grant_supported);
+  EXPECT_EXPRESSION(!descriptor.allowed_in_read_only);
+  EXPECT_EXPRESSION(!descriptor.SupportsPermanentGrant());
+  EXPECT_EXPRESSION(descriptor.agent_category ==
+                    application::AgentToolCategory::system);
 
   auto parameters = json::Parse(descriptor.parameters_json);
-  assert(parameters);
+  EXPECT_EXPRESSION(parameters);
   const auto *object = json::AsObject(&*parameters);
-  assert(object != nullptr);
+  EXPECT_EXPRESSION(object != nullptr);
   const auto *type = json::AsString(json::Find(*object, "type"));
-  assert(type != nullptr && *type == "object");
+  EXPECT_EXPRESSION(type != nullptr && *type == "object");
   const auto *properties = json::AsObject(json::Find(*object, "properties"));
-  assert(properties != nullptr && properties->size() == 2U);
+  EXPECT_EXPRESSION(properties != nullptr && properties->size() == 2U);
   const auto *content = json::AsObject(json::Find(*properties, "content"));
-  assert(content != nullptr);
+  EXPECT_EXPRESSION(content != nullptr);
   const auto *content_type = json::AsString(json::Find(*content, "type"));
-  assert(content_type != nullptr && *content_type == "string");
+  EXPECT_EXPRESSION(content_type != nullptr && *content_type == "string");
   const auto *content_description =
       json::AsString(json::Find(*content, "description"));
-  assert(content_description != nullptr &&
-         *content_description ==
-             "Independent durable memory statement, max 320 chars");
+  EXPECT_EXPRESSION(content_description != nullptr &&
+                    *content_description ==
+                        "Independent durable memory statement, max 320 chars");
   const auto *scope = json::AsObject(json::Find(*properties, "scope"));
-  assert(scope != nullptr);
+  EXPECT_EXPRESSION(scope != nullptr);
   const auto *scope_description =
       json::AsString(json::Find(*scope, "description"));
-  assert(scope_description != nullptr &&
-         *scope_description == "user | project | environment; default user");
+  EXPECT_EXPRESSION(scope_description != nullptr &&
+                    *scope_description ==
+                        "user | project | environment; default user");
   const auto *scopes = json::AsArray(json::Find(*scope, "enum"));
-  assert(scopes != nullptr && scopes->size() == 3U);
-  assert(json::AsString(&scopes->at(0)) != nullptr &&
-         *json::AsString(&scopes->at(0)) == "user");
-  assert(json::AsString(&scopes->at(1)) != nullptr &&
-         *json::AsString(&scopes->at(1)) == "project");
-  assert(json::AsString(&scopes->at(2)) != nullptr &&
-         *json::AsString(&scopes->at(2)) == "environment");
+  EXPECT_EXPRESSION(scopes != nullptr && scopes->size() == 3U);
+  EXPECT_EXPRESSION(json::AsString(&scopes->at(0)) != nullptr &&
+                    *json::AsString(&scopes->at(0)) == "user");
+  EXPECT_EXPRESSION(json::AsString(&scopes->at(1)) != nullptr &&
+                    *json::AsString(&scopes->at(1)) == "project");
+  EXPECT_EXPRESSION(json::AsString(&scopes->at(2)) != nullptr &&
+                    *json::AsString(&scopes->at(2)) == "environment");
   const auto *required = json::AsArray(json::Find(*object, "required"));
-  assert(required != nullptr && required->size() == 1U);
-  assert(json::AsString(&required->front()) != nullptr &&
-         *json::AsString(&required->front()) == "content");
+  EXPECT_EXPRESSION(required != nullptr && required->size() == 1U);
+  EXPECT_EXPRESSION(json::AsString(&required->front()) != nullptr &&
+                    *json::AsString(&required->front()) == "content");
 }
 
 } // namespace
@@ -315,39 +316,42 @@ huxerui::View Probe() {
   huxerui::Lifecycle([scenario, tasks] {
     const auto handle = tasks.Launch([scenario]() -> huxerui::Task<void> {
       auto refreshed = co_await scenario->tools->Refresh();
-      assert(refreshed);
+      EXPECT_EXPRESSION(refreshed);
       CatalogContract(*scenario);
 
       // Success: the descriptor's scope and the selected project are stored.
       auto invoked = co_await scenario->tools->Invoke(
           "memory_update",
           R"({"content":"Prefer C++23 for new code.","scope":"project"})");
-      assert(invoked);
-      assert(!invoked->error);
-      assert(invoked->content == "Memory updated.");
-      assert(scenario->store->save_count == 1);
+      EXPECT_EXPRESSION(invoked);
+      EXPECT_EXPRESSION(!invoked->error);
+      EXPECT_EXPRESSION(invoked->content == "Memory updated.");
+      EXPECT_EXPRESSION(scenario->store->save_count == 1);
       const auto &saved = scenario->store->saved.front();
-      assert(saved.content == "Prefer C++23 for new code.");
-      assert(saved.scope == MemoryScope::project);
-      assert(saved.project_id == "project-7");
-      assert(saved.source == "manual");
-      assert(saved.confidence == 1.0);
-      assert(saved.id.empty());
+      EXPECT_EXPRESSION(saved.content == "Prefer C++23 for new code.");
+      EXPECT_EXPRESSION(saved.scope == MemoryScope::project);
+      EXPECT_EXPRESSION(saved.project_id == "project-7");
+      EXPECT_EXPRESSION(saved.source == "manual");
+      EXPECT_EXPRESSION(saved.confidence == 1.0);
+      EXPECT_EXPRESSION(saved.id.empty());
 
       // An unknown or missing scope falls back to the user scope.
       invoked = co_await scenario->tools->Invoke(
           "memory_update", R"({"content":"Cross project preference."})");
-      assert(invoked);
-      assert(scenario->store->saved.back().scope == MemoryScope::user);
+      EXPECT_EXPRESSION(invoked);
+      EXPECT_EXPRESSION(scenario->store->saved.back().scope ==
+                        MemoryScope::user);
       invoked = co_await scenario->tools->Invoke(
           "memory_update",
           R"({"content":"Mixed case scope.","scope":"PROJECT"})");
-      assert(invoked);
-      assert(scenario->store->saved.back().scope == MemoryScope::project);
+      EXPECT_EXPRESSION(invoked);
+      EXPECT_EXPRESSION(scenario->store->saved.back().scope ==
+                        MemoryScope::project);
       invoked = co_await scenario->tools->Invoke(
           "memory_update", R"({"content":"Unknown scope.","scope":"planet"})");
-      assert(invoked);
-      assert(scenario->store->saved.back().scope == MemoryScope::user);
+      EXPECT_EXPRESSION(invoked);
+      EXPECT_EXPRESSION(scenario->store->saved.back().scope ==
+                        MemoryScope::user);
 
       // Legacy truncation: substring(0, MAX_CONTENT_CHARS - 1).trim() plus the
       // full stop marker, i.e. 320 characters (319 ASCII bytes plus one
@@ -356,11 +360,12 @@ huxerui::View Probe() {
       invoked = co_await scenario->tools->Invoke(
           "memory_update",
           json::Serialize(json::Object{{"content", long_content}}));
-      assert(invoked);
+      EXPECT_EXPRESSION(invoked);
       const auto &truncated = scenario->store->saved.back().content;
-      assert(truncated.size() == 319U + std::string_view{"。"}.size());
-      assert(truncated.ends_with("。"));
-      assert(truncated.starts_with(std::string(10U, 'a')));
+      EXPECT_EXPRESSION(truncated.size() ==
+                        319U + std::string_view{"。"}.size());
+      EXPECT_EXPRESSION(truncated.ends_with("。"));
+      EXPECT_EXPRESSION(truncated.starts_with(std::string(10U, 'a')));
 
       // Sensitive content is refused before touching the store.
       const auto saves_before = scenario->store->save_count;
@@ -374,20 +379,20 @@ huxerui::View Probe() {
       ExpectRegistryError(rejected,
                           application::ToolRegistryErrorCode::invalid_arguments,
                           "Refused to store sensitive content as memory.");
-      assert(scenario->store->save_count == saves_before);
+      EXPECT_EXPRESSION(scenario->store->save_count == saves_before);
 
       // Argument parsing branches.
       rejected = co_await scenario->tools->Invoke("memory_update", "{}");
       ExpectRegistryError(rejected,
                           application::ToolRegistryErrorCode::invalid_arguments,
                           "Memory content cannot be empty.");
-      rejected = co_await scenario->tools->Invoke(
-          "memory_update", R"({"content":"   "})");
+      rejected = co_await scenario->tools->Invoke("memory_update",
+                                                  R"({"content":"   "})");
       ExpectRegistryError(rejected,
                           application::ToolRegistryErrorCode::invalid_arguments,
                           "Memory content cannot be empty.");
-      rejected = co_await scenario->tools->Invoke(
-          "memory_update", R"({"content":42})");
+      rejected = co_await scenario->tools->Invoke("memory_update",
+                                                  R"({"content":42})");
       ExpectRegistryError(rejected,
                           application::ToolRegistryErrorCode::invalid_arguments,
                           "Memory content cannot be empty.");
@@ -402,9 +407,9 @@ huxerui::View Probe() {
 
       // Unknown tools are rejected before any storage work.
       rejected = co_await scenario->tools->Invoke("memory_delete", "{}");
-      assert(!rejected);
-      assert(rejected.error().code ==
-             application::ToolRegistryErrorCode::unknown_tool);
+      EXPECT_EXPRESSION(!rejected);
+      EXPECT_EXPRESSION(rejected.error().code ==
+                        application::ToolRegistryErrorCode::unknown_tool);
 
       // Store failures surface as invocation_failed.
       scenario->store->fail_save = true;
@@ -419,27 +424,27 @@ huxerui::View Probe() {
       scenario->projects->selected = std::nullopt;
       invoked = co_await scenario->tools->Invoke(
           "memory_update", R"({"content":"Default project memory."})");
-      assert(invoked);
-      assert(scenario->store->saved.back().project_id ==
-             std::string{domain::default_project_id});
+      EXPECT_EXPRESSION(invoked);
+      EXPECT_EXPRESSION(scenario->store->saved.back().project_id ==
+                        std::string{domain::default_project_id});
 
       // Group disabled: not exposed and not invokable.
       const auto disable_group = [scenario](bool enabled) {
         const auto found = std::ranges::find(scenario->settings->value.groups,
                                              std::string{kMemoryGroup},
                                              &McpToolGroupState::id);
-        assert(found != scenario->settings->value.groups.end());
+        EXPECT_EXPRESSION(found != scenario->settings->value.groups.end());
         found->enabled = enabled;
       };
       disable_group(false);
       refreshed = co_await scenario->tools->Refresh();
-      assert(refreshed);
-      assert(scenario->tools->Tools().empty());
-      rejected = co_await scenario->tools->Invoke(
-          "memory_update", R"({"content":"Disabled."})");
-      assert(!rejected);
-      assert(rejected.error().code ==
-             application::ToolRegistryErrorCode::unavailable);
+      EXPECT_EXPRESSION(refreshed);
+      EXPECT_EXPRESSION(scenario->tools->Tools().empty());
+      rejected = co_await scenario->tools->Invoke("memory_update",
+                                                  R"({"content":"Disabled."})");
+      EXPECT_EXPRESSION(!rejected);
+      EXPECT_EXPRESSION(rejected.error().code ==
+                        application::ToolRegistryErrorCode::unavailable);
 
       // Enabled but unsupported for the active execution mode.
       scenario->settings->value.groups.clear();
@@ -450,21 +455,21 @@ huxerui::View Probe() {
       });
       scenario->settings->value.mode = McpExecutionMode::ssh;
       refreshed = co_await scenario->tools->Refresh();
-      assert(refreshed);
-      assert(scenario->tools->Tools().empty());
+      EXPECT_EXPRESSION(refreshed);
+      EXPECT_EXPRESSION(scenario->tools->Tools().empty());
       rejected = co_await scenario->tools->Invoke(
           "memory_update", R"({"content":"Unsupported mode."})");
-      assert(!rejected);
-      assert(rejected.error().code ==
-             application::ToolRegistryErrorCode::unavailable);
+      EXPECT_EXPRESSION(!rejected);
+      EXPECT_EXPRESSION(rejected.error().code ==
+                        application::ToolRegistryErrorCode::unavailable);
 
       // A settings failure fails the refresh instead of exposing tools.
       scenario->settings->fail_load = true;
       auto load_failed = co_await scenario->tools->Refresh();
-      assert(!load_failed);
-      assert(load_failed.error().code ==
-             application::ToolRegistryErrorCode::load_failed);
-      assert(scenario->tools->Tools().empty());
+      EXPECT_EXPRESSION(!load_failed);
+      EXPECT_EXPRESSION(load_failed.error().code ==
+                        application::ToolRegistryErrorCode::load_failed);
+      EXPECT_EXPRESSION(scenario->tools->Tools().empty());
       scenario->settings->fail_load = false;
 
       scenario->done = true;
@@ -476,7 +481,7 @@ huxerui::View Probe() {
 
 } // namespace
 
-int main() {
+TEST(memory_tool_tests, LegacySuite) {
   active = std::make_shared<Scenario>();
   active->settings = std::make_shared<StubExecutionSettings>();
   active->store = std::make_shared<StubMemoryStore>();

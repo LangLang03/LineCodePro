@@ -20,15 +20,20 @@ RegisteredTool Descriptor() {
       .parameters_json =
           R"({"type":"object","properties":{"prompt":{"type":"string","description":"Image generation prompt, including subject, style, composition, text requirements, and constraints"},"size":{"type":"string","description":"Image size, default 1024x1024"},"quality":{"type":"string","description":"Optional quality: auto, low, medium, high, standard, or hd"},"background":{"type":"string","description":"Optional background: auto, transparent, or opaque"}},"required":["prompt"]})",
       .allowed_in_read_only = false,
-      .permanent_grant_supported = false,
+      .agent_category = AgentToolCategory::generate,
       .category = "image",
+      .presentation =
+          {.english_name = "Generate image",
+           .english_description =
+               "Create an image with the configured image-generation model.",
+           .chinese_name = "生成图像",
+           .chinese_description = "使用已配置的图像生成模型创建图像。"},
   };
 }
 
 bool Enabled(const domain::McpExecutionSettings &settings) {
   const auto found = std::ranges::find(
-      settings.groups, kToolName,
-      [](const domain::McpToolGroupState &group) {
+      settings.groups, kToolName, [](const domain::McpToolGroupState &group) {
         return std::string_view{group.id};
       });
   return found != settings.groups.end() && found->enabled &&
@@ -45,11 +50,10 @@ ToolRegistryError GenerationError(const ImageGenerationError &error) {
   const auto code =
       error.code == ImageGenerationErrorCode::invalid_arguments
           ? ToolRegistryErrorCode::invalid_arguments
-          : error.code == ImageGenerationErrorCode::unsupported_protocol ||
-                    error.code ==
-                        ImageGenerationErrorCode::invalid_configuration
-                ? ToolRegistryErrorCode::unavailable
-                : ToolRegistryErrorCode::invocation_failed;
+      : error.code == ImageGenerationErrorCode::unsupported_protocol ||
+              error.code == ImageGenerationErrorCode::invalid_configuration
+          ? ToolRegistryErrorCode::unavailable
+          : ToolRegistryErrorCode::invocation_failed;
   return RegistryError(code, error.message);
 }
 
@@ -64,8 +68,7 @@ ImageGenerationToolRegistry::ImageGenerationToolRegistry(
     : execution_settings_(std::move(execution_settings)),
       settings_(std::move(settings)), models_(std::move(models)),
       codec_(std::move(codec)), gateway_(std::move(gateway)) {
-  if (!execution_settings_ || !settings_ || !models_ || !codec_ ||
-      !gateway_) {
+  if (!execution_settings_ || !settings_ || !models_ || !codec_ || !gateway_) {
     throw std::invalid_argument(
         "ImageGenerationToolRegistry requires all dependencies");
   }
@@ -75,8 +78,8 @@ huxerui::Task<std::expected<void, ToolRegistryError>>
 ImageGenerationToolRegistry::Refresh() {
   auto settings = co_await execution_settings_->Load();
   if (!settings) {
-    co_return std::unexpected(RegistryError(
-        ToolRegistryErrorCode::load_failed, settings.error().message));
+    co_return std::unexpected(RegistryError(ToolRegistryErrorCode::load_failed,
+                                            settings.error().message));
   }
   tools_.clear();
   if (Enabled(*settings))
@@ -93,9 +96,8 @@ huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>>
 ImageGenerationToolRegistry::Invoke(std::string name,
                                     std::string arguments_json) {
   if (name != kToolName) {
-    co_return std::unexpected(RegistryError(
-        ToolRegistryErrorCode::unknown_tool,
-        "Unknown image tool: " + name));
+    co_return std::unexpected(RegistryError(ToolRegistryErrorCode::unknown_tool,
+                                            "Unknown image tool: " + name));
   }
   if (tools_.empty()) {
     co_return std::unexpected(RegistryError(
@@ -109,27 +111,26 @@ ImageGenerationToolRegistry::Invoke(std::string name,
   }
   auto settings = co_await settings_->Load();
   if (!settings) {
-    co_return std::unexpected(RegistryError(
-        ToolRegistryErrorCode::load_failed, settings.error().message));
+    co_return std::unexpected(RegistryError(ToolRegistryErrorCode::load_failed,
+                                            settings.error().message));
   }
   if (settings->image_generation_model_id.empty()) {
-    co_return std::unexpected(RegistryError(
-        ToolRegistryErrorCode::unavailable,
-        "Image generation model is not configured"));
+    co_return std::unexpected(
+        RegistryError(ToolRegistryErrorCode::unavailable,
+                      "Image generation model is not configured"));
   }
   auto model = co_await models_->Find(settings->image_generation_model_id);
   if (!model) {
-    co_return std::unexpected(RegistryError(
-        ToolRegistryErrorCode::load_failed, model.error().message));
+    co_return std::unexpected(RegistryError(ToolRegistryErrorCode::load_failed,
+                                            model.error().message));
   }
   if (!model->has_value()) {
-    co_return std::unexpected(RegistryError(
-        ToolRegistryErrorCode::unavailable,
-        "The selected image generation model no longer exists"));
+    co_return std::unexpected(
+        RegistryError(ToolRegistryErrorCode::unavailable,
+                      "The selected image generation model no longer exists"));
   }
 
-  auto generated =
-      co_await gateway_->Generate(std::move(**model), *decoded);
+  auto generated = co_await gateway_->Generate(std::move(**model), *decoded);
   if (!generated) {
     co_return std::unexpected(GenerationError(generated.error()));
   }

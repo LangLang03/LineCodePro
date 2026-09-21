@@ -28,19 +28,20 @@ public:
   // controller: only "rejected" rejects, everything else accepts. An empty
   // `tool_call_id` is ignored. A rejection with a resolvable diff identifier
   // reverts the change instead of merely recording the state.
-  [[nodiscard]] huxerui::Task<void> Review(std::string tool_call_id,
-                                           std::string state,
-                                           std::string diff_id);
+  [[nodiscard]] huxerui::Task<DiffStoreResult<void>>
+  Review(std::string tool_call_id, std::string state, std::string diff_id);
 
   // Second half of `rejectWithRevert`: guard the revert, restore the file, and
   // mark the record. Failures publish their legacy message and leave the state
   // empty so the card stays actionable.
-  [[nodiscard]] huxerui::Task<void> RejectWithRevert(std::string diff_id);
+  [[nodiscard]] huxerui::Task<DiffStoreResult<void>>
+  RejectWithRevert(std::string diff_id);
 
   // The local-review overlay the legacy host applied before rendering a tool
   // message: the cache wins, a miss falls back to `Find`, and a record without
   // any state or message reports "nothing local" rather than an empty state.
-  [[nodiscard]] huxerui::Task<std::optional<domain::DiffRecord>>
+  [[nodiscard]] huxerui::Task<
+      DiffStoreResult<std::optional<domain::DiffRecord>>>
   CachedReview(std::string_view diff_id);
 
 protected:
@@ -50,9 +51,9 @@ protected:
   std::map<std::string, std::optional<domain::DiffRecord>, std::less<>> cache_;
 
 private:
-  [[nodiscard]] huxerui::Task<void> SetLocalReview(std::string_view diff_id,
-                                                   std::string state,
-                                                   std::string message);
+  [[nodiscard]] huxerui::Task<DiffStoreResult<void>>
+  SetLocalReview(std::string_view diff_id, std::string state,
+                 std::string message);
 
   DiffStore &diffs_;
   DiffFileRestore &restore_;

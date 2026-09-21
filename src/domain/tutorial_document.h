@@ -78,14 +78,47 @@ struct TutorialCodeBlock final {
 // A validated, bounded standalone Markdown data image. Keeping immutable
 // encoded bytes in the document avoids retaining the original data URI and
 // lets the platform renderer defer pixel decoding.
-struct TutorialImageBlock final {
-  std::string alternative_text;
+struct TutorialEncodedImage final {
   std::string mime_type;
   std::vector<std::byte> encoded;
   std::uint32_t pixel_width{};
   std::uint32_t pixel_height{};
 
-  bool operator==(const TutorialImageBlock &) const = default;
+  bool operator==(const TutorialEncodedImage&) const = default;
+};
+
+// Legacy MarkdownImageView also accepts an absolute native path or a file URI.
+// The presentation resolves the URI through HuxerUI's public File contract;
+// parsing the Markdown must not perform synchronous filesystem I/O.
+struct TutorialAbsolutePathImage final {
+  std::string path;
+
+  bool operator==(const TutorialAbsolutePathImage&) const = default;
+};
+
+struct TutorialFileUriImage final {
+  std::string uri;
+
+  bool operator==(const TutorialFileUriImage&) const = default;
+};
+
+using TutorialImageSource =
+    std::variant<TutorialEncodedImage, TutorialAbsolutePathImage,
+                 TutorialFileUriImage>;
+
+struct TutorialImageBlock final {
+  std::string alternative_text;
+  TutorialImageSource source;
+
+  bool operator==(const TutorialImageBlock&) const = default;
+};
+
+// CommonMark HtmlBlock nodes are deliberately shown as source, not interpreted
+// as native/web content. This is the same safe behavior as the legacy renderer.
+struct TutorialHtmlBlock final {
+  std::string html;
+
+  bool operator==(const TutorialHtmlBlock&) const = default;
 };
 
 struct TutorialTable final {
@@ -101,8 +134,8 @@ struct TutorialThematicBreak final {
 
 using TutorialBlock =
     std::variant<TutorialHeading, TutorialParagraph, TutorialQuote,
-                 TutorialList, TutorialCodeBlock, TutorialImageBlock, TutorialTable,
-                 TutorialThematicBreak>;
+                 TutorialList, TutorialCodeBlock, TutorialImageBlock,
+                 TutorialHtmlBlock, TutorialTable, TutorialThematicBreak>;
 
 /// Owned block children of a quote or a list item.
 ///

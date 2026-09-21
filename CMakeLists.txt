@@ -39,13 +39,13 @@ huxerui_add_app(linecodepro
 huxerui_use_library(linecodepro
         TARGET HuxerUI::SQLite
         URL "https://github.com/HuxerUI/Lib-SQLite.git"
-        COMMIT "0b316df41cbd88b212e6aeead326196e3db6c96a"
+        COMMIT "5e3d040079629e698ca2f456ad79042cbbcd6aba"
 )
 
 huxerui_use_library(linecodepro
         TARGET HuxerUI::WebView
         URL "https://github.com/HuxerUI/Lib-WebView.git"
-        COMMIT "88d34570d999cd4ac5a626e2e4c5b840f903885a"
+        COMMIT "d07820374b4a5f75659cd29e4e4fe2bcc899b8ef"
 )
 
 if (NOT HUXERUI_LIBRARY_GRAPH_ONLY)

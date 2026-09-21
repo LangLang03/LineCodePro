@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "application/tool_text_catalog.h"
+#include "domain/agent_run_progress.h"
 
 namespace linecode::application {
 
@@ -78,14 +79,12 @@ struct AgentResultRecord final {
 
 // Legacy `AgentResultRecord` constructor (lines 22-54): null-safe strings,
 // defaulted status, clamped counters and timestamp.
-[[nodiscard]] AgentResultRecord
-CreateAgentResultRecord(std::string agent_id, std::string tool_call_id,
-                        std::string tool_name, std::string status,
-                        std::string type, std::string description,
-                        std::string preview, std::string full_output,
-                        std::string thinking, std::string progress_json,
-                        int tool_call_count, bool error, bool async,
-                        int generation_id, std::int64_t updated_at_ms);
+[[nodiscard]] AgentResultRecord CreateAgentResultRecord(
+    std::string agent_id, std::string tool_call_id, std::string tool_name,
+    std::string status, std::string type, std::string description,
+    std::string preview, std::string full_output, std::string thinking,
+    std::string progress_json, int tool_call_count, bool error, bool async,
+    int generation_id, std::int64_t updated_at_ms);
 
 // Legacy `AgentResultRecord.clampPreview` (lines 203-212): trim, then cut to
 // PREVIEW_MAX_CHARS characters.
@@ -107,6 +106,33 @@ struct AgentOutputResult final {
   bool operator==(const AgentOutputResult &) const = default;
 };
 
+// Read-only projection for presentation or other consumers. It exposes the
+// typed nested snapshot without leaking registry storage or requiring callers
+// to parse progress_json themselves.
+struct AgentResultView final {
+  std::string agent_id;
+  std::string status;
+  std::string type;
+  std::string description;
+  std::string preview;
+  std::string full_output;
+  std::string thinking;
+  int tool_call_count{};
+  bool error{};
+  bool async{};
+  domain::AgentProgressSnapshot progress{};
+
+  bool operator==(const AgentResultView &) const = default;
+};
+
+class AgentResultReader {
+public:
+  virtual ~AgentResultReader() = default;
+
+  [[nodiscard]] virtual std::optional<AgentResultView>
+  Read(std::string_view agent_id) const = 0;
+};
+
 // Legacy `AgentOutputTool` `include` option: "meta" selects the status-only
 // object, anything else (including an absent value, which defaults to
 // "output") selects the body.
@@ -120,7 +146,7 @@ ParseAgentOutputInclude(std::string_view value) noexcept;
 // implemented) execution engine: the engine records a run here, the `agent` /
 // `agent_pipeline` tools return the compact ref produced by
 // `ToCompactJson`, and `agent_output` reads it back through `Fetch`.
-class AgentResultRegistry final {
+class AgentResultRegistry final : public AgentResultReader {
 public:
   // Legacy `AgentResultRegistry.COMPACT_MARKER` (line 11).
   inline static constexpr std::string_view kCompactMarker =
@@ -142,6 +168,8 @@ public:
   // Legacy `getRecord(...)`: null for an unknown or empty id.
   [[nodiscard]] std::optional<AgentResultRecord>
   GetRecord(std::string_view agent_id) const;
+  [[nodiscard]] std::optional<AgentResultView>
+  Read(std::string_view agent_id) const override;
   [[nodiscard]] bool Contains(std::string_view agent_id) const;
   // Insertion order, matching the legacy LinkedHashMap iteration.
   [[nodiscard]] std::vector<std::string> AgentIds() const;
@@ -162,7 +190,8 @@ public:
   // Legacy `AgentResultRegistry.toCompactJson` (lines 112-134): the compact
   // ref returned by `agent` / `agent_pipeline`. Carries the marker, the id and
   // the status fields, never the full transcript.
-  [[nodiscard]] static std::string ToCompactJson(const AgentResultRecord &record);
+  [[nodiscard]] static std::string
+  ToCompactJson(const AgentResultRecord &record);
   // Legacy `parseCompact` (lines 136-169): recognizes a compact ref; anything
   // without the marker or without an agent id yields nullopt.
   [[nodiscard]] static std::optional<AgentResultRecord>
@@ -188,5 +217,12 @@ private:
   std::vector<AgentResultRecord> records_;
   std::uint64_t sequence_{1};
 };
+
+// Resolves the agent_id from a persisted compact tool result, then reads the
+// typed snapshot through the read-only port. This is the presentation-facing
+// bridge; compact refs stay small and backward compatible.
+[[nodiscard]] std::optional<AgentResultView>
+ResolveAgentResultReference(std::string_view compact_ref,
+                            const AgentResultReader &reader);
 
 } // namespace linecode::application

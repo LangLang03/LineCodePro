@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 
@@ -8,18 +10,40 @@
 namespace linecode::presentation {
 
 struct ModelFormLayoutMetrics final {
-  // The legacy action TextView measures 148px at 420dpi (about 56.4dp),
-  // including its horizontal content padding. Keep one fixed slot per action
-  // so both the title and the trailing group retain the measured positions.
-  static constexpr float header_action_minimum_width = 56.0F;
-  static constexpr float header_action_minimum_height = 39.0F;
-  static constexpr float header_action_baseline_padding = 3.0F;
+  static constexpr float header_minimum_height = 61.14F;
+  static constexpr float header_title_offset_y = 1.52F;
+  static constexpr float header_action_offset_y = 1.90F;
   static constexpr float toggle_height = 46.0F;
-  static constexpr float toggle_baseline_padding = 2.0F;
-  static constexpr float latin_toggle_height = 44.5F;
-  static constexpr float latin_toggle_baseline_padding = 0.75F;
-  static constexpr float acceleration_label_bottom_padding = 7.0F;
+  static constexpr float acceleration_label_bottom_padding = 9.3F;
+  static constexpr float acceleration_text_offset_y = 1.14F;
+  static constexpr float form_border_width = 1.14F;
+  // The legacy 11sp TextView adds explicit leading to wrapped form hints.
+  // HuxerUI exposes platform paragraph metrics but no line-spacing override.
+  static constexpr float base_url_hint_trailing_padding = 6.0F;
 };
+
+enum class ModelFormSectionLabelKind : std::uint8_t {
+  cjk_or_mixed,
+  latin,
+  count,
+};
+
+struct ModelFormSectionLabelMetrics final {
+  float line_box_height;
+};
+
+inline constexpr std::array model_form_section_label_metrics{
+    ModelFormSectionLabelMetrics{.line_box_height = 18.67F},
+    ModelFormSectionLabelMetrics{.line_box_height = 15.24F},
+};
+
+static_assert(model_form_section_label_metrics.size() ==
+              static_cast<std::size_t>(ModelFormSectionLabelKind::count));
+
+[[nodiscard]] constexpr const ModelFormSectionLabelMetrics &
+ModelFormSectionLabelMetricsFor(ModelFormSectionLabelKind kind) noexcept {
+  return model_form_section_label_metrics[static_cast<std::size_t>(kind)];
+}
 
 // The legacy form keeps the free-form EditText and catalog selection alive at
 // the same time. Switching the "custom" control only changes which slot is
@@ -67,9 +91,10 @@ struct ProtocolTabDecision final {
   ProtocolTabAction action{ProtocolTabAction::none};
 };
 
-[[nodiscard]] constexpr ProtocolTabDecision ResolveProtocolTabDecision(
-    domain::ModelProtocol current, domain::ModelProtocol target,
-    bool locked_preset) noexcept {
+[[nodiscard]] constexpr ProtocolTabDecision
+ResolveProtocolTabDecision(domain::ModelProtocol current,
+                           domain::ModelProtocol target,
+                           bool locked_preset) noexcept {
   const bool selected = current == target;
   const bool enabled = !locked_preset || selected;
   if (!enabled)

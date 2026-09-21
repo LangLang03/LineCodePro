@@ -197,7 +197,7 @@ Task<void> Load(
 
   return Column {
     Header(ImageModelPresentationFor(purpose).picker_title, navigation),
-    Divider(),
+    LegacyScreenHeaderDivider(),
     ScrollView(Column(content).With(
                    Padding(EdgeInsets{.top = 16.0F,
                                       .right = 16.0F,

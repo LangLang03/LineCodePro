@@ -1,7 +1,7 @@
 // Tests for the `Linkify.WEB_URLS` equivalent that turns bare URLs in Markdown
 // body text and table cells into links, plus the policy that decides which
 // inline parts participate.
-#include <cassert>
+#include "gtest_support.h"
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -32,24 +32,24 @@ void AssertUrl(std::string_view text, std::string_view displayed,
     if (!run.url)
       continue;
     ++links;
-    assert(run.text == displayed);
-    assert(*run.url == resource);
+    EXPECT_EXPRESSION(run.text == displayed);
+    EXPECT_EXPRESSION(*run.url == resource);
   }
-  assert(joined == text);
-  assert(links == 1);
+  EXPECT_EXPRESSION(joined == text);
+  EXPECT_EXPRESSION(links == 1);
 }
 
 /// Asserts that a text is never split into links.
 void AssertPlain(std::string_view text) {
   const auto runs = Runs(text);
-  assert(runs.size() == 1);
-  assert(!runs.front().url.has_value());
-  assert(runs.front().text == text);
+  EXPECT_EXPRESSION(runs.size() == 1);
+  EXPECT_EXPRESSION(!runs.front().url.has_value());
+  EXPECT_EXPRESSION(runs.front().text == text);
 }
 
 } // namespace
 
-int main() {
+TEST(markdown_linkify_tests, LegacySuite) {
   // `http://` and `https://` are recognized as-is
   // (`Linkify.java:313-316` gathers `Patterns.AUTOLINK_WEB_URL`).
   AssertUrl("http://example.com", "http://example.com", "http://example.com");
@@ -82,13 +82,13 @@ int main() {
 
   // Sentences keep their punctuation; only the URL is linked.
   const auto sentence = Runs("see https://example.com now");
-  assert(sentence.size() == 3);
-  assert(sentence[0].text == "see ");
-  assert(!sentence[0].url.has_value());
-  assert(sentence[1].text == "https://example.com");
-  assert(sentence[1].url == std::optional<std::string>("https://example.com"));
-  assert(sentence[2].text == " now");
-  assert(!sentence[2].url.has_value());
+  EXPECT_EXPRESSION(sentence.size() == 3);
+  EXPECT_EXPRESSION(sentence[0].text == "see ");
+  EXPECT_EXPRESSION(!sentence[0].url.has_value());
+  EXPECT_EXPRESSION(sentence[1].text == "https://example.com");
+  EXPECT_EXPRESSION(sentence[1].url == std::optional<std::string>("https://example.com"));
+  EXPECT_EXPRESSION(sentence[2].text == " now");
+  EXPECT_EXPRESSION(!sentence[2].url.has_value());
 
   // Trailing sentence punctuation is trimmed, balanced brackets are kept.
   AssertUrl("https://example.com.", "https://example.com",
@@ -103,9 +103,9 @@ int main() {
   AssertUrl("https://example.com。", "https://example.com",
             "https://example.com");
   const auto chinese = Runs("见 https://example.com，谢谢");
-  assert(chinese.size() == 3);
-  assert(chinese[1].text == "https://example.com");
-  assert(chinese[2].text == "，谢谢");
+  EXPECT_EXPRESSION(chinese.size() == 3);
+  EXPECT_EXPRESSION(chinese[1].text == "https://example.com");
+  EXPECT_EXPRESSION(chinese[2].text == "，谢谢");
   // Chinese text glued to the URL still starts a link, because the boundary
   // only rejects ASCII word characters.
   AssertUrl("见https://example.com", "https://example.com",
@@ -113,11 +113,11 @@ int main() {
 
   // Several URLs in one fragment stay separate runs.
   const auto many = Runs("https://a.example and www.b.example");
-  assert(many.size() == 3);
-  assert(many[0].url == std::optional<std::string>("https://a.example"));
-  assert(many[1].text == " and ");
-  assert(!many[1].url.has_value());
-  assert(many[2].url == std::optional<std::string>("http://www.b.example"));
+  EXPECT_EXPRESSION(many.size() == 3);
+  EXPECT_EXPRESSION(many[0].url == std::optional<std::string>("https://a.example"));
+  EXPECT_EXPRESSION(many[1].text == " and ");
+  EXPECT_EXPRESSION(!many[1].url.has_value());
+  EXPECT_EXPRESSION(many[2].url == std::optional<std::string>("http://www.b.example"));
 
   // Non-matches stay plain text: an e-mail address (`Linkify.sUrlMatchFilter`
   // rejects a match right after `@`), a bare domain without a scheme or `www.`
@@ -136,8 +136,8 @@ int main() {
 
   // The inline-part policy: inline code and explicit links are excluded from
   // bare-URL recognition so code samples and existing destinations survive.
-  assert(!LinkifiesBareUrls(true, false));
-  assert(!LinkifiesBareUrls(false, true));
-  assert(!LinkifiesBareUrls(true, true));
-  assert(LinkifiesBareUrls(false, false));
+  EXPECT_EXPRESSION(!LinkifiesBareUrls(true, false));
+  EXPECT_EXPRESSION(!LinkifiesBareUrls(false, true));
+  EXPECT_EXPRESSION(!LinkifiesBareUrls(true, true));
+  EXPECT_EXPRESSION(LinkifiesBareUrls(false, false));
 }

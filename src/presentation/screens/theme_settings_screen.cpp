@@ -19,6 +19,7 @@
 #include "domain/theme_palette.h"
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/components/legacy_settings_card_frame.h"
+#include "presentation/legacy_text_presentation.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -35,6 +36,8 @@ struct OptionMeta final {
   StringResource title;
   StringResource description;
   ImageResource icon;
+  float minimum_height;
+  float vertical_padding;
 };
 
 struct FieldMeta final {
@@ -100,23 +103,32 @@ View Glyph(ImageResource icon, float size, Color tint) {
 std::array<OptionMeta, 9> Options() {
   return {
       {{ThemeMode::system, app::strings::screen_theme_system,
-        app::strings::screen_theme_system_desc, app::images::monitor},
+        app::strings::screen_theme_system_desc, app::images::monitor, 64.76F,
+        12.0F},
        {ThemeMode::light, app::strings::screen_theme_light,
-        app::strings::screen_theme_light_desc, app::images::sun},
+        app::strings::screen_theme_light_desc, app::images::sun, 64.76F,
+        12.0F},
        {ThemeMode::dark, app::strings::screen_theme_dark,
-        app::strings::screen_theme_dark_desc, app::images::moon},
+        app::strings::screen_theme_dark_desc, app::images::moon, 64.76F,
+        12.0F},
        {ThemeMode::coffee, app::strings::screen_theme_coffee,
-        app::strings::screen_theme_coffee_desc, app::images::coffee},
+        app::strings::screen_theme_coffee_desc, app::images::coffee, 64.76F,
+        12.0F},
        {ThemeMode::vscode, app::strings::screen_theme_vscode,
-        app::strings::screen_theme_vscode_desc, app::images::code},
+        app::strings::screen_theme_vscode_desc, app::images::code, 60.19F,
+        10.5F},
        {ThemeMode::github_dark, app::strings::screen_theme_github_dark,
-        app::strings::screen_theme_github_dark_desc, app::images::git_branch},
+        app::strings::screen_theme_github_dark_desc, app::images::git_branch,
+        60.19F, 10.5F},
        {ThemeMode::gruvbox, app::strings::screen_theme_gruvbox,
-        app::strings::screen_theme_gruvbox_desc, app::images::code},
+        app::strings::screen_theme_gruvbox_desc, app::images::code, 60.19F,
+        10.5F},
        {ThemeMode::high_contrast, app::strings::screen_theme_high_contrast,
-        app::strings::screen_theme_high_contrast_desc, app::images::contrast},
+        app::strings::screen_theme_high_contrast_desc, app::images::contrast,
+        64.76F, 12.0F},
        {ThemeMode::custom, app::strings::screen_theme_custom,
-        app::strings::screen_theme_custom_desc, app::images::paintbrush}}};
+        app::strings::screen_theme_custom_desc, app::images::paintbrush,
+        64.76F, 12.0F}}};
 }
 
 std::array<FieldMeta, domain::theme_color_count> Fields() {
@@ -251,15 +263,16 @@ View OptionRow(const OptionMeta &option, ThemeMode selected,
       .OnClick([mode = option.mode, state, service] {
         state = service->SelectMode(mode);
       })
-      .With(Frame{.min_height = 56.0F}, Spacing(12.0F),
-            Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
+      .With(Frame{.min_height = option.minimum_height}, Spacing(12.0F),
+            Padding(EdgeInsets::Symmetric(16.0F, option.vertical_padding)),
             CrossAlign(CrossAxisAlignment::Center),
             Background(active ? colors::accent_muted : Color::Transparent()),
             Focusable(), PointerCursor(PointerCursorKind::Hand));
 }
 
 View ThemeModes(State<application::ThemeSettingsState> state,
-                std::shared_ptr<application::ThemeSettingsService> service) {
+                std::shared_ptr<application::ThemeSettingsService> service,
+                std::string section_title) {
   std::vector<View> rows;
   const auto options = Options();
   for (std::size_t index = 0; index < options.size(); ++index) {
@@ -270,10 +283,13 @@ View ThemeModes(State<application::ThemeSettingsState> state,
       rows.push_back(Divider());
   }
   return Column{
-      Text(app::strings::screen_theme_section_themes)
+      Text(std::move(section_title))
           .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
-          .With(Padding(EdgeInsets{
-              .top = 20.0F, .right = 16.0F, .bottom = 12.0F, .left = 16.0F})),
+          .With(Frame{.height = 47.625F},
+                Padding(EdgeInsets{.top = 20.0F,
+                                   .right = 16.0F,
+                                   .bottom = 12.0F,
+                                   .left = 16.0F})),
       LegacySettingsCardFrame{
           Column(std::move(rows))
               .With(CornerRadius(12.0F), Background(colors::elevated),
@@ -606,10 +622,14 @@ ThemeSettingsScreen(std::shared_ptr<application::ThemeSettingsService> service,
   const bool valid = domain::IsValidThemeDraft(draft.Get());
   const auto active_index = static_cast<std::size_t>(active_role.Get());
   const auto fields = Fields();
+  const auto themes_title =
+      LegacySectionTitle(UseString(app::strings::screen_theme_section_themes));
+  const auto custom_colors_title =
+      LegacySectionTitle(UseString(app::strings::screen_theme_custom_colors));
 
   View custom_header =
       Row{
-          Text(app::strings::screen_theme_custom_colors)
+          Text(custom_colors_title)
               .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
               .With(Grow()),
           Stack{Glyph(app::images::rotate_ccw, 15.0F, colors::secondary)}
@@ -656,10 +676,10 @@ ThemeSettingsScreen(std::shared_ptr<application::ThemeSettingsService> service,
 
   return Column{
       Header(navigation),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(
           Column{
-              ThemeModes(settings, service),
+              ThemeModes(settings, service, themes_title),
               custom_header,
               Column{
                   StarterPanel(settings.Get(), active_starter, draft,

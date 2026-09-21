@@ -19,15 +19,14 @@ namespace json = infrastructure::archive_json;
 // `CustomAgentExtensionTool.execute` (`CustomAgentExtensionTool.java:80-96`).
 constexpr std::string_view kSubCodingType = "sub-coding";
 
-[[nodiscard]] std::vector<std::string> StringArray(
-    const json::Value *value) {
+[[nodiscard]] std::vector<std::string> StringArray(const json::Value *value) {
   std::vector<std::string> values;
   const auto *array = json::AsArray(value);
   if (array == nullptr)
     return values;
   for (const auto &item : *array) {
-    if (const auto *text = json::AsString(&item); text != nullptr &&
-                                                   !text->empty())
+    if (const auto *text = json::AsString(&item);
+        text != nullptr && !text->empty())
       values.push_back(*text);
   }
   return values;
@@ -56,22 +55,23 @@ AgentExtensionToolRegistry::AgentExtensionToolRegistry(
     : store_(std::move(store)), runner_(std::move(runner)),
       language_(language) {}
 
-void AgentExtensionToolRegistry::SetRunner(std::shared_ptr<AgentRunner> runner) {
+void AgentExtensionToolRegistry::SetRunner(
+    std::shared_ptr<AgentRunner> runner) {
   runner_ = std::move(runner);
 }
 
 huxerui::Task<std::expected<void, ToolRegistryError>>
 AgentExtensionToolRegistry::Refresh() {
   if (!store_) {
-    co_return std::unexpected(ToolRegistryError{
-        .code = ToolRegistryErrorCode::unavailable,
-        .message = "agent extension store is not available"});
+    co_return std::unexpected(
+        ToolRegistryError{.code = ToolRegistryErrorCode::unavailable,
+                          .message = "agent extension store is not available"});
   }
   auto listed = co_await store_->ListAgents();
   if (!listed) {
-    co_return std::unexpected(ToolRegistryError{
-        .code = ToolRegistryErrorCode::load_failed,
-        .message = listed.error().message});
+    co_return std::unexpected(
+        ToolRegistryError{.code = ToolRegistryErrorCode::load_failed,
+                          .message = listed.error().message});
   }
   std::vector<Binding> next;
   next.reserve(listed->size());
@@ -87,9 +87,16 @@ AgentExtensionToolRegistry::Refresh() {
         // `CustomAgentExtensionTool` does not opt into read-only mode, so the
         // default keeps it denied there like every other unmarked tool.
         .allowed_in_read_only = false,
-        .permanent_grant_supported = false,
+        .agent_category = AgentToolCategory::system,
         .category = "agent",
         .agent_selectable = false,
+        .presentation =
+            {
+                .english_name = agent.name,
+                .english_description = agent.trigger,
+                .chinese_name = agent.name,
+                .chinese_description = agent.trigger,
+            },
     };
     binding.agent = std::move(agent);
     next.push_back(std::move(binding));
@@ -111,8 +118,8 @@ AgentExtensionToolRegistry::Tools() const noexcept {
   return descriptors_;
 }
 
-bool AgentExtensionToolRegistry::Contains(const std::string_view name)
-    const noexcept {
+bool AgentExtensionToolRegistry::Contains(
+    const std::string_view name) const noexcept {
   return Find(name) != nullptr;
 }
 
@@ -130,9 +137,9 @@ AgentExtensionToolRegistry::Invoke(std::string name,
                                    std::string arguments_json) {
   const auto *binding = Find(name);
   if (binding == nullptr) {
-    co_return std::unexpected(ToolRegistryError{
-        .code = ToolRegistryErrorCode::unknown_tool,
-        .message = "unknown tool: " + std::move(name)});
+    co_return std::unexpected(
+        ToolRegistryError{.code = ToolRegistryErrorCode::unknown_tool,
+                          .message = "unknown tool: " + std::move(name)});
   }
   auto parsed = json::Parse(arguments_json);
   if (!parsed) {
@@ -150,8 +157,8 @@ AgentExtensionToolRegistry::Invoke(std::string name,
   // `CustomAgentExtensionTool.java:69-71`.
   if (task.empty()) {
     co_return ToolInvocationResult{
-        .content = ToolText(ToolTextKey::tool_custom_agent_task_empty,
-                            {}, language_),
+        .content =
+            ToolText(ToolTextKey::tool_custom_agent_task_empty, {}, language_),
         .error = true};
   }
   if (!runner_) {
@@ -175,8 +182,9 @@ AgentExtensionToolRegistry::Invoke(std::string name,
   if (result.error && result.output.empty()) {
     // `CustomAgentExtensionTool.java:97-99`.
     co_return ToolInvocationResult{
-        .content = ToolText(ToolTextKey::tool_custom_agent_failed,
-                            std::array<std::string, 1>{result.output}, language_),
+        .content =
+            ToolText(ToolTextKey::tool_custom_agent_failed,
+                     std::array<std::string, 1>{result.output}, language_),
         .error = true};
   }
   co_return ToolInvocationResult{.content = std::move(result.output),

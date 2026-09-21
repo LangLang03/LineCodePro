@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include "application/shell_result_content.h"
 #include "infrastructure/archive_json.h"
 
 namespace linecode::application {
@@ -23,11 +24,11 @@ ToolRegistryError Error(ToolRegistryErrorCode code, std::string message) {
 }
 
 bool ShellEnabled(const domain::McpExecutionSettings &settings) {
-  const auto found = std::ranges::find(
-      settings.groups, std::string_view{"shell"},
-      [](const domain::McpToolGroupState &group) {
-        return std::string_view{group.id};
-      });
+  const auto found =
+      std::ranges::find(settings.groups, std::string_view{"shell"},
+                        [](const domain::McpToolGroupState &group) {
+                          return std::string_view{group.id};
+                        });
   return found != settings.groups.end() && found->enabled &&
          domain::SupportsMcpExecutionMode(found->supported_modes,
                                           settings.mode);
@@ -38,8 +39,9 @@ ParseArguments(std::string_view text) {
   auto parsed = json::Parse(text);
   const auto *object = parsed ? json::AsObject(&*parsed) : nullptr;
   if (!object) {
-    return std::unexpected(Error(ToolRegistryErrorCode::invalid_arguments,
-                                 "shell_execute arguments must be a JSON object"));
+    return std::unexpected(
+        Error(ToolRegistryErrorCode::invalid_arguments,
+              "shell_execute arguments must be a JSON object"));
   }
   const auto *command = json::AsString(json::Find(*object, "command"));
   if (!command || command->empty()) {
@@ -61,22 +63,13 @@ ParseArguments(std::string_view text) {
     else if (const auto *number = std::get_if<double>(timeout))
       value = static_cast<std::int64_t>(*number);
     if (!value) {
-      return std::unexpected(Error(
-          ToolRegistryErrorCode::invalid_arguments,
-          "shell_execute timeoutMs must be a number"));
+      return std::unexpected(Error(ToolRegistryErrorCode::invalid_arguments,
+                                   "shell_execute timeoutMs must be a number"));
     }
     request.timeout = std::chrono::milliseconds{
         std::clamp(*value, std::int64_t{1'000}, std::int64_t{300'000})};
   }
   return request;
-}
-
-std::string Encode(const SshCommandOutput &output) {
-  return json::Serialize(json::Object{
-      {"exit_code", static_cast<std::int64_t>(output.exit_status)},
-      {"stdout", output.standard_output},
-      {"stderr", output.standard_error},
-  });
 }
 
 } // namespace
@@ -117,8 +110,16 @@ SshToolRegistry::Refresh() {
             "command requires user confirmation before execution.",
         .parameters_json = std::string{kShellSchema},
         .allowed_in_read_only = true,
-        .permanent_grant_supported = true,
+        .permanent_grant_arguments = {{.name = "command", .required = true},
+                                      {.name = "cwd", .required = false}},
+        .agent_category = AgentToolCategory::system,
         .category = "shell",
+        .presentation =
+            {.english_name = "Run SSH command",
+             .english_description =
+                 "Execute a shell command on the configured SSH host.",
+             .chinese_name = "运行 SSH 命令",
+             .chinese_description = "在已配置的 SSH 主机上执行 Shell 命令。"},
     });
   }
   active_config_ = std::move(next_config);
@@ -171,7 +172,8 @@ SshToolRegistry::Invoke(std::string name, std::string arguments_json) {
                                     std::move(invoked.error().message)));
   }
   co_return ToolInvocationResult{
-      .content = Encode(*invoked),
+      .content =
+          ShellResultContent(invoked->standard_output, invoked->standard_error),
       .error = invoked->exit_status != 0,
   };
 }

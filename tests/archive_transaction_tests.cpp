@@ -1,5 +1,5 @@
 #include <array>
-#include <cassert>
+#include "gtest_support.h"
 #include <chrono>
 #include <filesystem>
 #include <memory>
@@ -107,9 +107,9 @@ MakeFixture(const File &suite_root, std::string_view name,
             std::vector<ZipEntryData> entries, ArchiveImportMode mode,
             bool database_fails = false) {
   const File base = suite_root.Child(name);
-  assert(base.CreateDirectories());
+  EXPECT_EXPRESSION(base.CreateDirectories());
   const File workspace = base.Child("workspace");
-  assert(workspace.CreateDirectories());
+  EXPECT_EXPRESSION(workspace.CreateDirectories());
   std::array roots{workspace.Child("home"), workspace.Child("project"),
                    workspace.Child("skills")};
   const auto database = std::make_shared<RecordingArchiveDatabase>();
@@ -120,7 +120,7 @@ MakeFixture(const File &suite_root, std::string_view name,
       .settings = 3,
   };
   const auto encoded = WriteLineCodeZip(entries);
-  assert(encoded.has_value());
+  EXPECT_EXPRESSION(encoded.has_value());
   return std::make_shared<ImportFixture>(ImportFixture{
       .base = base,
       .roots = roots,
@@ -135,20 +135,20 @@ MakeFixture(const File &suite_root, std::string_view name,
 
 void WriteText(const File &file, std::string_view text) {
   const auto parent = file.Parent();
-  assert(parent.has_value());
-  assert(parent->CreateDirectories());
-  assert(file.WriteString(text));
+  EXPECT_EXPRESSION(parent.has_value());
+  EXPECT_EXPRESSION(parent->CreateDirectories());
+  EXPECT_EXPRESSION(file.WriteString(text));
 }
 
 std::string ReadText(const File &file) {
   const auto result = file.ReadString();
-  assert(result.Succeeded());
+  EXPECT_EXPRESSION(result.Succeeded());
   return result.Value();
 }
 
 bool HasTransactionDirectory(const ImportFixture &fixture) {
   const auto children = fixture.roots.front().Parent()->ListChildren();
-  assert(children.Succeeded());
+  EXPECT_EXPRESSION(children.Succeeded());
   for (const auto &child : children.Value()) {
     if (child.Name().starts_with(".import-"))
       return true;
@@ -169,9 +169,9 @@ struct ExportFixture final {
 std::shared_ptr<ExportFixture>
 MakeExportFixture(const File &suite_root, std::string_view name) {
   const File base = suite_root.Child(name);
-  assert(base.CreateDirectories());
+  EXPECT_EXPRESSION(base.CreateDirectories());
   const File workspace = base.Child("workspace");
-  assert(workspace.CreateDirectories());
+  EXPECT_EXPRESSION(workspace.CreateDirectories());
   std::array roots{workspace.Child("home"), workspace.Child("project"),
                    workspace.Child("skills")};
   const auto database = std::make_shared<RecordingArchiveDatabase>();
@@ -230,86 +230,86 @@ huxerui::View ArchiveTransactionProbe() {
 }
 
 void AssertDatabaseFailureRollback(const ImportFixture &fixture) {
-  assert(fixture.result.has_value());
-  assert(!fixture.result->has_value());
-  assert(fixture.database->replace_calls == 1U);
-  assert(fixture.database->legacy_calls == 0U);
-  assert(ReadText(fixture.roots[0].Child("original-home.txt")) == "home-old");
-  assert(ReadText(fixture.roots[1].Child("original-project.txt")) ==
+  EXPECT_EXPRESSION(fixture.result.has_value());
+  EXPECT_EXPRESSION(!fixture.result->has_value());
+  EXPECT_EXPRESSION(fixture.database->replace_calls == 1U);
+  EXPECT_EXPRESSION(fixture.database->legacy_calls == 0U);
+  EXPECT_EXPRESSION(ReadText(fixture.roots[0].Child("original-home.txt")) == "home-old");
+  EXPECT_EXPRESSION(ReadText(fixture.roots[1].Child("original-project.txt")) ==
          "project-old");
-  assert(ReadText(fixture.roots[2].Child("original-skill.txt")) ==
+  EXPECT_EXPRESSION(ReadText(fixture.roots[2].Child("original-skill.txt")) ==
          "skill-old");
-  assert(!fixture.roots[0].Child("new-home.txt").Exists());
-  assert(!fixture.roots[1].Child("new-project.txt").Exists());
-  assert(!fixture.roots[2].Child("new-skill.txt").Exists());
-  assert(!HasTransactionDirectory(fixture));
+  EXPECT_EXPRESSION(!fixture.roots[0].Child("new-home.txt").Exists());
+  EXPECT_EXPRESSION(!fixture.roots[1].Child("new-project.txt").Exists());
+  EXPECT_EXPRESSION(!fixture.roots[2].Child("new-skill.txt").Exists());
+  EXPECT_EXPRESSION(!HasTransactionDirectory(fixture));
 }
 
 void AssertMerge(const ImportFixture &fixture) {
-  assert(fixture.result.has_value());
-  assert(fixture.result->has_value());
-  assert((*fixture.result)->restored_files == 4U);
-  assert(ReadText(fixture.roots[0].Child("keep.txt")) == "destination-only");
-  assert(ReadText(fixture.roots[0].Child("overwrite.txt")) == "archive-new");
-  assert(ReadText(fixture.roots[0].Child("new.txt")) == "new-home");
-  assert(ReadText(fixture.roots[1].Child("new.txt")) == "new-project");
-  assert(ReadText(fixture.roots[2].Child("new.txt")) == "new-skill");
-  assert(!HasTransactionDirectory(fixture));
+  EXPECT_EXPRESSION(fixture.result.has_value());
+  EXPECT_EXPRESSION(fixture.result->has_value());
+  EXPECT_EXPRESSION((*fixture.result)->restored_files == 4U);
+  EXPECT_EXPRESSION(ReadText(fixture.roots[0].Child("keep.txt")) == "destination-only");
+  EXPECT_EXPRESSION(ReadText(fixture.roots[0].Child("overwrite.txt")) == "archive-new");
+  EXPECT_EXPRESSION(ReadText(fixture.roots[0].Child("new.txt")) == "new-home");
+  EXPECT_EXPRESSION(ReadText(fixture.roots[1].Child("new.txt")) == "new-project");
+  EXPECT_EXPRESSION(ReadText(fixture.roots[2].Child("new.txt")) == "new-skill");
+  EXPECT_EXPRESSION(!HasTransactionDirectory(fixture));
 }
 
 void AssertLegacyRootReplace(const ImportFixture &fixture) {
-  assert(fixture.result.has_value());
-  assert(fixture.result->has_value());
-  assert((*fixture.result)->restored_files == 3U);
+  EXPECT_EXPRESSION(fixture.result.has_value());
+  EXPECT_EXPRESSION(fixture.result->has_value());
+  EXPECT_EXPRESSION((*fixture.result)->restored_files == 3U);
   for (const auto &root : fixture.roots)
-    assert(!root.Child("old.txt").Exists());
-  assert(ReadText(fixture.roots[0].Resolve("nested/home.txt")) == "legacy-home");
-  assert(ReadText(fixture.roots[1].Child("project.txt")) == "legacy-project");
-  assert(ReadText(fixture.roots[2].Child("SKILL.md")) == "legacy-skill");
-  assert(!HasTransactionDirectory(fixture));
+    EXPECT_EXPRESSION(!root.Child("old.txt").Exists());
+  EXPECT_EXPRESSION(ReadText(fixture.roots[0].Resolve("nested/home.txt")) == "legacy-home");
+  EXPECT_EXPRESSION(ReadText(fixture.roots[1].Child("project.txt")) == "legacy-project");
+  EXPECT_EXPRESSION(ReadText(fixture.roots[2].Child("SKILL.md")) == "legacy-skill");
+  EXPECT_EXPRESSION(!HasTransactionDirectory(fixture));
 }
 
 void AssertStagingFailureDoesNotMutate(const ImportFixture &fixture) {
-  assert(fixture.result.has_value());
-  assert(!fixture.result->has_value());
-  assert(fixture.database->replace_calls == 0U);
-  assert(ReadText(fixture.roots[0].Child("old.txt")) == "home-old");
-  assert(ReadText(fixture.roots[1]) == "project-is-a-file");
-  assert(ReadText(fixture.roots[2].Child("old.txt")) == "skill-old");
-  assert(!HasTransactionDirectory(fixture));
+  EXPECT_EXPRESSION(fixture.result.has_value());
+  EXPECT_EXPRESSION(!fixture.result->has_value());
+  EXPECT_EXPRESSION(fixture.database->replace_calls == 0U);
+  EXPECT_EXPRESSION(ReadText(fixture.roots[0].Child("old.txt")) == "home-old");
+  EXPECT_EXPRESSION(ReadText(fixture.roots[1]) == "project-is-a-file");
+  EXPECT_EXPRESSION(ReadText(fixture.roots[2].Child("old.txt")) == "skill-old");
+  EXPECT_EXPRESSION(!HasTransactionDirectory(fixture));
 }
 
 void AssertInvalidLegacyPreflight(const ImportFixture &fixture) {
-  assert(fixture.result.has_value());
-  assert(!fixture.result->has_value());
-  assert(fixture.database->replace_calls == 0U);
-  assert(fixture.database->legacy_calls == 0U);
-  assert(ReadText(fixture.roots[0].Child("old.txt")) == "home-old");
-  assert(!fixture.roots[0].Child("new.txt").Exists());
-  assert(!HasTransactionDirectory(fixture));
+  EXPECT_EXPRESSION(fixture.result.has_value());
+  EXPECT_EXPRESSION(!fixture.result->has_value());
+  EXPECT_EXPRESSION(fixture.database->replace_calls == 0U);
+  EXPECT_EXPRESSION(fixture.database->legacy_calls == 0U);
+  EXPECT_EXPRESSION(ReadText(fixture.roots[0].Child("old.txt")) == "home-old");
+  EXPECT_EXPRESSION(!fixture.roots[0].Child("new.txt").Exists());
+  EXPECT_EXPRESSION(!HasTransactionDirectory(fixture));
 }
 
 void AssertInvalidDatabasePreflight(const ImportFixture &fixture) {
-  assert(fixture.result.has_value());
-  assert(!fixture.result->has_value());
-  assert(fixture.database->replace_calls == 0U);
-  assert(fixture.database->legacy_calls == 0U);
-  assert(ReadText(fixture.roots[0].Child("old.txt")) == "home-old");
-  assert(!fixture.roots[0].Child("new.txt").Exists());
-  assert(!HasTransactionDirectory(fixture));
+  EXPECT_EXPRESSION(fixture.result.has_value());
+  EXPECT_EXPRESSION(!fixture.result->has_value());
+  EXPECT_EXPRESSION(fixture.database->replace_calls == 0U);
+  EXPECT_EXPRESSION(fixture.database->legacy_calls == 0U);
+  EXPECT_EXPRESSION(ReadText(fixture.roots[0].Child("old.txt")) == "home-old");
+  EXPECT_EXPRESSION(!fixture.roots[0].Child("new.txt").Exists());
+  EXPECT_EXPRESSION(!HasTransactionDirectory(fixture));
 }
 
 } // namespace
 
 // Reads back the archive `PrepareExport` staged and checks the legacy plane.
 void AssertExportCarriesTheLegacyPlane(const ExportFixture &fixture) {
-  assert(fixture.result.has_value());
-  assert(fixture.result->has_value());
-  assert(fixture.database->export_legacy_calls == 1U);
+  EXPECT_EXPRESSION(fixture.result.has_value());
+  EXPECT_EXPRESSION(fixture.result->has_value());
+  EXPECT_EXPRESSION(fixture.database->export_legacy_calls == 1U);
   const auto bytes = fixture.result->value().file.ReadBytes();
-  assert(bytes.Succeeded());
+  EXPECT_EXPRESSION(bytes.Succeeded());
   auto entries = linecode::infrastructure::ReadLineCodeZip(bytes.Value());
-  assert(entries.has_value());
+  EXPECT_EXPRESSION(entries.has_value());
 
   const auto find = [&entries](std::string_view name) -> const ZipEntryData * {
     for (const auto &entry : *entries) {
@@ -320,17 +320,17 @@ void AssertExportCarriesTheLegacyPlane(const ExportFixture &fixture) {
   };
 
   const auto *storage = find("async-storage.json");
-  assert(storage != nullptr && "an export must carry async-storage.json");
+  EXPECT_EXPRESSION(storage != nullptr && "an export must carry async-storage.json");
   std::string text;
   for (const auto byte : storage->content)
     text.push_back(static_cast<char>(byte));
   // Empty or unparsable here is exactly the defect this pins: the legacy side
   // would restore nothing.
   auto parsed = linecode::infrastructure::archive_json::Parse(text);
-  assert(parsed.has_value());
+  EXPECT_EXPRESSION(parsed.has_value());
   const auto *array = linecode::infrastructure::archive_json::AsArray(&*parsed);
-  assert(array != nullptr);
-  assert(!array->empty());
+  EXPECT_EXPRESSION(array != nullptr);
+  EXPECT_EXPRESSION(!array->empty());
 
   const auto value_of = [array](std::string_view key) -> std::string {
     for (const auto &value : *array) {
@@ -347,36 +347,36 @@ void AssertExportCarriesTheLegacyPlane(const ExportFixture &fixture) {
     }
     return {};
   };
-  assert(value_of("@lineai_selected_model") == "m1");
-  assert(value_of("@lineai_current_conversation") == "c1");
-  assert(value_of("@linecode_chat_mode") == "agent");
+  EXPECT_EXPRESSION(value_of("@lineai_selected_model") == "m1");
+  EXPECT_EXPRESSION(value_of("@lineai_current_conversation") == "c1");
+  EXPECT_EXPRESSION(value_of("@linecode_chat_mode") == "agent");
   const auto models = value_of("@lineai_models");
-  assert(models.find("Exported Model") != std::string::npos);
+  EXPECT_EXPRESSION(models.find("Exported Model") != std::string::npos);
   // The row has to appear under the name the metadata entry points at.
   const auto *conversation_file = find("conversations/c1.json");
-  assert(conversation_file != nullptr && "an export must carry its conversations");
+  EXPECT_EXPRESSION(conversation_file != nullptr && "an export must carry its conversations");
   std::string conversation_text;
   for (const auto byte : conversation_file->content)
     conversation_text.push_back(static_cast<char>(byte));
   auto conversation =
       linecode::infrastructure::archive_json::Parse(conversation_text);
-  assert(conversation.has_value());
+  EXPECT_EXPRESSION(conversation.has_value());
   const auto *object =
       linecode::infrastructure::archive_json::AsObject(&*conversation);
-  assert(object != nullptr);
-  assert(*linecode::infrastructure::archive_json::AsString(
+  EXPECT_EXPRESSION(object != nullptr);
+  EXPECT_EXPRESSION(*linecode::infrastructure::archive_json::AsString(
              linecode::infrastructure::archive_json::Find(*object, "id")) ==
          "c1");
 }
 
-int main() {
+TEST(archive_transaction_tests, LegacySuite) {
   const auto unique =
       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
   const File suite_root(
       (std::filesystem::temp_directory_path() /
        ("linecode-archive-transaction-tests-" + unique))
           .string());
-  assert(suite_root.CreateDirectories());
+  EXPECT_EXPRESSION(suite_root.CreateDirectories());
 
   auto export_fixture = MakeExportFixture(suite_root, "export");
 
@@ -464,7 +464,7 @@ int main() {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
     ui.Pump(std::chrono::milliseconds(1));
   }
-  assert(active_scenario->done);
+  EXPECT_EXPRESSION(active_scenario->done);
 
   AssertDatabaseFailureRollback(*database_failure);
   AssertMerge(*merge);
@@ -475,5 +475,5 @@ int main() {
   AssertInvalidDatabasePreflight(*invalid_database);
 
   active_scenario.reset();
-  assert(suite_root.DeleteRecursively());
+  EXPECT_EXPRESSION(suite_root.DeleteRecursively());
 }

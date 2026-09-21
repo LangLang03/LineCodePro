@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <map>
 #include <memory>
 #include <optional>
@@ -173,23 +173,25 @@ huxerui::View Probe() {
   huxerui::Lifecycle([scenario, tasks] {
     const auto handle = tasks.Launch([scenario]() -> huxerui::Task<void> {
       auto refreshed = co_await scenario->registry->Refresh();
-      assert(refreshed && scenario->registry->Tools().size() == 1U);
+      EXPECT_EXPRESSION(refreshed && scenario->registry->Tools().size() == 1U);
+      EXPECT_EXPRESSION(scenario->registry->Tools().front().agent_category ==
+             application::AgentToolCategory::read);
       auto result = co_await scenario->registry->Invoke(
           "image_understanding",
           R"({"path":"assets/sample.png","prompt":"identify"})");
-      assert(result && result->content == "deterministic vision reply");
-      assert(scenario->images->received_path == "assets/sample.png");
-      assert(scenario->gateway->received_model->id == "vision-model");
-      assert(scenario->gateway->received_system.contains(
+      EXPECT_EXPRESSION(result && result->content == "deterministic vision reply");
+      EXPECT_EXPRESSION(scenario->images->received_path == "assets/sample.png");
+      EXPECT_EXPRESSION(scenario->gateway->received_model->id == "vision-model");
+      EXPECT_EXPRESSION(scenario->gateway->received_system.contains(
           "LineCode's image understanding tool"));
-      assert(scenario->gateway->received_image->mime_type == "image/png");
+      EXPECT_EXPRESSION(scenario->gateway->received_image->mime_type == "image/png");
 
       auto invalid = co_await scenario->registry->Invoke(
           "image_understanding", R"({"path":""})");
-      assert(!invalid && invalid.error().code ==
+      EXPECT_EXPRESSION(!invalid && invalid.error().code ==
                              application::ToolRegistryErrorCode::invalid_arguments);
       auto unknown = co_await scenario->registry->Invoke("other", "{}");
-      assert(!unknown && unknown.error().code ==
+      EXPECT_EXPRESSION(!unknown && unknown.error().code ==
                              application::ToolRegistryErrorCode::unknown_tool);
       scenario->done = true;
     });
@@ -200,13 +202,13 @@ huxerui::View Probe() {
 
 } // namespace
 
-int main() {
+TEST(image_understanding_tool_registry_tests, LegacySuite) {
   active = std::make_shared<Scenario>();
   active->execution = std::make_shared<ExecutionSettings>();
   auto group = std::ranges::find(active->execution->value.groups,
                                  std::string{"image_understanding"},
                                  &domain::McpToolGroupState::id);
-  assert(group != active->execution->value.groups.end());
+  EXPECT_EXPRESSION(group != active->execution->value.groups.end());
   group->enabled = true;
   active->settings = std::make_shared<ToolSettings>();
   active->settings->value.image_understanding_model_id = "vision-model";

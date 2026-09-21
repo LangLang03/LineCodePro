@@ -37,8 +37,6 @@ View Header(const RouteNavigationController<domain::AppRoute>& navigation) {
     }.OnClick([navigation] { navigation.Pop(); })
         .With(Frame{.width = 36.0F, .height = 36.0F},
               Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-              Semantics{.role = SemanticRole::Button,
-                        .label = app::strings::common_back},
               Focusable(), PointerCursor(PointerCursorKind::Hand)),
     Stack {
       Text(app::strings::screen_tutorial_title)
@@ -151,24 +149,38 @@ std::shared_ptr<const domain::TutorialDocument> ParseDocument(
   const auto document = mode.Get() == TutorialMode::simple ? simple : pro;
   const auto current_mode = mode.Get();
 
-  auto list = VirtualList(document->blocks.size() + 1,
-                          [document, current_mode, mode, controller](
-                              std::size_t index) -> View {
-    if (index == 0)
-      return Intro(current_mode, mode, *document, controller);
-    View block = TutorialMarkdownBlockView(document->blocks[index - 1], true);
-    const float bottom = index == document->blocks.size() ? 100.0F : 0.0F;
-    return Stack {block}.With(Padding(EdgeInsets{.top = 0.0F,
-                                                 .right = 16.0F,
-                                                 .bottom = bottom,
-                                                 .left = 16.0F}));
-  }).EstimatedItemExtent(56.0F)
+  // Virtual item factories run during measurement rather than composition.
+  // Build the declarations here so localized Text/ScrollView descendants may
+  // use their normal composition-backed state, then let the virtual factory
+  // copy only already-declared Views. This also keeps section-index scrolling
+  // without calling composition hooks from the lazy measurement callback.
+  std::vector<View> items;
+  items.reserve(document->blocks.size() + 1U);
+  items.push_back(Intro(current_mode, mode, *document, controller).Key(0U));
+  for (std::size_t index = 0; index < document->blocks.size(); ++index) {
+    View block = TutorialMarkdownBlockView(document->blocks[index], true);
+    const float bottom = index + 1U == document->blocks.size() ? 100.0F : 0.0F;
+    items.push_back(
+        Stack{std::move(block)}
+            .With(Padding(EdgeInsets{.top = 0.0F,
+                                     .right = 16.0F,
+                                     .bottom = bottom,
+                                     .left = 16.0F}))
+            .Key(index + 1U));
+  }
+
+  auto list = VirtualList(std::move(items), [](const View &item) { return item; })
+                  .EstimatedItemExtent(56.0F)
       .CacheExtent(640.0F)
-      .Controller(controller);
+      .Controller(controller)
+      // Simple and pro reuse list indices for different block variants. Reset
+      // the virtualized subtree when the mode changes so retained Markdown
+      // controls cannot inherit state from a different document.
+      .Key(current_mode);
 
   return Column {
     Header(navigation),
-    Divider(),
+    LegacyScreenHeaderDivider(),
     std::move(list).With(Grow()),
   }.With(CrossAlign(CrossAxisAlignment::Stretch),
          Background(colors::background), SafeAreaPadding {});

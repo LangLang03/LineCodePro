@@ -7,8 +7,8 @@ This is a decision-oriented catalog, not a replacement for the active SDK's publ
 | Component | Important contract |
 | --- | --- |
 | `Text` | Takes `StringVariant` and optional `TextRole`; `.Style(TextStyle)` overrides text styling and `.Shaping(TextShapingOptions)` overrides shaping direction or locale. `.Align(TextAlign)` and `.VerticalAlign(TextVerticalAlign)` place the paragraph inside its text rectangle. `Text::Format` supports literal and resource formats. |
-| `Image` | Takes `ImageVariant` or `std::shared_ptr<ExternalTexture>`; `.Fit`, `.Align`, `.Sampling`, and `.Tint` are component-specific. |
-| `Canvas` | Takes a `CanvasPainter` and paints in the size assigned by layout. |
+| `Image` | Takes `ImageVariant` or `std::shared_ptr<ExternalTexture>`; pass generated resources directly for static artwork, then configure `.Fit`, `.Align`, `.Sampling`, and `.Tint`. |
+| `Canvas` | Takes a `CanvasPainter` for genuinely dynamic or generated custom drawing; do not use it instead of a static image resource, ordinary Text, layout, or a built-in control. |
 | `Divider` | Horizontal by default; pass `Axis::Vertical` only when height is bounded. |
 | `SelectionArea` | Wraps content that participates in text selection. |
 
@@ -27,6 +27,7 @@ Use the complete container, scrolling, virtualization, navigation-shell, and res
 | `SegmentedButton(items, selected_index)` | Controlled index; items may have icon/label or icon-only with semantic label. |
 | `Select(items, selected_index, content)` | Controlled index for a finite non-empty range; `.OnChanged(std::size_t)` requests a different choice. |
 | `ComboBox(value, suggestions[, text, content])` | Controlled `TextEditingValue` with application-owned suggestions; `.OnChanged` requests direct edits and `.OnSelected` proposes accepted text. |
+| `TreeView(roots, factory, item_info)` | Controlled hierarchical expansion and optional single selection; typed events request expansion, selection, and activation. |
 | `Tabs(items, selected_index)` | Controlled index; `TabItem::Enabled` disables individual destinations. Page content is separately owned. |
 | `Slider(value)` | Controlled `float`; configure `.Range` and optional `.Step`, then write `.OnChanged` values back. |
 | `DatePicker(value)` | Controlled `std::chrono::year_month_day`; `.OnChanged` proposes a new date. |
@@ -59,6 +60,22 @@ Write `.OnChanged(const TextEditingValue&)` proposals back after direct edits.
 Use `.EmptyContent(...)` for non-interactive loading or no-result content; without it, an empty range keeps the popup closed.
 Suggestion roots may use `Enabled{false}`, but suggestion and empty-state content cannot contain another pointer action or focusable control.
 Do not intercept composition or modified editing keys except for ComboBox-owned Alt+Up/Down popup control, and do not rebuild this behavior from TextField plus an app-owned Popup.
+`ComboBox::TrailingIcon(...)` replaces its decorative dropdown indicator; it does not create the independent trailing action available on TextField.
+
+## TreeView
+
+`TreeView<Node>(roots, factory, item_info)` consumes the current root snapshot and application-owned node values or handles.
+`TreeItemInfo` supplies each item's nonempty accessible label, enabled state, controlled expansion, and optional controlled selection.
+Use `.Children(...)` for the current synchronous child snapshot, `.OnExpandedChanged(...)` and `.OnSelectionChanged(...)` to accept proposals, and `.OnActivated(...)` for activation that is independent of expansion and selection.
+An absent `selected` value makes an item nonselectable; the expanded snapshot may contain at most one selected item.
+
+Put a stable `.Key(...)` on the root View returned by the row factory when siblings can insert, remove, or reorder.
+Keys must be unique among siblings, while different parents may reuse a local key.
+Keep asynchronous loading and its `TaskScope` above virtual rows, start it from application lifecycle or expansion handling, and let `.Children(...)` return promptly from current state.
+
+TreeView requires bounded vertical constraints and fixed-height rows from `.ItemExtent(...)` or `TreeViewStyle`.
+Use `.CacheExtent(...)`, `.Controller(...)`, `.Style(...)`, and `.DisclosureIcon(...)` only for their documented scrolling and presentation roles.
+Built-in pointer, keyboard, focus, and hierarchical semantics already share the same controlled events; do not rebuild the tree from Canvas or a custom virtual layout merely to obtain those behaviors.
 
 ## DatePicker and TimePicker
 
@@ -75,6 +92,7 @@ Use `DatePickerStyle` and `TimePickerStyle` from the active Flat or Material the
 ## Input and progress
 
 - `TextField(TextEditingValue)` is controlled by the complete editing value. Configure `.Label`, `.Placeholder`, icons, `.Variant`, `.LineLimits`, `.MaxLength`, `.Validation`, `.Secure`, `.Shaping(TextShapingOptions)`, `.Align(TextAlign)`, `.VerticalAlign(TextVerticalAlign)`, and `.InputConfiguration`, then handle `.OnChanged` and optionally `.OnSubmitted`. Alignment applies to the editable paragraph, not the TextField View's placement.
+- `TextField::TrailingIcon(icon)` is decorative. The overload with a nonempty semantic label creates an independent action target; bind it with `.OnTrailingIconClick(...)`.
 - `TextFieldVariant` currently contains `Filled`, `Outlined`, and `Standard`.
 - `ComboBox` supports the single-line, non-secure, editable subset of `TextInputConfiguration`; use `Select` for read-only finite choices.
 - `ProgressCircle()` and `ProgressBar()` are indeterminate. Their `float` constructors are determinate.

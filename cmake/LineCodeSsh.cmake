@@ -1,14 +1,16 @@
 include_guard(GLOBAL)
 
 include(FetchContent)
+if (POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+endif ()
 
 # libssh2 is the portable protocol engine used by LineCode's C++ SSH
 # infrastructure.  Both dependencies are pinned to immutable upstream commits;
 # no system SSH package is required by Android builds.
 set(LINECODE_LIBSSH2_COMMIT
     "a312b43325e3383c865a87bb1d26cb52e3292641")
-set(LINECODE_MBEDTLS_COMMIT
-    "c765c831e5c2a0971410692f92f7a81d6ec65ec2")
+set(LINECODE_MBEDTLS_VERSION "3.6.4")
 
 function(linecode_enable_ssh target_name)
     if (NOT TARGET ${target_name})
@@ -27,10 +29,10 @@ function(linecode_enable_ssh target_name)
         set(USE_SHARED_MBEDTLS_LIBRARY OFF CACHE BOOL "" FORCE)
         set(DISABLE_PACKAGE_CONFIG_AND_INSTALL ON CACHE BOOL "" FORCE)
         FetchContent_Declare(linecode_mbedtls
-            GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
-            GIT_TAG ${LINECODE_MBEDTLS_COMMIT}
-            GIT_SHALLOW FALSE
-            GIT_PROGRESS FALSE
+            # The official release archive includes the framework submodule;
+            # GitHub's source snapshot does not and cannot configure mbedTLS.
+            URL "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-${LINECODE_MBEDTLS_VERSION}/mbedtls-${LINECODE_MBEDTLS_VERSION}.tar.bz2"
+            URL_HASH "SHA256=ec35b18a6c593cf98c3e30db8b98ff93e8940a8c4e690e66b41dfc011d678110"
         )
         FetchContent_GetProperties(linecode_mbedtls)
         if (NOT linecode_mbedtls_POPULATED)
@@ -60,7 +62,7 @@ function(linecode_enable_ssh target_name)
             add_dependencies(linecode_mbedcrypto mbedcrypto)
         endif ()
         set(MBEDTLS_LIBRARIES linecode_mbedcrypto)
-        set(MBEDTLS_VERSION "3.6.4")
+        set(MBEDTLS_VERSION "${LINECODE_MBEDTLS_VERSION}")
     elseif (WIN32)
         set(CRYPTO_BACKEND "WinCNG" CACHE STRING "" FORCE)
     else ()
@@ -76,10 +78,8 @@ function(linecode_enable_ssh target_name)
     set(ENABLE_DEBUG_LOGGING OFF CACHE BOOL "" FORCE)
     set(ENABLE_ZLIB_COMPRESSION OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(linecode_libssh2
-        GIT_REPOSITORY https://github.com/libssh2/libssh2.git
-        GIT_TAG ${LINECODE_LIBSSH2_COMMIT}
-        GIT_SHALLOW FALSE
-        GIT_PROGRESS FALSE
+        URL "https://github.com/libssh2/libssh2/archive/${LINECODE_LIBSSH2_COMMIT}.tar.gz"
+        URL_HASH "SHA256=2501e79b036b7fa50ac1f43d0151398049770fc5696d12bc8e4e293e082c545d"
     )
     # MakeAvailable has been supported since CMake 3.14 and remains the
     # non-deprecated population path in CMake 4.x.  It also keeps the

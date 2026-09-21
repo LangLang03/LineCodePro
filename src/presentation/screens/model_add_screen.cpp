@@ -133,24 +133,15 @@ const std::array validation_presentations{
 struct LocalAccelerationPresentation final {
   LocalAcceleration mode;
   StringResource label;
-  float height;
-  float baseline_padding;
 };
 
 const std::array local_acceleration_presentations{
-    LocalAccelerationPresentation{
-        LocalAcceleration::automatic,
-        app::strings::model_form_acceleration_auto,
-        ModelFormLayoutMetrics::toggle_height,
-        ModelFormLayoutMetrics::toggle_baseline_padding},
-    LocalAccelerationPresentation{
-        LocalAcceleration::cpu, app::strings::model_form_acceleration_cpu,
-        ModelFormLayoutMetrics::latin_toggle_height,
-        ModelFormLayoutMetrics::latin_toggle_baseline_padding},
-    LocalAccelerationPresentation{
-        LocalAcceleration::npu, app::strings::model_form_acceleration_npu,
-        ModelFormLayoutMetrics::latin_toggle_height,
-        ModelFormLayoutMetrics::latin_toggle_baseline_padding},
+    LocalAccelerationPresentation{LocalAcceleration::automatic,
+                                  app::strings::model_form_acceleration_auto},
+    LocalAccelerationPresentation{LocalAcceleration::cpu,
+                                  app::strings::model_form_acceleration_cpu},
+    LocalAccelerationPresentation{LocalAcceleration::npu,
+                                  app::strings::model_form_acceleration_npu},
 };
 
 TextStyle Label(float size, FontWeight weight = FontWeight::Regular,
@@ -261,45 +252,41 @@ View HeaderAction(StringVariant label, bool enabled,
       Text(std::move(label))
           .Style(Label(16.0F, FontWeight::Medium,
                        enabled ? colors::accent : colors::tertiary))
-          // Android's centered TextView paints this font about 1.5dp below the
-          // geometric center of its line box.
-          .With(Padding(EdgeInsets{
-              .top = ModelFormLayoutMetrics::header_action_baseline_padding})),
+          .With(Offset(
+              Point{0.0F, ModelFormLayoutMetrics::header_action_offset_y})),
   }
       .OnClick([enabled, action = std::move(action)] {
         if (enabled && action) {
           std::invoke(action);
         }
       })
-      // Android TextView's 16sp line box plus 8dp vertical padding paints at
-      // roughly 39dp on the parity device. Keep that measured action height so
-      // the title and both header actions share the legacy vertical center.
-      .With(Frame{.min_width =
-                      ModelFormLayoutMetrics::header_action_minimum_width,
-                  .min_height =
-                      ModelFormLayoutMetrics::header_action_minimum_height},
-            Padding(EdgeInsets::Symmetric(12.0F, 0.0F)),
+      .With(Padding(EdgeInsets::Symmetric(12.0F, 8.0F)),
             Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-            Enabled{enabled}, Opacity(enabled ? 1.0F : 0.45F), Focusable(),
+            Enabled{enabled}, Focusable(),
             PointerCursor(enabled ? PointerCursorKind::Hand
                                   : PointerCursorKind::Default));
 }
 
-View SectionLabel(StringVariant text, float bottom = 8.0F) {
+View SectionLabel(StringVariant text, ModelFormSectionLabelKind kind,
+                  float bottom = 8.0F) {
   // The legacy label uses LayoutParams margins. Keep those gaps as siblings
   // so the Text's own bounds contain only the painted label.
+  const auto &metrics = ModelFormSectionLabelMetricsFor(kind);
   return Column{
       Stack{}.With(Frame{.height = 16.0F}),
-      Text(std::move(text))
-          .Style(Label(13.0F, FontWeight::Medium, colors::secondary)),
+      Stack{Text(std::move(text))
+                .Style(Label(13.0F, FontWeight::Medium, colors::secondary))}
+          .With(Frame{.height = metrics.line_box_height},
+                Align(HorizontalAlignment::Start, VerticalAlignment::Center)),
       Stack{}.With(Frame{.height = bottom}),
   };
 }
 
-View SupportingText(StringVariant text, float top = 8.0F) {
+View SupportingText(StringVariant text, float top = 8.0F,
+                    float bottom = 0.0F) {
   return Text(std::move(text))
       .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
-      .With(Padding(EdgeInsets{.top = top}));
+      .With(Padding(EdgeInsets{.top = top, .bottom = bottom}));
 }
 
 StringVariant BaseUrlPlaceholder(domain::ModelProtocol protocol) {
@@ -380,7 +367,6 @@ View ProtocolSelector(State<ModelFormState> state, ToastHandle toast) {
                   Align(HorizontalAlignment::Center, VerticalAlignment::Center),
                   Background(selected ? colors::accent : colors::surface_light),
                   CornerRadius(12.0F), Enabled{decision.enabled},
-                  Opacity(decision.enabled ? 1.0F : 0.45F),
                   PointerCursor(decision.enabled
                                     ? PointerCursorKind::Hand
                                     : PointerCursorKind::Default)));
@@ -398,8 +384,7 @@ View SwitchHeader(StringVariant label,
             .Style(Label(13.0F, FontWeight::Medium, colors::secondary)));
   }
   trailing.push_back(
-      LegacySwitch(checked, std::move(changed))
-          .With(Enabled{enabled}, Opacity(enabled ? 1.0F : 0.45F)));
+      LegacySwitch(checked, std::move(changed)).With(Enabled{enabled}));
   return Row{
       Text(std::move(label))
           .Style(Label(13.0F, FontWeight::Medium, colors::secondary))
@@ -430,7 +415,7 @@ View QueryButton(bool enabled, bool busy, std::function<void()> action) {
             CrossAlign(CrossAxisAlignment::Center),
             Align(HorizontalAlignment::Center, VerticalAlignment::Center),
             Background(highlighted ? colors::accent : colors::surface_light),
-            CornerRadius(12.0F), Enabled{interactive},
+            CornerRadius(12.0F),
             PointerCursor(interactive ? PointerCursorKind::Hand
                                       : PointerCursorKind::Default));
 }
@@ -539,9 +524,9 @@ void ShowModelPicker(const BottomSheetHandle &sheets,
     // ModelPickerDialog leaves the legacy 16dp horizontal dialog inset. The
     // presentation host itself is intentionally transparent, so apply that
     // inset outside the painted panel and retain the 560dp expanded-width cap.
-    return Row{std::move(panel).With(Grow())}.With(
+    return Column{std::move(panel)}.With(
         Padding(EdgeInsets::Symmetric(16.0F, 0.0F)),
-        MainAlign(MainAxisAlignment::Center));
+        CrossAlign(CrossAxisAlignment::Stretch));
   });
 }
 
@@ -683,7 +668,8 @@ View ModelSelector(TextEditingValue selection, bool enabled, bool busy,
                 Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
                 CrossAlign(CrossAxisAlignment::Center),
                 Background(colors::surface_light),
-                Border{.color = colors::border_light, .width = 1.0F},
+                Border{.color = colors::border_light,
+                       .width = ModelFormLayoutMetrics::form_border_width},
                 CornerRadius(12.0F), Focusable(),
                 PointerCursor(PointerCursorKind::Hand)),
       QueryButton(enabled, busy, std::move(action)),
@@ -696,25 +682,25 @@ View LocalForm(State<ModelFormState> state, ToastHandle toast) {
   acceleration.reserve(local_acceleration_presentations.size());
   for (const auto &presentation : local_acceleration_presentations) {
     const bool selected = state->acceleration == presentation.mode;
-    acceleration.push_back(Stack{
-        Text(presentation.label)
-            .Style(Label(16.0F, FontWeight::Bold,
-                         selected ? colors::text_on_color : colors::secondary))
-            // Match Android TextView's optical baseline inside the 46dp
-            // toggle instead of centering only the glyph bounds.
-            .With(Padding(EdgeInsets{.top = presentation.baseline_padding})),
-    }
-                               .With(
-                                   Frame{.height = presentation.height}, Grow(),
-                                   Align(HorizontalAlignment::Center,
-                                         VerticalAlignment::Center),
-                                   Background(selected ? colors::accent
-                                                       : colors::surface_light),
-                                   CornerRadius(12.0F)));
+    acceleration.push_back(
+        Stack{
+            Text(presentation.label)
+                .Style(
+                    Label(16.0F, FontWeight::Bold,
+                          selected ? colors::text_on_color : colors::secondary))
+                .With(Offset(Point{
+                    0.0F, ModelFormLayoutMetrics::acceleration_text_offset_y})),
+        }
+            .With(Frame{.height = ModelFormLayoutMetrics::toggle_height},
+                  Grow(),
+                  Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+                  Background(selected ? colors::accent : colors::surface_light),
+                  CornerRadius(12.0F)));
   }
 
   return Column{
-      SectionLabel(app::strings::model_form_local_file),
+      SectionLabel(app::strings::model_form_local_file,
+                   ModelFormSectionLabelKind::cjk_or_mixed),
       Row{
           Stack{Glyph(app::images::file_up, 20.0F, colors::accent)}.With(
               Frame{.width = 38.0F, .height = 38.0F},
@@ -737,25 +723,25 @@ View LocalForm(State<ModelFormState> state, ToastHandle toast) {
                 Padding(EdgeInsets::All(12.0F)),
                 CrossAlign(CrossAxisAlignment::Center),
                 Background(colors::surface_light),
-                Border{.color = colors::border_light, .width = 1.0F},
+                Border{.color = colors::border_light,
+                       .width = ModelFormLayoutMetrics::form_border_width},
                 CornerRadius(12.0F), Focusable(),
                 PointerCursor(PointerCursorKind::Hand)),
-      SectionLabel(app::strings::model_form_local_context_size),
+      SectionLabel(app::strings::model_form_local_context_size,
+                   ModelFormSectionLabelKind::cjk_or_mixed),
       FormField(state->context_size,
                 app::strings::model_form_local_context_size,
                 app::strings::model_form_local_context_placeholder,
                 ChangeText(state, &ModelFormState::context_size),
                 ValidationResult::None(), TextInputType::Number),
       SupportingText(app::strings::model_form_local_context_hint),
-      // HuxerUI's label line box is 1dp taller than the legacy TextView here;
-      // trim the following gap so the 46dp toggle row keeps the same bounds.
+      // The legacy acceleration section uses a 1dp tighter post-label gap than
+      // the other CJK/mixed section labels.
       SectionLabel(app::strings::model_form_acceleration,
+                   ModelFormSectionLabelKind::cjk_or_mixed,
                    ModelFormLayoutMetrics::acceleration_label_bottom_padding),
-      // Android LinearLayout baseline-aligns Latin CPU/NPU toggles four pixels
-      // below the Chinese automatic toggle on the parity density. Preserve
-      // that measured geometry by bottom-aligning their shorter frames.
       Row(std::move(acceleration))
-          .With(Spacing(8.0F), CrossAlign(CrossAxisAlignment::End)),
+          .With(Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center)),
       SupportingText(app::strings::model_form_acceleration_hint),
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch));
@@ -764,10 +750,10 @@ View LocalForm(State<ModelFormState> state, ToastHandle toast) {
 } // namespace
 
 [[huxerui::composable]] View
-ModelAddScreen(ModelAddScreenOptions options,
-               std::shared_ptr<application::ModelStore> store,
-               std::shared_ptr<application::ModelCatalogGateway> catalog,
-               ModelAddScreenActions actions) {
+ModelAddContent(ModelAddScreenOptions options,
+                std::shared_ptr<application::ModelStore> store,
+                std::shared_ptr<application::ModelCatalogGateway> catalog,
+                ModelAddScreenActions actions) {
   const bool editing = options.editing.has_value();
   const auto initial_draft =
       editing
@@ -838,17 +824,20 @@ ModelAddScreen(ModelAddScreenOptions options,
                 app::strings::model_form_provider_named,
                 state->local ? UseString(app::strings::model_protocol_local)
                              : state->provider_label)
-          : StringVariant{app::strings::model_form_provider}));
+          : StringVariant{app::strings::model_form_provider},
+      ModelFormSectionLabelKind::cjk_or_mixed));
   form.push_back(ProtocolSelector(state, toast));
 
   if (state->local) {
-    form.push_back(SectionLabel(app::strings::model_form_name));
+    form.push_back(SectionLabel(app::strings::model_form_name,
+                                ModelFormSectionLabelKind::cjk_or_mixed));
     form.push_back(FormField(state->name, app::strings::model_form_name,
                              app::strings::model_form_name_local_hint,
                              ChangeText(state, &ModelFormState::name)));
     form.push_back(LocalForm(state, toast));
   } else {
-    form.push_back(SectionLabel(app::strings::model_form_name));
+    form.push_back(SectionLabel(app::strings::model_form_name,
+                                ModelFormSectionLabelKind::cjk_or_mixed));
     form.push_back(FormField(
         state->name, app::strings::model_form_name,
         state->preset_mode
@@ -856,16 +845,23 @@ ModelAddScreen(ModelAddScreenOptions options,
             : StringVariant{app::strings::model_form_name_remote_hint},
         ChangeText(state, &ModelFormState::name)));
 
-    form.push_back(SectionLabel(app::strings::model_form_base_url));
+    form.push_back(SectionLabel(app::strings::model_form_base_url,
+                                ModelFormSectionLabelKind::latin));
     form.push_back(
         FormField(state->base_url, app::strings::model_form_base_url,
                   options.preset ? StringVariant{options.preset->placeholder}
                                  : BaseUrlPlaceholder(state->protocol),
                   ChangeConnectionText(state, &ModelFormState::base_url),
                   ValidationResult::None(), TextInputType::Url));
-    form.push_back(SupportingText(BaseUrlHint(state->protocol)));
+    // Android TextView adds 3dp between the two wrapped hint lines. HuxerUI's
+    // public Text API intentionally uses the platform paragraph leading and
+    // has no line-spacing override, so retain the legacy block height here.
+    form.push_back(SupportingText(
+        BaseUrlHint(state->protocol), 8.0F,
+        ModelFormLayoutMetrics::base_url_hint_trailing_padding));
 
-    form.push_back(SectionLabel(app::strings::model_form_api_key));
+    form.push_back(SectionLabel(app::strings::model_form_api_key,
+                                ModelFormSectionLabelKind::latin));
     form.push_back(
         FormField(state->api_key, app::strings::model_form_api_key,
                   app::strings::model_form_api_key_hint,
@@ -890,7 +886,8 @@ ModelAddScreen(ModelAddScreenOptions options,
                                    state->primary_querying, query_primary));
     }
 
-    form.push_back(SectionLabel(app::strings::model_form_tool_limit));
+    form.push_back(SectionLabel(app::strings::model_form_tool_limit,
+                                ModelFormSectionLabelKind::cjk_or_mixed));
     form.push_back(FormField(state->tool_limit,
                              app::strings::model_form_tool_limit,
                              app::strings::model_form_tool_limit_placeholder,
@@ -898,7 +895,8 @@ ModelAddScreen(ModelAddScreenOptions options,
                              ValidationResult::None(), TextInputType::Number));
     form.push_back(SupportingText(app::strings::model_form_tool_limit_hint));
 
-    form.push_back(SectionLabel(app::strings::model_form_context_size));
+    form.push_back(SectionLabel(app::strings::model_form_context_size,
+                                ModelFormSectionLabelKind::cjk_or_mixed));
     form.push_back(FormField(state->context_size,
                              app::strings::model_form_context_size,
                              app::strings::model_form_context_placeholder,
@@ -973,15 +971,26 @@ ModelAddScreen(ModelAddScreenOptions options,
               Stack{Text(editing ? app::strings::model_form_edit_title
                                  : app::strings::model_form_add_title)
                         .Style(Label(17.0F, FontWeight::Bold))}
-                  .With(Grow(), Align(HorizontalAlignment::Center,
-                                      VerticalAlignment::Center)),
+                  .With(Grow(),
+                        Align(HorizontalAlignment::Center,
+                              VerticalAlignment::Center),
+                        Offset(Point{
+                            0.0F,
+                            ModelFormLayoutMetrics::header_title_offset_y})),
               Row(std::move(header_actions))
                   .With(Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center)),
           }
-              .With(Frame{.min_height = 60.0F},
+              .With(Frame{.min_height =
+                              ModelFormLayoutMetrics::header_minimum_height},
                     Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
                     Background(colors::background)),
-          Divider(),
+          // The legacy model form reserves three more physical pixels below
+          // its header content than the shared header contract.  Keep that
+          // compensation outside the centered header so the already-matched
+          // title and action baselines do not move with the scroll viewport.
+          Stack{}.With(Frame{.height = 1.14F},
+                       Background(colors::background)),
+          LegacyScreenHeaderDivider(),
           ScrollView(Column(std::move(form))
                          .With(Padding(EdgeInsets{.top = 16.0F,
                                                   .right = 16.0F,
@@ -1007,14 +1016,29 @@ ModelAddScreen(ModelAddScreenOptions options,
   text_field.placeholder_style =
       Label(16.0F, FontWeight::Regular, colors::tertiary);
   text_field.caret = colors::accent;
-  text_field.border_width = 1.0F;
-  text_field.focused_border_width = 1.0F;
+  text_field.border_width = ModelFormLayoutMetrics::form_border_width;
+  text_field.focused_border_width = ModelFormLayoutMetrics::form_border_width;
   text_field.outlined.corner_radii = CornerRadii{12.0F};
   text_field.padding = EdgeInsets::Symmetric(16.0F, 12.0F);
 
   ThemeDefinition overrides;
   overrides.Set(std::move(text_field));
   return Theme(std::move(overrides), std::move(screen));
+}
+
+[[huxerui::composable]] View
+ModelAddScreen(ModelAddScreenOptions options,
+               std::shared_ptr<application::ModelStore> store,
+               std::shared_ptr<application::ModelCatalogGateway> catalog,
+               ModelAddScreenActions actions) {
+  ThemeDefinition overrides;
+  overrides.Set(LineDialogBottomSheetStyle(UseLineColors()));
+  return Theme(
+      std::move(overrides),
+      Scope([options = std::move(options), store = std::move(store),
+             catalog = std::move(catalog), actions = std::move(actions)] {
+        return ModelAddContent(options, store, catalog, actions);
+      }));
 }
 
 } // namespace linecode::presentation

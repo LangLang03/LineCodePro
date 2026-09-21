@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <map>
 #include <memory>
 #include <string>
@@ -74,33 +74,33 @@ huxerui::View Probe() {
   huxerui::Lifecycle([scenario, tasks] {
     const auto handle = tasks.Launch([scenario]() -> huxerui::Task<void> {
       auto state = co_await scenario->modes->Load();
-      assert(state && state->chat_mode == domain::ChatMode::agent);
-      assert(state->permission_mode ==
+      EXPECT_EXPRESSION(state && state->chat_mode == domain::ChatMode::agent);
+      EXPECT_EXPRESSION(state->permission_mode ==
              domain::ToolPermissionMode::automatic);
 
       state = co_await scenario->modes->SetChatMode(domain::ChatMode::chat);
-      assert(state && state->chat_mode == domain::ChatMode::chat);
-      assert(state->permission_mode == domain::ToolPermissionMode::read_only);
-      assert(scenario->store->values.at("@linecode_chat_mode") == "chat");
+      EXPECT_EXPRESSION(state && state->chat_mode == domain::ChatMode::chat);
+      EXPECT_EXPRESSION(state->permission_mode == domain::ToolPermissionMode::read_only);
+      EXPECT_EXPRESSION(scenario->store->values.at("@linecode_chat_mode") == "chat");
 
       state = co_await scenario->modes->SetChatMode(domain::ChatMode::plan);
-      assert(state && state->chat_mode == domain::ChatMode::plan);
-      assert(state->permission_mode ==
+      EXPECT_EXPRESSION(state && state->chat_mode == domain::ChatMode::plan);
+      EXPECT_EXPRESSION(state->permission_mode ==
              domain::ToolPermissionMode::automatic);
 
       state = co_await scenario->modes->SetPermissionMode(
           domain::ToolPermissionMode::read_only);
-      assert(state && state->chat_mode == domain::ChatMode::chat);
+      EXPECT_EXPRESSION(state && state->chat_mode == domain::ChatMode::chat);
 
       state = co_await scenario->modes->SetPermissionMode(
           domain::ToolPermissionMode::confirm);
-      assert(state && state->chat_mode == domain::ChatMode::agent);
-      assert(state->permission_mode == domain::ToolPermissionMode::confirm);
+      EXPECT_EXPRESSION(state && state->chat_mode == domain::ChatMode::agent);
+      EXPECT_EXPRESSION(state->permission_mode == domain::ToolPermissionMode::confirm);
 
       scenario->store->values["@linecode_chat_mode"] = "control";
       state = co_await scenario->modes->Load();
-      assert(state && state->chat_mode == domain::ChatMode::agent);
-      assert(scenario->store->values.at("@linecode_chat_mode") == "agent");
+      EXPECT_EXPRESSION(state && state->chat_mode == domain::ChatMode::agent);
+      EXPECT_EXPRESSION(scenario->store->values.at("@linecode_chat_mode") == "agent");
       scenario->done = true;
     });
     return [handle] { handle.Cancel(); };
@@ -109,7 +109,7 @@ huxerui::View Probe() {
 }
 } // namespace
 
-int main() {
+TEST(chat_mode_service_tests, LegacySuite) {
   active = std::make_shared<Scenario>();
   active->store = std::make_shared<MemorySettings>();
   auto permissions =

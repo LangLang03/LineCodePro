@@ -31,8 +31,6 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation) {
           .OnClick([navigation] { navigation.Pop(); })
           .With(Frame{.width = 36.0F, .height = 36.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                Semantics{.role = SemanticRole::Button,
-                          .label = app::strings::common_back},
                 Focusable(), PointerCursor(PointerCursorKind::Hand)),
       Stack{Text(app::strings::screen_licenses_title)
                 .Style(Label(17.0F, FontWeight::Bold))}
@@ -85,11 +83,11 @@ View LicenseCard(StringResource name, StringResource metadata,
 
   return Column{
       Header(navigation),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(Column(std::move(content))
                      .With(Padding(EdgeInsets{.top = 12.0F,
                                               .right = 12.0F,
-                                              .bottom = 100.0F,
+                                              .bottom = 108.0F,
                                               .left = 12.0F}),
                            Spacing(8.0F),
                            CrossAlign(CrossAxisAlignment::Stretch)))

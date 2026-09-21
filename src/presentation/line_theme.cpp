@@ -116,6 +116,12 @@ huxerui::ThemeSpec LineLightTheme() { return LineTheme(LineColors::Default()); }
 
 huxerui::ThemeSpec LineTheme(const LineColors &line_colors) {
   huxerui::ThemeSpec theme = huxerui::FlatLightThemeSpec();
+  // The legacy UI does not install a catch-all ripple/state layer for every
+  // clickable View.  HuxerUI's flat theme does, so leaving the inherited
+  // indication in place makes transparent icon and text actions flash a
+  // filled shadow that never existed in LineCode.  Components which really
+  // own a pressed treatment provide it locally.
+  theme.interactions.indication = huxerui::Indication{};
   theme.colors.primary = line_colors.accent;
   theme.colors.on_primary = line_colors.text_on_color;
   theme.colors.primary_container = line_colors.accent_dim;
@@ -168,7 +174,7 @@ huxerui::DialogStyle LineDialogStyle(const LineColors &line_colors) {
   // content/action metrics.
   dialog.background = line_colors.background;
   dialog.title_style = huxerui::TextStyle{
-      huxerui::Font::System(20.0F).WithWeight(huxerui::FontWeight::Bold),
+      huxerui::Font::System(20.0F).WithWeight(huxerui::FontWeight::Medium),
       line_colors.text};
   dialog.message_style =
       huxerui::TextStyle{huxerui::Font::System(16.0F), line_colors.text};
@@ -191,6 +197,28 @@ huxerui::DialogStyle LineDialogStyle(const LineColors &line_colors) {
   return dialog;
 }
 
+huxerui::ToastStyle LineToastStyle(const LineColors &line_colors) {
+  auto toast = huxerui::ToastStyle::Default();
+  // Android 12+ renders app text toasts as a light, pill-shaped surface with
+  // dark content. HuxerUI's default inverse-surface banner is visually the
+  // opposite, so match the legacy surface here. The Android-owned app icon
+  // and platform ellipsis still require a native toast adapter.
+  toast.background = line_colors.background;
+  toast.text_style =
+      huxerui::TextStyle{huxerui::Font::System(14.0F), line_colors.text};
+  toast.padding = huxerui::EdgeInsets::Symmetric(16.0F, 12.0F);
+  toast.shadow = huxerui::Shadow{
+      .color = huxerui::Color::Rgb(0, 0, 0, 0.24F),
+      .offset = {},
+      .blur_radius = 10.0F,
+      .spread = 0.0F,
+  };
+  toast.corner_radii = huxerui::CornerRadii{24.0F};
+  toast.minimum_height = 48.0F;
+  toast.maximum_width = 480.0F;
+  return toast;
+}
+
 huxerui::BottomSheetStyle LineBottomSheetStyle(const LineColors &line_colors) {
   auto bottom_sheet = huxerui::BottomSheetStyle::Default();
   // Legacy in-app overlays paint `ThemePalette.overlay` (rgba(22, 26, 32, 0.26)
@@ -209,6 +237,27 @@ huxerui::BottomSheetStyle LineBottomSheetStyle(const LineColors &line_colors) {
   bottom_sheet.exit =
       huxerui::TweenSpec{.duration = 0.15, .easing = huxerui::Easing::EaseIn};
   return bottom_sheet;
+}
+
+huxerui::BottomSheetStyle
+LineDialogBottomSheetStyle(const LineColors &line_colors) {
+  auto bottom_sheet = LineBottomSheetStyle(line_colors);
+  // Legacy model pickers and destructive model actions are dialog-owned
+  // bottom sheets. Android dims those with the same 60% modal barrier as an
+  // AlertDialog, unlike LineCode's lighter in-app utility sheets.
+  bottom_sheet.scrim = LineDialogStyle(line_colors).scrim;
+  return bottom_sheet;
+}
+
+huxerui::DrawerStyle LineDrawerStyle() {
+  auto drawer = huxerui::DrawerStyle::Default();
+  drawer.motion = huxerui::DrawerMotion{
+      .open = huxerui::TweenSpec{.duration = 0.18,
+                                 .easing = huxerui::Easing::EaseOut},
+      .close = huxerui::TweenSpec{.duration = 0.15,
+                                  .easing = huxerui::Easing::EaseIn},
+  };
+  return drawer;
 }
 
 huxerui::ThemeDefinition LineLightThemeDefinition() {
@@ -247,6 +296,8 @@ huxerui::ThemeDefinition LineThemeDefinition(const LineColors &line_colors) {
   }
   definition.Set(std::move(navigation));
 
+  definition.Set(LineDrawerStyle());
+
   auto toggle = huxerui::SwitchStyle::Default();
   toggle.width = 46.5F;
   toggle.height = 27.0F;
@@ -278,6 +329,7 @@ huxerui::ThemeDefinition LineThemeDefinition(const LineColors &line_colors) {
   definition.Set(std::move(divider));
 
   definition.Set(LineDialogStyle(line_colors));
+  definition.Set(LineToastStyle(line_colors));
   definition.Set(LineBottomSheetStyle(line_colors));
   return definition;
 }

@@ -1,7 +1,8 @@
 # Platform Modules
 
-Use a PlatformModule for a non-visual capability whose implementation depends on the current platform.
-Do not use one for portable C++ services, embedded controls, or frame production that fits `ExternalTexture`.
+Before defining a PlatformModule, check whether the active SDK already exposes the capability through a root service or application, window, or presentation handle. Use those built-ins for clipboard, files, pickers, HTTP, permissions, windows, and presentation rather than registering a parallel platform abstraction.
+
+Use a PlatformModule only for a missing non-visual capability whose implementation genuinely depends on the current platform. Do not use one for portable C++ services, embedded controls, or frame production that fits `ExternalTexture`.
 
 ## Facade and ownership
 
@@ -59,19 +60,26 @@ There is no generic `UsePlatformModule`, public registry accessor, mandatory ser
 `PlatformPayload` and `PlatformChannel` belong only at a C++/platform-language boundary.
 Keep them behind the library's typed Module facade.
 A structured boundary type owns its static `Encode(const T&)` or `Decode(const PlatformPayload&)` operation; direct C++ implementations do not call those operations.
+`PlatformPayload` directly supports retained `FileReference` values when a native Module needs an Android `Uri`, Apple `NSURL`, or browser `File` while preserving the original grant lifetime.
+Use that capability instead of embedding a provider URI string, copying the complete file into `Bytes`, or adding a second file-access Module.
 
 Android currently provides `android::JavaPlatformModuleFactory<Module, Options>` for Java or Kotlin implementations.
 Set `.class_name` to the Java factory class and use `.create` to wrap one framework-owned `PlatformChannel` in the library's exact Module type.
 The Java implementation receives one `HuxerUIPlatformChannel.Events` emitter and uses the SDK `PlatformPayload` value; it does not declare one JNI callback per event.
+`requireFileReference()` returns a retained `HuxerUIFileReference`; call `uri()` and close the wrapper only after the native consumer releases it.
 
 Web provides `web::JavaScriptPlatformModuleFactory<Module, Options>` for a linked JavaScript structural factory.
 Set `.factory` to the actual `emscripten::val` factory object, and use `.create` to wrap the framework-owned `PlatformChannel` in the library's exact Module type.
 A string such as `audio_player_factory_name` may identify the module property used to obtain that object, but the adapter field remains `.factory`; it is not a factory name.
 JavaScript receives immutable `Module.HuxerUI.PlatformPayload` values and one framework-owned events endpoint; it does not require inheritance or a second name registry.
+For a FileReference payload, `requireFileReference()` returns a retained `HuxerUI.FileReference`; await `getFile()` and close it after use.
 The Web JavaScript `PlatformPayload` bridge does not transport `ExternalTexture`; use the direct Emscripten C++ texture path when Web must provide frames rather than adding another bridge channel.
 
 iOS and macOS expose their Objective-C/Swift contracts through the pure Objective-C Clang module `HuxerUIPlatform`.
 An Objective-C or Swift implementation conforms to `UIKitPlatformModuleFactory` or `AppKitPlatformModuleFactory` and returns a `PlatformModule` instance.
+Its payload `fileReference()` accessor returns an ARC-retained `FileReference` whose `fileURL` preserves the underlying C++ access lifetime.
+When an Apple Module starts asynchronous reading, playback, or writing, retain that `FileReference` alongside the player, asset, document, or provider operation until the native consumer has stopped using the resource.
+Retaining only `fileURL` does not keep a security-scoped selection open after the wrapper is released.
 The library's Objective-C++ RootHook sets `.factory` to the actual Objective-C or Swift factory object and uses `.create` to wrap its channel in the matching typed adapter:
 
 ```cpp

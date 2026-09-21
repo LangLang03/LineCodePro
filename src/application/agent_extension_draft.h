@@ -10,6 +10,7 @@
 #include "application/ports/extension_store.h"
 #include "application/ports/model_store.h"
 #include "application/ports/tool_registry.h"
+#include "application/tool_text_catalog.h"
 
 namespace linecode::application {
 
@@ -43,7 +44,8 @@ public:
       std::shared_ptr<CompletionGateway> completion,
       std::shared_ptr<ToolRegistry> tools,
       std::shared_ptr<McpExtensionStore> mcps,
-      std::shared_ptr<const AgentDraftCodec> codec);
+      std::shared_ptr<const AgentDraftCodec> codec,
+      ToolTextLanguage language = ToolTextLanguage::english);
 
   [[nodiscard]] huxerui::Task<AgentDraftResult<AgentDraftContext>>
   LoadContext() override;
@@ -56,6 +58,7 @@ private:
   std::shared_ptr<ToolRegistry> tools_;
   std::shared_ptr<McpExtensionStore> mcps_;
   std::shared_ptr<const AgentDraftCodec> codec_;
+  ToolTextLanguage language_;
 };
 
 } // namespace linecode::application

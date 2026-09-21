@@ -1,4 +1,17 @@
 set(HUXERUI_WINDOWS_MANIFEST "${CMAKE_CURRENT_LIST_DIR}/app.manifest")
+set(HUXERUI_WINDOWS_ICON "${CMAKE_CURRENT_LIST_DIR}/app.ico")
+set(HUXERUI_WINDOWS_RESOURCE_DIRECTORY
+        "${CMAKE_CURRENT_BINARY_DIR}/huxerui-platform/windows"
+)
+file(MAKE_DIRECTORY "${HUXERUI_WINDOWS_RESOURCE_DIRECTORY}")
+configure_file(
+        "${CMAKE_CURRENT_LIST_DIR}/app.rc.in"
+        "${HUXERUI_WINDOWS_RESOURCE_DIRECTORY}/app.rc"
+        @ONLY
+)
+set(HUXERUI_WINDOWS_RESOURCE
+        "${HUXERUI_WINDOWS_RESOURCE_DIRECTORY}/app.rc"
+)
 
 function(huxerui_configure_windows_project_package target_name install_component)
     if (NOT HUXERUI_PACKAGE)
@@ -8,6 +21,9 @@ function(huxerui_configure_windows_project_package target_name install_component
     install(TARGETS ${target_name}
             RUNTIME DESTINATION .
             COMPONENT "${install_component}"
+    )
+    _huxerui_install_runtime_dependencies(${target_name} "${install_component}"
+            . "$<TARGET_FILE_NAME:${target_name}>"
     )
     get_target_property(HUXERUI_WINDOWS_APP_RESOURCES
             ${target_name}
@@ -57,6 +73,7 @@ function(huxerui_configure_windows_project_package target_name install_component
     huxerui_add_windows_installer(${target_name}_installer
             SOURCES
                 ${HUXERUI_WINDOWS_INSTALLER_SOURCES}
+                "${HUXERUI_WINDOWS_RESOURCE}"
             RESOURCES
                 "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/package/resources"
             RESOURCE_NAMESPACE

@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -438,12 +438,12 @@ void StorePersistsAndRestoresBothLegacyRepresentations() {
       ui.Pump(std::chrono::milliseconds{1});
       std::this_thread::sleep_for(std::chrono::milliseconds{1});
     }
-    assert(active_scenario->done);
-    assert(active_scenario->passed);
+    EXPECT_EXPRESSION(active_scenario->done);
+    EXPECT_EXPRESSION(active_scenario->passed);
   }
 
   Database persisted{database_path};
-  assert(persisted.Integer(
+  EXPECT_EXPRESSION(persisted.Integer(
              "SELECT COUNT(*) FROM attachments AS a JOIN messages AS m "
              "ON m.id = a.message_id WHERE m.content = '' AND "
              "a.path IN ('/new.txt', '/remote.txt')") == 2);
@@ -454,14 +454,14 @@ void StorePersistsAndRestoresBothLegacyRepresentations() {
       "ORDER BY c.chunk_order");
   const auto decoded =
       linecode::infrastructure::DecodeAttachmentJson(raw_json);
-  assert(decoded.size() == 2U);
-  assert(decoded[0].Path() == "/new.txt");
-  assert(decoded[1].Path() == "/remote.txt");
-  assert(persisted.Integer("SELECT COUNT(*) FROM message_blocks") == 3);
-  assert(persisted.Integer(
+  EXPECT_EXPRESSION(decoded.size() == 2U);
+  EXPECT_EXPRESSION(decoded[0].Path() == "/new.txt");
+  EXPECT_EXPRESSION(decoded[1].Path() == "/remote.txt");
+  EXPECT_EXPRESSION(persisted.Integer("SELECT COUNT(*) FROM message_blocks") == 3);
+  EXPECT_EXPRESSION(persisted.Integer(
              "SELECT COUNT(*) FROM tool_calls WHERE id = 'call-restore' AND "
              "name = 'read_file' AND duration_ms = 20") == 1);
-  assert(persisted.Integer(
+  EXPECT_EXPRESSION(persisted.Integer(
              "SELECT COUNT(*) FROM tool_results WHERE "
              "tool_call_id = 'call-restore' AND content = 'contents'") == 1);
 
@@ -472,4 +472,4 @@ void StorePersistsAndRestoresBothLegacyRepresentations() {
 
 } // namespace
 
-int main() { StorePersistsAndRestoresBothLegacyRepresentations(); }
+TEST(sqlite_conversation_attachment_tests, LegacySuite) { StorePersistsAndRestoresBothLegacyRepresentations(); }

@@ -2,15 +2,21 @@
 
 ## Colors and fills
 
-`Color` stores normalized red, green, blue, and alpha channels. Prefer `Color::Rgb(...)`, `Color::Transparent()`, `Color::Black()`, and `Color::White()` instead of mixing byte and normalized channel conventions.
+`Color` stores normalized red, green, blue, and alpha channels. Prefer `Color::Rgb(...)`, `Color::Transparent()`, `Color::Black()`, and `Color::White()` instead of mixing byte and normalized channel conventions. When an external value is already packed, use `Color::Rgba32(0xRRGGBBAA)` or `Color::Argb32(0xAARRGGBB)` so the channel order remains explicit.
 
 `Brush` is the shared source-paint value for `Color`, `LinearGradient`, and `RadialGradient`. It intentionally excludes geometry, `StrokeStyle`, opacity, blending, filters, images, and platform drawing objects. `VisualFill` accepts a `Brush` or `ImageFill`, with direct Color and gradient construction for concise declarations. Gradient start, end, center, and radius values are normalized to the painted bounds; stops use offsets from `0.0F` to `1.0F`. Set the gradient's `transform` to rotate, scale, skew, or translate that normalized sampling space without moving the painted geometry; leave its identity default when no transform is needed. `ImageFill` adds fit, alignment, sampling, optional tint, and opacity to an `ImageVariant`. The same fill vocabulary is used by `Background` and interaction indication layers.
 
 ## Image sources
 
-`ImageVariant` accepts the image forms exposed by the active SDK, including resource-backed and resolved assets. `Image` provides fit, alignment, sampling, and tint. Use `VectorAsset` for public vector data and `ExternalTexture` for frames produced outside HuxerUI.
+`ImageVariant` accepts the image forms exposed by the active SDK, including resource-backed and resolved assets. `Image` provides fit, alignment, sampling, and tint.
+
+For a static icon, illustration, or logo, add or preserve an SVG or raster file under `resources/images` and pass its generated `ImageResource` directly to `Image`, an icon-taking component, or `VisualFill`. Prefer SVG for scalable vector artwork and use `currentColor` when the same artwork should follow a component tint. Do not translate static SVG geometry into C++ paths.
+
+Use `UseVectorImage(...)` only when custom drawing or another API actually requires the resolved `VectorAsset`. Use `VectorAsset::Create(...)` for vector content genuinely generated from C++ data or runtime geometry, not as the default way to author application icons. Use `ExternalTexture` only for live frames produced outside HuxerUI.
 
 ## Canvas
+
+Use `Image` and packaged assets for static artwork, `Text` for ordinary text, and built-in components and modifiers for normal UI structure. Choose `Canvas` only when drawing is dynamic, size-dependent, or interactive in a way those declarations cannot express, such as charts, signatures, or generated geometry. Do not recreate static icons, standard controls, or layout with Canvas.
 
 `Canvas` receives a `PaintContext` and assigned `Size`. Give it explicit or parent-derived constraints. Draw in local coordinates and do not use Canvas to arbitrarily place `PlatformView` children.
 

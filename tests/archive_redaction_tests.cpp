@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <string>
 #include <string_view>
 
@@ -7,16 +7,16 @@
 namespace {
 
 void AssertMissing(std::string_view value, std::string_view secret) {
-  assert(!value.contains(secret));
+  EXPECT_EXPRESSION(!value.contains(secret));
 }
 
 void TestSensitiveNamePolicy() {
   using linecode::infrastructure::IsSensitiveArchiveName;
-  assert(IsSensitiveArchiveName("Authorization"));
-  assert(IsSensitiveArchiveName("X-Api-Key"));
-  assert(IsSensitiveArchiveName("refresh_token"));
-  assert(IsSensitiveArchiveName("privateKey"));
-  assert(!IsSensitiveArchiveName("model_id"));
+  EXPECT_EXPRESSION(IsSensitiveArchiveName("Authorization"));
+  EXPECT_EXPRESSION(IsSensitiveArchiveName("X-Api-Key"));
+  EXPECT_EXPRESSION(IsSensitiveArchiveName("refresh_token"));
+  EXPECT_EXPRESSION(IsSensitiveArchiveName("privateKey"));
+  EXPECT_EXPRESSION(!IsSensitiveArchiveName("model_id"));
 }
 
 void TestRecursiveJsonRedaction() {
@@ -29,8 +29,8 @@ void TestRecursiveJsonRedaction() {
   AssertMissing(redacted, "top-secret");
   AssertMissing(redacted, "nested-secret");
   AssertMissing(redacted, "array-secret");
-  assert(redacted.contains("kept"));
-  assert(linecode::infrastructure::RedactArchiveJsonSecrets(
+  EXPECT_EXPRESSION(redacted.contains("kept"));
+  EXPECT_EXPRESSION(linecode::infrastructure::RedactArchiveJsonSecrets(
              "unparseable secret payload")
              .empty());
 }
@@ -43,8 +43,8 @@ void TestHeaderRedaction() {
   ])");
   AssertMissing(redacted, "header-secret");
   AssertMissing(redacted, "key-secret");
-  assert(redacted.contains("application/json"));
-  assert(linecode::infrastructure::RedactArchiveHeaders("invalid").empty());
+  EXPECT_EXPRESSION(redacted.contains("application/json"));
+  EXPECT_EXPRESSION(linecode::infrastructure::RedactArchiveHeaders("invalid").empty());
 }
 
 void TestSettingRedactionRegistry() {
@@ -54,24 +54,24 @@ void TestSettingRedactionRegistry() {
   AssertMissing(ssh, "ssh-secret");
   AssertMissing(ssh, "private-secret");
   AssertMissing(ssh, "phrase-secret");
-  assert(ssh.contains("example.test"));
+  EXPECT_EXPRESSION(ssh.contains("example.test"));
 
   const auto web = linecode::infrastructure::RedactArchiveSettingValue(
       "@lineai_web_search_config",
       R"({"provider":"test","apiKey":"web-secret"})");
   AssertMissing(web, "web-secret");
-  assert(web.contains("test"));
+  EXPECT_EXPRESSION(web.contains("test"));
 
-  assert(linecode::infrastructure::RedactArchiveSettingValue(
+  EXPECT_EXPRESSION(linecode::infrastructure::RedactArchiveSettingValue(
              "@lineai_access_token", "setting-secret")
              .empty());
-  assert(linecode::infrastructure::RedactArchiveSettingValue(
+  EXPECT_EXPRESSION(linecode::infrastructure::RedactArchiveSettingValue(
              "@lineai_theme", "dark") == "dark");
 }
 
 } // namespace
 
-int main() {
+TEST(archive_redaction_tests, LegacySuite) {
   TestSensitiveNamePolicy();
   TestRecursiveJsonRedaction();
   TestHeaderRedaction();

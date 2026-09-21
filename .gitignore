@@ -2,10 +2,13 @@
 /dist/
 /build/
 /cmake-build-*/
+/CMakeFiles/
 /.cache/
 /artifacts/
 __pycache__/
 *.py[cod]
+*.kate-swp
+/error.log
 
 /.idea/
 /.vscode/

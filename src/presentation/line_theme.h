@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include <huxerui/environment.h>
+#include <huxerui/navigation.h>
 #include <huxerui/paint.h>
 #include <huxerui/presentation.h>
 #include <huxerui/theme.h>
@@ -57,7 +58,11 @@ LineColorsForPalette(const domain::ThemePalette &palette);
 huxerui::ThemeSpec LineLightTheme();
 huxerui::ThemeSpec LineTheme(const LineColors &colors);
 huxerui::DialogStyle LineDialogStyle(const LineColors &colors);
+huxerui::ToastStyle LineToastStyle(const LineColors &colors);
 huxerui::BottomSheetStyle LineBottomSheetStyle(const LineColors &colors);
+huxerui::BottomSheetStyle
+LineDialogBottomSheetStyle(const LineColors &colors);
+huxerui::DrawerStyle LineDrawerStyle();
 huxerui::ThemeDefinition LineLightThemeDefinition();
 huxerui::ThemeDefinition LineThemeDefinition(const LineColors &colors);
 

@@ -22,8 +22,6 @@ ShellCommandScreen(const domain::ShellCommandRoute &route) {
           .OnClick([navigation] { navigation.Pop(); })
           .With(Frame{.width = 36.0F, .height = 36.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                Semantics{.role = SemanticRole::Button,
-                          .label = app::strings::common_back},
                 Focusable(), PointerCursor(PointerCursorKind::Hand)),
       Stack{Text(app::strings::shell_command_title)
                 .Style(TextStyle{Font::System(17.0F).WithWeight(
@@ -43,7 +41,7 @@ ShellCommandScreen(const domain::ShellCommandRoute &route) {
           Frame{.min_height = 60.0F},
           Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
           Background(colors::background)),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(Column{std::move(command)}.With(
                      Padding(EdgeInsets{.top = 8.0F,
                                         .right = 28.0F,

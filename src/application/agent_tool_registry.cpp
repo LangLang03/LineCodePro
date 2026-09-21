@@ -62,8 +62,8 @@ ToolRegistryError Error(ToolRegistryErrorCode code, std::string message) {
   return {.code = code, .message = std::move(message)};
 }
 
-// Legacy `BaseTool.ok(message)` / `error(message)`: the failure is a normal tool
-// result flagged as an error, not a registry-level failure.
+// Legacy `BaseTool.ok(message)` / `error(message)`: the failure is a normal
+// tool result flagged as an error, not a registry-level failure.
 ToolInvocationResult ToolFailure(std::string content) {
   return {.content = std::move(content), .error = true};
 }
@@ -133,8 +133,7 @@ struct WriteScopeOwner final {
   std::string original_scope;
 };
 
-template <class Argument>
-std::string TextArgument(const Argument &argument) {
+template <class Argument> std::string TextArgument(const Argument &argument) {
   if constexpr (std::is_convertible_v<const Argument &, std::string_view>) {
     return std::string{std::string_view{argument}};
   } else {
@@ -150,8 +149,8 @@ std::string Text(ToolTextLanguage language, ToolTextKey key,
                  const Arguments &...arguments) {
   const std::array<std::string, sizeof...(Arguments)> values{
       TextArgument(arguments)...};
-  return ToolText(key, std::span<const std::string>{values.data(),
-                                                   values.size()},
+  return ToolText(key,
+                  std::span<const std::string>{values.data(), values.size()},
                   language);
 }
 
@@ -163,9 +162,9 @@ struct AgentToolContext final {
   ToolTextLanguage language{ToolTextLanguage::english};
 };
 
-using AgentToolExecutor = huxerui::Task<
-    std::expected<ToolInvocationResult, ToolRegistryError>> (*)(
-    AgentToolContext context, std::string arguments_json);
+using AgentToolExecutor =
+    huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>> (*)(
+        AgentToolContext context, std::string arguments_json);
 
 // Declarative tool catalog: Invoke() dispatches through this table and Refresh
 // projects it into the catalog, so a new agent tool never edits dispatch code.
@@ -173,8 +172,8 @@ struct AgentToolDescriptor final {
   std::string_view name;
   std::string_view description;
   std::string_view parameters_json;
+  ToolPresentation presentation;
   bool allowed_in_read_only;
-  bool permanent_grant_supported;
   std::string_view category;
   AgentToolExecutor execute;
 };
@@ -192,13 +191,19 @@ ExecuteAgentOutput(AgentToolContext context, std::string arguments_json);
 // (AgentTool.java:22-25, AgentPipelineTool.java:22-25,
 // AgentOutputTool.java:41-44), and none of them derives a stable narrow action
 // key, so a permanent grant stays unsupported.
-constexpr std::array<AgentToolDescriptor, 3> kAgentTools{{
+const std::array<AgentToolDescriptor, 3> kAgentTools{{
     {
         .name = kAgentToolName,
         .description = kAgentDescription,
         .parameters_json = kAgentSchema,
+        .presentation = {.english_name = "Run Agent",
+                         .english_description =
+                             "Delegate one focused exploration or coding task "
+                             "to a sub-Agent.",
+                         .chinese_name = "运行 Agent",
+                         .chinese_description =
+                             "将一项明确的探索或编程任务委派给子 Agent。"},
         .allowed_in_read_only = true,
-        .permanent_grant_supported = false,
         .category = kAgentToolGroupId,
         .execute = &ExecuteAgent,
     },
@@ -206,8 +211,13 @@ constexpr std::array<AgentToolDescriptor, 3> kAgentTools{{
         .name = kAgentPipelineToolName,
         .description = kAgentPipelineDescription,
         .parameters_json = kAgentPipelineSchema,
+        .presentation =
+            {.english_name = "Run Agent pipeline",
+             .english_description =
+                 "Run multiple dependent sub-Agent tasks as a pipeline.",
+             .chinese_name = "运行 Agent 流水线",
+             .chinese_description = "按依赖关系运行多个子 Agent 任务。"},
         .allowed_in_read_only = true,
-        .permanent_grant_supported = false,
         .category = kAgentToolGroupId,
         .execute = &ExecuteAgentPipeline,
     },
@@ -215,8 +225,13 @@ constexpr std::array<AgentToolDescriptor, 3> kAgentTools{{
         .name = kAgentOutputToolName,
         .description = kAgentOutputDescription,
         .parameters_json = kAgentOutputSchema,
+        .presentation =
+            {.english_name = "Read Agent output",
+             .english_description =
+                 "Read the latest result of a delegated Agent task.",
+             .chinese_name = "读取 Agent 输出",
+             .chinese_description = "读取已委派 Agent 任务的最新结果。"},
         .allowed_in_read_only = true,
-        .permanent_grant_supported = false,
         .category = kAgentToolGroupId,
         .execute = &ExecuteAgentOutput,
     },
@@ -234,26 +249,26 @@ RegisteredTool CatalogEntry(const AgentToolDescriptor &descriptor) {
       .description = std::string{descriptor.description},
       .parameters_json = std::string{descriptor.parameters_json},
       .allowed_in_read_only = descriptor.allowed_in_read_only,
-      .permanent_grant_supported = descriptor.permanent_grant_supported,
+      .agent_category = AgentToolCategory::system,
       .category = std::string{descriptor.category},
+      .presentation = descriptor.presentation,
   };
 }
 
 bool AgentGroupEnabled(const domain::McpExecutionSettings &settings) {
-  const auto found = std::ranges::find(
-      settings.groups, kAgentToolGroupId,
-      [](const domain::McpToolGroupState &group) {
-        return std::string_view{group.id};
-      });
+  const auto found =
+      std::ranges::find(settings.groups, kAgentToolGroupId,
+                        [](const domain::McpToolGroupState &group) {
+                          return std::string_view{group.id};
+                        });
   return found != settings.groups.end() && found->enabled &&
          domain::SupportsMcpExecutionMode(found->supported_modes,
                                           settings.mode);
 }
 
 bool Exposed(const std::vector<RegisteredTool> &tools, std::string_view name) {
-  return std::ranges::any_of(tools, [name](const RegisteredTool &tool) {
-    return tool.name == name;
-  });
+  return std::ranges::any_of(
+      tools, [name](const RegisteredTool &tool) { return tool.name == name; });
 }
 
 // Legacy `PipelineDependencyResolver.parsePipelineAgents` (lines 12-39): one
@@ -276,7 +291,8 @@ ParsePipelineAgentArray(const json::Array &array) {
         .type = NormalizeAgentType(OptString(*object, "type")),
         .description = Trim(OptString(*object, "description")),
         .prompt = Trim(OptString(*object, "prompt")),
-        .read_scope = ScopeList(json::AsArray(json::Find(*object, "read_scope"))),
+        .read_scope =
+            ScopeList(json::AsArray(json::Find(*object, "read_scope"))),
         .write_scope =
             ScopeList(json::AsArray(json::Find(*object, "write_scope"))),
         .dependencies =
@@ -294,10 +310,10 @@ ExecuteAgent(AgentToolContext context, std::string arguments_json) {
   auto parsed = json::Parse(arguments_json);
   const auto *input = parsed ? json::AsObject(&*parsed) : nullptr;
   if (input == nullptr) {
-    co_return ToolFailure(Text(
-        context.language, ToolTextKey::tool_agent_parse_failed,
-        parsed ? std::string_view{"arguments must be a JSON object"}
-               : std::string_view{parsed.error().message}));
+    co_return ToolFailure(
+        Text(context.language, ToolTextKey::tool_agent_parse_failed,
+             parsed ? std::string_view{"arguments must be a JSON object"}
+                    : std::string_view{parsed.error().message}));
   }
   const auto type = NormalizeAgentType(OptString(*input, "type"));
   const auto description = Trim(OptString(*input, "description"));
@@ -329,16 +345,15 @@ ExecuteAgent(AgentToolContext context, std::string arguments_json) {
         Text(context.language, ToolTextKey::tool_agent_runner_not_available));
   }
   const auto *async_value = json::Find(*input, "async");
-  const bool async_requested =
-      async_value != nullptr && std::holds_alternative<bool>(*async_value) &&
-      std::get<bool>(*async_value);
+  const bool async_requested = async_value != nullptr &&
+                               std::holds_alternative<bool>(*async_value) &&
+                               std::get<bool>(*async_value);
   auto result = co_await context.runner->RunAgent(AgentRunRequest{
       .type = type,
       .agent_id = {},
       .description = description,
       .prompt = prompt,
-      .read_scope =
-          ScopeList(json::AsArray(json::Find(*input, "read_scope"))),
+      .read_scope = ScopeList(json::AsArray(json::Find(*input, "read_scope"))),
       .write_scope =
           ScopeList(json::AsArray(json::Find(*input, "write_scope"))),
       .async = async_requested,
@@ -367,22 +382,21 @@ ExecuteAgentPipeline(AgentToolContext context, std::string arguments_json) {
     const auto *agent = json::AsObject(&(*agents)[index]);
     // Line 94: every element must be an object.
     if (agent == nullptr) {
-      co_return ToolFailure(Text(
-          context.language, ToolTextKey::tool_pipeline_agent_not_object,
-          static_cast<int>(index)));
+      co_return ToolFailure(Text(context.language,
+                                 ToolTextKey::tool_pipeline_agent_not_object,
+                                 static_cast<int>(index)));
     }
     auto id = Trim(OptString(*agent, "id"));
     // Line 97: the id must not be blank.
     if (id.empty()) {
-      co_return ToolFailure(Text(
-          context.language, ToolTextKey::tool_pipeline_agent_id_empty,
-          static_cast<int>(index)));
+      co_return ToolFailure(Text(context.language,
+                                 ToolTextKey::tool_pipeline_agent_id_empty,
+                                 static_cast<int>(index)));
     }
     // Line 101: ids must be unique within the pipeline.
     if (ids.contains(id)) {
-      co_return ToolFailure(
-          Text(context.language, ToolTextKey::tool_pipeline_agent_id_duplicate,
-               id));
+      co_return ToolFailure(Text(
+          context.language, ToolTextKey::tool_pipeline_agent_id_duplicate, id));
     }
     ids.insert(id);
     // Lines 105-112: an agent may not depend on itself. The pipeline-wide
@@ -391,16 +405,17 @@ ExecuteAgentPipeline(AgentToolContext context, std::string arguments_json) {
     for (const auto &dependency :
          ScopeList(json::AsArray(json::Find(*agent, "depends_on")))) {
       if (dependency == id) {
-        co_return ToolFailure(Text(
-            context.language, ToolTextKey::tool_pipeline_agent_self_depend, id));
+        co_return ToolFailure(Text(context.language,
+                                   ToolTextKey::tool_pipeline_agent_self_depend,
+                                   id));
       }
     }
     const auto type = NormalizeAgentType(OptString(*agent, "type"));
     // Line 114: the normalized type must be one of the two known values.
     if (type != kAgentTypeExplore && type != kAgentTypeSubCoding) {
-      co_return ToolFailure(Text(
-          context.language, ToolTextKey::tool_pipeline_agent_invalid_type,
-          static_cast<int>(index)));
+      co_return ToolFailure(Text(context.language,
+                                 ToolTextKey::tool_pipeline_agent_invalid_type,
+                                 static_cast<int>(index)));
     }
     const auto write_scope =
         ScopeList(json::AsArray(json::Find(*agent, "write_scope")));
@@ -421,9 +436,9 @@ ExecuteAgentPipeline(AgentToolContext context, std::string arguments_json) {
         continue;
       // Line 130: the same normalized scope twice inside one agent.
       if (local_scopes.contains(normalized)) {
-        co_return ToolFailure(Text(
-            context.language, ToolTextKey::tool_pipeline_scope_duplicate, id,
-            scope));
+        co_return ToolFailure(Text(context.language,
+                                   ToolTextKey::tool_pipeline_scope_duplicate,
+                                   id, scope));
       }
       local_scopes.insert(normalized);
       // Lines 134-139: no other agent (nor an earlier scope of this one) may
@@ -431,26 +446,24 @@ ExecuteAgentPipeline(AgentToolContext context, std::string arguments_json) {
       for (const auto &owner : write_scopes) {
         if (!AgentScopesOverlap(normalized, owner.scope))
           continue;
-        co_return ToolFailure(Text(
-            context.language, ToolTextKey::tool_pipeline_scope_overlap,
-            owner.agent_id, owner.original_scope, id, scope));
+        co_return ToolFailure(
+            Text(context.language, ToolTextKey::tool_pipeline_scope_overlap,
+                 owner.agent_id, owner.original_scope, id, scope));
       }
-      write_scopes.push_back(WriteScopeOwner{.agent_id = id,
-                                             .scope = normalized,
-                                             .original_scope = scope});
+      write_scopes.push_back(WriteScopeOwner{
+          .agent_id = id, .scope = normalized, .original_scope = scope});
     }
     // Line 142: the description must not be blank.
     if (Trim(OptString(*agent, "description")).empty()) {
       co_return ToolFailure(Text(
-          context.language,
-          ToolTextKey::tool_pipeline_agent_description_empty,
+          context.language, ToolTextKey::tool_pipeline_agent_description_empty,
           static_cast<int>(index)));
     }
     // Line 145: the prompt must not be blank.
     if (Trim(OptString(*agent, "prompt")).empty()) {
-      co_return ToolFailure(Text(
-          context.language, ToolTextKey::tool_pipeline_agent_prompt_empty,
-          static_cast<int>(index)));
+      co_return ToolFailure(Text(context.language,
+                                 ToolTextKey::tool_pipeline_agent_prompt_empty,
+                                 static_cast<int>(index)));
     }
   }
   // Line 149: without an engine there is nothing to dispatch to.
@@ -458,9 +471,9 @@ ExecuteAgentPipeline(AgentToolContext context, std::string arguments_json) {
     co_return ToolFailure(Text(
         context.language, ToolTextKey::tool_pipeline_runner_not_available));
   }
-  auto result = co_await context.runner->RunAgentPipeline(
-      AgentPipelineRunRequest{.agents = ParsePipelineAgentArray(*agents),
-                              .tool_call_id = {}});
+  auto result =
+      co_await context.runner->RunAgentPipeline(AgentPipelineRunRequest{
+          .agents = ParsePipelineAgentArray(*agents), .tool_call_id = {}});
   co_return ToolFinished(std::move(result.output), result.error);
 }
 
@@ -480,13 +493,13 @@ ExecuteAgentOutput(AgentToolContext context, std::string arguments_json) {
   }
   // Line 95: the result store must exist.
   if (context.results == nullptr) {
-    co_return ToolFailure(Text(context.language,
-                               ToolTextKey::tool_agent_output_store_missing));
+    co_return ToolFailure(
+        Text(context.language, ToolTextKey::tool_agent_output_store_missing));
   }
   // The legacy default of `include` is "output" for both an absent key and an
   // unrecognized value.
-  const auto include = input == nullptr ? std::string{}
-                                        : OptString(*input, "include");
+  const auto include =
+      input == nullptr ? std::string{} : OptString(*input, "include");
   auto fetched = context.results->Fetch(agent_id, include, context.language);
   co_return ToolInvocationResult{
       .content = std::move(fetched.content),
@@ -515,7 +528,8 @@ std::string NormalizeAgentScope(std::string_view value) {
   return text;
 }
 
-bool AgentScopesOverlap(std::string_view left, std::string_view right) noexcept {
+bool AgentScopesOverlap(std::string_view left,
+                        std::string_view right) noexcept {
   if (left.empty() || right.empty())
     return false;
   if (left == "." || right == "." || left == "/" || right == "/")
@@ -525,7 +539,8 @@ bool AgentScopesOverlap(std::string_view left, std::string_view right) noexcept 
   const auto contains = [](std::string_view container,
                            std::string_view candidate) {
     return container.size() > candidate.size() &&
-           container.starts_with(candidate) && container[candidate.size()] == '/';
+           container.starts_with(candidate) &&
+           container[candidate.size()] == '/';
   };
   return contains(left, right) || contains(right, left);
 }
@@ -564,8 +579,8 @@ huxerui::Task<std::expected<void, ToolRegistryError>>
 AgentToolRegistry::Refresh() {
   auto settings = co_await settings_->Load();
   if (!settings) {
-    co_return std::unexpected(Error(ToolRegistryErrorCode::load_failed,
-                                    settings.error().message));
+    co_return std::unexpected(
+        Error(ToolRegistryErrorCode::load_failed, settings.error().message));
   }
   std::vector<RegisteredTool> next_tools;
   if (AgentGroupEnabled(*settings)) {

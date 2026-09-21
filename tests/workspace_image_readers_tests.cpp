@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
@@ -157,30 +157,30 @@ huxerui::View Probe() {
   huxerui::Lifecycle([scenario, tasks] {
     auto handle = tasks.Launch([scenario]() -> huxerui::Task<void> {
       auto valid = co_await scenario->reader->Read("assets/fixture.png");
-      assert(valid);
-      assert(valid->bytes.size() == 8U);
-      assert(valid->resolved_path.ends_with("assets/fixture.png"));
+      EXPECT_EXPRESSION(valid);
+      EXPECT_EXPRESSION(valid->bytes.size() == 8U);
+      EXPECT_EXPRESSION(valid->resolved_path.ends_with("assets/fixture.png"));
 
       auto traversal = co_await scenario->reader->Read("../outside.png");
-      assert(!traversal);
-      assert(traversal.error().code ==
+      EXPECT_EXPRESSION(!traversal);
+      EXPECT_EXPRESSION(traversal.error().code ==
              application::ImageUnderstandingErrorCode::not_found);
 
       auto absolute =
           co_await scenario->reader->Read(
               (scenario->temporary.Path() / "outside.png").string());
-      assert(!absolute);
-      assert(absolute.error().code ==
+      EXPECT_EXPRESSION(!absolute);
+      EXPECT_EXPRESSION(absolute.error().code ==
              application::ImageUnderstandingErrorCode::not_found);
 
       auto linked = co_await scenario->reader->Read("assets/link.png");
-      assert(!linked);
-      assert(linked.error().code ==
+      EXPECT_EXPRESSION(!linked);
+      EXPECT_EXPRESSION(linked.error().code ==
              application::ImageUnderstandingErrorCode::not_found);
 
       auto oversized = co_await scenario->reader->Read("assets/large.png");
-      assert(!oversized);
-      assert(oversized.error().code ==
+      EXPECT_EXPRESSION(!oversized);
+      EXPECT_EXPRESSION(oversized.error().code ==
              application::ImageUnderstandingErrorCode::too_large);
       scenario->finished = true;
     });
@@ -191,7 +191,7 @@ huxerui::View Probe() {
 
 } // namespace
 
-int main() {
+TEST(workspace_image_readers_tests, LegacySuite) {
   active = std::make_shared<Scenario>();
   const auto root = active->temporary.Path();
   const auto workspace = root / "workspace";

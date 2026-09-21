@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <cassert>
+#include "gtest_support.h"
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -9,6 +9,7 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <huxerui/huxerui.h>
@@ -21,8 +22,16 @@
 namespace {
 
 using linecode::domain::DiffRecord;
+using linecode::application::DiffStoreResult;
 using linecode::infrastructure::SqliteDiffFileRestorer;
 using linecode::infrastructure::SqliteDiffStore;
+
+template <class Value> Value Require(DiffStoreResult<Value> result) {
+  EXPECT_EXPRESSION(result);
+  return std::move(*result);
+}
+
+void Require(DiffStoreResult<void> result) { EXPECT_EXPRESSION(result); }
 
 // The store awaits HuxerUI's asynchronous SQLite adapter, so every scenario
 // runs as a task inside a real Runtime driven by the UI test fixture.
@@ -65,14 +74,17 @@ huxerui::View StoreProbe() {
 
       // An empty identifier, an unknown identifier, and an empty file path all
       // read as "nothing recorded".
-      const auto missing_empty = co_await current->store->Find("");
-      const auto missing_unknown = co_await current->store->Find("does-not-exist");
-      const auto empty_chain = co_await current->store->Chain("");
+      const auto missing_empty =
+          Require(co_await current->store->Find(""));
+      const auto missing_unknown =
+          Require(co_await current->store->Find("does-not-exist"));
+      const auto empty_chain = Require(co_await current->store->Chain(""));
 
       // Record round trip, the legacy identifier shape, and the nullable legacy
       // columns (`old_content`/`raw_json`/`new_content` may all be empty).
       const auto recorded_at = NowMilliseconds();
-      auto first = co_await current->store->Record(first_path, "", "", false);
+      auto first =
+          Require(co_await current->store->Record(first_path, "", "", false));
 
       const auto separator = first.id.find('_');
       const bool identifier_ok =
@@ -81,7 +93,7 @@ huxerui::View StoreProbe() {
           IsJavaBase36(first.id.substr(separator + 1)) &&
           first.timestamp >= recorded_at && first.timestamp <= NowMilliseconds();
 
-      const auto found = co_await current->store->Find(first.id);
+      const auto found = Require(co_await current->store->Find(first.id));
       const DiffRecord fallback{};
       const auto loaded = found.value_or(fallback);
       const bool round_trip =
@@ -94,23 +106,27 @@ huxerui::View StoreProbe() {
       // Separate the timestamps so the `ORDER BY timestamp ASC` chain has an
       // unambiguous order even when records are created within one millisecond.
       std::this_thread::sleep_for(std::chrono::milliseconds{2});
-      auto second = co_await current->store->Record(second_path, "old", "new", true);
+      auto second = Require(
+          co_await current->store->Record(second_path, "old", "new", true));
       std::this_thread::sleep_for(std::chrono::milliseconds{2});
-      auto third = co_await current->store->Record(second_path, "old2", "new2", false);
+      auto third = Require(
+          co_await current->store->Record(second_path, "old2", "new2", false));
 
       // Identifiers stay unique across rapid records.
       std::set<std::string> identifiers{first.id, second.id, third.id};
       bool unique = true;
       const std::string extra_path = "/tmp/linecode-diff-store/extra.txt";
       for (int index = 0; index < 12; ++index) {
-        const auto extra =
-            co_await current->store->Record(extra_path, "old", "new", true);
+        const auto extra = Require(
+            co_await current->store->Record(extra_path, "old", "new", true));
         unique = unique && identifiers.insert(extra.id).second;
       }
 
-      const auto chain = co_await current->store->Chain(second_path);
-      const auto other_chain = co_await current->store->Chain(first_path);
-      const auto extra_chain = co_await current->store->Chain(extra_path);
+      const auto chain = Require(co_await current->store->Chain(second_path));
+      const auto other_chain =
+          Require(co_await current->store->Chain(first_path));
+      const auto extra_chain =
+          Require(co_await current->store->Chain(extra_path));
       const bool chain_sorted =
           std::ranges::is_sorted(chain, {}, &DiffRecord::timestamp) &&
           chain.size() == 2 && other_chain.size() == 1 &&
@@ -123,30 +139,36 @@ huxerui::View StoreProbe() {
       // Review state travels through `raw_json`; quotes, backslashes, and
       // control characters must survive the JSON round trip.
       const std::string message = "Reverted \"quoted\"\\ change\nnext\tline";
-      co_await current->store->SetReview(first.id, "accepted", message);
-      const auto reviewed = co_await current->store->Find(first.id);
+      Require(co_await current->store->SetReview(first.id, "accepted", message));
+      const auto reviewed = Require(co_await current->store->Find(first.id));
       const bool review_round_trip =
           reviewed && reviewed->review_state == "accepted" &&
           reviewed->review_message == message && !reviewed->reverted;
 
       // Empty identifiers are ignored instead of matching an arbitrary row.
-      co_await current->store->SetReview("", "rejected", "ignored");
-      co_await current->store->MarkReverted("");
-      const auto after_noop = co_await current->store->Chain(second_path);
+      Require(co_await current->store->SetReview("", "rejected", "ignored"));
+      Require(co_await current->store->MarkReverted(""));
+      const auto after_noop =
+          Require(co_await current->store->Chain(second_path));
       const bool empty_id_noop =
           after_noop.size() == chain.size() &&
           std::ranges::none_of(after_noop, &DiffRecord::reverted);
 
       // Revert guard: unknown identifier, a later un-reverted change, readiness,
       // already reverted, and readiness once the later change is reverted too.
-      const auto unknown = co_await current->store->CheckRevert("unknown");
-      const auto blocked = co_await current->store->CheckRevert(second.id);
-      const auto ready = co_await current->store->CheckRevert(first.id);
-      co_await current->store->MarkReverted(first.id);
-      const auto reverted_again = co_await current->store->CheckRevert(first.id);
-      co_await current->store->MarkReverted(third.id);
-      const auto ready_after_last = co_await current->store->CheckRevert(second.id);
-      const auto reverted_first = co_await current->store->CheckRevert(first.id);
+      const auto unknown =
+          Require(co_await current->store->CheckRevert("unknown"));
+      const auto blocked =
+          Require(co_await current->store->CheckRevert(second.id));
+      const auto ready = Require(co_await current->store->CheckRevert(first.id));
+      Require(co_await current->store->MarkReverted(first.id));
+      const auto reverted_again =
+          Require(co_await current->store->CheckRevert(first.id));
+      Require(co_await current->store->MarkReverted(third.id));
+      const auto ready_after_last =
+          Require(co_await current->store->CheckRevert(second.id));
+      const auto reverted_first =
+          Require(co_await current->store->CheckRevert(first.id));
 
       const bool guard_ok =
           !unknown.success &&
@@ -196,11 +218,69 @@ void AdapterReplicatesLegacyDiffRepository() {
       ui.Pump(std::chrono::milliseconds{1});
       std::this_thread::sleep_for(std::chrono::milliseconds{1});
     }
-    assert(scenario->done);
-    assert(scenario->passed);
+    EXPECT_EXPRESSION(scenario->done);
+    EXPECT_EXPRESSION(scenario->passed);
   }
   scenario.reset();
   std::error_code ignored;
+  std::filesystem::remove_all(temporary, ignored);
+}
+
+struct FailureScenario final {
+  std::shared_ptr<SqliteDiffStore> store;
+  bool done{};
+  bool passed{};
+};
+
+std::shared_ptr<FailureScenario> failure_scenario;
+
+huxerui::View FailureProbe() {
+  const auto current = failure_scenario;
+  const auto tasks = huxerui::UseTaskScope();
+  huxerui::Lifecycle([current, tasks] {
+    const auto handle = tasks.Launch([current]() -> huxerui::Task<void> {
+      const auto found = co_await current->store->Find("missing");
+      const auto recorded =
+          co_await current->store->Record("/tmp/a", "old", "new", true);
+      current->passed =
+          !found && !recorded &&
+          found.error().code ==
+              linecode::application::DiffStoreErrorCode::unavailable &&
+          recorded.error().code ==
+              linecode::application::DiffStoreErrorCode::unavailable &&
+          !found.error().message.empty() && !recorded.error().message.empty();
+      current->done = true;
+    });
+    return [handle] { handle.Cancel(); };
+  });
+  return huxerui::Text("diff-store-failure-probe");
+}
+
+void DatabaseFailuresAreNotReportedAsMissingRecords() {
+  const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+  const auto temporary = std::filesystem::temp_directory_path() /
+                         ("linecode-diff-store-failure-" +
+                          std::to_string(nonce));
+  std::error_code ignored;
+  std::filesystem::create_directories(temporary, ignored);
+
+  failure_scenario = std::make_shared<FailureScenario>();
+  // SQLite cannot open a directory as a database file. This exercises the
+  // adapter's real open failure instead of a fake implementation.
+  failure_scenario->store =
+      std::make_shared<SqliteDiffStore>(huxerui::File{temporary.string()});
+  {
+    const huxerui::Application app(FailureProbe,
+                                    {.show_debug_overlay = false});
+    huxerui::testing::UiTest ui(app);
+    for (int attempt = 0; attempt < 2'000 && !failure_scenario->done; ++attempt) {
+      ui.Pump(std::chrono::milliseconds{1});
+      std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    EXPECT_EXPRESSION(failure_scenario->done);
+    EXPECT_EXPRESSION(failure_scenario->passed);
+  }
+  failure_scenario.reset();
   std::filesystem::remove_all(temporary, ignored);
 }
 
@@ -327,7 +407,7 @@ void HuxerUiFileRestorerMatchesLegacyFileRestorer() {
       ui.Pump(std::chrono::milliseconds{1});
       std::this_thread::sleep_for(std::chrono::milliseconds{1});
     }
-    assert(restore_scenario->done);
+    EXPECT_EXPRESSION(restore_scenario->done);
     if (!restore_scenario->passed) {
       std::cerr << "restore check failed: delete=" << restore_scenario->delete_ok
                 << "/" << restore_scenario->delete_removed
@@ -336,7 +416,7 @@ void HuxerUiFileRestorerMatchesLegacyFileRestorer() {
                 << " delete_msg=" << restore_scenario->delete_failure_ok
                 << " parent_msg=" << restore_scenario->parent_failure_ok << "\n";
     }
-    assert(restore_scenario->passed);
+    EXPECT_EXPRESSION(restore_scenario->passed);
   }
   restore_scenario.reset();
   std::filesystem::remove_all(temporary, ignored);
@@ -345,8 +425,9 @@ void HuxerUiFileRestorerMatchesLegacyFileRestorer() {
 
 } // namespace
 
-int main() {
+TEST(diff_store_tests, LegacySuite) {
   AdapterReplicatesLegacyDiffRepository();
+  DatabaseFailuresAreNotReportedAsMissingRecords();
   HuxerUiFileRestorerMatchesLegacyFileRestorer();
   std::cout << "diff store tests passed\n";
 }

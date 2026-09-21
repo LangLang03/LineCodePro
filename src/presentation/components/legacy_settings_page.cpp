@@ -7,6 +7,7 @@
 
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/components/legacy_settings_card_frame.h"
+#include "presentation/legacy_text_presentation.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -42,10 +43,11 @@ View LegacySettingsPageHeader(StringResource title,
             Background(colors::background));
 }
 
-View LegacySettingsSection(StringResource title, std::vector<View> rows) {
+[[huxerui::composable]] View
+LegacySettingsSection(StringResource title, std::vector<View> rows) {
   using namespace huxerui;
   return Column{
-      Text(title)
+      Text(LegacySectionTitle(UseString(title)))
           .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
           .With(Frame{.height = 47.625F},
                 Padding(EdgeInsets{.top = 20.0F,
@@ -67,7 +69,7 @@ View LegacySettingsPage(StringResource title, std::function<void()> on_back,
   content.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 100.0F}));
   return Column{
       LegacySettingsPageHeader(title, std::move(on_back)),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(Column(std::move(content))
                      .With(CrossAlign(CrossAxisAlignment::Stretch),
                            Background(colors::background)))

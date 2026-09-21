@@ -1,9 +1,9 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Bundle Name="LineCodePro" Manufacturer="com.linecode.linecodepro" Version="@HUXERUI_WINDOWS_PROJECT_VERSION@"
-          UpgradeCode="@HUXERUI_WINDOWS_BUNDLE_UPGRADE_CODE@">
+          UpgradeCode="@HUXERUI_WINDOWS_BUNDLE_UPGRADE_CODE@"
+          IconSourceFile="!(bindpath.Project)\app.ico">
     <BootstrapperApplication SourceFile="!(bindpath.Installer)\linecodepro-Installer.exe">
-      <PayloadGroupRef Id="HuxerUIInstallerResources" />
-      <Payload SourceFile="!(bindpath.Installer)\mbanative.dll" />
+      <PayloadGroupRef Id="HuxerUIInstallerPayloads" />
     </BootstrapperApplication>
     <Variable Name="InstallFolder" Type="formatted" Value="[ProgramFiles64Folder]LineCodePro" />
     <Variable Name="CreateDesktopShortcut" Type="numeric" Value="0" />

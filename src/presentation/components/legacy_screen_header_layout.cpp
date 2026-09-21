@@ -2,7 +2,20 @@
 
 #include <algorithm>
 
+#include <huxerui/huxerui.h>
+
+#include "presentation/line_theme.h"
+
 namespace linecode::presentation {
+namespace {
+
+#if defined(__ANDROID__)
+constexpr float kLegacyHeaderDividerHeight = 1.0F / 2.625F;
+#else
+constexpr float kLegacyHeaderDividerHeight = 1.0F;
+#endif
+
+} // namespace
 
 huxerui::LayoutResult
 LegacyScreenHeaderLayout::Measure(huxerui::LayoutContext &context,
@@ -42,6 +55,12 @@ LegacyScreenHeaderLayout::Measure(huxerui::LayoutContext &context,
       .Place(right, {std::max(0.0F, size.width - right_size.width),
                      centered_y(right_size.height)})
       .SetSize(size);
+}
+
+[[huxerui::composable]] huxerui::View LegacyScreenHeaderDivider() {
+  using namespace huxerui;
+  return Stack{}.With(Frame{.height = kLegacyHeaderDividerHeight},
+                      Background(colors::border));
 }
 
 } // namespace linecode::presentation

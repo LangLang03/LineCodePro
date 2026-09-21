@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <memory>
 #include <optional>
 #include <string>
@@ -131,52 +131,54 @@ huxerui::View Probe() {
   huxerui::Lifecycle([scenario, tasks] {
     const auto handle = tasks.Launch([scenario]() -> huxerui::Task<void> {
       auto refreshed = co_await scenario->registry->Refresh();
-      assert(refreshed);
-      assert(scenario->registry->Tools().size() == 1U);
-      assert(scenario->registry->Tools().front().name == "image_generation");
+      EXPECT_EXPRESSION(refreshed);
+      EXPECT_EXPRESSION(scenario->registry->Tools().size() == 1U);
+      EXPECT_EXPRESSION(scenario->registry->Tools().front().name == "image_generation");
+      EXPECT_EXPRESSION(scenario->registry->Tools().front().agent_category ==
+             application::AgentToolCategory::generate);
 
       auto invoked = co_await scenario->registry->Invoke(
           "image_generation",
           R"({"prompt":"LineCode icon","size":"1024x1024"})");
-      assert(invoked);
-      assert(!invoked->error);
-      assert(invoked->content.contains("linecode_image_generation"));
-      assert(invoked->content.contains("data:image/png;base64"));
-      assert(scenario->gateway->received_model);
-      assert(scenario->gateway->received_model->id == "image-model");
-      assert(scenario->gateway->received_request);
-      assert(scenario->gateway->received_request->prompt == "LineCode icon");
+      EXPECT_EXPRESSION(invoked);
+      EXPECT_EXPRESSION(!invoked->error);
+      EXPECT_EXPRESSION(invoked->content.contains("linecode_image_generation"));
+      EXPECT_EXPRESSION(invoked->content.contains("data:image/png;base64"));
+      EXPECT_EXPRESSION(scenario->gateway->received_model);
+      EXPECT_EXPRESSION(scenario->gateway->received_model->id == "image-model");
+      EXPECT_EXPRESSION(scenario->gateway->received_request);
+      EXPECT_EXPRESSION(scenario->gateway->received_request->prompt == "LineCode icon");
 
       auto invalid = co_await scenario->registry->Invoke(
           "image_generation", R"({"prompt":""})");
-      assert(!invalid);
-      assert(invalid.error().code ==
+      EXPECT_EXPRESSION(!invalid);
+      EXPECT_EXPRESSION(invalid.error().code ==
              application::ToolRegistryErrorCode::invalid_arguments);
 
       scenario->settings->value.image_generation_model_id.clear();
       auto missing = co_await scenario->registry->Invoke(
           "image_generation", R"({"prompt":"image"})");
-      assert(!missing);
-      assert(missing.error().code ==
+      EXPECT_EXPRESSION(!missing);
+      EXPECT_EXPRESSION(missing.error().code ==
              application::ToolRegistryErrorCode::unavailable);
 
       auto unknown = co_await scenario->registry->Invoke("other", "{}");
-      assert(!unknown);
-      assert(unknown.error().code ==
+      EXPECT_EXPRESSION(!unknown);
+      EXPECT_EXPRESSION(unknown.error().code ==
              application::ToolRegistryErrorCode::unknown_tool);
 
       const auto image_group = std::ranges::find(
           scenario->execution_settings->value.groups,
           std::string{"image_generation"}, &domain::McpToolGroupState::id);
-      assert(image_group != scenario->execution_settings->value.groups.end());
+      EXPECT_EXPRESSION(image_group != scenario->execution_settings->value.groups.end());
       image_group->enabled = false;
       refreshed = co_await scenario->registry->Refresh();
-      assert(refreshed);
-      assert(scenario->registry->Tools().empty());
+      EXPECT_EXPRESSION(refreshed);
+      EXPECT_EXPRESSION(scenario->registry->Tools().empty());
       auto disabled = co_await scenario->registry->Invoke(
           "image_generation", R"({"prompt":"image"})");
-      assert(!disabled);
-      assert(disabled.error().code ==
+      EXPECT_EXPRESSION(!disabled);
+      EXPECT_EXPRESSION(disabled.error().code ==
              application::ToolRegistryErrorCode::unavailable);
       scenario->done = true;
     });
@@ -187,13 +189,13 @@ huxerui::View Probe() {
 
 } // namespace
 
-int main() {
+TEST(image_generation_tool_registry_tests, LegacySuite) {
   active = std::make_shared<Scenario>();
   active->execution_settings = std::make_shared<StubExecutionSettings>();
   const auto image_group = std::ranges::find(
       active->execution_settings->value.groups,
       std::string{"image_generation"}, &domain::McpToolGroupState::id);
-  assert(image_group != active->execution_settings->value.groups.end());
+  EXPECT_EXPRESSION(image_group != active->execution_settings->value.groups.end());
   image_group->enabled = true;
   active->settings = std::make_shared<StubSettings>();
   active->settings->value.image_generation_model_id = "image-model";

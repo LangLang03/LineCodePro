@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <cstdint>
 #include <limits>
 #include <set>
@@ -83,26 +83,26 @@ void EnsureCompatibleSettingsSchema(Database &database) {
 
 } // namespace
 
-int main() {
+TEST(settings_store_schema_tests, LegacySuite) {
   using namespace linecode;
 
-  assert(application::SettingsValueKindName(
+  EXPECT_EXPRESSION(application::SettingsValueKindName(
              application::SettingsValueKind::string) == "string");
-  assert(application::SettingsValueKindName(
+  EXPECT_EXPRESSION(application::SettingsValueKindName(
              application::SettingsValueKind::boolean) == "boolean");
-  assert(application::SettingsValueKindName(
+  EXPECT_EXPRESSION(application::SettingsValueKindName(
              application::SettingsValueKind::integer) == "long");
-  assert(application::ParseStoredBoolean("true"));
-  assert(application::ParseStoredBoolean("TRUE"));
-  assert(application::ParseStoredBoolean("1"));
-  assert(!application::ParseStoredBoolean("false"));
-  assert(!application::ParseStoredBoolean("yes"));
+  EXPECT_EXPRESSION(application::ParseStoredBoolean("true"));
+  EXPECT_EXPRESSION(application::ParseStoredBoolean("TRUE"));
+  EXPECT_EXPRESSION(application::ParseStoredBoolean("1"));
+  EXPECT_EXPRESSION(!application::ParseStoredBoolean("false"));
+  EXPECT_EXPRESSION(!application::ParseStoredBoolean("yes"));
 
-  assert(application::ParseStoredInteger("-42") == -42);
-  assert(application::ParseStoredInteger("0") == 0);
-  assert(!application::ParseStoredInteger("42x"));
-  assert(!application::ParseStoredInteger(""));
-  assert(application::ParseStoredInteger(
+  EXPECT_EXPRESSION(application::ParseStoredInteger("-42") == -42);
+  EXPECT_EXPRESSION(application::ParseStoredInteger("0") == 0);
+  EXPECT_EXPRESSION(!application::ParseStoredInteger("42x"));
+  EXPECT_EXPRESSION(!application::ParseStoredInteger(""));
+  EXPECT_EXPRESSION(application::ParseStoredInteger(
              std::to_string(std::numeric_limits<std::int64_t>::max())) ==
          std::numeric_limits<std::int64_t>::max());
 
@@ -113,15 +113,15 @@ int main() {
   EnsureCompatibleSettingsSchema(legacy);
   EnsureCompatibleSettingsSchema(legacy);
   const auto migrated_columns = legacy.Columns();
-  assert(migrated_columns.contains("key"));
-  assert(migrated_columns.contains("value"));
-  assert(migrated_columns.contains("type"));
-  assert(migrated_columns.contains("updated_at"));
-  assert(legacy.ScalarText("SELECT value FROM settings WHERE key = 'theme'") ==
+  EXPECT_EXPRESSION(migrated_columns.contains("key"));
+  EXPECT_EXPRESSION(migrated_columns.contains("value"));
+  EXPECT_EXPRESSION(migrated_columns.contains("type"));
+  EXPECT_EXPRESSION(migrated_columns.contains("updated_at"));
+  EXPECT_EXPRESSION(legacy.ScalarText("SELECT value FROM settings WHERE key = 'theme'") ==
          "dark");
-  assert(legacy.ScalarText("SELECT type FROM settings WHERE key = 'theme'") ==
+  EXPECT_EXPRESSION(legacy.ScalarText("SELECT type FROM settings WHERE key = 'theme'") ==
          "string");
-  assert(legacy.ScalarText(
+  EXPECT_EXPRESSION(legacy.ScalarText(
              "SELECT CAST(updated_at AS TEXT) FROM settings WHERE key = "
              "'theme'") == "0");
 
@@ -131,7 +131,7 @@ int main() {
       "INSERT INTO settings (key, value, type, updated_at) VALUES "
       "('@linecode_test', 'kept', 'string', 123)");
   EnsureCompatibleSettingsSchema(fresh);
-  assert(fresh.ScalarText(
+  EXPECT_EXPRESSION(fresh.ScalarText(
              "SELECT value FROM settings WHERE key = '@linecode_test'") ==
          "kept");
 }

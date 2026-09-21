@@ -4,7 +4,7 @@
 // through an in-memory fake completion gateway, so no network or real model is
 // involved.
 
-#include <cassert>
+#include "gtest_support.h"
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -73,7 +73,7 @@ ChatMessage AssistantMessage(std::string content) {
 // A user message whose local estimate is exactly `tokens`
 // (`message_overhead_tokens` = 8 plus `ceil(characters / 4)`).
 ChatMessage MessageWithTokens(const int tokens, std::string prefix = {}) {
-  assert(tokens >= 9);
+  EXPECT_EXPRESSION(tokens >= 9);
   ChatMessage message;
   message.role = MessageRole::user;
   message.content = std::move(prefix);
@@ -141,127 +141,127 @@ void HardTriggerThresholdsMatchLegacy() {
   // the 80% hard trigger; 800 tokens is exactly at it.
   const std::vector<ChatMessage> below{MessageWithTokens(799)};
   const std::vector<ChatMessage> at{MessageWithTokens(800)};
-  assert(!ContextCompactionService::ShouldCompact(below, 1000, true));
-  assert(ContextCompactionService::ShouldCompact(at, 1000, true));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldCompact(below, 1000, true));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldCompact(at, 1000, true));
 
   // Observed server input tokens win over the local estimate.
-  assert(!ContextCompactionService::ShouldCompact(below, 1000, true, 799));
-  assert(ContextCompactionService::ShouldCompact(below, 1000, true, 800));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldCompact(below, 1000, true, 799));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldCompact(below, 1000, true, 800));
   // Zero observed tokens mean "not observed" and fall back to the estimate.
-  assert(!ContextCompactionService::ShouldCompact(below, 1000, true, 0));
-  assert(ContextCompactionService::ShouldCompact(at, 1000, true, 0));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldCompact(below, 1000, true, 0));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldCompact(at, 1000, true, 0));
 
   // Degenerate inputs: no messages never triggers, and a zero window floors to
   // one token instead of dividing by zero.
-  assert(!ContextCompactionService::ShouldCompact({}, 1000, true));
-  assert(ContextCompactionService::ShouldCompact({UserMessage("x")}, 0, true));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldCompact({}, 1000, true));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldCompact({UserMessage("x")}, 0, true));
 
   // Reasoning is only counted when the caller asks for it.
   ChatMessage reasoning_only;
   reasoning_only.role = MessageRole::assistant;
   reasoning_only.reasoning_content = std::string(400U, 'r');
   const std::vector<ChatMessage> reasoning{reasoning_only};
-  assert(ContextCompactionService::ShouldCompact(reasoning, 100, true));
-  assert(!ContextCompactionService::ShouldCompact(reasoning, 100, false));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldCompact(reasoning, 100, true));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldCompact(reasoning, 100, false));
 
   // The model overload resolves the window through the ported parser.
   auto model = ProtocolModel(ModelProtocol::openai_compatible, false);
   model.context_size = 1000;
-  assert(!ContextCompactionService::ShouldCompact(model, below, true));
-  assert(ContextCompactionService::ShouldCompact(model, at, true));
-  assert(ContextCompactionService::ShouldCompact(model, below, true, 800));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldCompact(model, below, true));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldCompact(model, at, true));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldCompact(model, below, true, 800));
   ModelConfig suffixed;
   suffixed.model_id = "fixture[1k]";
-  assert(ContextCompactionService::ShouldCompact(suffixed, at, true));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldCompact(suffixed, at, true));
 }
 
 void SoftTriggerThresholdsMatchLegacy() {
   // Eight messages of 71 tokens: 568 of 1000 is above the 50% soft trigger,
   // below the 80% hard trigger, with exactly eight compactable messages.
   const auto eight = RepeatMessages(8U, 71);
-  assert(ContextCompactionService::ShouldSoftCompact(eight, 1000, true));
-  assert(!ContextCompactionService::ShouldCompact(eight, 1000, true));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldSoftCompact(eight, 1000, true));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldCompact(eight, 1000, true));
 
   // Seven compactable messages are not enough, even at the same usage.
   const auto seven = RepeatMessages(7U, 108);
-  assert(!ContextCompactionService::ShouldSoftCompact(seven, 1000, true));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldSoftCompact(seven, 1000, true));
 
   // Excluded and hidden messages never count towards the eight.
   auto filtered = eight;
   filtered.front().exclude_from_context = true;
-  assert(!ContextCompactionService::ShouldSoftCompact(filtered, 1000, true));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldSoftCompact(filtered, 1000, true));
   auto hidden = eight;
   hidden.front().hidden = true;
-  assert(!ContextCompactionService::ShouldSoftCompact(hidden, 1000, true));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldSoftCompact(hidden, 1000, true));
 
   // The hard trigger owns everything at or above 80%.
   const auto hard = RepeatMessages(8U, 100);
-  assert(ContextCompactionService::ShouldCompact(hard, 1000, true));
-  assert(!ContextCompactionService::ShouldSoftCompact(hard, 1000, true));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldCompact(hard, 1000, true));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldSoftCompact(hard, 1000, true));
 
   // Eight messages of 33 tokens (264 of 1000) stay below the soft trigger,
   // 568 reaches it.
   const auto below = RepeatMessages(8U, 33);
-  assert(!ContextCompactionService::ShouldSoftCompact(below, 1000, true));
-  assert(ContextCompactionService::ShouldSoftCompact(eight, 1000, true));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldSoftCompact(below, 1000, true));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldSoftCompact(eight, 1000, true));
 
   // Observed server input tokens win over the local estimate.
-  assert(ContextCompactionService::ShouldSoftCompact(below, 1000, true, 500));
-  assert(!ContextCompactionService::ShouldSoftCompact(eight, 1000, true, 499));
-  assert(!ContextCompactionService::ShouldSoftCompact(eight, 1000, true, 800));
-  assert(ContextCompactionService::ShouldSoftCompact(eight, 1000, true, 0));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldSoftCompact(below, 1000, true, 500));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldSoftCompact(eight, 1000, true, 499));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldSoftCompact(eight, 1000, true, 800));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldSoftCompact(eight, 1000, true, 0));
 
   // The model overload resolves the window through the ported parser.
   auto model = ProtocolModel(ModelProtocol::openai_compatible, false);
   model.context_size = 1000;
-  assert(ContextCompactionService::ShouldSoftCompact(model, eight, true));
-  assert(!ContextCompactionService::ShouldSoftCompact(model, seven, true));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldSoftCompact(model, eight, true));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldSoftCompact(model, seven, true));
 
-  assert(!ContextCompactionService::ShouldSoftCompact({}, 1000, true));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldSoftCompact({}, 1000, true));
 }
 
 void SplitForSoftCompactKeepsTailRatio() {
   // tail = max(1, round(compactable * 0.3)).
   const auto ten = RepeatMessages(10U, 20);
   const auto ten_split = ContextCompactionService::SplitForSoftCompact(ten);
-  assert(ten_split.head.size() == 7U);
-  assert(ten_split.tail.size() == 3U);
+  EXPECT_EXPRESSION(ten_split.head.size() == 7U);
+  EXPECT_EXPRESSION(ten_split.tail.size() == 3U);
   for (std::size_t index = 0; index < ten_split.head.size(); ++index)
-    assert(ten_split.head[index].content == ten[index].content);
+    EXPECT_EXPRESSION(ten_split.head[index].content == ten[index].content);
   for (std::size_t index = 0; index < ten_split.tail.size(); ++index)
-    assert(ten_split.tail[index].content == ten[7U + index].content);
+    EXPECT_EXPRESSION(ten_split.tail[index].content == ten[7U + index].content);
 
   const auto seven =
       ContextCompactionService::SplitForSoftCompact(RepeatMessages(7U, 20));
-  assert(seven.head.size() == 5U);
-  assert(seven.tail.size() == 2U);
+  EXPECT_EXPRESSION(seven.head.size() == 5U);
+  EXPECT_EXPRESSION(seven.tail.size() == 2U);
 
   // round(1.5) rounds away from zero, like `Math.round`.
   const auto five =
       ContextCompactionService::SplitForSoftCompact(RepeatMessages(5U, 20));
-  assert(five.head.size() == 3U);
-  assert(five.tail.size() == 2U);
+  EXPECT_EXPRESSION(five.head.size() == 3U);
+  EXPECT_EXPRESSION(five.tail.size() == 2U);
 
   const auto four =
       ContextCompactionService::SplitForSoftCompact(RepeatMessages(4U, 20));
-  assert(four.head.size() == 3U);
-  assert(four.tail.size() == 1U);
+  EXPECT_EXPRESSION(four.head.size() == 3U);
+  EXPECT_EXPRESSION(four.tail.size() == 1U);
 
   const auto three =
       ContextCompactionService::SplitForSoftCompact(RepeatMessages(3U, 20));
-  assert(three.head.size() == 2U);
-  assert(three.tail.size() == 1U);
+  EXPECT_EXPRESSION(three.head.size() == 2U);
+  EXPECT_EXPRESSION(three.tail.size() == 1U);
 
   // A single compactable message is always kept: the tail floors at one.
   const auto one =
       ContextCompactionService::SplitForSoftCompact(RepeatMessages(1U, 20));
-  assert(one.head.empty());
-  assert(one.tail.size() == 1U);
+  EXPECT_EXPRESSION(one.head.empty());
+  EXPECT_EXPRESSION(one.tail.size() == 1U);
 
   // No compactable message at all yields two empty halves.
   const auto empty = ContextCompactionService::SplitForSoftCompact({});
-  assert(empty.head.empty());
-  assert(empty.tail.empty());
+  EXPECT_EXPRESSION(empty.head.empty());
+  EXPECT_EXPRESSION(empty.tail.empty());
 
   // Non-compactable messages are removed before the ratio is applied.
   auto mixed = RepeatMessages(10U, 20);
@@ -269,8 +269,8 @@ void SplitForSoftCompactKeepsTailRatio() {
   mixed.at(3U).hidden = true;
   mixed.at(5U).content.clear();
   const auto mixed_split = ContextCompactionService::SplitForSoftCompact(mixed);
-  assert(mixed_split.head.size() + mixed_split.tail.size() == 7U);
-  assert(mixed_split.tail.size() == 2U);
+  EXPECT_EXPRESSION(mixed_split.head.size() + mixed_split.tail.size() == 7U);
+  EXPECT_EXPRESSION(mixed_split.tail.size() == 2U);
 }
 
 void CompactableMessageSelectionMatchesLegacy() {
@@ -289,11 +289,11 @@ void CompactableMessageSelectionMatchesLegacy() {
 
   const auto compactable =
       ContextCompactionService::CompactableMessages(messages);
-  assert(compactable.size() == 2U);
-  assert(compactable.front().content == "hello");
-  assert(compactable.back().content.empty());
-  assert(ContextCompactionService::CompactableMessageCount(messages) == 2U);
-  assert(ContextCompactionService::CompactableMessageCount({}) == 0U);
+  EXPECT_EXPRESSION(compactable.size() == 2U);
+  EXPECT_EXPRESSION(compactable.front().content == "hello");
+  EXPECT_EXPRESSION(compactable.back().content.empty());
+  EXPECT_EXPRESSION(ContextCompactionService::CompactableMessageCount(messages) == 2U);
+  EXPECT_EXPRESSION(ContextCompactionService::CompactableMessageCount({}) == 0U);
 }
 
 void SelectRecentUserMessagesHonoursBudget() {
@@ -309,9 +309,9 @@ void SelectRecentUserMessagesHonoursBudget() {
   const auto selected = ContextCompactionService::SelectRecentUserMessages(
       messages, tokens_of(400) * 2);
   // The sweep walks newest first, the result stays chronological.
-  assert(selected.size() == 2U);
-  assert(selected.front().content == std::string(400U, 'b'));
-  assert(selected.back().content == std::string(400U, 'c'));
+  EXPECT_EXPRESSION(selected.size() == 2U);
+  EXPECT_EXPRESSION(selected.front().content == std::string(400U, 'b'));
+  EXPECT_EXPRESSION(selected.back().content == std::string(400U, 'c'));
 
   // The sweep stops at the first message that does not fit; it does not skip
   // it and continue to older messages. The oldest message would fit the nine
@@ -323,8 +323,8 @@ void SelectRecentUserMessagesHonoursBudget() {
   };
   const auto stopped = ContextCompactionService::SelectRecentUserMessages(
       stop, tokens_of(400) + tokens_of(1));
-  assert(stopped.size() == 1U);
-  assert(stopped.front().content == std::string(400U, 'z'));
+  EXPECT_EXPRESSION(stopped.size() == 1U);
+  EXPECT_EXPRESSION(stopped.front().content == std::string(400U, 'z'));
 
   // Only real, visible, non-empty user messages qualify.
   ChatMessage excluded = UserMessage(std::string(400U, 'e'));
@@ -337,17 +337,17 @@ void SelectRecentUserMessagesHonoursBudget() {
       UserMessage("   "),
       AssistantMessage(std::string(400U, 'q')),
   };
-  assert(ContextCompactionService::SelectRecentUserMessages(filtered, 10'000)
+  EXPECT_EXPRESSION(ContextCompactionService::SelectRecentUserMessages(filtered, 10'000)
              .empty());
 
-  assert(ContextCompactionService::SelectRecentUserMessages(messages, 0).empty());
-  assert(ContextCompactionService::SelectRecentUserMessages({}, 100).empty());
+  EXPECT_EXPRESSION(ContextCompactionService::SelectRecentUserMessages(messages, 0).empty());
+  EXPECT_EXPRESSION(ContextCompactionService::SelectRecentUserMessages({}, 100).empty());
 
   // The legacy default budget keeps the recent tail that fits.
-  assert(ContextCompactionService::COMPACT_USER_MESSAGE_MAX_TOKENS == 20'000);
+  EXPECT_EXPRESSION(ContextCompactionService::COMPACT_USER_MESSAGE_MAX_TOKENS == 20'000);
   const auto default_budget = ContextCompactionService::SelectRecentUserMessages(
       messages, ContextCompactionService::COMPACT_USER_MESSAGE_MAX_TOKENS);
-  assert(default_budget.size() == 3U);
+  EXPECT_EXPRESSION(default_budget.size() == 3U);
 }
 
 void BuildTranscriptMatchesLegacyFormat() {
@@ -362,16 +362,16 @@ void BuildTranscriptMatchesLegacyFormat() {
       "\n\nTool calls:\n- file_read: " + R"({"path":"a.txt"})" + "\n" +
       "\n\nTool result for: call-1\n\ncontents" + "\n\nReasoning:\nthinking";
   const auto transcript = ContextCompactionService::BuildTranscript(messages);
-  assert(transcript == expected);
+  EXPECT_EXPRESSION(transcript == expected);
 
   // A message carrying only a tool call has no content section.
   const auto call_only = ContextCompactionService::BuildTranscript(
       {AssistantWithTool({}, "call-2", "shell_execute", R"({"command":"ls"})",
                          std::nullopt)});
-  assert(call_only == "## 1. assistant\n\nTool calls:\n- shell_execute: " +
+  EXPECT_EXPRESSION(call_only == "## 1. assistant\n\nTool calls:\n- shell_execute: " +
                            std::string{R"({"command":"ls"})"} + "\n");
 
-  assert(ContextCompactionService::BuildTranscript({}).empty());
+  EXPECT_EXPRESSION(ContextCompactionService::BuildTranscript({}).empty());
 }
 
 void BuildTranscriptKeepsEverySegment() {
@@ -400,15 +400,15 @@ void BuildTranscriptKeepsEverySegment() {
     }
   }
   const auto transcript = ContextCompactionService::BuildTranscript(messages);
-  assert(expected.size() >
+  EXPECT_EXPRESSION(expected.size() >
          ContextCompactionService::TRANSCRIPT_SEGMENT_MAX_CHARS);
-  assert(transcript.size() == expected.size());
-  assert(transcript == expected);
+  EXPECT_EXPRESSION(transcript.size() == expected.size());
+  EXPECT_EXPRESSION(transcript == expected);
   // Every message body survived the segmentation exactly once.
   for (int index = 0; index < 8; ++index) {
     const auto marker = "m" + std::to_string(index) + ":";
-    assert(transcript.find(marker) != std::string::npos);
-    assert(transcript.find(marker, transcript.find(marker) + 1U) ==
+    EXPECT_EXPRESSION(transcript.find(marker) != std::string::npos);
+    EXPECT_EXPRESSION(transcript.find(marker, transcript.find(marker) + 1U) ==
            std::string::npos);
   }
 
@@ -417,37 +417,37 @@ void BuildTranscriptKeepsEverySegment() {
   const std::string huge(60U * 1024U, 'y');
   const auto truncated =
       ContextCompactionService::BuildTranscript({UserMessage(huge)});
-  assert(truncated.find("chars truncated") != std::string::npos);
-  assert(truncated.size() < huge.size());
+  EXPECT_EXPRESSION(truncated.find("chars truncated") != std::string::npos);
+  EXPECT_EXPRESSION(truncated.size() < huge.size());
 }
 
 void StrategyTableSelectsProtocolRow() {
   const auto strategies = ContextCompactionService::Strategies();
-  assert(strategies.size() == 3U);
+  EXPECT_EXPRESSION(strategies.size() == 3U);
   for (const auto &strategy : strategies) {
-    assert(!strategy.id.empty());
-    assert(strategy.applies != nullptr);
-    assert(strategy.execute != nullptr);
+    EXPECT_EXPRESSION(!strategy.id.empty());
+    EXPECT_EXPRESSION(strategy.applies != nullptr);
+    EXPECT_EXPRESSION(strategy.execute != nullptr);
   }
 
   // Dedicated compaction only exists for the two protocols that support it.
-  assert(ContextCompactionService::SelectStrategy(
+  EXPECT_EXPRESSION(ContextCompactionService::SelectStrategy(
              ProtocolModel(ModelProtocol::openai_compatible, true))
              .id == "openai_responses_summary");
-  assert(ContextCompactionService::SelectStrategy(
+  EXPECT_EXPRESSION(ContextCompactionService::SelectStrategy(
              ProtocolModel(ModelProtocol::codex_responses, true))
              .id == "responses_compaction");
   // Without a dedicated compression model both protocols fall back.
-  assert(ContextCompactionService::SelectStrategy(
+  EXPECT_EXPRESSION(ContextCompactionService::SelectStrategy(
              ProtocolModel(ModelProtocol::openai_compatible, false))
              .id == "generic_summary");
-  assert(ContextCompactionService::SelectStrategy(
+  EXPECT_EXPRESSION(ContextCompactionService::SelectStrategy(
              ProtocolModel(ModelProtocol::codex_responses, false))
              .id == "generic_summary");
-  assert(ContextCompactionService::SelectStrategy(
+  EXPECT_EXPRESSION(ContextCompactionService::SelectStrategy(
              ProtocolModel(ModelProtocol::anthropic_messages, true))
              .id == "generic_summary");
-  assert(ContextCompactionService::SelectStrategy(
+  EXPECT_EXPRESSION(ContextCompactionService::SelectStrategy(
              ProtocolModel(ModelProtocol::local_gguf, true))
              .id == "generic_summary");
 }
@@ -680,9 +680,9 @@ void RunScenarios() {
   huxerui::testing::UiTest ui(application);
   for (std::size_t frame = 0; frame < 80'000U && !scenarios_finished; ++frame)
     ui.Pump(std::chrono::milliseconds{1});
-  assert(scenarios_finished);
+  EXPECT_EXPRESSION(scenarios_finished);
   for (const auto &scenario : scenarios)
-    assert(scenario->done);
+    EXPECT_EXPRESSION(scenario->done);
 }
 
 // ---------------------------------------------------------------------------
@@ -731,27 +731,27 @@ void PrepareGenericSummaryStrategy() {
 }
 
 void VerifyGenericSummaryStrategy() {
-  assert(generic_summary_scenario->gateway->calls == 1U);
-  assert(generic_summary_scenario->gateway->requests.size() == 1U);
+  EXPECT_EXPRESSION(generic_summary_scenario->gateway->calls == 1U);
+  EXPECT_EXPRESSION(generic_summary_scenario->gateway->requests.size() == 1U);
   const auto &request = generic_summary_scenario->gateway->requests.front();
-  assert(request.model.model_id == "selected-model");
-  assert(request.stream);
-  assert(request.reasoning_effort == domain::ReasoningEffort::off);
-  assert(!request.preserve_reasoning);
-  assert(request.tools.empty());
-  assert(request.messages.size() == 1U);
-  assert(request.messages.front().role == CompletionRole::user);
-  assert(request.messages.front().content.starts_with("COMPACT DIRECTIVE"));
-  assert(request.messages.front().content.find(
+  EXPECT_EXPRESSION(request.model.model_id == "selected-model");
+  EXPECT_EXPRESSION(request.stream);
+  EXPECT_EXPRESSION(request.reasoning_effort == domain::ReasoningEffort::off);
+  EXPECT_EXPRESSION(!request.preserve_reasoning);
+  EXPECT_EXPRESSION(request.tools.empty());
+  EXPECT_EXPRESSION(request.messages.size() == 1U);
+  EXPECT_EXPRESSION(request.messages.front().role == CompletionRole::user);
+  EXPECT_EXPRESSION(request.messages.front().content.starts_with("COMPACT DIRECTIVE"));
+  EXPECT_EXPRESSION(request.messages.front().content.find(
              "\n\nConversation transcript:\n## 1. user\n\nhello") !=
          std::string::npos);
 
-  assert(generic_summary_scenario->result.has_value());
-  assert(!generic_summary_scenario->error.has_value());
-  assert(generic_summary_scenario->result->response_input_item_json.empty());
-  assert(generic_summary_scenario->result->summary_content ==
+  EXPECT_EXPRESSION(generic_summary_scenario->result.has_value());
+  EXPECT_EXPRESSION(!generic_summary_scenario->error.has_value());
+  EXPECT_EXPRESSION(generic_summary_scenario->result->response_input_item_json.empty());
+  EXPECT_EXPRESSION(generic_summary_scenario->result->summary_content ==
          "PREFIX\n\nSummary:\nthe answer\n\nEND");
-  assert(!generic_summary_scenario->result->Empty());
+  EXPECT_EXPRESSION(!generic_summary_scenario->result->Empty());
 }
 
 void PrepareOpenAiResponsesSummary() {
@@ -765,23 +765,23 @@ void PrepareOpenAiResponsesSummary() {
 }
 
 void VerifyOpenAiResponsesSummary() {
-  assert(ContextCompactionService::SelectStrategy(
+  EXPECT_EXPRESSION(ContextCompactionService::SelectStrategy(
              openai_responses_scenario->model)
              .id == "openai_responses_summary");
-  assert(openai_responses_scenario->gateway->calls == 1U);
+  EXPECT_EXPRESSION(openai_responses_scenario->gateway->calls == 1U);
   const auto &request = openai_responses_scenario->gateway->requests.front();
   // The dedicated compression model id replaces the selected one, and the
   // transcript prompt shape matches the generic summary strategy.
-  assert(request.model.model_id == "compression-model");
-  assert(request.stream);
-  assert(request.messages.size() == 1U);
-  assert(request.messages.front().content.find(
+  EXPECT_EXPRESSION(request.model.model_id == "compression-model");
+  EXPECT_EXPRESSION(request.stream);
+  EXPECT_EXPRESSION(request.messages.size() == 1U);
+  EXPECT_EXPRESSION(request.messages.front().content.find(
              "\n\nConversation transcript:\n") != std::string::npos);
-  assert(request.messages.front().content.find("## 1. user") !=
+  EXPECT_EXPRESSION(request.messages.front().content.find("## 1. user") !=
          std::string::npos);
-  assert(openai_responses_scenario->result.has_value());
-  assert(openai_responses_scenario->result->response_input_item_json.empty());
-  assert(openai_responses_scenario->result->summary_content.find("done") !=
+  EXPECT_EXPRESSION(openai_responses_scenario->result.has_value());
+  EXPECT_EXPRESSION(openai_responses_scenario->result->response_input_item_json.empty());
+  EXPECT_EXPRESSION(openai_responses_scenario->result->summary_content.find("done") !=
          std::string::npos);
 }
 
@@ -819,43 +819,43 @@ void PrepareResponsesCompaction() {
 }
 
 void VerifyResponsesCompaction() {
-  assert(ContextCompactionService::SelectStrategy(
+  EXPECT_EXPRESSION(ContextCompactionService::SelectStrategy(
              responses_compaction_scenario->model)
              .id == "responses_compaction");
-  assert(responses_compaction_scenario->gateway->calls == 1U);
+  EXPECT_EXPRESSION(responses_compaction_scenario->gateway->calls == 1U);
   const auto &request = responses_compaction_scenario->gateway->requests.front();
-  assert(request.model.model_id == "selected-model");
+  EXPECT_EXPRESSION(request.model.model_id == "selected-model");
   // The compaction input is the conversation itself, not a transcript prompt,
   // and it is not streamed.
-  assert(!request.stream);
-  assert(request.reasoning_effort == domain::ReasoningEffort::off);
-  assert(request.messages.size() == 3U);
-  assert(request.messages[0].role == CompletionRole::user);
-  assert(request.messages[0].content == "hello");
-  assert(request.messages[1].role == CompletionRole::assistant);
-  assert(request.messages[1].content == "working");
-  assert(request.messages[1].tool_calls.size() == 1U);
-  assert(request.messages[1].tool_calls.front().name == "file_read");
-  assert(request.messages[2].role == CompletionRole::tool);
-  assert(request.messages[2].tool_result.has_value());
-  assert(request.messages[2].tool_result->content == "contents");
+  EXPECT_EXPRESSION(!request.stream);
+  EXPECT_EXPRESSION(request.reasoning_effort == domain::ReasoningEffort::off);
+  EXPECT_EXPRESSION(request.messages.size() == 3U);
+  EXPECT_EXPRESSION(request.messages[0].role == CompletionRole::user);
+  EXPECT_EXPRESSION(request.messages[0].content == "hello");
+  EXPECT_EXPRESSION(request.messages[1].role == CompletionRole::assistant);
+  EXPECT_EXPRESSION(request.messages[1].content == "working");
+  EXPECT_EXPRESSION(request.messages[1].tool_calls.size() == 1U);
+  EXPECT_EXPRESSION(request.messages[1].tool_calls.front().name == "file_read");
+  EXPECT_EXPRESSION(request.messages[2].role == CompletionRole::tool);
+  EXPECT_EXPRESSION(request.messages[2].tool_result.has_value());
+  EXPECT_EXPRESSION(request.messages[2].tool_result->content == "contents");
   for (const auto &message : request.messages)
-    assert(message.content.find("Conversation transcript:") ==
+    EXPECT_EXPRESSION(message.content.find("Conversation transcript:") ==
            std::string::npos);
 
-  assert(responses_compaction_scenario->result.has_value());
-  assert(responses_compaction_scenario->result->response_input_item_json ==
+  EXPECT_EXPRESSION(responses_compaction_scenario->result.has_value());
+  EXPECT_EXPRESSION(responses_compaction_scenario->result->response_input_item_json ==
          R"({"type":"compaction"})");
-  assert(responses_compaction_scenario->result->summary_content.starts_with(
+  EXPECT_EXPRESSION(responses_compaction_scenario->result->summary_content.starts_with(
       "This session is being continued from a previous conversation"));
 
-  assert(dedicated_compaction_scenario->gateway->requests.front()
+  EXPECT_EXPRESSION(dedicated_compaction_scenario->gateway->requests.front()
              .model.model_id == "compression-model");
 
-  assert(missing_compaction_item_scenario->error.has_value());
-  assert(missing_compaction_item_scenario->error->code ==
+  EXPECT_EXPRESSION(missing_compaction_item_scenario->error.has_value());
+  EXPECT_EXPRESSION(missing_compaction_item_scenario->error->code ==
          ContextCompactionErrorCode::missing_compaction_item);
-  assert(!missing_compaction_item_scenario->result.has_value());
+  EXPECT_EXPRESSION(!missing_compaction_item_scenario->result.has_value());
 }
 
 void PrepareRetries() {
@@ -879,18 +879,18 @@ void PrepareRetries() {
 
 void VerifyRetries() {
   // Initial call plus MAX_COMPACT_RETRIES attempts.
-  assert(ContextCompactionService::MAX_COMPACT_RETRIES == 2);
-  assert(retry_failure_scenario->gateway->calls == 3U);
-  assert(!retry_failure_scenario->result.has_value());
-  assert(retry_failure_scenario->error.has_value());
-  assert(retry_failure_scenario->error->code ==
+  EXPECT_EXPRESSION(ContextCompactionService::MAX_COMPACT_RETRIES == 2);
+  EXPECT_EXPRESSION(retry_failure_scenario->gateway->calls == 3U);
+  EXPECT_EXPRESSION(!retry_failure_scenario->result.has_value());
+  EXPECT_EXPRESSION(retry_failure_scenario->error.has_value());
+  EXPECT_EXPRESSION(retry_failure_scenario->error->code ==
          ContextCompactionErrorCode::completion_failed);
-  assert(retry_failure_scenario->error->message == "transport boom");
+  EXPECT_EXPRESSION(retry_failure_scenario->error->message == "transport boom");
 
-  assert(retry_success_scenario->gateway->calls == 3U);
-  assert(!retry_success_scenario->error.has_value());
-  assert(retry_success_scenario->result.has_value());
-  assert(retry_success_scenario->result->summary_content.find(
+  EXPECT_EXPRESSION(retry_success_scenario->gateway->calls == 3U);
+  EXPECT_EXPRESSION(!retry_success_scenario->error.has_value());
+  EXPECT_EXPRESSION(retry_success_scenario->result.has_value());
+  EXPECT_EXPRESSION(retry_success_scenario->result->summary_content.find(
              "recovered summary") != std::string::npos);
 }
 
@@ -924,20 +924,20 @@ void PrepareCancellation() {
 }
 
 void VerifyCancellation() {
-  assert(cancelled_before_start_scenario->gateway->calls == 0U);
-  assert(cancelled_before_start_scenario->result.has_value());
-  assert(cancelled_before_start_scenario->result->Empty());
-  assert(!cancelled_before_start_scenario->error.has_value());
+  EXPECT_EXPRESSION(cancelled_before_start_scenario->gateway->calls == 0U);
+  EXPECT_EXPRESSION(cancelled_before_start_scenario->result.has_value());
+  EXPECT_EXPRESSION(cancelled_before_start_scenario->result->Empty());
+  EXPECT_EXPRESSION(!cancelled_before_start_scenario->error.has_value());
 
-  assert(cancelled_during_failure_scenario->gateway->calls == 1U);
-  assert(cancelled_during_failure_scenario->result.has_value());
-  assert(cancelled_during_failure_scenario->result->Empty());
-  assert(!cancelled_during_failure_scenario->error.has_value());
+  EXPECT_EXPRESSION(cancelled_during_failure_scenario->gateway->calls == 1U);
+  EXPECT_EXPRESSION(cancelled_during_failure_scenario->result.has_value());
+  EXPECT_EXPRESSION(cancelled_during_failure_scenario->result->Empty());
+  EXPECT_EXPRESSION(!cancelled_during_failure_scenario->error.has_value());
 
-  assert(cancelled_after_success_scenario->gateway->calls == 1U);
-  assert(cancelled_after_success_scenario->result.has_value());
-  assert(cancelled_after_success_scenario->result->Empty());
-  assert(!cancelled_after_success_scenario->error.has_value());
+  EXPECT_EXPRESSION(cancelled_after_success_scenario->gateway->calls == 1U);
+  EXPECT_EXPRESSION(cancelled_after_success_scenario->result.has_value());
+  EXPECT_EXPRESSION(cancelled_after_success_scenario->result->Empty());
+  EXPECT_EXPRESSION(!cancelled_after_success_scenario->error.has_value());
 }
 
 void PrepareEmptyInput() {
@@ -954,15 +954,15 @@ void PrepareEmptyInput() {
 }
 
 void VerifyEmptyInput() {
-  assert(empty_input_scenario->error.has_value());
-  assert(empty_input_scenario->error->code ==
+  EXPECT_EXPRESSION(empty_input_scenario->error.has_value());
+  EXPECT_EXPRESSION(empty_input_scenario->error->code ==
          ContextCompactionErrorCode::nothing_to_compact);
-  assert(empty_input_scenario->gateway->calls == 0U);
+  EXPECT_EXPRESSION(empty_input_scenario->gateway->calls == 0U);
 
-  assert(excluded_input_scenario->error.has_value());
-  assert(excluded_input_scenario->error->code ==
+  EXPECT_EXPRESSION(excluded_input_scenario->error.has_value());
+  EXPECT_EXPRESSION(excluded_input_scenario->error->code ==
          ContextCompactionErrorCode::nothing_to_compact);
-  assert(excluded_input_scenario->gateway->calls == 0U);
+  EXPECT_EXPRESSION(excluded_input_scenario->gateway->calls == 0U);
 }
 
 void PrepareModelResolution() {
@@ -986,23 +986,23 @@ void PrepareModelResolution() {
 }
 
 void VerifyModelResolution() {
-  assert(resolved_model_scenario->gateway->calls == 1U);
-  assert(resolved_model_scenario->gateway->requests.front().model.model_id ==
+  EXPECT_EXPRESSION(resolved_model_scenario->gateway->calls == 1U);
+  EXPECT_EXPRESSION(resolved_model_scenario->gateway->requests.front().model.model_id ==
          "selected-model");
-  assert(resolved_model_scenario->result.has_value());
+  EXPECT_EXPRESSION(resolved_model_scenario->result.has_value());
 
-  assert(missing_model_scenario->gateway->calls == 0U);
-  assert(missing_model_scenario->error.has_value());
-  assert(missing_model_scenario->error->code ==
+  EXPECT_EXPRESSION(missing_model_scenario->gateway->calls == 0U);
+  EXPECT_EXPRESSION(missing_model_scenario->error.has_value());
+  EXPECT_EXPRESSION(missing_model_scenario->error->code ==
          ContextCompactionErrorCode::no_model);
-  assert(missing_model_scenario->error->message ==
+  EXPECT_EXPRESSION(missing_model_scenario->error->message ==
          "No model available, cannot compact context");
 
-  assert(failing_selection_scenario->gateway->calls == 0U);
-  assert(failing_selection_scenario->error.has_value());
-  assert(failing_selection_scenario->error->code ==
+  EXPECT_EXPRESSION(failing_selection_scenario->gateway->calls == 0U);
+  EXPECT_EXPRESSION(failing_selection_scenario->error.has_value());
+  EXPECT_EXPRESSION(failing_selection_scenario->error->code ==
          ContextCompactionErrorCode::no_model);
-  assert(failing_selection_scenario->error->message ==
+  EXPECT_EXPRESSION(failing_selection_scenario->error->message ==
          "selection unavailable");
 }
 
@@ -1035,22 +1035,22 @@ void PrepareSummaryFormatting() {
 }
 
 void VerifySummaryFormatting() {
-  assert(format_analysis_scenario->helper_content ==
+  EXPECT_EXPRESSION(format_analysis_scenario->helper_content ==
          std::optional<std::string>{"keep  tail"});
-  assert(format_upper_scenario->helper_content ==
+  EXPECT_EXPRESSION(format_upper_scenario->helper_content ==
          std::optional<std::string>{"Summary:\nUpper case"});
   // Every analysis block is dropped and the first summary wins.
-  assert(format_multiple_scenario->helper_content ==
+  EXPECT_EXPRESSION(format_multiple_scenario->helper_content ==
          std::optional<std::string>{"Summary:\nfirst"});
-  assert(format_none_scenario->helper_content ==
+  EXPECT_EXPRESSION(format_none_scenario->helper_content ==
          std::optional<std::string>{"no tags at all"});
   // An unclosed tag is literal text, exactly like the legacy regex.
-  assert(format_unclosed_scenario->helper_content ==
+  EXPECT_EXPRESSION(format_unclosed_scenario->helper_content ==
          std::optional<std::string>{"<analysis>unclosed and <summary>dangling"});
   // Legacy `replaceAll("\\n\\n+", "\n\n")` collapses the run.
-  assert(format_blank_lines_scenario->helper_content ==
+  EXPECT_EXPRESSION(format_blank_lines_scenario->helper_content ==
          std::optional<std::string>{"a\n\nb"});
-  assert(responses_fallback_scenario->helper_content ==
+  EXPECT_EXPRESSION(responses_fallback_scenario->helper_content ==
          std::optional<std::string>{
              "This session is being continued from a previous conversation "
              "that ran out of context. The earlier portion of the "
@@ -1077,10 +1077,10 @@ void ConstructorRejectsMissingDependencies() {
     }
   };
 
-  assert(rejects(nullptr, templates, models));
-  assert(rejects(std::make_shared<FakeCompletionGateway>(), nullptr, models));
-  assert(rejects(std::make_shared<FakeCompletionGateway>(), templates, nullptr));
-  assert(!rejects(std::make_shared<FakeCompletionGateway>(), templates, models));
+  EXPECT_EXPRESSION(rejects(nullptr, templates, models));
+  EXPECT_EXPRESSION(rejects(std::make_shared<FakeCompletionGateway>(), nullptr, models));
+  EXPECT_EXPRESSION(rejects(std::make_shared<FakeCompletionGateway>(), templates, nullptr));
+  EXPECT_EXPRESSION(!rejects(std::make_shared<FakeCompletionGateway>(), templates, models));
 }
 
 struct ScenarioTest final {
@@ -1101,7 +1101,7 @@ constexpr ScenarioTest scenario_tests[] = {
 
 } // namespace
 
-int main() {
+TEST(context_compaction_tests, LegacySuite) {
   // Pure contracts: no HuxerUI runtime required.
   HardTriggerThresholdsMatchLegacy();
   SoftTriggerThresholdsMatchLegacy();
@@ -1122,5 +1122,5 @@ int main() {
 
   scenarios.clear();
   std::cout << "context_compaction_tests passed\n";
-  return 0;
+  return;
 }

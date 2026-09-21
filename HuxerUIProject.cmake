@@ -25,10 +25,13 @@ endif ()
 
 if (NOT HUXERUI_LIBRARY_GRAPH_ONLY)
     enable_language(CXX)
+    if (WIN32)
+        enable_language(RC)
+    endif ()
 endif ()
 
-if (NOT TARGET HuxerUI::huxerui)
-    set(HUXERUI_HOME "$ENV{HUXERUI_HOME}" CACHE PATH "HuxerUI SDK or source directory")
+if (NOT TARGET HuxerUI::huxerui AND NOT TARGET HuxerUI::huxerui_static)
+    set(HUXERUI_HOME "$ENV{HUXERUI_HOME}" CACHE PATH "HuxerUI framework directory")
     if (HUXERUI_HOME AND EXISTS "${HUXERUI_HOME}/CMakeLists.txt"
             AND EXISTS "${HUXERUI_HOME}/include/huxerui/huxerui.h")
         set(HUXERUI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -52,19 +55,17 @@ if (NOT TARGET HuxerUI::huxerui)
     endif ()
 endif ()
 
-if (WIN32)
-    include("${CMAKE_CURRENT_SOURCE_DIR}/platform/windows/huxerui.cmake" OPTIONAL)
-elseif (APPLE AND NOT IOS)
-    include("${CMAKE_CURRENT_SOURCE_DIR}/platform/macos/huxerui.cmake" OPTIONAL)
-elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    include("${CMAKE_CURRENT_SOURCE_DIR}/platform/linux/huxerui.cmake" OPTIONAL)
-elseif (EMSCRIPTEN)
-    include("${CMAKE_CURRENT_SOURCE_DIR}/platform/web/huxerui.cmake" OPTIONAL)
+if (NOT HUXERUI_LIBRARY_GRAPH_ONLY)
+    if (WIN32)
+        include("${CMAKE_CURRENT_SOURCE_DIR}/platform/windows/huxerui.cmake" OPTIONAL)
+    elseif (APPLE AND NOT IOS)
+        include("${CMAKE_CURRENT_SOURCE_DIR}/platform/macos/huxerui.cmake" OPTIONAL)
+    elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        include("${CMAKE_CURRENT_SOURCE_DIR}/platform/linux/huxerui.cmake" OPTIONAL)
+    elseif (EMSCRIPTEN)
+        include("${CMAKE_CURRENT_SOURCE_DIR}/platform/web/huxerui.cmake" OPTIONAL)
+    endif ()
 endif ()
-
-set(HUXERUI_LIBRARY_GRAPH_OUTPUT
-        "${CMAKE_CURRENT_SOURCE_DIR}/.huxerui/generated/libraries.json"
-)
 
 set(HUXERUI_APP_RESOURCE_OUTPUT_ARGUMENTS)
 if (ANDROID AND HUXERUI_ANDROID_RESOURCE_OUTPUT_ROOT)
@@ -78,6 +79,9 @@ function(huxerui_configure_project_app target_name)
     if (NOT TARGET ${target_name})
         message(FATAL_ERROR "huxerui_configure_project_app() target does not exist: ${target_name}")
     endif ()
+    if (HUXERUI_LIBRARY_GRAPH_ONLY)
+        return()
+    endif ()
 
     get_target_property(HUXERUI_PROJECT_APP_INSTALL_COMPONENT
             ${target_name}
@@ -88,8 +92,11 @@ function(huxerui_configure_project_app target_name)
         message(FATAL_ERROR "HuxerUI application target is missing its install component: ${target_name}")
     endif ()
 
-    if (WIN32 AND HUXERUI_WINDOWS_MANIFEST)
-        target_sources(${target_name} PRIVATE "${HUXERUI_WINDOWS_MANIFEST}")
+    if (WIN32)
+        target_sources(${target_name} PRIVATE
+                "${HUXERUI_WINDOWS_MANIFEST}"
+                "${HUXERUI_WINDOWS_RESOURCE}"
+        )
     endif ()
     if (WIN32 AND COMMAND huxerui_configure_windows_project_package)
         huxerui_configure_windows_project_package(

@@ -1,12 +1,12 @@
 #include <algorithm>
-#include <cassert>
+#include "gtest_support.h"
 #include <string_view>
 
 #include "domain/behavior_settings.h"
 #include "domain/prompt_template.h"
 #include "presentation/prompt_template_presentation.h"
 
-int main() {
+TEST(behavior_settings_tests, LegacySuite) {
   using namespace linecode::domain;
 
   static_assert(ParseToneMode("chat") == ToneMode::chat);
@@ -42,33 +42,33 @@ int main() {
           ->builtin_source == PromptTemplateText::source_builtin_agent);
 
   const auto templates = BuiltInPromptTemplates();
-  assert(templates.size() == 20);
-  assert(templates.front().id == "systemPrompt");
-  assert(templates.back().id == "contextCompactionResponsesFallback");
-  assert(std::ranges::none_of(templates, [](const auto &item) {
+  EXPECT_EXPRESSION(templates.size() == 20);
+  EXPECT_EXPRESSION(templates.front().id == "systemPrompt");
+  EXPECT_EXPRESSION(templates.back().id == "contextCompactionResponsesFallback");
+  EXPECT_EXPRESSION(std::ranges::none_of(templates, [](const auto &item) {
     return item.id == "chatModeControl" || item.source.find("CONTROL") != std::string::npos;
   }));
-  assert(std::ranges::all_of(templates, [](const auto &item) {
+  EXPECT_EXPRESSION(std::ranges::all_of(templates, [](const auto &item) {
     return !item.id.empty() && !item.source.empty() && !item.default_text.empty();
   }));
-  assert(templates.size() == presentations.size());
-  assert(std::ranges::all_of(templates, [&presentations](const auto& item) {
+  EXPECT_EXPRESSION(templates.size() == presentations.size());
+  EXPECT_EXPRESSION(std::ranges::all_of(templates, [&presentations](const auto& item) {
     return FindPromptTemplatePresentation(presentations, item.id) != nullptr;
   }));
-  assert(std::ranges::all_of(presentations, [&templates](const auto& item) {
+  EXPECT_EXPRESSION(std::ranges::all_of(presentations, [&templates](const auto& item) {
     return std::ranges::find(templates, item.id,
                              &PromptTemplateDefinition::id) != templates.end();
   }));
-  assert(std::ranges::count_if(presentations, [](const auto& item) {
+  EXPECT_EXPRESSION(std::ranges::count_if(presentations, [](const auto& item) {
            return item.builtin_source.has_value();
          }) == 3);
-  assert(templates.front().default_text.find("You are LineCode") != std::string::npos);
+  EXPECT_EXPRESSION(templates.front().default_text.find("You are LineCode") != std::string::npos);
   const auto chat = std::ranges::find(templates, std::string_view{"chatModeChat"},
                                       &PromptTemplateDefinition::id);
-  assert(chat != templates.end());
-  assert(chat->default_text.starts_with("## Current Session Mode\nCurrent mode: Chat."));
+  EXPECT_EXPRESSION(chat != templates.end());
+  EXPECT_EXPRESSION(chat->default_text.starts_with("## Current Session Mode\nCurrent mode: Chat."));
   const auto work = std::ranges::find(templates, std::string_view{"workDirectory"},
                                       &PromptTemplateDefinition::id);
-  assert(work != templates.end());
-  assert(work->variables.size() == 5);
+  EXPECT_EXPRESSION(work != templates.end());
+  EXPECT_EXPRESSION(work->variables.size() == 5);
 }

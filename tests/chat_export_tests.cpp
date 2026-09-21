@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -70,13 +70,13 @@ std::vector<ChatMessage> Conversation() {
 void RegistryPreservesLegacyOrderAndNames() {
   const auto registry = linecode::application::CreateDefaultChatExportRegistry();
   const auto options = registry.Options();
-  assert(options.size() == 5);
-  assert(options[0].id == "clipboard");
-  assert(options[0].display_name == "Copy to clipboard");
-  assert(options[1].id == "plain_text");
-  assert(options[2].id == "markdown");
-  assert(options[3].id == "pdf");
-  assert(options[4].id == "chat_image");
+  EXPECT_EXPRESSION(options.size() == 5);
+  EXPECT_EXPRESSION(options[0].id == "clipboard");
+  EXPECT_EXPRESSION(options[0].display_name == "Copy to clipboard");
+  EXPECT_EXPRESSION(options[1].id == "plain_text");
+  EXPECT_EXPRESSION(options[2].id == "markdown");
+  EXPECT_EXPRESSION(options[3].id == "pdf");
+  EXPECT_EXPRESSION(options[4].id == "chat_image");
 }
 
 void PlainAndMarkdownMatchLegacyDocuments() {
@@ -85,19 +85,19 @@ void PlainAndMarkdownMatchLegacyDocuments() {
       delivery, linecode::application::CreateDefaultChatExportRegistry());
   const auto messages = Conversation();
 
-  assert(service.Export("clipboard", messages).Succeeded());
-  assert(delivery->copied ==
+  EXPECT_EXPRESSION(service.Export("clipboard", messages).Succeeded());
+  EXPECT_EXPRESSION(delivery->copied ==
          "【Me】\nHello\n\n【AI】\nWorld\n\n【AI】\nTool output\n\n"
          "—— From LineCode Pro");
 
-  assert(service.Export("plain_text", messages).Succeeded());
-  assert(delivery->shared == delivery->copied);
+  EXPECT_EXPRESSION(service.Export("plain_text", messages).Succeeded());
+  EXPECT_EXPRESSION(delivery->shared == delivery->copied);
 
-  assert(service.Export("markdown", messages).Succeeded());
-  assert(delivery->files.size() == 1);
-  assert(delivery->files.front().file_name == "chat_export.md");
-  assert(delivery->files.front().mime_type == "text/markdown");
-  assert(Text(delivery->files.front().content) ==
+  EXPECT_EXPRESSION(service.Export("markdown", messages).Succeeded());
+  EXPECT_EXPRESSION(delivery->files.size() == 1);
+  EXPECT_EXPRESSION(delivery->files.front().file_name == "chat_export.md");
+  EXPECT_EXPRESSION(delivery->files.front().mime_type == "text/markdown");
+  EXPECT_EXPRESSION(Text(delivery->files.front().content) ==
          "## Me\n\nHello\n\n---\n\n## AI\n\nWorld\n\n---\n\n"
          "## AI\n\nTool output\n\n---\n\n*—— From LineCode Pro*");
 }
@@ -108,17 +108,17 @@ void RenderersAreDataDrivenAndReceiveTypedBlocks() {
       delivery, linecode::application::CreateDefaultChatExportRegistry());
   const auto messages = Conversation();
 
-  assert(service.Export("pdf", messages).Succeeded());
-  assert(service.Export("chat_image", messages).Succeeded());
-  assert(delivery->rendered.size() == 2);
-  assert(delivery->rendered[0].renderer_id == "pdf");
-  assert(delivery->rendered[0].file_name == "chat_export.pdf");
-  assert(delivery->rendered[1].renderer_id == "chat-image");
-  assert(delivery->rendered[1].file_name == "chat_screenshot.png");
-  assert(delivery->rendered[0].blocks.size() == 3);
-  assert(delivery->rendered[0].blocks[0].speaker == "Me");
-  assert(delivery->rendered[0].blocks[0].user);
-  assert(!delivery->rendered[0].blocks[1].user);
+  EXPECT_EXPRESSION(service.Export("pdf", messages).Succeeded());
+  EXPECT_EXPRESSION(service.Export("chat_image", messages).Succeeded());
+  EXPECT_EXPRESSION(delivery->rendered.size() == 2);
+  EXPECT_EXPRESSION(delivery->rendered[0].renderer_id == "pdf");
+  EXPECT_EXPRESSION(delivery->rendered[0].file_name == "chat_export.pdf");
+  EXPECT_EXPRESSION(delivery->rendered[1].renderer_id == "chat-image");
+  EXPECT_EXPRESSION(delivery->rendered[1].file_name == "chat_screenshot.png");
+  EXPECT_EXPRESSION(delivery->rendered[0].blocks.size() == 3);
+  EXPECT_EXPRESSION(delivery->rendered[0].blocks[0].speaker == "Me");
+  EXPECT_EXPRESSION(delivery->rendered[0].blocks[0].user);
+  EXPECT_EXPRESSION(!delivery->rendered[0].blocks[1].user);
 }
 
 void FailuresAndLargeClipboardWarningAreReported() {
@@ -130,22 +130,22 @@ void FailuresAndLargeClipboardWarningAreReported() {
   large.front().role = MessageRole::user;
   large.front().content = std::string(5'001, 'x');
   const auto copied = service.Export("clipboard", large);
-  assert(copied.Succeeded());
-  assert(copied.warn_large_clipboard);
+  EXPECT_EXPRESSION(copied.Succeeded());
+  EXPECT_EXPRESSION(copied.warn_large_clipboard);
 
   delivery->share_text_result = false;
   const auto unavailable = service.Export("plain_text", large);
-  assert(!unavailable.Succeeded());
-  assert(!unavailable.error.empty());
+  EXPECT_EXPRESSION(!unavailable.Succeeded());
+  EXPECT_EXPRESSION(!unavailable.error.empty());
 
   const auto unknown = service.Export("not-registered", large);
-  assert(!unknown.Succeeded());
-  assert(unknown.error.find("not-registered") != std::string::npos);
+  EXPECT_EXPRESSION(!unknown.Succeeded());
+  EXPECT_EXPRESSION(unknown.error.find("not-registered") != std::string::npos);
 }
 
 } // namespace
 
-int main() {
+TEST(chat_export_tests, LegacySuite) {
   RegistryPreservesLegacyOrderAndNames();
   PlainAndMarkdownMatchLegacyDocuments();
   RenderersAreDataDrivenAndReceiveTypedBlocks();

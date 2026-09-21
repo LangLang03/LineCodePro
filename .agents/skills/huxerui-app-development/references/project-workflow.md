@@ -23,6 +23,7 @@ huxerui doctor [platform-list]
 huxerui setup <platform-list> [--yes]
 huxerui devices [platform]
 huxerui build [platform-list] [--device <id>] [--profile debug|release] [--generator <name>] [--source <path>] [--java-home <path>]
+huxerui mcpp build [--source <path>] [--release] [--locked] [--offline] [--verbose]
 huxerui run <platform> [--device <id>] [--profile debug|release] [--generator <name>] [--source <path>] [--java-home <path>]
 huxerui package <platform-list> [--device <id>] [--profile debug|release] [--generator <name>] [--source <path>] [--java-home <path>]
 huxerui open ios [--source <path>]
@@ -156,6 +157,8 @@ Do not add a second dependency manifest or invoke FetchContent separately for a 
 
 ## Build and run without changing toolchains
 
+For an independent project that uses mcpp, run `huxerui mcpp build`. The selected directory must contain `mcpp.toml`; this frontend invokes mcpp directly and does not change the CMake-based HuxerUI project workflow below.
+
 - Reuse the project's compatible build directory and generator.
 - On Windows, keep the existing MSVC generator; do not switch to MinGW or pin a Visual Studio release without a project requirement.
 - Build only the current host and platforms affected by the task by default.
@@ -170,11 +173,19 @@ Use `huxerui package <platform-list>` for user-requested distribution output and
 Release is the default package profile.
 Windows produces one setup executable, macOS one DMG, and Linux one AppImage; Android, iOS, and Web retain their platform build outputs.
 Windows setup generation currently supports x64 applications.
-Do not require WiX, `appimagetool`, or `hdiutil` for ordinary `build` or `run`.
+Do not require WiX, `appimagetool`, `patchelf`, or `hdiutil` for ordinary `build` or `run`.
 Windows package mode restores its pinned WiX packages automatically and requires `Microsoft.NETCore.App` 6.0 or newer only to run the restored tool.
+Linux package mode requires `appimagetool`, `patchelf`, and binutils on `PATH`.
+Customize application icons by replacing the platform-owned native assets in place: `platform/windows/app.ico`, `platform/macos/AppIcon.icns`, `platform/linux/package/<target>.svg`, Android launcher resources under `platform/android/app/src/main/res`, the iOS `AppIcon.appiconset`, or the Web icon files under `platform/web`.
+Windows reuses its icon for the application, installer, shortcuts, and installed-product metadata; macOS embeds its icon in the application bundle; Linux pairs its icon with the AppImage desktop entry; Android, iOS, and Web consume their standard platform icon declarations.
 
 Desktop package content comes only from CMake install rules using the application target's `HUXERUI_APPLICATION_INSTALL_COMPONENT` property.
-Add an explicit platform-conditional `install()` rule for each third-party dynamic library, plugin, codec, or data file that the application owns; do not scan adjacent output files or copy an inferred dependency directory.
+The generated desktop shell collects non-system dynamic dependencies during installation and verifies the staged binaries after fixing their loading paths.
+Declare libraries loaded at runtime with `huxerui_add_runtime_dependencies(app_target TARGETS codec_target FILES "${vendor_runtime_file}" SEARCH_DIRECTORIES "${vendor_runtime_directory}")`; these roots and their dependencies are deployed automatically.
+Use platform-conditional `install()` rules for application-owned data and configuration; do not copy adjacent output directories wholesale.
+Windows deploys required Release VC++ runtime DLLs beside the application and its installer; Debug CRT dependencies and missing redistributables fail packaging.
+Linux keeps the distribution's GTK stack and base system runtimes as target-machine requirements, while macOS keeps Apple system libraries external and applies ad-hoc signatures after relocating bundled code.
+Use the SDK packaging guide for the full system boundary and complete release signing after dependency deployment.
 
 A generated Windows application keeps its editable HuxerUI installer under `platform/windows/package`.
 Localize its interface through `package/resources/strings/default.properties` and additional HuxerUI locale catalogs instead of adding an installer-specific locale store.

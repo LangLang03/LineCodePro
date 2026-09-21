@@ -17,4 +17,9 @@ public:
                                        huxerui::Constraints constraints);
 };
 
+/// One physical-pixel separator used only below legacy screen headers.
+/// Card-row separators intentionally keep the lighter global Divider token.
+[[nodiscard]] [[huxerui::composable]] huxerui::View
+LegacyScreenHeaderDivider();
+
 } // namespace linecode::presentation

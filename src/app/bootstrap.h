@@ -30,7 +30,7 @@ public:
 
   [[nodiscard]] const std::shared_ptr<application::ChatSession> &
   Session() const noexcept;
-  [[nodiscard]] huxerui::Task<void>
+  [[nodiscard]] huxerui::Task<std::expected<void, std::string>>
   InitializeAsync(huxerui::File database_file);
   [[nodiscard]] huxerui::Task<std::expected<void, std::string>>
   PersistAsync();

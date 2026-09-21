@@ -17,6 +17,9 @@
 #include <huxerui/huxerui.h>
 
 #include "presentation/line_theme.h"
+#if defined(__ANDROID__)
+#include "application/ports/window_insets.h"
+#endif
 #include "presentation/platform_features.h"
 
 namespace linecode::presentation {
@@ -26,7 +29,6 @@ using namespace huxerui;
 
 constexpr float kDrawerWidth = 360.0F;
 constexpr float kDrawerReveal = 48.0F;
-constexpr float kDrawerTopCompensation = 16.0F;
 constexpr float kHeaderActionSize = 32.0F;
 constexpr float kTabIconSize = 14.0F;
 constexpr float kTreeIndent = 16.0F;
@@ -76,28 +78,47 @@ View ConversationBody(State<bool> drawer_open, const DrawerModel& model,
 View FileBody(State<bool> drawer_open, const DrawerModel& model,
               const DrawerActions& actions);
 
-consteval float HeaderTopPadding() {
-  if constexpr (CurrentHostPlatform() == HostPlatform::android) {
-    return 4.0F;
+// DrawerLayout deliberately constrains modal drawers to the safe viewport.
+// The legacy Android drawer instead owns the complete window: its background
+// extends behind both system bars and its fixed 40dp header inset is measured
+// from the physical top. Expand the child through the remaining safe-area
+// insets without changing DrawerLayout or hard-coding a particular device's
+// status/navigation bar heights.
+class LegacyDrawerViewport final : public Layout<LegacyDrawerViewport> {
+public:
+  using Layout::Layout;
+
+  struct InsetsValue {
+    using Value = EdgeInsets;
+  };
+
+  static LayoutResult Measure(LayoutContext& context, ViewNode& node,
+                              Constraints constraints) {
+    LayoutResult result;
+    if (node.ChildCount() == 0) {
+      return result.SetSize(constraints.Constrain({0.0F, 0.0F}));
+    }
+
+    const EdgeInsets insets =
+        node.ChildAt(0).LayoutValueOr<InsetsValue>(EdgeInsets{});
+    Constraints expanded = constraints;
+    expanded.min_height += insets.Vertical();
+    if (expanded.HasBoundedHeight()) {
+      expanded.max_height += insets.Vertical();
+    }
+    ViewNode& content = node.ChildAt(0);
+    const Size content_size = context.Measure(content, expanded);
+    const Size viewport_size = constraints.Constrain(
+        {content_size.width,
+         std::max(0.0F, content_size.height - insets.Vertical())});
+    return result.Place(content, {0.0F, -insets.top})
+        .SetSize(viewport_size);
   }
-  return 40.0F;
-}
+};
 
 TextStyle DrawerTextStyle(float size, FontWeight weight = FontWeight::Regular,
                           Color color = colors::text) {
   return TextStyle{Font::System(size).WithWeight(weight), color};
-}
-
-Indication PressIndication(float radius) {
-  return Indication{
-      .geometry = {.clip_corner_radii = CornerRadii(radius)},
-      .press =
-          IndicationLayer{
-              .fill = VisualFill{colors::accent_muted_strong},
-              .corner_radii = CornerRadii(radius),
-              .placement = IndicationPlacement::BehindContent,
-          },
-  };
 }
 
 template <typename Callback, typename... Arguments>
@@ -117,8 +138,7 @@ View ActionIcon(ImageResource image, Color tint, float container_size,
       .OnClick(std::move(action))
       .With(Frame{.width = container_size, .height = container_size},
             Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-            Indication(PressIndication(container_size / 2.0F)), Focusable(),
-            PointerCursor(PointerCursorKind::Hand));
+            Focusable(), PointerCursor(PointerCursorKind::Hand));
 }
 
 View InlineIcon(ImageResource image, Color tint, float size) {
@@ -175,9 +195,6 @@ const DrawerTabPresentation& DrawerTabPresentationFor(DrawerTab tab) {
   return kDrawerTabPresentations[DrawerTabIndex(tab)];
 }
 
-View RenderDrawer(State<bool> drawer_open, const DrawerTabSelection& selection,
-                  const DrawerModel& model, const DrawerActions& actions);
-
 std::string FormatConversationTime(std::int64_t updated_at_millis) {
   if (updated_at_millis <= 0) {
     return {};
@@ -219,49 +236,13 @@ View Header(const DrawerTabPresentation& presentation,
 
   return Row(std::move(children))
       .With(Padding(EdgeInsets{
-                .top = HeaderTopPadding(),
+                .top = 40.0F,
                 .right = 16.0F,
                 .bottom = 24.0F,
                 .left = 24.0F,
             }),
             Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center));
 }
-
-// StartDrawer keeps its child inside the system-bar-safe viewport. The legacy
-// sidebar, however, is MATCH_PARENT and its weighted body continues underneath
-// the navigation bar. Measure the actual drawer column against that full
-// vertical extent while retaining the already calibrated 16dp top placement.
-class LegacyDrawerViewport final : public Layout<LegacyDrawerViewport> {
-public:
-  using Layout::Layout;
-
-  static LayoutResult Measure(LayoutContext &context, ViewNode &node,
-                              Constraints constraints) {
-    LayoutResult result;
-    if (node.ChildCount() == 0) {
-      return result.SetSize(constraints.Constrain({0.0F, 0.0F}));
-    }
-
-    Constraints drawer_constraints = constraints;
-    if (constraints.HasBoundedHeight()) {
-      const float bottom_safe_area =
-          std::max(0.0F, context.SafeAreaInsets().bottom);
-      const float drawer_height =
-          constraints.max_height + kDrawerTopCompensation + bottom_safe_area;
-      drawer_constraints.min_height = drawer_height;
-      drawer_constraints.max_height = drawer_height;
-    }
-
-    ViewNode &drawer = node.ChildAt(0);
-    const Size drawer_size = context.Measure(drawer, drawer_constraints);
-    const Size viewport_size =
-        constraints.Constrain({drawer_size.width, constraints.HasBoundedHeight()
-                                                      ? constraints.max_height
-                                                      : drawer_size.height});
-    return result.Place(drawer, {0.0F, -kDrawerTopCompensation})
-        .SetSize(viewport_size);
-  }
-};
 
 View DrawerTabButton(ImageResource image, StringResource label, bool active,
                      std::function<void()> action) {
@@ -279,8 +260,8 @@ View DrawerTabButton(ImageResource image, StringResource label, bool active,
             MainAlign(MainAxisAlignment::Center),
             CrossAlign(CrossAxisAlignment::Center),
             Background(active ? colors::elevated : Color::Transparent()),
-            CornerRadius(6.0F), Indication(PressIndication(6.0F)), Grow(),
-            Focusable(), PointerCursor(PointerCursorKind::Hand));
+            CornerRadius(6.0F), Grow(), Focusable(),
+            PointerCursor(PointerCursorKind::Hand));
 }
 
 View DrawerTabs(const DrawerTabSelection& selection,
@@ -322,8 +303,7 @@ View NewConversationButton(State<bool> drawer_open,
           .With(Frame{.height = 52.62F},
                 Padding(EdgeInsets::Symmetric(16.0F, 12.0F)), Spacing(8.0F),
                 CrossAlign(CrossAxisAlignment::Center),
-                Background(colors::input), CornerRadius(14.0F),
-                Indication(PressIndication(14.0F)), Focusable(),
+                Background(colors::input), CornerRadius(14.0F), Focusable(),
                 PointerCursor(PointerCursorKind::Hand), Grow());
   return Row{std::move(button)}.With(
       Padding(EdgeInsets{.right = 16.0F, .bottom = 12.0F, .left = 16.0F}));
@@ -360,8 +340,7 @@ View ConversationRow(const DrawerConversation &conversation, bool active,
                 .top = 16.0F, .right = 4.0F, .bottom = 16.0F, .left = 8.0F}),
             CrossAlign(CrossAxisAlignment::Center), Background(background),
             Border{.color = border, .width = 1.0F}, CornerRadius(12.0F),
-            Indication(PressIndication(12.0F)), Focusable(),
-            PointerCursor(PointerCursorKind::Hand))
+            Focusable(), PointerCursor(PointerCursorKind::Hand))
       .Key(id);
 }
 
@@ -532,8 +511,7 @@ View FileRow(const DrawerFileNode &node, std::size_t depth, bool root,
       .With(LongPressGesture{}, Frame{.min_height = 48.0F},
             Padding(EdgeInsets{
                 .top = 12.0F, .right = 16.0F, .bottom = 12.0F, .left = left}),
-            CrossAlign(CrossAxisAlignment::Center),
-            Indication(PressIndication(8.0F)), Focusable(),
+            CrossAlign(CrossAxisAlignment::Center), Focusable(),
             PointerCursor(PointerCursorKind::Hand))
       .Key(node.path);
 }
@@ -561,7 +539,7 @@ View ProjectStrip(const DrawerModel &model, const DrawerActions &actions) {
                   DrawerTextStyle(11.0F, FontWeight::Regular, colors::tertiary))
               .With(Frame{.max_height = 30.0F}, ClipChildren()),
       }
-          .With(Spacing(6.0F), Padding(8.0F), Indication(PressIndication(8.0F)),
+          .With(Spacing(6.0F), Padding(8.0F),
                 Focusable(model.project_removable),
                 PointerCursor(model.project_removable
                                   ? PointerCursorKind::Hand
@@ -603,19 +581,43 @@ View FileBody(State<bool>, const DrawerModel &model,
       .With(Grow(), CrossAlign(CrossAxisAlignment::Stretch));
 }
 
+View RenderDrawerWithInsets(State<bool> drawer_open,
+                            const DrawerTabSelection& selection,
+                            const DrawerModel& model,
+                            const DrawerActions& actions,
+                            EdgeInsets insets) {
+  const auto& presentation = DrawerTabPresentationFor(selection.active);
+  return LegacyDrawerViewport{Column{
+      Header(presentation, actions), DrawerTabs(selection, actions),
+      std::invoke(presentation.body, drawer_open, model, actions),
+  }.With(Frame{.min_width = 240.0F, .max_width = kDrawerWidth},
+         CrossAlign(CrossAxisAlignment::Stretch),
+         Background(colors::background))
+                                  .LayoutValue<LegacyDrawerViewport::InsetsValue>(
+                                      insets)};
+}
+
+#if defined(__ANDROID__)
+[[huxerui::composable]] View
+RenderDrawer(State<bool> drawer_open, const DrawerTabSelection& selection,
+             const DrawerModel& model, const DrawerActions& actions) {
+  const auto window_insets =
+      UseService<application::WindowInsetsProvider>()->Current();
+  return RenderDrawerWithInsets(
+      drawer_open, selection, model, actions,
+      EdgeInsets{
+          .top = window_insets.top,
+          .right = window_insets.right,
+          .bottom = window_insets.bottom,
+          .left = window_insets.left,
+      });
+}
+#else
 View RenderDrawer(State<bool> drawer_open, const DrawerTabSelection& selection,
                   const DrawerModel& model, const DrawerActions& actions) {
-  const auto& presentation = DrawerTabPresentationFor(selection.active);
-  return LegacyDrawerViewport(
-      Column{
-          Header(presentation, actions),
-          DrawerTabs(selection, actions),
-          std::invoke(presentation.body, drawer_open, model, actions),
-      }
-          .With(Frame{.min_width = 240.0F, .max_width = kDrawerWidth},
-                CrossAlign(CrossAxisAlignment::Stretch),
-                Background(colors::background)));
+  return RenderDrawerWithInsets(drawer_open, selection, model, actions, {});
 }
+#endif
 
 } // namespace
 

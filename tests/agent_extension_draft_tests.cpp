@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <memory>
 #include <optional>
 #include <span>
@@ -151,59 +151,70 @@ huxerui::View Probe() {
   huxerui::Lifecycle([scenario, tasks] {
     auto handle = tasks.Launch([scenario]() -> huxerui::Task<void> {
       auto context = co_await scenario->draft->LoadContext();
-      assert(context);
-      assert(scenario->tools->refreshed);
-      assert(context->tools.size() == 2U);
-      assert(context->tools[0].category == "file");
-      assert(context->mcps.size() == 1U);
-      assert(context->mcps[0].id == "custom:mcp-on");
+      EXPECT_EXPRESSION(context);
+      EXPECT_EXPRESSION(scenario->tools->refreshed);
+      EXPECT_EXPRESSION(context->tools.size() == 2U);
+      EXPECT_EXPRESSION(context->tools[0].category == "file");
+      EXPECT_EXPRESSION(context->tools[0].name == "file_read");
+      EXPECT_EXPRESSION(context->tools[0].display_name == "读取文件");
+      EXPECT_EXPRESSION(context->tools[0].display_description == "读取工作区文件");
+      EXPECT_EXPRESSION(!context->tools[0].display_name.contains("file_read"));
+      EXPECT_EXPRESSION(!context->tools[0].display_description.contains("read files"));
+      EXPECT_EXPRESSION(context->mcps.size() == 1U);
+      EXPECT_EXPRESSION(context->mcps[0].id == "custom:mcp-on");
 
       scenario->completion->response = R"(```json
 {"name":"测试修复","slug":"123 TEST fixer!","prompt":"修复测试","trigger":"测试失败时","toolNames":["file_read","hidden_mcp_tool","unknown","file_read"],"mcpIds":["custom:mcp-on","custom:mcp-off"]}
 ```)";
       auto generated = co_await scenario->draft->Generate("  修复测试  ");
-      assert(generated);
-      assert(generated->name == "测试修复");
-      assert(generated->slug == "agent-123-test-fixer");
-      assert(generated->tool_names == std::vector<std::string>{"file_read"});
-      assert(generated->mcp_ids ==
+      EXPECT_EXPRESSION(generated);
+      EXPECT_EXPRESSION(generated->name == "测试修复");
+      EXPECT_EXPRESSION(generated->slug == "agent-123-test-fixer");
+      EXPECT_EXPRESSION(generated->tool_names == std::vector<std::string>{"file_read"});
+      EXPECT_EXPRESSION(generated->mcp_ids ==
              std::vector<std::string>{"custom:mcp-on"});
-      assert(scenario->completion->request);
-      assert(!scenario->completion->request->stream);
-      assert(scenario->completion->request->messages.size() == 2U);
-      assert(scenario->completion->request->messages[1].content.contains(
+      EXPECT_EXPRESSION(scenario->completion->request);
+      EXPECT_EXPRESSION(!scenario->completion->request->stream);
+      EXPECT_EXPRESSION(scenario->completion->request->messages.size() == 2U);
+      EXPECT_EXPRESSION(scenario->completion->request->messages[1].content.contains(
           "修复测试"));
-      assert(!scenario->completion->request->messages[1].content.contains(
+      EXPECT_EXPRESSION(scenario->completion->request->messages[1].content.contains(
+          "\"name\":\"file_read\""));
+      EXPECT_EXPRESSION(scenario->completion->request->messages[1].content.contains(
+          "读取文件"));
+      EXPECT_EXPRESSION(!scenario->completion->request->messages[1].content.contains(
+          "read files"));
+      EXPECT_EXPRESSION(!scenario->completion->request->messages[1].content.contains(
           "hidden_mcp_tool"));
 
       scenario->completion->response =
           R"({"name":"默认","slug":"default","prompt":"prompt","toolNames":["unknown"],"mcpIds":[]})";
       generated = co_await scenario->draft->Generate("default tools");
-      assert(generated);
-      assert(generated->tool_names ==
+      EXPECT_EXPRESSION(generated);
+      EXPECT_EXPRESSION(generated->tool_names ==
              std::vector<std::string>{"file_read", "glob"});
 
       scenario->completion->response =
           R"({"name":"中文名称","prompt":"prompt","toolNames":[],"mcpIds":[]})";
       generated = co_await scenario->draft->Generate("missing slug");
-      assert(generated);
-      assert(generated->slug == "custom-agent");
+      EXPECT_EXPRESSION(generated);
+      EXPECT_EXPRESSION(generated->slug == "custom-agent");
 
       scenario->completion->response = "not json";
       generated = co_await scenario->draft->Generate("invalid");
-      assert(!generated);
-      assert(generated.error().code ==
+      EXPECT_EXPRESSION(!generated);
+      EXPECT_EXPRESSION(generated.error().code ==
              application::AgentDraftErrorCode::invalid_json);
 
       scenario->models->selected.clear();
       generated = co_await scenario->draft->Generate("missing model");
-      assert(!generated);
-      assert(generated.error().code ==
+      EXPECT_EXPRESSION(!generated);
+      EXPECT_EXPRESSION(generated.error().code ==
              application::AgentDraftErrorCode::missing_model);
 
       generated = co_await scenario->draft->Generate("   ");
-      assert(!generated);
-      assert(generated.error().code ==
+      EXPECT_EXPRESSION(!generated);
+      EXPECT_EXPRESSION(generated.error().code ==
              application::AgentDraftErrorCode::empty_description);
       scenario->done = true;
     });
@@ -214,19 +225,27 @@ huxerui::View Probe() {
 
 } // namespace
 
-int main() {
+TEST(agent_extension_draft_tests, LegacySuite) {
   active = std::make_shared<Scenario>();
   active->tools->tools = {
       {.name = "file_read",
        .description = "read files",
        .parameters_json = "{}",
        .category = "file",
-       .agent_selected_by_default = true},
+       .agent_selected_by_default = true,
+       .presentation = {.english_name = "Read file",
+                        .english_description = "read files",
+                        .chinese_name = "读取文件",
+                        .chinese_description = "读取工作区文件"}},
       {.name = "glob",
        .description = "search files",
        .parameters_json = "{}",
        .category = "file",
-       .agent_selected_by_default = true},
+       .agent_selected_by_default = true,
+       .presentation = {.english_name = "Find files",
+                        .english_description = "search files",
+                        .chinese_name = "查找文件",
+                        .chinese_description = "查找工作区文件"}},
       {.name = "hidden_mcp_tool",
        .description = "custom MCP runtime tool",
        .parameters_json = "{}",
@@ -257,7 +276,8 @@ int main() {
   active->draft =
       std::make_shared<application::CompletionAgentExtensionDraftGenerator>(
           active->models, active->completion, active->tools, active->mcps,
-          std::make_shared<infrastructure::JsonAgentExtensionDraftCodec>());
+          std::make_shared<infrastructure::JsonAgentExtensionDraftCodec>(),
+          application::ToolTextLanguage::chinese);
 
   const huxerui::Application application(Probe,
                                          {.show_debug_overlay = false});

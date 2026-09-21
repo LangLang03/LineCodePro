@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <string>
 
 #include "application/model_form_service.h"
@@ -21,142 +21,142 @@ ModelDraft ValidDraft() {
 
 } // namespace
 
-int main() {
+TEST(model_form_service_tests, LegacySuite) {
   const auto &protocols = linecode::domain::model_protocol_catalog;
   static_assert(protocols.size() == 4);
-  assert(linecode::domain::ModelProtocolInfo(ModelProtocol::codex_responses)
+  EXPECT_EXPRESSION(linecode::domain::ModelProtocolInfo(ModelProtocol::codex_responses)
              .label == "Codex");
-  assert(linecode::domain::DefaultModelBaseUrl(
+  EXPECT_EXPRESSION(linecode::domain::DefaultModelBaseUrl(
              ModelProtocol::codex_responses) == "https://api.openai.com/v1");
-  assert(linecode::domain::DefaultModelBaseUrl(
+  EXPECT_EXPRESSION(linecode::domain::DefaultModelBaseUrl(
              ModelProtocol::anthropic_messages) == "https://api.anthropic.com");
-  assert(
+  EXPECT_EXPRESSION(
       linecode::domain::DefaultModelBaseUrl(ModelProtocol::local_gguf).empty());
-  assert(linecode::domain::SupportsDedicatedCompression(
+  EXPECT_EXPRESSION(linecode::domain::SupportsDedicatedCompression(
       ModelProtocol::openai_compatible));
-  assert(!linecode::domain::SupportsDedicatedCompression(
+  EXPECT_EXPRESSION(!linecode::domain::SupportsDedicatedCompression(
       ModelProtocol::anthropic_messages));
 
   const auto &presets = linecode::domain::ModelProviderPresets();
-  assert(presets.size() == 17);
+  EXPECT_EXPRESSION(presets.size() == 17);
   const auto deepseek = linecode::domain::FindModelProviderPreset("deepseek");
-  assert(deepseek.has_value());
-  assert(deepseek->base_url == "https://api.deepseek.com/v1");
+  EXPECT_EXPRESSION(deepseek.has_value());
+  EXPECT_EXPRESSION(deepseek->base_url == "https://api.deepseek.com/v1");
   const auto preset_draft = ModelFormService::New(deepseek, false);
-  assert(preset_draft.provider_label == "DeepSeek");
+  EXPECT_EXPRESSION(preset_draft.provider_label == "DeepSeek");
 
   const auto custom = ModelFormService::New(std::nullopt, false);
-  assert(custom.protocol == ModelProtocol::openai_compatible);
-  assert(custom.tool_call_limit == "200");
-  assert(ModelFormService::EffectiveBaseUrl(custom) ==
+  EXPECT_EXPRESSION(custom.protocol == ModelProtocol::openai_compatible);
+  EXPECT_EXPRESSION(custom.tool_call_limit == "200");
+  EXPECT_EXPRESSION(ModelFormService::EffectiveBaseUrl(custom) ==
          "https://api.openai.com/v1");
 
   auto anthropic = custom;
   anthropic.protocol = ModelProtocol::anthropic_messages;
-  assert(ModelFormService::EffectiveBaseUrl(anthropic) ==
+  EXPECT_EXPRESSION(ModelFormService::EffectiveBaseUrl(anthropic) ==
          "https://api.anthropic.com");
 
   auto codex = custom;
   codex.protocol = ModelProtocol::codex_responses;
-  assert(ModelFormService::EffectiveBaseUrl(codex) ==
+  EXPECT_EXPRESSION(ModelFormService::EffectiveBaseUrl(codex) ==
          "https://api.openai.com/v1");
 
-  assert(ModelFormService::ParseContextSize("") == 0);
-  assert(ModelFormService::ParseContextSize("128k") == 128000);
-  assert(ModelFormService::ParseContextSize("1M") == 1000000);
-  assert(ModelFormService::ParseContextSize("12.5k") == 12500);
-  assert(ModelFormService::ParseContextSize("invalid") == 0);
-  assert(ModelFormService::FormatContextSize(128000) == "128K");
-  assert(ModelFormService::FormatContextSize(1000000) == "1M");
+  EXPECT_EXPRESSION(ModelFormService::ParseContextSize("") == 0);
+  EXPECT_EXPRESSION(ModelFormService::ParseContextSize("128k") == 128000);
+  EXPECT_EXPRESSION(ModelFormService::ParseContextSize("1M") == 1000000);
+  EXPECT_EXPRESSION(ModelFormService::ParseContextSize("12.5k") == 12500);
+  EXPECT_EXPRESSION(ModelFormService::ParseContextSize("invalid") == 0);
+  EXPECT_EXPRESSION(ModelFormService::FormatContextSize(128000) == "128K");
+  EXPECT_EXPRESSION(ModelFormService::FormatContextSize(1000000) == "1M");
 
   auto valid = ValidDraft();
   auto built = ModelFormService::Build(valid);
-  assert(built.has_value());
-  assert(built->model_id == "test-model");
-  assert(built->tool_call_limit == 200);
+  EXPECT_EXPRESSION(built.has_value());
+  EXPECT_EXPRESSION(built->model_id == "test-model");
+  EXPECT_EXPRESSION(built->tool_call_limit == 200);
 
   valid.name.clear();
   built = ModelFormService::Build(valid);
-  assert(built.has_value());
-  assert(built->name == "test-model");
+  EXPECT_EXPRESSION(built.has_value());
+  EXPECT_EXPRESSION(built->name == "test-model");
 
   auto missing_key = ValidDraft();
   missing_key.api_key = " ";
   const auto missing_key_result = ModelFormService::Build(missing_key);
-  assert(!missing_key_result.has_value());
-  assert(missing_key_result.error().code ==
+  EXPECT_EXPRESSION(!missing_key_result.has_value());
+  EXPECT_EXPRESSION(missing_key_result.error().code ==
          ModelValidationCode::missing_api_key);
 
   auto invalid_limit = ValidDraft();
   invalid_limit.tool_call_limit = "-2";
   const auto invalid_limit_result = ModelFormService::Build(invalid_limit);
-  assert(!invalid_limit_result.has_value());
-  assert(invalid_limit_result.error().code ==
+  EXPECT_EXPRESSION(!invalid_limit_result.has_value());
+  EXPECT_EXPRESSION(invalid_limit_result.error().code ==
          ModelValidationCode::invalid_tool_call_limit);
   const auto probe_with_invalid_limit =
       ModelFormService::BuildForProbe(invalid_limit);
-  assert(probe_with_invalid_limit.has_value());
-  assert(probe_with_invalid_limit->tool_call_limit == 200);
+  EXPECT_EXPRESSION(probe_with_invalid_limit.has_value());
+  EXPECT_EXPRESSION(probe_with_invalid_limit->tool_call_limit == 200);
 
   auto unlimited = ValidDraft();
   unlimited.tool_call_limit = "-1";
-  assert(ModelFormService::Build(unlimited)->tool_call_limit == -1);
+  EXPECT_EXPRESSION(ModelFormService::Build(unlimited)->tool_call_limit == -1);
 
   auto compression = ValidDraft();
   compression.compression_enabled = true;
   compression.compression_auto = false;
   const auto compression_result = ModelFormService::Build(compression);
-  assert(!compression_result.has_value());
-  assert(compression_result.error().code ==
+  EXPECT_EXPRESSION(!compression_result.has_value());
+  EXPECT_EXPRESSION(compression_result.error().code ==
          ModelValidationCode::missing_compression_model_id);
 
   compression.protocol = ModelProtocol::anthropic_messages;
   compression.compression_model_id = "compressor";
   const auto normalized = ModelFormService::Build(compression);
-  assert(normalized.has_value());
-  assert(!normalized->compression_model_enabled);
+  EXPECT_EXPRESSION(normalized.has_value());
+  EXPECT_EXPRESSION(!normalized->compression_model_enabled);
 
   auto local = ModelFormService::New(std::nullopt, true);
-  assert(local.context_size == "4096");
-  assert(local.protocol == ModelProtocol::local_gguf);
-  assert(ModelFormService::EffectiveBaseUrl(local).empty());
-  assert(!ModelFormService::CanQuery(local));
+  EXPECT_EXPRESSION(local.context_size == "4096");
+  EXPECT_EXPRESSION(local.protocol == ModelProtocol::local_gguf);
+  EXPECT_EXPRESSION(ModelFormService::EffectiveBaseUrl(local).empty());
+  EXPECT_EXPRESSION(!ModelFormService::CanQuery(local));
 
   local.name = "Qwen local";
   const auto local_result = ModelFormService::Build(local);
-  assert(!local_result.has_value());
-  assert(local_result.error().code ==
+  EXPECT_EXPRESSION(!local_result.has_value());
+  EXPECT_EXPRESSION(local_result.error().code ==
          ModelValidationCode::local_backend_unavailable);
-  assert(!ModelFormService::CanSave(local));
+  EXPECT_EXPRESSION(!ModelFormService::CanSave(local));
 
   auto local_route_draft = local;
   local_route_draft.protocol = ModelProtocol::openai_compatible;
   const auto normalized_local = ModelFormService::Build(local_route_draft);
-  assert(!normalized_local.has_value());
-  assert(normalized_local.error().code ==
+  EXPECT_EXPRESSION(!normalized_local.has_value());
+  EXPECT_EXPRESSION(normalized_local.error().code ==
          ModelValidationCode::local_backend_unavailable);
 
   const auto local_probe = ModelFormService::BuildForProbe(local);
-  assert(!local_probe.has_value());
-  assert(local_probe.error().code ==
+  EXPECT_EXPRESSION(!local_probe.has_value());
+  EXPECT_EXPRESSION(local_probe.error().code ==
          ModelValidationCode::local_backend_unavailable);
 
   local.name = " ";
   const auto unnamed_local = ModelFormService::Build(local);
-  assert(!unnamed_local.has_value());
-  assert(unnamed_local.error().code ==
+  EXPECT_EXPRESSION(!unnamed_local.has_value());
+  EXPECT_EXPRESSION(unnamed_local.error().code ==
          ModelValidationCode::local_backend_unavailable);
 
   auto stored = *ModelFormService::Build(ValidDraft());
   stored.id = "stable-model-id";
   auto edited = ModelFormService::Edit(stored);
-  assert(edited.name == "Test");
-  assert(edited.model_id == "test-model");
+  EXPECT_EXPRESSION(edited.name == "Test");
+  EXPECT_EXPRESSION(edited.model_id == "test-model");
   edited.name = "Updated";
   edited.model_id = "updated-model";
   const auto updated = ModelFormService::Build(edited);
-  assert(updated.has_value());
-  assert(updated->id == "stable-model-id");
-  assert(updated->name == "Updated");
-  assert(updated->model_id == "updated-model");
+  EXPECT_EXPRESSION(updated.has_value());
+  EXPECT_EXPRESSION(updated->id == "stable-model-id");
+  EXPECT_EXPRESSION(updated->name == "Updated");
+  EXPECT_EXPRESSION(updated->model_id == "updated-model");
 }

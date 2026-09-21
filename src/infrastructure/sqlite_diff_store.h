@@ -22,30 +22,35 @@ class SqliteDiffStore final : public application::DiffStore {
 public:
   explicit SqliteDiffStore(huxerui::File database_file);
 
-  [[nodiscard]] huxerui::Task<domain::DiffRecord>
+  [[nodiscard]] huxerui::Task<
+      application::DiffStoreResult<domain::DiffRecord>>
   Record(std::string file_path, std::string old_content, std::string new_content,
          bool old_exists) override;
 
-  [[nodiscard]] huxerui::Task<std::optional<domain::DiffRecord>>
+  [[nodiscard]] huxerui::Task<
+      application::DiffStoreResult<std::optional<domain::DiffRecord>>>
   Find(std::string diff_id) override;
 
-  [[nodiscard]] huxerui::Task<std::vector<domain::DiffRecord>>
+  [[nodiscard]] huxerui::Task<
+      application::DiffStoreResult<std::vector<domain::DiffRecord>>>
   Chain(std::string file_path) override;
 
-  [[nodiscard]] huxerui::Task<application::DiffRevertResult>
+  [[nodiscard]] huxerui::Task<
+      application::DiffStoreResult<application::DiffRevertResult>>
   CheckRevert(std::string diff_id) override;
 
-  [[nodiscard]] huxerui::Task<void> MarkReverted(std::string diff_id) override;
+  [[nodiscard]] huxerui::Task<application::DiffStoreResult<void>>
+  MarkReverted(std::string diff_id) override;
 
-  [[nodiscard]] huxerui::Task<void> SetReview(std::string diff_id,
-                                              std::string state,
-                                              std::string message) override;
+  [[nodiscard]] huxerui::Task<application::DiffStoreResult<void>>
+  SetReview(std::string diff_id, std::string state,
+            std::string message) override;
 
 private:
   // Opens (once) and returns the connection, ensuring the diff table exists.
-  // An absent value means the connection or its schema could not be prepared,
-  // in which case the caller reports the legacy "not found"/no-op outcome.
-  [[nodiscard]] huxerui::Task<std::optional<huxerui::sqlite::Database>> Open();
+  [[nodiscard]] huxerui::Task<
+      application::DiffStoreResult<huxerui::sqlite::Database>>
+  Open();
 
   huxerui::File database_file_;
   std::optional<huxerui::sqlite::Database> database_;

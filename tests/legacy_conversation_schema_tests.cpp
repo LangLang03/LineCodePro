@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -167,13 +167,13 @@ void FreshDatabaseGetsLegacyV4CoreSchema() {
   ApplySchema(database);
   ApplySchema(database);
 
-  assert(database.Integer("PRAGMA user_version") == user_version);
+  EXPECT_EXPRESSION(database.Integer("PRAGMA user_version") == user_version);
   const auto tables = database.TextColumn(
       "SELECT name FROM sqlite_master WHERE type = 'table'");
   for (const std::string_view table :
        {"conversations", "messages", "message_text_chunks", "message_blocks",
         "tool_calls", "tool_results", "attachments", "diff_records"}) {
-    assert(Contains(tables, table));
+    EXPECT_EXPRESSION(Contains(tables, table));
   }
 
   const auto indexes = database.TextColumn(
@@ -182,12 +182,12 @@ void FreshDatabaseGetsLegacyV4CoreSchema() {
        {"idx_conversations_updated", "idx_messages_conversation_order",
         "idx_message_text_chunks_message_field",
         "idx_message_blocks_message_order"}) {
-    assert(Contains(indexes, index));
+    EXPECT_EXPRESSION(Contains(indexes, index));
   }
 
-  assert(ColumnExists(database, "tool_calls", "duration_ms"));
-  assert(ColumnExists(database, "tool_calls", "error_message"));
-  assert(database.Integer(
+  EXPECT_EXPRESSION(ColumnExists(database, "tool_calls", "duration_ms"));
+  EXPECT_EXPRESSION(ColumnExists(database, "tool_calls", "error_message"));
+  EXPECT_EXPRESSION(database.Integer(
              "SELECT COUNT(*) FROM pragma_foreign_key_list('attachments') "
              "WHERE \"table\" = 'messages' AND \"from\" = 'message_id' "
              "AND on_delete = 'CASCADE'") == 1);
@@ -219,14 +219,14 @@ void ExistingLegacyRowsSurviveIdempotentMigration() {
   ApplySchema(database);
   ApplySchema(database);
 
-  assert(database.Integer("SELECT COUNT(*) FROM conversations WHERE title = "
+  EXPECT_EXPRESSION(database.Integer("SELECT COUNT(*) FROM conversations WHERE title = "
                           "'kept'") == 1);
-  assert(database.Integer("SELECT COUNT(*) FROM messages WHERE content = "
+  EXPECT_EXPRESSION(database.Integer("SELECT COUNT(*) FROM messages WHERE content = "
                           "'kept'") == 1);
-  assert(database.Integer("SELECT COUNT(*) FROM tool_calls WHERE id = "
+  EXPECT_EXPRESSION(database.Integer("SELECT COUNT(*) FROM tool_calls WHERE id = "
                           "'tool-1' AND duration_ms = 0 AND error_message IS "
                           "NULL") == 1);
-  assert(database.Integer("PRAGMA user_version") == user_version);
+  EXPECT_EXPRESSION(database.Integer("PRAGMA user_version") == user_version);
 }
 
 void NewerSchemaIsRejectedWithoutPartialWrites() {
@@ -240,9 +240,9 @@ void NewerSchemaIsRejectedWithoutPartialWrites() {
     rejected = true;
   }
 
-  assert(rejected);
-  assert(database.Integer("PRAGMA user_version") == 5);
-  assert(database.Integer(
+  EXPECT_EXPRESSION(rejected);
+  EXPECT_EXPRESSION(database.Integer("PRAGMA user_version") == 5);
+  EXPECT_EXPRESSION(database.Integer(
              "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND "
              "name = 'conversations'") == 0);
 }
@@ -270,7 +270,7 @@ void ChunkedMessageContentIsAuthoritativeWithColumnFallback() {
   const auto bodies = database.TextColumn(
       linecode::infrastructure::legacy_schema::load_visible_messages,
       "conversation-1", 3);
-  assert((bodies == std::vector<std::string>{"hello world", "legacy body",
+  EXPECT_EXPRESSION((bodies == std::vector<std::string>{"hello world", "legacy body",
                                              "fresh body"}));
 }
 
@@ -282,15 +282,15 @@ void LongUtf8ContentSplitsWithoutBreakingCodePoints() {
   body += "界";
   body += std::string(message_text_chunk_bytes, 'b');
   const auto chunks = SplitMessageText(body);
-  assert(chunks.size() == 3);
-  assert(chunks[0].size() == message_text_chunk_bytes - 1);
-  assert(chunks[1].starts_with("界"));
+  EXPECT_EXPRESSION(chunks.size() == 3);
+  EXPECT_EXPRESSION(chunks[0].size() == message_text_chunk_bytes - 1);
+  EXPECT_EXPRESSION(chunks[1].starts_with("界"));
   std::string reassembled;
   for (const auto chunk : chunks) {
-    assert(chunk.size() <= message_text_chunk_bytes);
+    EXPECT_EXPRESSION(chunk.size() <= message_text_chunk_bytes);
     reassembled.append(chunk);
   }
-  assert(reassembled == body);
+  EXPECT_EXPRESSION(reassembled == body);
 }
 
 void DrawerListsOnlyVisibleConversationsAndResumesLatestVisible() {
@@ -317,27 +317,27 @@ void DrawerListsOnlyVisibleConversationsAndResumesLatestVisible() {
 
   const auto visible = database.TextColumn(
       linecode::infrastructure::legacy_schema::list_visible_conversations, 1);
-  assert((visible == std::vector<std::string>{"new", "two", "old"}));
+  EXPECT_EXPRESSION((visible == std::vector<std::string>{"new", "two", "old"}));
   const auto fallback = database.TextColumn(
       linecode::infrastructure::legacy_schema::find_resume_conversation);
-  assert((fallback == std::vector<std::string>{"visible-new"}));
+  EXPECT_EXPRESSION((fallback == std::vector<std::string>{"visible-new"}));
 
   database.Execute(
       "UPDATE conversations SET current = CASE "
       "WHEN id = 'visible-old' THEN 1 ELSE 0 END");
   const auto explicit_current = database.TextColumn(
       linecode::infrastructure::legacy_schema::find_resume_conversation);
-  assert((explicit_current == std::vector<std::string>{"visible-old"}));
+  EXPECT_EXPRESSION((explicit_current == std::vector<std::string>{"visible-old"}));
 }
 
 } // namespace
 
-int main() {
+TEST(legacy_conversation_schema_tests, LegacySuite) {
   FreshDatabaseGetsLegacyV4CoreSchema();
   ExistingLegacyRowsSurviveIdempotentMigration();
   NewerSchemaIsRejectedWithoutPartialWrites();
   ChunkedMessageContentIsAuthoritativeWithColumnFallback();
   LongUtf8ContentSplitsWithoutBreakingCodePoints();
   DrawerListsOnlyVisibleConversationsAndResumesLatestVisible();
-  return 0;
+  return;
 }

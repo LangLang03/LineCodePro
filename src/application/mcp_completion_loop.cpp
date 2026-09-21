@@ -120,8 +120,8 @@ McpCompletionLoop::PrepareTools(CompletionRequest &request) {
 huxerui::Task<std::expected<CompletionResponse, CompletionError>>
 McpCompletionLoop::RunPrepared(CompletionRequest request,
                                CompletionObserver observer) {
-  const bool unlimited =
-      request.model.tool_call_limit == domain::ModelConfig::unlimited_tool_calls;
+  const bool unlimited = request.model.tool_call_limit ==
+                         domain::ModelConfig::unlimited_tool_calls;
   std::size_t invoked_count{};
   std::size_t turn_index{};
   for (;;) {
@@ -137,8 +137,9 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
         (request.model.tool_call_limit <= 0 ||
          requested_count >
              static_cast<std::size_t>(request.model.tool_call_limit) -
-                 std::min(static_cast<std::size_t>(request.model.tool_call_limit),
-                          invoked_count))) {
+                 std::min(
+                     static_cast<std::size_t>(request.model.tool_call_limit),
+                     invoked_count))) {
       co_return std::unexpected(CompletionError{
           .code = CompletionErrorCode::decode,
           .message = "The model exceeded its MCP tool call limit",
@@ -160,19 +161,19 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
                          .display = {},
                          .created_at_millis = started_at,
                      });
-      const auto descriptor = std::ranges::find(
-          tools_->Tools(), std::string_view{call.name},
-          [](const RegisteredTool &tool) {
-            return std::string_view{tool.name};
-          });
+      const auto descriptor =
+          std::ranges::find(tools_->Tools(), std::string_view{call.name},
+                            [](const RegisteredTool &tool) {
+                              return std::string_view{tool.name};
+                            });
       if (descriptor == tools_->Tools().end()) {
-        auto result = CompletionToolResult{
-            .call_id = call.id,
-            .name = call.name,
-            .content = "Unknown runtime tool: " + call.name,
-            .error = true};
-        const auto display = result_display_->Project(
-            call.name, result.content, result.error);
+        auto result = CompletionToolResult{.call_id = call.id,
+                                           .name = call.name,
+                                           .content = "Unknown runtime tool: " +
+                                                      call.name,
+                                           .error = true};
+        const auto display =
+            result_display_->Project(call.name, result.content, result.error);
         Emit(observer, CompletionToolCallEvent{
                            .turn_index = turn_index,
                            .call = call,
@@ -200,11 +201,11 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
         auto result = CompletionToolResult{
             .call_id = call.id,
             .name = call.name,
-            .content = "This tool is not allowed in read-only mode: " +
-                       call.name,
+            .content =
+                "This tool is not allowed in read-only mode: " + call.name,
             .error = true};
-        const auto display = result_display_->Project(
-            call.name, result.content, result.error);
+        const auto display =
+            result_display_->Project(call.name, result.content, result.error);
         Emit(observer, CompletionToolCallEvent{
                            .turn_index = turn_index,
                            .call = call,
@@ -233,9 +234,8 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
           decision = co_await observer.on_tool_review(
               CompletionObserver::ToolReviewRequest{
                   .call = call,
-                  .can_allow_always =
-                      descriptor->permanent_grant_supported &&
-                      !request.permission_scope.empty(),
+                  .can_allow_always = descriptor->SupportsPermanentGrant() &&
+                                      !request.permission_scope.empty(),
               });
         }
         if (decision == CompletionObserver::ToolReviewDecision::reject) {
@@ -244,8 +244,8 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
               .name = call.name,
               .content = "The user rejected this tool call.",
               .error = true};
-          const auto display = result_display_->Project(
-              call.name, result.content, result.error);
+          const auto display =
+              result_display_->Project(call.name, result.content, result.error);
           Emit(observer, CompletionToolCallEvent{
                              .turn_index = turn_index,
                              .call = call,
@@ -256,12 +256,12 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
                              .duration_millis = NowMillis() - started_at,
                          });
           result.content = display.model_content;
-          request.messages.push_back(CompletionMessage::Tool(std::move(result)));
+          request.messages.push_back(
+              CompletionMessage::Tool(std::move(result)));
           ++invoked_count;
           continue;
         }
-        if (decision ==
-                CompletionObserver::ToolReviewDecision::allow_always &&
+        if (decision == CompletionObserver::ToolReviewDecision::allow_always &&
             permissions_) {
           auto remembered = co_await permissions_->RememberPermanentGrant(
               *descriptor, call, request.permission_scope);
@@ -278,10 +278,8 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
                          .created_at_millis = started_at,
                      });
       auto invoked = co_await tools_->Invoke(call.name, call.arguments_json);
-      CompletionToolResult result{.call_id = call.id,
-                                  .name = call.name,
-                                  .content = {},
-                                  .error = false};
+      CompletionToolResult result{
+          .call_id = call.id, .name = call.name, .content = {}, .error = false};
       if (invoked) {
         result.content = invoked->content.empty() ? "MCP tool completed"
                                                   : std::move(invoked->content);
@@ -291,19 +289,19 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
         result.content = invoked.error().message;
         result.error = true;
       }
-      const auto display = result_display_->Project(
-          call.name, result.content, result.error);
-      Emit(observer, CompletionToolCallEvent{
-                         .turn_index = turn_index,
-                         .call = call,
-                         .status = result.error
-                                       ? CompletionToolCallStatus::failed
-                                       : CompletionToolCallStatus::completed,
-                         .result = result,
-                         .display = display,
-                         .created_at_millis = started_at,
-                         .duration_millis = NowMillis() - started_at,
-                     });
+      const auto display =
+          result_display_->Project(call.name, result.content, result.error);
+      Emit(observer,
+           CompletionToolCallEvent{
+               .turn_index = turn_index,
+               .call = call,
+               .status = result.error ? CompletionToolCallStatus::failed
+                                      : CompletionToolCallStatus::completed,
+               .result = result,
+               .display = display,
+               .created_at_millis = started_at,
+               .duration_millis = NowMillis() - started_at,
+           });
       result.content = display.model_content;
       request.messages.push_back(CompletionMessage::Tool(std::move(result)));
       ++invoked_count;

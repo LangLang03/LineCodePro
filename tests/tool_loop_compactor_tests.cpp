@@ -1,7 +1,7 @@
 // Contract tests for the mid-loop compactor that plugs the tool loop into the
 // ported context-compaction service.
 
-#include <cassert>
+#include "gtest_support.h"
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -228,7 +228,7 @@ application::CompletionRequest Run(Probe &target) {
   huxerui::testing::UiTest ui(application);
   for (std::size_t frame = 0; frame < 20'000U && !probe->done; ++frame)
     ui.Pump(std::chrono::milliseconds{1});
-  assert(probe->done);
+  EXPECT_EXPRESSION(probe->done);
   const auto result = probe->result;
   probe.reset();
   return result;
@@ -253,17 +253,17 @@ void LongToolLoopCompactsAndKeepsTheInFlightGroup() {
   const auto result = Run(target);
 
   // The gateway saw exactly one summary request.
-  assert(target.harness->gateway->requests.size() == 1);
+  EXPECT_EXPRESSION(target.harness->gateway->requests.size() == 1);
   // The system prompt survives, one summary is inserted, and the in-flight
   // assistant + tool group is kept verbatim.
-  assert(result.messages.front().role == application::CompletionRole::system);
+  EXPECT_EXPRESSION(result.messages.front().role == application::CompletionRole::system);
   // The summary is rendered through the prompt template, so match on the body
   // the gateway returned rather than the whole message.
   bool has_summary = false;
   for (const auto &message : result.messages)
     has_summary = has_summary ||
                   message.content.find("earlier work") != std::string::npos;
-  assert(has_summary);
+  EXPECT_EXPRESSION(has_summary);
   bool has_history = false;
   for (const auto &message : result.messages) {
     if (message.role == application::CompletionRole::user &&
@@ -271,10 +271,10 @@ void LongToolLoopCompactsAndKeepsTheInFlightGroup() {
       has_history = true;
   }
   // The summarized history is gone, not merely reordered.
-  assert(!has_history);
-  assert(result.messages.back().role == application::CompletionRole::tool);
+  EXPECT_EXPRESSION(!has_history);
+  EXPECT_EXPRESSION(result.messages.back().role == application::CompletionRole::tool);
   // Far fewer messages than the original 37.
-  assert(result.messages.size() < 8);
+  EXPECT_EXPRESSION(result.messages.size() < 8);
 }
 
 void ShortLoopIsLeftAlone() {
@@ -288,8 +288,8 @@ void ShortLoopIsLeftAlone() {
 
   const auto result = Run(target);
 
-  assert(target.harness->gateway->requests.empty());
-  assert(result.messages.size() == before);
+  EXPECT_EXPRESSION(target.harness->gateway->requests.empty());
+  EXPECT_EXPRESSION(result.messages.size() == before);
 }
 
 void CompactorWithoutACompactionServiceIsANoOp() {
@@ -302,7 +302,7 @@ void CompactorWithoutACompactionServiceIsANoOp() {
 
   const auto result = Run(target);
 
-  assert(result.messages.size() == 2);
+  EXPECT_EXPRESSION(result.messages.size() == 2);
 }
 
 } // namespace
@@ -353,18 +353,18 @@ void MidLoopCompactionWritesBackToTheConversation() {
                     [](const domain::ChatMessage &message) {
                       return message.exclude_from_context;
                     });
-  assert(hidden > 0);
-  assert(after.size() > before);
+  EXPECT_EXPRESSION(hidden > 0);
+  EXPECT_EXPRESSION(after.size() > before);
   const auto summaries = std::count_if(
       after.begin(), after.end(), [](const domain::ChatMessage &message) {
         return message.hidden && !message.exclude_from_context;
       });
-  assert(summaries == 1);
+  EXPECT_EXPRESSION(summaries == 1);
   const auto blocks = std::count_if(
       after.begin(), after.end(), [](const domain::ChatMessage &message) {
         return message.compact_status == std::string{"done"};
       });
-  assert(blocks == 1);
+  EXPECT_EXPRESSION(blocks == 1);
 }
 
 // The trigger has to measure what the provider reported.
@@ -396,16 +396,16 @@ void MidLoopTriggerUsesTheReportedCount() {
   const auto compacted = Run(reported);
 
   // The local estimate is nowhere near the threshold, so nothing changed.
-  assert(untouched.messages.size() == without.request.messages.size());
-  assert(compacted.messages.size() < reported.request.messages.size());
+  EXPECT_EXPRESSION(untouched.messages.size() == without.request.messages.size());
+  EXPECT_EXPRESSION(compacted.messages.size() < reported.request.messages.size());
 }
 
-int main() {
+TEST(tool_loop_compactor_tests, LegacySuite) {
   LongToolLoopCompactsAndKeepsTheInFlightGroup();
   ShortLoopIsLeftAlone();
   CompactorWithoutACompactionServiceIsANoOp();
   MidLoopCompactionWritesBackToTheConversation();
   MidLoopTriggerUsesTheReportedCount();
   std::cout << "tool_loop_compactor_tests passed\n";
-  return 0;
+  return;
 }

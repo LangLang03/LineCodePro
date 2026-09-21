@@ -1,11 +1,18 @@
 #pragma once
 
 #include <memory>
+#include <string_view>
 
 #include "application/ports/settings_store.h"
 #include "domain/theme_palette.h"
 
 namespace linecode::application {
+
+struct ThemeSettingsKeys final {
+  static constexpr std::string_view mode{"@lineai_theme_mode"};
+  static constexpr std::string_view custom_colors{
+      "@lineai_custom_theme_colors"};
+};
 
 class SystemThemeSource {
 public:

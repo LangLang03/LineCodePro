@@ -205,10 +205,9 @@ std::string Trim(std::string_view value) {
 std::string Lower(std::string_view value) {
   std::string lowered;
   lowered.reserve(value.size());
-  std::ranges::transform(value, std::back_inserter(lowered),
-                         [](unsigned char byte) {
-                           return static_cast<char>(std::tolower(byte));
-                         });
+  std::ranges::transform(
+      value, std::back_inserter(lowered),
+      [](unsigned char byte) { return static_cast<char>(std::tolower(byte)); });
   return lowered;
 }
 
@@ -361,8 +360,7 @@ struct FileToolContext final {
 // Converts one catalog argument exactly like huxerui::StringVariant::Format:
 // text is carried through verbatim and every other value is streamed with the
 // classic locale, so the rendered text is locale independent.
-template <class Argument>
-std::string TextArgument(Argument &&argument) {
+template <class Argument> std::string TextArgument(Argument &&argument) {
   if constexpr (std::is_convertible_v<Argument, std::string_view>) {
     return std::string{std::string_view{std::forward<Argument>(argument)}};
   } else {
@@ -381,9 +379,9 @@ std::string Text(ToolTextLanguage language, ToolTextKey key,
                  Arguments &&...arguments) {
   const std::array<std::string, sizeof...(Arguments)> values{
       TextArgument(std::forward<Arguments>(arguments))...};
-  return ToolText(
-      key, std::span<const std::string>{values.data(), values.size()},
-      language);
+  return ToolText(key,
+                  std::span<const std::string>{values.data(), values.size()},
+                  language);
 }
 
 // Same lookup for the language the current invocation was started with.
@@ -435,9 +433,9 @@ CountNewlines(ToolFileAccess &files, const std::string &path,
 }
 
 // FileReadTool.lastByteIsNewline().
-huxerui::Task<ToolFileResult<bool>>
-LastByteIsNewline(ToolFileAccess &files, const std::string &path,
-                  std::uint64_t size) {
+huxerui::Task<ToolFileResult<bool>> LastByteIsNewline(ToolFileAccess &files,
+                                                      const std::string &path,
+                                                      std::uint64_t size) {
   if (size == 0)
     co_return false;
   auto last = co_await files.ReadBytes(path, size - 1U, 1U);
@@ -562,9 +560,9 @@ ExecuteFileRead(FileToolContext context, std::string arguments_json) {
   const std::uint64_t end_byte =
       std::min(static_cast<std::uint64_t>(end_kb) * 1024U, file_length);
   if (start_byte >= file_length) {
-    co_return ToolFailure(
-        Text(context, ToolTextKey::tool_file_read_start_out_of_range, start_kb,
-             file_length / 1024U));
+    co_return ToolFailure(Text(context,
+                               ToolTextKey::tool_file_read_start_out_of_range,
+                               start_kb, file_length / 1024U));
   }
   auto chunk = co_await context.files->ReadBytes(target->absolute, start_byte,
                                                  end_byte - start_byte);
@@ -603,9 +601,9 @@ ExecuteFileRead(FileToolContext context, std::string arguments_json) {
     co_return ToolFailure(Text(context, ToolTextKey::tool_file_read_failed,
                                leading.error().message));
   }
-  std::string result = AddLineNumbers(
-      content.substr(start_char, end_char - start_char),
-      1 + static_cast<std::int64_t>(*leading));
+  std::string result =
+      AddLineNumbers(content.substr(start_char, end_char - start_char),
+                     1 + static_cast<std::int64_t>(*leading));
 
   auto total =
       co_await CountNewlines(*context.files, target->absolute, file_length);
@@ -630,7 +628,7 @@ ExecuteFileRead(FileToolContext context, std::string arguments_json) {
 // Port of `DiffRecorder.executeWithDiff`'s tail: only a real content change is
 // recorded, and the resulting identifier travels back on the tool result so
 // the card can offer Accept / Revert.
-huxerui::Task<std::string>
+huxerui::Task<std::expected<std::string, ToolRegistryError>>
 RecordChange(const FileToolContext &context, std::string absolute_path,
              std::string old_content, std::string new_content,
              const bool old_exists) {
@@ -639,7 +637,13 @@ RecordChange(const FileToolContext &context, std::string absolute_path,
   auto recorded = co_await context.diffs->Record(
       std::move(absolute_path), std::move(old_content), std::move(new_content),
       old_exists);
-  co_return std::move(recorded.id);
+  if (!recorded) {
+    co_return std::unexpected(Error(
+        ToolRegistryErrorCode::invocation_failed,
+        "The file was changed, but its review history could not be recorded: " +
+            recorded.error().message));
+  }
+  co_return std::move(recorded->id);
 }
 
 huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>>
@@ -692,14 +696,17 @@ ExecuteFileWrite(FileToolContext context, std::string arguments_json) {
     co_return ToolFailure(Text(context, ToolTextKey::tool_file_write_failed,
                                written.error().message));
   }
-  auto result = ToolSuccess(
-      Text(context,
-           info.has_value() ? ToolTextKey::tool_file_write_updated
-                            : ToolTextKey::tool_file_write_created,
-           input_path, LineCount(content)));
-  result.diff_id = co_await RecordChange(context, target->absolute,
-                                         std::move(old_content), content,
-                                         info.has_value());
+  auto result =
+      ToolSuccess(Text(context,
+                       info.has_value() ? ToolTextKey::tool_file_write_updated
+                                        : ToolTextKey::tool_file_write_created,
+                       input_path, LineCount(content)));
+  auto diff_id =
+      co_await RecordChange(context, target->absolute, std::move(old_content),
+                            content, info.has_value());
+  if (!diff_id)
+    co_return std::unexpected(std::move(diff_id.error()));
+  result.diff_id = std::move(*diff_id);
   co_return result;
 }
 
@@ -753,9 +760,9 @@ ExecuteFileEdit(FileToolContext context, std::string arguments_json) {
     co_return ToolFailure(
         Text(context, ToolTextKey::tool_file_edit_multiple_matches, count));
   }
-  std::string next =
-      replace_all ? ReplaceAll(*content, old_string, new_string)
-                  : ReplaceFirst(*content, old_string, new_string);
+  std::string next = replace_all
+                         ? ReplaceAll(*content, old_string, new_string)
+                         : ReplaceFirst(*content, old_string, new_string);
   const std::size_t replaced = replace_all ? count : 1U;
   auto updated = next;
   auto written =
@@ -766,8 +773,11 @@ ExecuteFileEdit(FileToolContext context, std::string arguments_json) {
   }
   auto result = ToolSuccess(Text(context, ToolTextKey::tool_file_edit_success,
                                  target->display, replaced));
-  result.diff_id = co_await RecordChange(context, target->absolute, *content,
-                                         std::move(updated), true);
+  auto diff_id = co_await RecordChange(context, target->absolute, *content,
+                                       std::move(updated), true);
+  if (!diff_id)
+    co_return std::unexpected(std::move(diff_id.error()));
+  result.diff_id = std::move(*diff_id);
   co_return result;
 }
 
@@ -840,8 +850,8 @@ ExecuteFileDelete(FileToolContext context, std::string arguments_json) {
 
   std::string builder;
   if (!deleted.empty()) {
-    builder += Text(context, ToolTextKey::tool_file_delete_success,
-                    deleted.size());
+    builder +=
+        Text(context, ToolTextKey::tool_file_delete_success, deleted.size());
     for (const auto &path : deleted) {
       builder += "- ";
       builder += path;
@@ -928,8 +938,7 @@ ExecuteListDirectory(FileToolContext context, std::string arguments_json) {
                                     std::string{kParametersEmptyMessage}));
   }
   const std::string display_argument = PathArgument(*object);
-  auto target =
-      ResolveTarget(*workspace, StringArgument(*object, "path"));
+  auto target = ResolveTarget(*workspace, StringArgument(*object, "path"));
   if (!target) {
     co_return ToolFailure(Text(context, ToolTextKey::tool_list_dir_failed,
                                target.error().message));
@@ -940,9 +949,8 @@ ExecuteListDirectory(FileToolContext context, std::string arguments_json) {
         Text(context, ToolTextKey::tool_list_dir_not_found, display_argument));
   }
   if (info->kind != ToolFileKind::directory) {
-    co_return ToolFailure(
-        Text(context, ToolTextKey::tool_list_dir_not_directory,
-             display_argument));
+    co_return ToolFailure(Text(
+        context, ToolTextKey::tool_list_dir_not_directory, display_argument));
   }
   auto entries = co_await context.files->ListDirectory(target->absolute);
   if (!entries) {
@@ -967,9 +975,9 @@ ExecuteListDirectory(FileToolContext context, std::string arguments_json) {
   co_return ToolSuccess(Trim(builder));
 }
 
-using FileToolExecutor = std::function<huxerui::Task<
-    std::expected<ToolInvocationResult, ToolRegistryError>>(
-    FileToolContext context, std::string arguments_json)>;
+using FileToolExecutor = std::function<
+    huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>>(
+        FileToolContext context, std::string arguments_json)>;
 
 // Declarative tool catalog: Refresh() projects every row into the registry and
 // Invoke() dispatches through std::ranges::find, so adding a file tool never
@@ -978,7 +986,9 @@ struct FileToolDescriptor final {
   std::string_view name;
   std::string_view description;
   std::string_view parameters_json;
+  ToolPresentation presentation;
   bool allowed_in_read_only;
+  AgentToolCategory agent_category;
   bool agent_selected_by_default;
   FileToolExecutor execute;
 };
@@ -991,7 +1001,14 @@ const std::array<FileToolDescriptor, 6> kFileTools{{
         .name = kFileReadToolName,
         .description = kFileReadDescription,
         .parameters_json = kFileReadSchema,
+        .presentation =
+            {.english_name = "Read file",
+             .english_description =
+                 "Read text or inspect a directory in the current workspace.",
+             .chinese_name = "读取文件",
+             .chinese_description = "读取当前工作区中的文本，或查看目录内容。"},
         .allowed_in_read_only = false,
+        .agent_category = AgentToolCategory::read,
         .agent_selected_by_default = true,
         .execute = &ExecuteFileRead,
     },
@@ -999,7 +1016,14 @@ const std::array<FileToolDescriptor, 6> kFileTools{{
         .name = kFileWriteToolName,
         .description = kFileWriteDescription,
         .parameters_json = kFileWriteSchema,
+        .presentation =
+            {.english_name = "Write file",
+             .english_description =
+                 "Create or replace a file in the current workspace.",
+             .chinese_name = "写入文件",
+             .chinese_description = "在当前工作区中创建文件或替换文件内容。"},
         .allowed_in_read_only = false,
+        .agent_category = AgentToolCategory::write,
         .agent_selected_by_default = false,
         .execute = &ExecuteFileWrite,
     },
@@ -1007,7 +1031,14 @@ const std::array<FileToolDescriptor, 6> kFileTools{{
         .name = kFileEditToolName,
         .description = kFileEditDescription,
         .parameters_json = kFileEditSchema,
+        .presentation = {.english_name = "Edit file",
+                         .english_description =
+                             "Replace an exact text fragment in a file.",
+                         .chinese_name = "编辑文件",
+                         .chinese_description =
+                             "替换文件中精确匹配的文本片段。"},
         .allowed_in_read_only = false,
+        .agent_category = AgentToolCategory::write,
         .agent_selected_by_default = false,
         .execute = &ExecuteFileEdit,
     },
@@ -1015,7 +1046,14 @@ const std::array<FileToolDescriptor, 6> kFileTools{{
         .name = kFileDeleteToolName,
         .description = kFileDeleteDescription,
         .parameters_json = kFileDeleteSchema,
+        .presentation =
+            {.english_name = "Delete files",
+             .english_description =
+                 "Delete selected files or directories after confirmation.",
+             .chinese_name = "删除文件",
+             .chinese_description = "经确认后删除指定的文件或目录。"},
         .allowed_in_read_only = false,
+        .agent_category = AgentToolCategory::write,
         .agent_selected_by_default = false,
         .execute = &ExecuteFileDelete,
     },
@@ -1023,7 +1061,14 @@ const std::array<FileToolDescriptor, 6> kFileTools{{
         .name = kGlobToolName,
         .description = kGlobDescription,
         .parameters_json = kGlobSchema,
+        .presentation = {.english_name = "Find files",
+                         .english_description =
+                             "Find workspace files with a glob pattern.",
+                         .chinese_name = "查找文件",
+                         .chinese_description =
+                             "使用通配模式查找工作区中的文件。"},
         .allowed_in_read_only = false,
+        .agent_category = AgentToolCategory::read,
         .agent_selected_by_default = true,
         .execute = &ExecuteGlob,
     },
@@ -1031,7 +1076,14 @@ const std::array<FileToolDescriptor, 6> kFileTools{{
         .name = kListDirectoryToolName,
         .description = kListDirectoryDescription,
         .parameters_json = kListDirectorySchema,
+        .presentation = {.english_name = "List directory",
+                         .english_description =
+                             "List files and folders in a workspace directory.",
+                         .chinese_name = "列出目录",
+                         .chinese_description =
+                             "列出工作区目录中的文件和文件夹。"},
         .allowed_in_read_only = false,
+        .agent_category = AgentToolCategory::read,
         .agent_selected_by_default = false,
         .execute = &ExecuteListDirectory,
     },
@@ -1045,18 +1097,19 @@ RegisteredTool CatalogEntry(const FileToolDescriptor &descriptor) {
       .allowed_in_read_only = descriptor.allowed_in_read_only,
       // Every file tool derives its action from a caller-supplied path, so no
       // permanent grant can be narrowed to a stable, reusable action key.
-      .permanent_grant_supported = false,
+      .agent_category = descriptor.agent_category,
       .category = std::string{kFileOpsGroupId},
       .agent_selected_by_default = descriptor.agent_selected_by_default,
+      .presentation = descriptor.presentation,
   };
 }
 
 bool FileOpsGroupEnabled(const domain::McpExecutionSettings &settings) {
-  const auto found = std::ranges::find(
-      settings.groups, kFileOpsGroupId,
-      [](const domain::McpToolGroupState &group) {
-        return std::string_view{group.id};
-      });
+  const auto found =
+      std::ranges::find(settings.groups, kFileOpsGroupId,
+                        [](const domain::McpToolGroupState &group) {
+                          return std::string_view{group.id};
+                        });
   return found != settings.groups.end() && found->enabled &&
          domain::SupportsMcpExecutionMode(found->supported_modes,
                                           settings.mode);

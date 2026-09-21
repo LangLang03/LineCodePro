@@ -16,6 +16,7 @@
 #include "application/ssh_project_workspace.h"
 #include "application/ssh_settings_service.h"
 #include "presentation/line_theme.h"
+#include "presentation/components/line_dialog_presentation.h"
 #include "presentation/platform_features.h"
 
 namespace linecode::presentation {
@@ -36,18 +37,6 @@ bool IsProtectedProject(std::string_view id) {
 TextStyle Label(float size, FontWeight weight = FontWeight::Regular,
                 Color color = colors::text) {
   return TextStyle{Font::System(size).WithWeight(weight), color};
-}
-
-Indication RowIndication(float radius) {
-  return Indication{
-      .geometry = {.clip_corner_radii = CornerRadii(radius)},
-      .press =
-          IndicationLayer{
-              .fill = VisualFill{colors::accent_muted_strong},
-              .corner_radii = CornerRadii(radius),
-              .placement = IndicationPlacement::BehindContent,
-          },
-  };
 }
 
 void CollectExpanded(const domain::ProjectFileNode &node,
@@ -228,8 +217,7 @@ View SheetRow(StringVariant label, StringVariant description, bool selected,
             Padding(EdgeInsets::Symmetric(16.0F, 14.0F)),
             CrossAlign(CrossAxisAlignment::Center),
             Background(selected ? colors::accent_muted : Color::Transparent()),
-            Indication(RowIndication(0.0F)), Focusable(),
-            PointerCursor(PointerCursorKind::Hand));
+            Focusable(), PointerCursor(PointerCursorKind::Hand));
 }
 
 View FileActionRow(DialogContext dialog, StringVariant label,
@@ -248,8 +236,7 @@ View FileActionRow(DialogContext dialog, StringVariant label,
       })
       .With(Frame{.min_height = 52.0F}, Spacing(6.0F),
             Padding(EdgeInsets::Symmetric(0.0F, 16.0F)),
-            CrossAlign(CrossAxisAlignment::Stretch),
-            Indication(RowIndication(8.0F)), Focusable(),
+            CrossAlign(CrossAxisAlignment::Stretch), Focusable(),
             PointerCursor(PointerCursorKind::Hand));
 }
 
@@ -272,106 +259,27 @@ View FileActionDialog(StringVariant title, StringVariant subtitle,
             Background(colors::elevated), CornerRadius(16.0F), ClipChildren());
 }
 
-View DialogAction(StringVariant text, Color tint,
-                  std::function<void()> action) {
-  return Text(std::move(text))
-      .Style(Label(16.0F, FontWeight::Bold, tint))
-      .Align(TextAlign::Center)
-      .OnClick(std::move(action))
-      .With(Frame{.min_height = 40.0F},
-            Padding(EdgeInsets::Symmetric(12.0F, 8.0F)), Focusable(),
-            PointerCursor(PointerCursorKind::Hand));
-}
-
-View DialogPanel(StringVariant title, std::vector<View> content) {
-  std::vector<View> children;
-  children.reserve(content.size() + 1);
-  children.push_back(
-      Text(std::move(title)).Style(Label(20.0F, FontWeight::Bold)));
-  std::ranges::move(content, std::back_inserter(children));
-  return Column(std::move(children))
-      .With(Frame{.min_width = 280.0F, .max_width = 560.0F}, Spacing(12.0F),
-            Padding(24.0F), CrossAlign(CrossAxisAlignment::Stretch),
-            Background(colors::background), CornerRadius(24.0F));
-}
-
 View ConfirmationDialog(DialogContext dialog, StringVariant title,
                         StringVariant message, std::function<void()> confirm) {
-  return DialogPanel(
-      std::move(title),
-      {Text(std::move(message))
-           .Style(Label(13.0F, FontWeight::Regular, colors::secondary)),
-       Row{
-           DialogAction(app::strings::common_cancel, colors::secondary,
-                        [dialog] { dialog.Dismiss(); }),
-           DialogAction(app::strings::workspace_delete, colors::danger,
-                        [dialog, confirm = std::move(confirm)] {
-                          dialog.Dismiss();
-                          std::invoke(confirm);
-                        }),
-       }
-           .With(MainAlign(MainAxisAlignment::End),
-                 CrossAlign(CrossAxisAlignment::Center),
-                 Padding(EdgeInsets{.top = 4.0F}))});
-}
-
-TextFieldStyle WorkspaceInputStyle() {
-  auto style = TextFieldStyle::Default();
-  style.variant = TextFieldVariant::Outlined;
-  style.show_label = false;
-  style.outlined.background = colors::input;
-  style.outlined.border = colors::border_light;
-  style.outlined.hovered_border = colors::border_light;
-  style.outlined.focused_border = colors::accent;
-  style.outlined.minimum_height = 48.0F;
-  style.outlined.corner_radii = CornerRadii{8.0F};
-  style.text_style = Label(16.0F);
-  style.caret = colors::accent;
-  style.selection = colors::accent_muted_strong;
-  style.padding = EdgeInsets::Symmetric(12.0F, 10.0F);
-  return style;
+  return LineConfirmationDialog(
+      dialog, std::move(title), std::move(message),
+      LineDialogAction{
+          .label = app::strings::workspace_delete,
+          .activate = std::move(confirm),
+          .tone = LineDialogActionTone::danger,
+      },
+      LineDialogAction{
+          .label = app::strings::common_cancel,
+          .activate = {},
+      });
 }
 
 [[huxerui::composable]] View
 NameDialog(DialogContext dialog, StringVariant title, StringVariant message,
            std::string initial_value, std::function<void(std::string)> submit) {
-  auto value = UseState(TextEditingValue::FromText(std::move(initial_value)));
-  ThemeDefinition overrides;
-  overrides.Set(WorkspaceInputStyle());
-  View field = Theme(
-      overrides,
-      TextField(value)
-          .Variant(TextFieldVariant::Outlined)
-          .InputConfiguration(TextInputConfiguration{
-              .type = TextInputType::Text,
-              .capitalization = TextCapitalization::None,
-              .action = TextInputAction::Done,
-              .multiline = false,
-              .secure = false,
-              .autocorrect = false,
-          })
-          .OnChanged([value](const TextEditingValue &next) { value = next; })
-          .OnSubmitted([dialog, value, submit] {
-            dialog.Dismiss();
-            std::invoke(submit, value->text);
-          }));
-  return DialogPanel(
-      std::move(title),
-      {Text(std::move(message))
-           .Style(Label(13.0F, FontWeight::Regular, colors::secondary)),
-       field,
-       Row{
-           DialogAction(app::strings::common_cancel, colors::secondary,
-                        [dialog] { dialog.Dismiss(); }),
-           DialogAction(app::strings::common_confirm, colors::accent,
-                        [dialog, value, submit] {
-                          dialog.Dismiss();
-                          std::invoke(submit, value->text);
-                        }),
-       }
-           .With(MainAlign(MainAxisAlignment::End),
-                 CrossAlign(CrossAxisAlignment::Center),
-                 Padding(EdgeInsets{.top = 4.0F}))});
+  return LineInputDialog(dialog, std::move(title), std::move(message),
+                         StringVariant{std::string{}},
+                         std::move(initial_value), std::move(submit));
 }
 
 View ProjectRow(BottomSheetContext sheet, const domain::ProjectRecord &project,

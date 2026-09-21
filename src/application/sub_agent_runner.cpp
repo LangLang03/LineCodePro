@@ -18,6 +18,8 @@
 
 #include <huxerui/task.h>
 
+#include "application/agent_run_progress_codec.h"
+#include "application/utf8_text.h"
 #include "domain/prompt_renderer.h"
 #include "infrastructure/archive_json.h"
 
@@ -61,9 +63,10 @@ std::string Base36(std::uint64_t value) {
 // Legacy `AgentResultRecord.previewFrom` / `clampPreview` (lines 203-219).
 std::string PreviewFrom(std::string_view output) {
   const auto trimmed = Trim(output);
-  if (trimmed.size() <= kAgentPreviewMaxCharacters)
+  if (utf8::Utf16CodeUnitLength(trimmed) <= kAgentPreviewMaxCharacters)
     return trimmed;
-  return trimmed.substr(0, kAgentPreviewMaxCharacters);
+  return trimmed.substr(
+      0U, utf8::PrefixBytesForUtf16Units(trimmed, kAgentPreviewMaxCharacters));
 }
 
 // Legacy `PromptTemplateRepository.ID_*` prompt ids.
@@ -77,43 +80,11 @@ constexpr std::string_view kAgentRoleExploreLocalTemplateId =
 constexpr std::string_view kAgentRoleCodingLocalTemplateId =
     "agentRoleCodingLocal";
 
-// Registry group ids that carry the legacy per-tool `ToolCategory` split.
-constexpr std::string_view kFileOpsGroupId = "file_ops";
-constexpr std::string_view kImageGroupId = "image";
-constexpr std::string_view kWebSearchGroupId = "web_search";
-
-// Legacy `FileReadTool` / `GlobTool` / `ListDirectoryTool` report READ while
-// the other `file_ops` members report WRITE.
-constexpr std::array<std::string_view, 3> kReadOnlyFileToolNames{
-    "file_read", "glob", "list_dir"};
-// Legacy `ImageUnderstandingTool` reports READ, `ImageGenerationTool` GENERATE.
-constexpr std::string_view kImageUnderstandingToolName = "image_understanding";
-
-// Maps `RegisteredTool::category` back onto the legacy per-tool category:
-//   file_read / glob / list_dir          -> READ
-//   file_write / file_edit / file_delete -> WRITE
-//   image_understanding                  -> READ
-//   image_generation                     -> GENERATE
-//   web_search                           -> READ
-//   todo / memory / shell / mcp / agent / unknown -> SYSTEM
-class GroupAgentToolAccessPolicy final : public AgentToolAccessPolicy {
+class MetadataAgentToolAccessPolicy final : public AgentToolAccessPolicy {
 public:
   [[nodiscard]] AgentToolCategory
   Classify(const RegisteredTool &tool) const override {
-    if (tool.category == kFileOpsGroupId) {
-      return std::ranges::contains(kReadOnlyFileToolNames,
-                                   std::string_view{tool.name})
-                 ? AgentToolCategory::read
-                 : AgentToolCategory::write;
-    }
-    if (tool.category == kImageGroupId) {
-      return tool.name == kImageUnderstandingToolName
-                 ? AgentToolCategory::read
-                 : AgentToolCategory::generate;
-    }
-    if (tool.category == kWebSearchGroupId)
-      return AgentToolCategory::read;
-    return AgentToolCategory::system;
+    return tool.agent_category;
   }
 };
 
@@ -215,7 +186,7 @@ std::string ToolsContext(std::span<const CompletionTool> tools,
 // Legacy `FileToolPathPolicy.resolve`: a relative argument is resolved against
 // the workspace, and the result is compared without touching the filesystem.
 std::filesystem::path ResolveWorkspacePath(std::string_view workspace_path,
-                                          std::string_view path) {
+                                           std::string_view path) {
   const std::filesystem::path value{std::string{path}};
   if (value.is_absolute())
     return value.lexically_normal();
@@ -233,9 +204,8 @@ bool PathInside(const std::filesystem::path &root,
     return false;
   if (relative == ".")
     return true;
-  return std::ranges::none_of(relative, [](const std::filesystem::path &part) {
-    return part == "..";
-  });
+  return std::ranges::none_of(
+      relative, [](const std::filesystem::path &part) { return part == ".."; });
 }
 
 // Legacy `validateAgentWriteScope` read `file_path` out of the tool arguments.
@@ -262,9 +232,7 @@ public:
   explicit LevelPendingGuard(
       std::shared_ptr<std::atomic<std::size_t>> pending) noexcept
       : pending_(std::move(pending)) {}
-  ~LevelPendingGuard() {
-    pending_->fetch_sub(1, std::memory_order_acq_rel);
-  }
+  ~LevelPendingGuard() { pending_->fetch_sub(1, std::memory_order_acq_rel); }
 
   LevelPendingGuard(const LevelPendingGuard &) = delete;
   LevelPendingGuard &operator=(const LevelPendingGuard &) = delete;
@@ -275,9 +243,29 @@ private:
   std::shared_ptr<std::atomic<std::size_t>> pending_;
 };
 
-std::string_view TemplateText(
-    const std::unordered_map<std::string, std::string> &templates,
-    std::string_view id, const PromptTemplateRepository &repository) {
+// Pipeline stages are launched as independent TaskScope children. Destroying
+// the parent coroutine (the UI stop path) does not implicitly destroy those
+// siblings, so the parent owns a cooperative-cancellation guard for them.
+class PipelineCancellationGuard final {
+public:
+  explicit PipelineCancellationGuard(
+      std::shared_ptr<AgentRunContext> context) noexcept
+      : context_(std::move(context)) {}
+  ~PipelineCancellationGuard() { context_->RequestStop(); }
+
+  PipelineCancellationGuard(const PipelineCancellationGuard &) = delete;
+  PipelineCancellationGuard &
+  operator=(const PipelineCancellationGuard &) = delete;
+  PipelineCancellationGuard(PipelineCancellationGuard &&) = delete;
+  PipelineCancellationGuard &operator=(PipelineCancellationGuard &&) = delete;
+
+private:
+  std::shared_ptr<AgentRunContext> context_;
+};
+
+std::string_view
+TemplateText(const std::unordered_map<std::string, std::string> &templates,
+             std::string_view id, const PromptTemplateRepository &repository) {
   const auto found = templates.find(std::string{id});
   if (found != templates.end())
     return found->second;
@@ -290,6 +278,13 @@ std::string AgentTimeoutMessage(std::string_view last_output) {
   return "Agent 达到总时长预算 " +
          std::to_string(kAgentTotalBudgetMillis / 60000LL) +
          " 分钟，最后输出：\n" + std::string{last_output};
+}
+
+void AdvanceToolCall(domain::AgentToolCallSnapshot &call,
+                     const domain::AgentToolCallStatus status) {
+  call.status = status;
+  if (call.status_history.empty() || call.status_history.back() != status)
+    call.status_history.push_back(status);
 }
 
 } // namespace
@@ -307,7 +302,7 @@ std::vector<AgentToolCategory> AgentAllowedCategories(std::string_view type) {
 
 std::shared_ptr<const AgentToolAccessPolicy> DefaultAgentToolAccessPolicy() {
   static const std::shared_ptr<const AgentToolAccessPolicy> policy =
-      std::make_shared<const GroupAgentToolAccessPolicy>();
+      std::make_shared<const MetadataAgentToolAccessPolicy>();
   return policy;
 }
 
@@ -321,22 +316,28 @@ std::span<const std::string_view> AgentExcludedToolNames() noexcept {
 bool IsAgentToolAllowed(const RegisteredTool &tool, std::string_view type,
                         std::span<const std::string> custom_tool_names,
                         std::span<const std::string> custom_mcp_ids,
-                        const AgentToolAccessPolicy &access) {
-  // Legacy `isAgentToolAllowed` (lines 812-839). The remote-execution and
-  // delete-needs-confirmation shortcuts are still not ported: the port has no
-  // execution mode on this path and `RegisteredTool` carries neither a
-  // confirmation flag nor a display category.
+                        const AgentToolAccessPolicy &access,
+                        const bool remote_mode) {
+  // Legacy `isAgentToolAllowed` (lines 812-839). Delete confirmation metadata
+  // remains owned by the permission service rather than duplicated here.
   if (std::ranges::contains(AgentExcludedToolNames(),
                             std::string_view{tool.name}))
     return false;
   // Legacy line 817: an MCP tool the custom Agent selected is allowed before
   // the custom-name filter, so selecting MCP tools does not exclude them.
   if (!custom_mcp_ids.empty() &&
-      std::ranges::contains(custom_mcp_ids, tool.name))
+      std::ranges::any_of(tool.agent_scope_ids, [&](const auto &scope_id) {
+        return std::ranges::contains(custom_mcp_ids, scope_id);
+      }))
     return true;
   if (!custom_tool_names.empty() &&
       !std::ranges::contains(custom_tool_names, tool.name))
     return false;
+  // Mode-aware registries already publish only tools valid for the active
+  // backend. Legacy allowed every remaining remote tool, including the shell
+  // for an explore Agent.
+  if (remote_mode)
+    return true;
   const auto allowed = AgentAllowedCategories(type);
   const auto category = access.Classify(tool);
   // Legacy `isRestrictedToRead` (lines 831-834): explore sees READ tools only,
@@ -358,7 +359,8 @@ std::string AgentWorkspacePrompt(std::string_view workspace_path,
     path = remote_mode ? "~" : ".";
   const std::string mode_hint =
       remote_mode
-          ? "\n当前是 SSH 远端或终端提供者模式：所有命令作用于远端主机上的工作区，"
+          ? "\n当前是 SSH "
+            "远端或终端提供者模式：所有命令作用于远端主机上的工作区，"
             "文件路径按远端约定解析。"
           : "\n所有文件路径默认相对此工作区。不要访问未授权路径，不要读取 API "
             "key、token、密码等敏感数据。";
@@ -376,8 +378,9 @@ std::string AgentScopePrompt(std::string_view type,
   if (IsExploreAgentType(type)) {
     builder += "这是 explore Agent，write_scope 必须视为无效，禁止任何写入。";
   } else if (write_scope.empty()) {
-    builder += "没有授权写入范围。禁止写入文件；如果任务需要修改文件，直接说明需要"
-               "主模型重新分配 write_scope。";
+    builder +=
+        "没有授权写入范围。禁止写入文件；如果任务需要修改文件，直接说明需要"
+        "主模型重新分配 write_scope。";
   } else {
     builder += "只能写入 write_scope 覆盖的路径。不要修改其它文件，不要把多个 "
                "Agent 的职责混到同一个文件里。";
@@ -512,7 +515,7 @@ SubAgentRunner::SubAgentRunner(
     std::shared_ptr<SubAgentResultSink> results,
     std::shared_ptr<AgentExtensionPromptSource> extensions,
     std::shared_ptr<SubAgentBackgroundLauncher> background,
-    SubAgentEnvironment environment,
+    std::shared_ptr<SubAgentEnvironmentProvider> environment,
     std::shared_ptr<const AgentToolAccessPolicy> tool_access,
     std::shared_ptr<ToolPermissionService> permissions,
     std::shared_ptr<ToolReviewBroker> reviews)
@@ -523,11 +526,33 @@ SubAgentRunner::SubAgentRunner(
       tool_access_(tool_access ? std::move(tool_access)
                                : DefaultAgentToolAccessPolicy()),
       permissions_(std::move(permissions)), reviews_(std::move(reviews)),
-      environment_(std::move(environment)) {
+      environment_(
+          environment ? std::move(environment)
+                      : std::make_shared<StaticSubAgentEnvironmentProvider>()) {
   if (!completion_ || !tools_ || !prompt_templates_ || !models_)
     throw std::invalid_argument(
         "SubAgentRunner requires a completion gateway, a tool registry, the "
         "prompt templates and the model store");
+}
+
+std::shared_ptr<AgentRunContext>
+SubAgentRunner::StartRun(const int tool_call_limit) {
+  auto context = std::make_shared<AgentRunContext>(tool_call_limit);
+  std::scoped_lock lock{active_runs_mutex_};
+  std::erase_if(active_runs_, [](const auto &run) { return run.expired(); });
+  active_runs_.push_back(context);
+  return context;
+}
+
+void SubAgentRunner::RequestStop() noexcept {
+  std::scoped_lock lock{active_runs_mutex_};
+  std::erase_if(active_runs_, [](const auto &run) {
+    const auto active = run.lock();
+    if (!active)
+      return true;
+    active->RequestStop();
+    return false;
+  });
 }
 
 huxerui::Task<std::optional<domain::ModelConfig>>
@@ -556,21 +581,24 @@ huxerui::Task<SubAgentRunner::TemplateMap> SubAgentRunner::LoadTemplates() {
   co_return templates;
 }
 
-huxerui::Task<std::string> SubAgentRunner::BuildSystemPrompt(
-    const AgentRunInputs &inputs, std::span<const CompletionTool> tools,
-    const TemplateMap &templates) {
+huxerui::Task<std::string>
+SubAgentRunner::BuildSystemPrompt(const AgentRunInputs &inputs,
+                                  std::span<const CompletionTool> tools,
+                                  const TemplateMap &templates) {
   // Legacy `AgentPromptBuilder.agentSystemPrompt` (lines 57-77).
-  const auto role_id = RoleTemplateId(inputs.type, environment_.remote_mode);
+  const auto role_id =
+      RoleTemplateId(inputs.type, inputs.environment.remote_mode);
   auto role_prompt =
       std::string{TemplateText(templates, role_id, *prompt_templates_)};
   if (Trim(role_prompt).empty())
-    role_prompt = FallbackRolePrompt(inputs.type, environment_.remote_mode);
+    role_prompt =
+        FallbackRolePrompt(inputs.type, inputs.environment.remote_mode);
   const auto task_description = inputs.description;
-  const auto workspace_context =
-      AgentWorkspacePrompt(inputs.workspace_path, environment_.remote_mode);
+  const auto workspace_context = AgentWorkspacePrompt(
+      inputs.workspace_path, inputs.environment.remote_mode);
   const auto scope_context =
       AgentScopePrompt(inputs.type, inputs.read_scope, inputs.write_scope,
-                       environment_.remote_mode);
+                       inputs.environment.remote_mode);
   std::string extensions_context;
   if (extensions_) {
     // The only caller of `SkillRepository::BuildExtensionPrompt`, so installed
@@ -579,7 +607,8 @@ huxerui::Task<std::string> SubAgentRunner::BuildSystemPrompt(
     if (built)
       extensions_context = Trim(*built);
   }
-  const auto tools_context = ToolsContext(tools, environment_.permission_mode);
+  const auto tools_context =
+      ToolsContext(tools, inputs.environment.permission_mode);
   const std::array<domain::PromptVariable, 6> variables{{
       {"ROLE_PROMPT", role_prompt},
       {"TASK_DESCRIPTION", task_description},
@@ -593,16 +622,18 @@ huxerui::Task<std::string> SubAgentRunner::BuildSystemPrompt(
       variables);
 }
 
-std::optional<std::string> SubAgentRunner::ValidateWriteScope(
-    const CompletionToolCall &call, AgentToolCategory category,
-    const AgentRunInputs &inputs) const {
+std::optional<std::string>
+SubAgentRunner::ValidateWriteScope(const CompletionToolCall &call,
+                                   AgentToolCategory category,
+                                   const AgentRunInputs &inputs) const {
   // Legacy `validateAgentWriteScope` (lines 1010-1054).
   if (category != AgentToolCategory::write)
     return std::nullopt;
   if (IsExploreAgentType(inputs.type))
     return "explore Agent 不允许写入文件。";
   if (inputs.write_scope.empty())
-    return "Agent 未声明 write_scope，禁止写入文件。请让主模型重新分配明确的写入"
+    return "Agent 未声明 "
+           "write_scope，禁止写入文件。请让主模型重新分配明确的写入"
            "范围。";
   const auto file_path = FilePathArgument(call.arguments_json);
   if (!file_path || file_path->empty())
@@ -619,9 +650,10 @@ std::optional<std::string> SubAgentRunner::ValidateWriteScope(
          "\n请停止写入并让主模型重新分配。";
 }
 
-huxerui::Task<CompletionToolResult> SubAgentRunner::ExecuteToolCall(
-    const CompletionToolCall &call, const AgentRunInputs &inputs,
-    std::span<const RegisteredTool> tools) {
+huxerui::Task<CompletionToolResult>
+SubAgentRunner::ExecuteToolCall(const CompletionToolCall &call,
+                                const AgentRunInputs &inputs,
+                                std::span<const RegisteredTool> tools) {
   // Legacy `executeAgentToolCall` (lines 901-935).
   CompletionToolResult result{.call_id = call.id,
                               .name = call.name,
@@ -651,7 +683,7 @@ huxerui::Task<CompletionToolResult> SubAgentRunner::ExecuteToolCall(
   // write files that the main agent would have had to ask about.
   if (permissions_) {
     auto evaluated = co_await permissions_->Evaluate(
-        *found, call, environment_.permission_scope);
+        *found, call, inputs.environment.permission_scope);
     if (!evaluated) {
       result.content = evaluated.error().message;
       result.error = true;
@@ -669,8 +701,8 @@ huxerui::Task<CompletionToolResult> SubAgentRunner::ExecuteToolCall(
               ? co_await reviews_->Review(CompletionObserver::ToolReviewRequest{
                     .call = call,
                     .can_allow_always =
-                        found->permanent_grant_supported &&
-                        !environment_.permission_scope.empty(),
+                        found->SupportsPermanentGrant() &&
+                        !inputs.environment.permission_scope.empty(),
                 })
               : CompletionObserver::ToolReviewDecision::reject;
       if (decision == CompletionObserver::ToolReviewDecision::reject) {
@@ -680,7 +712,7 @@ huxerui::Task<CompletionToolResult> SubAgentRunner::ExecuteToolCall(
       }
       if (decision == CompletionObserver::ToolReviewDecision::allow_always) {
         static_cast<void>(co_await permissions_->RememberPermanentGrant(
-            *found, call, environment_.permission_scope));
+            *found, call, inputs.environment.permission_scope));
       }
     }
   }
@@ -696,25 +728,52 @@ huxerui::Task<CompletionToolResult> SubAgentRunner::ExecuteToolCall(
   co_return result;
 }
 
-huxerui::Task<AgentRunResult> SubAgentRunner::RunLoop(AgentRunInputs inputs) {
+huxerui::Task<AgentRunResult> SubAgentRunner::RunLoop(
+    AgentRunInputs inputs,
+    std::function<void(const domain::AgentExecutionSnapshot &)> publish) {
   // Legacy `runAgentLoop` (lines 638-796).
   auto tool_call_count = 0;
   std::string last_output;
+  domain::AgentExecutionSnapshot progress{
+      .id = inputs.agent_id,
+      .type = inputs.type,
+      .description = inputs.description,
+      .dependencies = inputs.dependencies,
+      .status = domain::AgentExecutionStatus::running,
+      .thinking = {},
+      .output = {},
+      .tool_calls = {},
+      .error = false,
+  };
+  const auto publish_progress = [&] {
+    if (publish)
+      publish(progress);
+  };
+  const auto finish = [&](std::string output, const bool error) {
+    progress.status = error ? domain::AgentExecutionStatus::error
+                            : domain::AgentExecutionStatus::done;
+    progress.output = output;
+    progress.error = error;
+    publish_progress();
+    return AgentRunResult{.output = std::move(output),
+                          .tool_call_count = tool_call_count,
+                          .error = error,
+                          .progress = progress};
+  };
+  publish_progress();
   try {
     const auto templates = co_await LoadTemplates();
     auto refreshed = co_await tools_->Refresh();
     if (!refreshed) {
-      co_return AgentRunResult{
-          .output = "Agent 执行失败：\n" + refreshed.error().message,
-          .tool_call_count = tool_call_count,
-          .error = true};
+      co_return finish("Agent 执行失败：\n" + refreshed.error().message, true);
     }
     // Legacy `agentTools(type, ...)` + `toolNames(agentTools)`: the visible set
     // is frozen for the whole loop and doubles as the allow list.
     std::vector<RegisteredTool> agent_tools;
     for (const auto &tool : tools_->Tools()) {
       if (IsAgentToolAllowed(tool, inputs.type, inputs.custom_tool_names,
-                             inputs.custom_mcp_ids, *tool_access_))
+                             inputs.custom_mcp_ids, *tool_access_,
+                             inputs.environment.remote_mode))
         agent_tools.push_back(tool);
     }
     std::vector<CompletionTool> advertised_tools;
@@ -740,22 +799,15 @@ huxerui::Task<AgentRunResult> SubAgentRunner::RunLoop(AgentRunInputs inputs) {
     const auto started_at = NowMillis();
     for (;;) {
       // Legacy lines 667-674: cancellation wins over the budget check.
-      if (stop_requested()) {
-        co_return AgentRunResult{
-            .output = std::string{kAgentTerminatedMessage},
-            .tool_call_count = tool_call_count,
-            .error = true};
+      if (inputs.context->stop_requested()) {
+        co_return finish(std::string{kAgentTerminatedMessage}, true);
       }
-      if (budget_.Exhausted()) {
-        co_return AgentRunResult{
-            .output = std::string{kAgentToolLimitMessage} + "\n" + last_output,
-            .tool_call_count = tool_call_count,
-            .error = true};
+      if (inputs.context->budget().Exhausted()) {
+        co_return finish(
+            std::string{kAgentToolLimitMessage} + "\n" + last_output, true);
       }
       if (NowMillis() - started_at > kAgentTotalBudgetMillis) {
-        co_return AgentRunResult{.output = AgentTimeoutMessage(last_output),
-                                 .tool_call_count = tool_call_count,
-                                 .error = true};
+        co_return finish(AgentTimeoutMessage(last_output), true);
       }
       CompletionRequest request;
       request.model = inputs.model;
@@ -767,68 +819,81 @@ huxerui::Task<AgentRunResult> SubAgentRunner::RunLoop(AgentRunInputs inputs) {
       // fed the legacy `AgentProgressSession`, which the result registry now
       // covers.
       request.stream = false;
-      request.permission_scope = inputs.workspace_path;
+      request.permission_scope = inputs.environment.permission_scope;
       auto response = co_await completion_->Complete(std::move(request),
                                                      CompletionObserver{});
       if (!response) {
         // Legacy lines 780-786.
-        co_return AgentRunResult{
-            .output = "Agent 模型通信失败：\n" + response.error().message,
-            .tool_call_count = tool_call_count,
-            .error = true};
+        co_return finish("Agent 模型通信失败：\n" + response.error().message,
+                         true);
       }
-      if (stop_requested()) {
-        co_return AgentRunResult{
-            .output = std::string{kAgentTerminatedMessage},
-            .tool_call_count = tool_call_count,
-            .error = true};
+      if (inputs.context->stop_requested()) {
+        co_return finish(std::string{kAgentTerminatedMessage}, true);
       }
       const auto output = response->text;
+      progress.output = output;
+      if (!Trim(response->reasoning_content).empty())
+        progress.thinking = response->reasoning_content;
       // Legacy lines 738-744: only non-empty text becomes the final answer.
       if (!Trim(output).empty())
         last_output = output;
       if (response->tool_calls.empty()) {
         const auto trimmed = Trim(last_output);
-        co_return AgentRunResult{
-            .output = trimmed.empty() ? "Agent 没有返回文本。" : trimmed,
-            .tool_call_count = tool_call_count,
-            .error = false};
+        co_return finish(trimmed.empty() ? "Agent 没有返回文本。" : trimmed,
+                         false);
       }
       auto calls = response->tool_calls;
-      messages.push_back(CompletionMessage::Assistant(
-          output, std::move(response->tool_calls),
-          std::move(response->reasoning_content)));
+      const auto first_call = progress.tool_calls.size();
+      progress.tool_calls.reserve(first_call + calls.size());
       for (const auto &call : calls) {
+        progress.tool_calls.push_back(domain::AgentToolCallSnapshot{
+            .id = call.id,
+            .name = call.name,
+            .arguments_json = call.arguments_json,
+            .status = domain::AgentToolCallStatus::requested,
+            .status_history = {domain::AgentToolCallStatus::requested},
+            .result = std::nullopt,
+        });
+      }
+      publish_progress();
+      messages.push_back(
+          CompletionMessage::Assistant(output, std::move(response->tool_calls),
+                                       std::move(response->reasoning_content)));
+      for (std::size_t index = 0; index < calls.size(); ++index) {
+        const auto &call = calls[index];
+        auto &call_progress = progress.tool_calls[first_call + index];
         // Legacy lines 748-764: cancel and the shared budget are re-checked
         // before every single tool call of the batch.
-        if (stop_requested()) {
-          co_return AgentRunResult{
-              .output = std::string{kAgentTerminatedMessage},
-              .tool_call_count = tool_call_count,
-              .error = true};
+        if (inputs.context->stop_requested()) {
+          co_return finish(std::string{kAgentTerminatedMessage}, true);
         }
-        if (budget_.Exhausted()) {
-          co_return AgentRunResult{
-              .output = std::string{kAgentToolLimitMessage} + "\n" + last_output,
-              .tool_call_count = tool_call_count,
-              .error = true};
+        if (inputs.context->budget().Exhausted()) {
+          co_return finish(
+              std::string{kAgentToolLimitMessage} + "\n" + last_output, true);
         }
+        AdvanceToolCall(call_progress, domain::AgentToolCallStatus::running);
+        publish_progress();
         auto tool_result = co_await ExecuteToolCall(call, inputs, agent_tools);
         ++tool_call_count;
-        budget_.Accrue(1);
+        inputs.context->budget().Accrue(1);
+        call_progress.result = domain::AgentToolCallResultSnapshot{
+            .content = tool_result.content,
+            .error = tool_result.error,
+            .diff_id = tool_result.diff_id,
+        };
+        AdvanceToolCall(call_progress,
+                        tool_result.error
+                            ? domain::AgentToolCallStatus::failed
+                            : domain::AgentToolCallStatus::completed);
+        publish_progress();
         messages.push_back(CompletionMessage::Tool(std::move(tool_result)));
       }
     }
   } catch (const std::exception &error) {
     // Legacy lines 787-794.
-    co_return AgentRunResult{
-        .output = "Agent 执行失败：\n" + std::string{error.what()},
-        .tool_call_count = tool_call_count,
-        .error = true};
+    co_return finish("Agent 执行失败：\n" + std::string{error.what()}, true);
   } catch (...) {
-    co_return AgentRunResult{.output = "Agent 执行失败：\n",
-                             .tool_call_count = tool_call_count,
-                             .error = true};
+    co_return finish("Agent 执行失败：\n", true);
   }
 }
 
@@ -841,15 +906,33 @@ AgentRunResult SubAgentRunner::FinishRecord(SubAgentRunRecord record,
   record.tool_call_count = result.tool_call_count;
   record.error = result.error;
   record.status = result.error ? "error" : "done";
+  record.progress = result.progress;
   if (!results_)
     return result;
   results_->Record(record);
   return AgentRunResult{.output = results_->ToCompactRef(record),
                         .tool_call_count = result.tool_call_count,
-                        .error = result.error};
+                        .error = result.error,
+                        .progress = std::move(result.progress)};
 }
 
-huxerui::Task<AgentRunResult> SubAgentRunner::RunAgent(AgentRunRequest request) {
+void SubAgentRunner::RecordProgress(
+    const SubAgentRunRecord &record,
+    const domain::AgentExecutionSnapshot &progress) const {
+  if (!results_)
+    return;
+  auto next = record;
+  next.status = std::string{AgentExecutionStatusName(progress.status)};
+  next.preview = PreviewFrom(progress.output);
+  next.output = progress.output;
+  next.tool_call_count = static_cast<int>(progress.tool_calls.size());
+  next.error = progress.error;
+  next.progress = progress;
+  results_->Record(std::move(next));
+}
+
+huxerui::Task<AgentRunResult>
+SubAgentRunner::RunAgent(AgentRunRequest request) {
   // Legacy `runAgentTool` (lines 183-272).
   const auto type = NormalizeAgentType(request.type);
   if (request.async && !IsExploreAgentType(type)) {
@@ -859,6 +942,16 @@ huxerui::Task<AgentRunResult> SubAgentRunner::RunAgent(AgentRunRequest request) 
         .tool_call_count = 0,
         .error = true};
   }
+  // Register before the first suspension so cancellation also covers model
+  // and environment resolution.
+  auto context = StartRun(0);
+  auto environment = co_await environment_->Snapshot();
+  if (!environment) {
+    co_return AgentRunResult{.output = "Agent 环境不可用：\n" +
+                                       environment.error().message,
+                             .tool_call_count = 0,
+                             .error = true};
+  }
   auto model = co_await ResolveSelectedModel();
   if (!model) {
     // Legacy lines 192-194.
@@ -866,14 +959,13 @@ huxerui::Task<AgentRunResult> SubAgentRunner::RunAgent(AgentRunRequest request) 
                              .tool_call_count = 0,
                              .error = true};
   }
-  if (stop_requested()) {
+  context->budget().SetLimit(model->tool_call_limit);
+  if (context->stop_requested()) {
     // Legacy lines 195-197.
     co_return AgentRunResult{.output = std::string{kAgentTerminatedMessage},
                              .tool_call_count = 0,
                              .error = true};
   }
-  budget_.SetLimit(model->tool_call_limit);
-
   SubAgentRunRecord record;
   record.agent_id = results_ ? results_->AllocateId() : std::string{};
   record.tool_call_id = request.tool_call_id;
@@ -885,6 +977,7 @@ huxerui::Task<AgentRunResult> SubAgentRunner::RunAgent(AgentRunRequest request) 
     results_->Record(record);
 
   AgentRunInputs inputs;
+  inputs.agent_id = record.agent_id;
   inputs.type = type;
   inputs.description = request.description;
   inputs.prompt = request.prompt;
@@ -892,8 +985,10 @@ huxerui::Task<AgentRunResult> SubAgentRunner::RunAgent(AgentRunRequest request) 
   inputs.write_scope = request.write_scope;
   inputs.custom_tool_names = request.custom_tool_names;
   inputs.custom_mcp_ids = request.custom_mcp_ids;
-  inputs.workspace_path = environment_.workspace_path;
+  inputs.workspace_path = environment->workspace_path;
+  inputs.environment = std::move(*environment);
   inputs.model = *model;
+  inputs.context = std::move(context);
 
   if (request.async) {
     // Legacy lines 227-254: publish the running compact ref, then keep the
@@ -903,46 +998,67 @@ huxerui::Task<AgentRunResult> SubAgentRunner::RunAgent(AgentRunRequest request) 
     if (background_) {
       background_->Launch([self = shared_from_this(),
                            inputs = std::move(inputs),
-                           record]() -> huxerui::Task<void> {
+                           record]() mutable -> huxerui::Task<void> {
         // The background record is the only observable result of this task.
-        static_cast<void>(
-            self->FinishRecord(record, co_await self->RunLoop(std::move(inputs))));
+        auto result = co_await self->RunLoop(
+            std::move(inputs), [self, record](const auto &progress) {
+              self->RecordProgress(record, progress);
+            });
+        static_cast<void>(self->FinishRecord(record, std::move(result)));
         co_return;
       });
     } else {
       // Legacy `Host.runInBackground` default executed the runnable inline.
-      static_cast<void>(FinishRecord(record, co_await RunLoop(std::move(inputs))));
+      auto result = co_await RunLoop(std::move(inputs),
+                                     [this, record](const auto &progress) {
+                                       RecordProgress(record, progress);
+                                     });
+      static_cast<void>(FinishRecord(record, std::move(result)));
     }
-    co_return AgentRunResult{
-        .output = compact, .tool_call_count = 0, .error = false};
+    co_return AgentRunResult{.output = compact,
+                             .tool_call_count = 0,
+                             .error = false,
+                             .progress = {}};
   }
-  co_return FinishRecord(record, co_await RunLoop(std::move(inputs)));
+  auto result =
+      co_await RunLoop(std::move(inputs), [this, record](const auto &progress) {
+        RecordProgress(record, progress);
+      });
+  co_return FinishRecord(record, std::move(result));
 }
 
 huxerui::Task<AgentRunResult> SubAgentRunner::RunPipelineAgent(
     const domain::PipelineAgent &agent, const AgentRunResults &completed,
-    const domain::ModelConfig &model, std::string_view workspace_path) {
+    const domain::ModelConfig &model, SubAgentEnvironment environment,
+    std::shared_ptr<AgentRunContext> context) {
   // Legacy `runOnePipelineAgent` (lines 554-597).
-  if (stop_requested()) {
+  if (context->stop_requested()) {
     co_return AgentRunResult{.output = std::string{kAgentTerminatedMessage},
                              .tool_call_count = 0,
                              .error = true};
   }
   AgentRunInputs inputs;
+  inputs.agent_id = agent.id;
   inputs.type = NormalizeAgentType(agent.type);
   inputs.description = agent.description;
   inputs.prompt = agent.prompt + AgentDependencyOutputContext(agent, completed);
   inputs.read_scope = agent.read_scope;
   inputs.write_scope = agent.write_scope;
-  inputs.workspace_path = std::string{workspace_path};
+  inputs.dependencies = agent.dependencies;
+  inputs.workspace_path = environment.workspace_path;
+  inputs.environment = std::move(environment);
   inputs.model = model;
+  inputs.context = std::move(context);
 
   SubAgentRunRecord record;
   record.agent_id = agent.id;
   record.type = inputs.type;
   record.description = agent.description;
 
-  auto result = co_await RunLoop(std::move(inputs));
+  auto result =
+      co_await RunLoop(std::move(inputs), [this, record](const auto &progress) {
+        RecordProgress(record, progress);
+      });
   // The port records every pipeline stage under its own id so `agent_output`
   // can read one stage back without the pipeline summary.
   record.output = result.output;
@@ -950,6 +1066,7 @@ huxerui::Task<AgentRunResult> SubAgentRunner::RunPipelineAgent(
   record.tool_call_count = result.tool_call_count;
   record.error = result.error;
   record.status = result.error ? "error" : "done";
+  record.progress = result.progress;
   if (results_ && !record.agent_id.empty())
     results_->Record(record);
   co_return result;
@@ -957,19 +1074,21 @@ huxerui::Task<AgentRunResult> SubAgentRunner::RunPipelineAgent(
 
 huxerui::Task<void> SubAgentRunner::RunLevelAgent(
     domain::PipelineAgent agent, domain::ModelConfig model,
-    std::string workspace_path, AgentRunResults completed,
+    SubAgentEnvironment environment, AgentRunResults completed,
     std::shared_ptr<std::vector<std::optional<AgentRunResult>>> slots,
-    std::shared_ptr<std::atomic<std::size_t>> pending, std::size_t index) {
+    std::shared_ptr<std::atomic<std::size_t>> pending, std::size_t index,
+    std::shared_ptr<AgentRunContext> context) {
   const LevelPendingGuard guard{pending};
-  (*slots)[index] =
-      co_await RunPipelineAgent(agent, completed, model, workspace_path);
+  (*slots)[index] = co_await RunPipelineAgent(
+      agent, completed, model, std::move(environment), std::move(context));
 }
 
 huxerui::Task<std::vector<std::pair<domain::PipelineAgent, AgentRunResult>>>
 SubAgentRunner::RunLevel(const std::vector<domain::PipelineAgent> &level,
                          const AgentRunResults &completed,
                          const domain::ModelConfig &model,
-                         std::string_view workspace_path) {
+                         SubAgentEnvironment environment,
+                         std::shared_ptr<AgentRunContext> context) {
   std::vector<std::pair<domain::PipelineAgent, AgentRunResult>> outcomes;
   outcomes.reserve(level.size());
   if (level.empty())
@@ -982,33 +1101,32 @@ SubAgentRunner::RunLevel(const std::vector<domain::PipelineAgent> &level,
   // observable. Without a launcher the level runs sequentially in input order.
   if (!background_ || level.size() == 1U) {
     for (const auto &agent : level) {
-      outcomes.emplace_back(
-          agent,
-          co_await RunPipelineAgent(agent, completed, model, workspace_path));
+      outcomes.emplace_back(agent,
+                            co_await RunPipelineAgent(agent, completed, model,
+                                                      environment, context));
     }
     co_return outcomes;
   }
   const auto slot_count = level.size();
-  auto slots = std::make_shared<std::vector<std::optional<AgentRunResult>>>(
-      slot_count);
+  auto slots =
+      std::make_shared<std::vector<std::optional<AgentRunResult>>>(slot_count);
   auto pending = std::make_shared<std::atomic<std::size_t>>(slot_count);
   for (std::size_t index = 0; index < slot_count; ++index) {
     background_->Launch([self = shared_from_this(), agent = level[index], model,
-                         workspace = std::string{workspace_path}, completed,
-                         slots, pending,
-                         index]() -> huxerui::Task<void> {
-      co_await self->RunLevelAgent(agent, model, workspace, completed, slots,
-                                   pending, index);
+                         environment, completed, slots, pending, index,
+                         context]() -> huxerui::Task<void> {
+      co_await self->RunLevelAgent(agent, model, environment, completed, slots,
+                                   pending, index, context);
     });
   }
   // Bounded by the legacy per-agent time budget so a lost child can never pin
   // the pipeline forever.
-  const auto deadline =
-      NowMillis() + kAgentTotalBudgetMillis * static_cast<std::int64_t>(slot_count);
+  const auto deadline = NowMillis() + kAgentTotalBudgetMillis *
+                                          static_cast<std::int64_t>(slot_count);
   while (pending->load(std::memory_order_acquire) != 0) {
     if (NowMillis() > deadline)
       break;
-    co_await huxerui::Delay(std::chrono::milliseconds{1});
+    co_await huxerui::Delay(std::chrono::milliseconds{16});
   }
   for (std::size_t index = 0; index < slot_count; ++index) {
     auto &slot = (*slots)[index];
@@ -1025,15 +1143,25 @@ SubAgentRunner::RunLevel(const std::vector<domain::PipelineAgent> &level,
 huxerui::Task<AgentRunResult>
 SubAgentRunner::RunAgentPipeline(AgentPipelineRunRequest request) {
   // Legacy `runAgentPipelineTool` (lines 314-437).
+  auto context = StartRun(0);
+  const PipelineCancellationGuard cancellation_guard{context};
   auto model = co_await ResolveSelectedModel();
   if (!model) {
-    co_return AgentRunResult{
-        .output = "当前没有可用模型，无法运行 Agent 流水线。",
-        .tool_call_count = 0,
-        .error = true};
+    co_return AgentRunResult{.output =
+                                 "当前没有可用模型，无法运行 Agent 流水线。",
+                             .tool_call_count = 0,
+                             .error = true};
   }
-  if (stop_requested()) {
+  context->budget().SetLimit(model->tool_call_limit);
+  if (context->stop_requested()) {
     co_return AgentRunResult{.output = std::string{kAgentTerminatedMessage},
+                             .tool_call_count = 0,
+                             .error = true};
+  }
+  auto environment = co_await environment_->Snapshot();
+  if (!environment) {
+    co_return AgentRunResult{.output = "Agent 环境不可用：\n" +
+                                       environment.error().message,
                              .tool_call_count = 0,
                              .error = true};
   }
@@ -1055,14 +1183,31 @@ SubAgentRunner::RunAgentPipeline(AgentPipelineRunRequest request) {
     co_return AgentRunResult{
         .output = std::move(message), .tool_call_count = 0, .error = true};
   }
-  budget_.SetLimit(model->tool_call_limit);
-
   const auto tool_call_id = request.tool_call_id;
   const auto agent_count = request.agents.size();
-  const auto finish = [this, &tool_call_id, agent_count](
-                          std::string summary, int tool_call_count,
-                          bool error) {
+  domain::AgentPipelineSnapshot pipeline_progress;
+  pipeline_progress.agents.reserve(agent_count);
+  for (const auto &agent : request.agents) {
+    pipeline_progress.agents.push_back(domain::AgentExecutionSnapshot{
+        .id = agent.id,
+        .type = NormalizeAgentType(agent.type),
+        .description = agent.description,
+        .dependencies = agent.dependencies,
+        .status = domain::AgentExecutionStatus::waiting,
+        .thinking = {},
+        .output = {},
+        .tool_calls = {},
+        .error = false,
+    });
+  }
+  const auto finish = [this, &tool_call_id, agent_count,
+                       &pipeline_progress](std::string summary,
+                                           int tool_call_count, bool error) {
     // Legacy `terminatePipeline` and the final compact ref (lines 417-458).
+    pipeline_progress.status = error ? domain::AgentExecutionStatus::error
+                                     : domain::AgentExecutionStatus::done;
+    pipeline_progress.summary = summary;
+    pipeline_progress.error = error;
     SubAgentRunRecord record;
     record.agent_id = results_ ? results_->AllocateId() : std::string{};
     record.tool_call_id = tool_call_id;
@@ -1073,26 +1218,29 @@ SubAgentRunner::RunAgentPipeline(AgentPipelineRunRequest request) {
     record.tool_call_count = tool_call_count;
     record.error = error;
     record.status = error ? "error" : "done";
+    record.progress = pipeline_progress;
     if (!results_)
       return AgentRunResult{.output = std::move(summary),
                             .tool_call_count = tool_call_count,
-                            .error = error};
+                            .error = error,
+                            .progress = pipeline_progress};
     results_->Record(record);
     return AgentRunResult{.output = results_->ToCompactRef(record),
                           .tool_call_count = tool_call_count,
-                          .error = error};
+                          .error = error,
+                          .progress = pipeline_progress};
   };
 
   AgentRunResults results;
-  std::string summary = "Agent pipeline completed: " +
-                        std::to_string(agent_count) + " 个任务";
+  std::string summary =
+      "Agent pipeline completed: " + std::to_string(agent_count) + " 个任务";
   auto total_tool_calls = 0;
   bool has_error = false;
   const auto started_at = NowMillis();
   const auto pipeline_budget =
       kAgentTotalBudgetMillis * static_cast<std::int64_t>(agent_count);
   for (const auto &level : plan.levels) {
-    if (stop_requested()) {
+    if (context->stop_requested()) {
       // Legacy `terminatePipeline` (lines 439-458).
       co_return finish("Agent 流水线已终止。", total_tool_calls, true);
     }
@@ -1103,9 +1251,23 @@ SubAgentRunner::RunAgentPipeline(AgentPipelineRunRequest request) {
                        total_tool_calls, true);
     }
     auto outcomes =
-        co_await RunLevel(level, results, *model, environment_.workspace_path);
+        co_await RunLevel(level, results, *model, *environment, context);
     for (auto &[agent, result] : outcomes) {
       results.Put(agent.id, result);
+      const auto progress =
+          std::get_if<domain::AgentExecutionSnapshot>(&result.progress);
+      const auto state = std::ranges::find(pipeline_progress.agents, agent.id,
+                                           &domain::AgentExecutionSnapshot::id);
+      if (state != pipeline_progress.agents.end()) {
+        if (progress != nullptr) {
+          *state = *progress;
+        } else {
+          state->status = result.error ? domain::AgentExecutionStatus::error
+                                       : domain::AgentExecutionStatus::done;
+          state->output = result.output;
+          state->error = result.error;
+        }
+      }
       total_tool_calls += result.tool_call_count;
       has_error = has_error || result.error;
       summary += "\n\n## " + agent.id + " · " + agent.description + '\n' +

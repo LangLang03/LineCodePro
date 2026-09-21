@@ -48,8 +48,6 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation,
           .OnClick([navigation] { navigation.Pop(); })
           .With(Frame{.width = 36.0F, .height = 36.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                Semantics{.role = SemanticRole::Button,
-                          .label = app::strings::common_back},
                 Focusable(), PointerCursor(PointerCursorKind::Hand)),
       Stack{Text(app::strings::screen_storage_title)
                 .Style(Label(17.0F, FontWeight::Bold))}
@@ -59,8 +57,6 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation,
           .OnClick(std::move(refresh))
           .With(Frame{.width = 36.0F, .height = 36.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                Semantics{.role = SemanticRole::Button,
-                          .label = app::strings::common_refresh},
                 Focusable(), PointerCursor(PointerCursorKind::Hand)),
   }
       .With(Frame{.min_height = 60.0F},
@@ -177,11 +173,11 @@ Task<void> LoadStats(
 
   return Column{
       Header(navigation, std::move(refresh)),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(Column(std::move(content))
                      .With(Padding(EdgeInsets{.top = 16.0F,
                                               .right = 16.0F,
-                                              .bottom = 100.0F,
+                                              .bottom = 108.0F,
                                               .left = 16.0F}),
                            CrossAlign(CrossAxisAlignment::Stretch)))
           .ScrollAxis(Axis::Vertical)

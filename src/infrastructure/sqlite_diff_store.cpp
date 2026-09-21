@@ -193,23 +193,35 @@ Result<void> EnsureDiffTable(Transaction &transaction) {
 SqliteDiffStore::SqliteDiffStore(huxerui::File database_file)
     : database_file_(std::move(database_file)) {}
 
-huxerui::Task<std::optional<Database>> SqliteDiffStore::Open() {
+namespace {
+
+application::DiffStoreError StoreError(
+    application::DiffStoreErrorCode code, const Error &error) {
+  return application::DiffStoreError{.code = code,
+                                     .message = error.Message()};
+}
+
+} // namespace
+
+huxerui::Task<application::DiffStoreResult<Database>> SqliteDiffStore::Open() {
   if (database_)
     co_return *database_;
   auto opened = co_await Database::OpenAsync(
       database_file_,
       huxerui::sqlite::OpenOptions{.create_parent_directories = true});
   if (!opened)
-    co_return std::nullopt;
+    co_return std::unexpected(StoreError(
+        application::DiffStoreErrorCode::unavailable, opened.Error()));
   auto schema = co_await opened->TransactionAsync(
       [](Transaction &transaction) { return EnsureDiffTable(transaction); });
   if (!schema)
-    co_return std::nullopt;
+    co_return std::unexpected(StoreError(
+        application::DiffStoreErrorCode::unavailable, schema.Error()));
   database_ = *opened;
   co_return *database_;
 }
 
-huxerui::Task<domain::DiffRecord>
+huxerui::Task<application::DiffStoreResult<domain::DiffRecord>>
 SqliteDiffStore::Record(std::string file_path, std::string old_content,
                         std::string new_content, const bool old_exists) {
   const auto now = NowMilliseconds();
@@ -232,7 +244,7 @@ SqliteDiffStore::Record(std::string file_path, std::string old_content,
 
   auto database = co_await Open();
   if (!database)
-    co_return domain::DiffRecord{};
+    co_return std::unexpected(std::move(database.error()));
   // Exactly the legacy `insertOrReplace`: a conflicting identifier replaces the
   // whole row, including any review state previously carried in `raw_json`.
   const auto inserted = co_await database->ExecuteAsync(
@@ -242,43 +254,48 @@ SqliteDiffStore::Record(std::string file_path, std::string old_content,
       record.id, record.file_path, record.old_content, record.new_content,
       record.old_exists, record.timestamp, false, std::string{});
   if (!inserted)
-    co_return domain::DiffRecord{};
+    co_return std::unexpected(StoreError(
+        application::DiffStoreErrorCode::write_failed, inserted.Error()));
   co_return record;
 }
 
-huxerui::Task<std::optional<domain::DiffRecord>>
+huxerui::Task<application::DiffStoreResult<std::optional<domain::DiffRecord>>>
 SqliteDiffStore::Find(std::string diff_id) {
   // `getDiff` returns null for a null or empty identifier.
   if (diff_id.empty())
     co_return std::nullopt;
   auto database = co_await Open();
   if (!database)
-    co_return std::nullopt;
+    co_return std::unexpected(std::move(database.error()));
   auto rows = co_await database->QueryAsync<domain::DiffRecord>(
       "SELECT " + std::string{kColumns} + " FROM diff_records WHERE id = ?",
       Decode, diff_id);
-  if (!rows || rows->empty())
+  if (!rows)
+    co_return std::unexpected(StoreError(
+        application::DiffStoreErrorCode::read_failed, rows.Error()));
+  if (rows->empty())
     co_return std::nullopt;
   co_return rows->front();
 }
 
-huxerui::Task<std::vector<domain::DiffRecord>>
+huxerui::Task<application::DiffStoreResult<std::vector<domain::DiffRecord>>>
 SqliteDiffStore::Chain(std::string file_path) {
   if (file_path.empty())
     co_return std::vector<domain::DiffRecord>{};
   auto database = co_await Open();
   if (!database)
-    co_return std::vector<domain::DiffRecord>{};
+    co_return std::unexpected(std::move(database.error()));
   auto rows = co_await database->QueryAsync<domain::DiffRecord>(
       "SELECT " + std::string{kColumns} +
           " FROM diff_records WHERE file_path = ? ORDER BY timestamp ASC",
       Decode, file_path);
   if (!rows)
-    co_return std::vector<domain::DiffRecord>{};
+    co_return std::unexpected(StoreError(
+        application::DiffStoreErrorCode::read_failed, rows.Error()));
   co_return std::move(*rows);
 }
 
-huxerui::Task<DiffRevertResult>
+huxerui::Task<application::DiffStoreResult<DiffRevertResult>>
 SqliteDiffStore::CheckRevert(std::string diff_id) {
   if (diff_id.empty())
     co_return DiffRevertResult{.success = false,
@@ -287,62 +304,73 @@ SqliteDiffStore::CheckRevert(std::string diff_id) {
 
   auto target = co_await Find(diff_id);
   if (!target)
+    co_return std::unexpected(std::move(target.error()));
+  if (!*target)
     co_return DiffRevertResult{.success = false,
                                 .message = std::string{kNotFound},
                                 .record = std::nullopt};
-  if (target->reverted) {
+  if ((*target)->reverted) {
     co_return DiffRevertResult{.success = true,
                                 .message = std::string{kAlreadyReverted},
                                 .record = std::nullopt};
   }
 
-  auto chain = co_await Chain(target->file_path);
-  std::size_t target_index = chain.size();
-  for (std::size_t index = 0; index < chain.size(); ++index) {
-    if (chain[index].id == target->id) {
+  auto chain = co_await Chain((*target)->file_path);
+  if (!chain)
+    co_return std::unexpected(std::move(chain.error()));
+  std::size_t target_index = chain->size();
+  for (std::size_t index = 0; index < chain->size(); ++index) {
+    if ((*chain)[index].id == (*target)->id) {
       target_index = index;
       break;
     }
   }
-  if (target_index == chain.size())
+  if (target_index == chain->size())
     co_return DiffRevertResult{.success = false,
                                 .message = std::string{kNotFound},
                                 .record = std::nullopt};
-  for (std::size_t index = target_index + 1U; index < chain.size(); ++index) {
-    if (!chain[index].reverted)
+  for (std::size_t index = target_index + 1U; index < chain->size(); ++index) {
+    if (!(*chain)[index].reverted)
       co_return DiffRevertResult{.success = false,
                                   .message = std::string{kLaterChangePending},
                                 .record = std::nullopt};
   }
   co_return DiffRevertResult{.success = true,
                               .message = std::string{kReady},
-                              .record = *target};
+                              .record = **target};
 }
 
-huxerui::Task<void> SqliteDiffStore::MarkReverted(std::string diff_id) {
+huxerui::Task<application::DiffStoreResult<void>>
+SqliteDiffStore::MarkReverted(std::string diff_id) {
   if (diff_id.empty())
-    co_return;
+    co_return application::DiffStoreResult<void>{};
   auto database = co_await Open();
   if (!database)
-    co_return;
-  co_await database->ExecuteAsync(
+    co_return std::unexpected(std::move(database.error()));
+  auto updated = co_await database->ExecuteAsync(
       "UPDATE diff_records SET reverted = 1 WHERE id = ?", diff_id);
-  co_return;
+  if (!updated)
+    co_return std::unexpected(StoreError(
+        application::DiffStoreErrorCode::write_failed, updated.Error()));
+  co_return application::DiffStoreResult<void>{};
 }
 
-huxerui::Task<void> SqliteDiffStore::SetReview(std::string diff_id,
-                                               std::string state,
-                                               std::string message) {
+huxerui::Task<application::DiffStoreResult<void>>
+SqliteDiffStore::SetReview(std::string diff_id, std::string state,
+                           std::string message) {
   // `setReview` ignores an empty identifier without touching the row.
   if (diff_id.empty())
-    co_return;
+    co_return application::DiffStoreResult<void>{};
   auto database = co_await Open();
   if (!database)
-    co_return;
-  co_await database->ExecuteAsync(
+    co_return std::unexpected(std::move(database.error()));
+  auto updated = co_await database->ExecuteAsync(
       "UPDATE diff_records SET raw_json = ? WHERE id = ?",
       ReviewRawJson(state, message), diff_id);
-  co_return;
+  if (!updated)
+    co_return std::unexpected(StoreError(
+        application::DiffStoreErrorCode::write_failed, updated.Error()));
+  co_return application::DiffStoreResult<void>{};
 }
 
 } // namespace linecode::infrastructure

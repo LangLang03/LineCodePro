@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <memory>
 #include <optional>
 #include <ranges>
@@ -72,7 +72,7 @@ public:
 
 } // namespace
 
-int main() {
+TEST(application_tests, LegacySuite) {
   using linecode::application::ClassifyHistoricalTool;
   using linecode::application::HistoricalToolDisposition;
   using linecode::application::NormalizeLegacyChatMode;
@@ -140,18 +140,18 @@ int main() {
   SendMessage send{store};
 
   const auto blank = send.Execute(" \t\n");
-  assert(!blank.has_value());
-  assert(blank.error() == SendMessageError::empty);
-  assert(store.Messages().empty());
+  EXPECT_EXPRESSION(!blank.has_value());
+  EXPECT_EXPRESSION(blank.error() == SendMessageError::empty);
+  EXPECT_EXPRESSION(store.Messages().empty());
 
   const auto sent = send.Execute("hello");
-  assert(sent.has_value());
-  assert(sent->content == "hello");
-  assert(store.Messages().size() == 1);
-  assert(store.Messages().front().id == sent->id);
+  EXPECT_EXPRESSION(sent.has_value());
+  EXPECT_EXPRESSION(sent->content == "hello");
+  EXPECT_EXPRESSION(store.Messages().size() == 1);
+  EXPECT_EXPRESSION(store.Messages().front().id == sent->id);
 
   store.Clear();
-  assert(store.Messages().empty());
+  EXPECT_EXPRESSION(store.Messages().empty());
 
   store.Append({.id = 41,
                 .role = linecode::domain::MessageRole::assistant,
@@ -159,8 +159,8 @@ int main() {
                 .attachments = {}});
   SendMessage resumed_send{store};
   const auto resumed = resumed_send.Execute("next");
-  assert(resumed.has_value());
-  assert(resumed->id == 42);
+  EXPECT_EXPRESSION(resumed.has_value());
+  EXPECT_EXPRESSION(resumed->id == 42);
 
   store.Clear();
   store.Append({.id = 50,
@@ -172,16 +172,16 @@ int main() {
                 .content = "answer",
                 .attachments = {}});
   const auto recalled = store.RecallUserMessage(50);
-  assert(recalled && recalled->content == "try again");
-  assert(store.Messages().empty());
-  assert(!store.RecallUserMessage(51));
+  EXPECT_EXPRESSION(recalled && recalled->content == "try again");
+  EXPECT_EXPRESSION(store.Messages().empty());
+  EXPECT_EXPRESSION(!store.RecallUserMessage(51));
 
   linecode::application::ChatSession session{
       std::make_unique<InMemoryConversationStore>()};
-  assert(session.Send("injected").has_value());
-  assert(session.Messages().size() == 1);
+  EXPECT_EXPRESSION(session.Send("injected").has_value());
+  EXPECT_EXPRESSION(session.Messages().size() == 1);
   session.Clear();
-  assert(session.Messages().empty());
+  EXPECT_EXPRESSION(session.Messages().empty());
 
   // An attached image with no text still produces a turn, using the legacy
   // placeholder so the model gets a non-empty prompt
@@ -194,73 +194,73 @@ int main() {
     linecode::application::ChatSession with_image{
         std::make_unique<InMemoryConversationStore>()};
     const auto sent = with_image.Send("", {}, image);
-    assert(sent.has_value());
-    assert(sent->content == "已附加图片：photo.jpg");
-    assert(sent->image.has_value());
-    assert(sent->image->base64 == "QUJD");
+    EXPECT_EXPRESSION(sent.has_value());
+    EXPECT_EXPRESSION(sent->content == "已附加图片：photo.jpg");
+    EXPECT_EXPRESSION(sent->image.has_value());
+    EXPECT_EXPRESSION(sent->image->base64 == "QUJD");
 
     // A named-less image falls back to the shorter notice.
     auto anonymous = image;
     anonymous.name.clear();
     const auto unnamed = with_image.Send("  ", {}, anonymous);
-    assert(unnamed.has_value());
-    assert(unnamed->content == "已附加图片");
+    EXPECT_EXPRESSION(unnamed.has_value());
+    EXPECT_EXPRESSION(unnamed->content == "已附加图片");
 
     // Text wins when present, and an unusable image is dropped rather than
     // producing an empty payload.
     const auto with_text = with_image.Send("look", {}, image);
-    assert(with_text.has_value());
-    assert(with_text->content == "look");
+    EXPECT_EXPRESSION(with_text.has_value());
+    EXPECT_EXPRESSION(with_text->content == "look");
     auto broken = image;
     broken.base64.clear();
     const auto dropped = with_image.Send("plain", {}, broken);
-    assert(dropped.has_value());
-    assert(!dropped->image.has_value());
+    EXPECT_EXPRESSION(dropped.has_value());
+    EXPECT_EXPRESSION(!dropped->image.has_value());
     // Nothing at all is still rejected.
-    assert(!with_image.Send("", {}, broken).has_value());
+    EXPECT_EXPRESSION(!with_image.Send("", {}, broken).has_value());
   }
 
   auto recording_store = std::make_unique<RecordingConversationStore>();
   auto *recording = recording_store.get();
   linecode::application::ChatSession managed{std::move(recording_store)};
-  assert(managed.Conversations().size() == 1);
-  assert(managed.Conversations().front().title == "First");
-  assert(managed.CurrentConversationId() == "conversation-1");
+  EXPECT_EXPRESSION(managed.Conversations().size() == 1);
+  EXPECT_EXPRESSION(managed.Conversations().front().title == "First");
+  EXPECT_EXPRESSION(managed.CurrentConversationId() == "conversation-1");
   managed.StartNewConversation();
   managed.DeleteCurrentConversation();
-  assert(recording->deleted_id == "conversation-1");
+  EXPECT_EXPRESSION(recording->deleted_id == "conversation-1");
   recording->deleted_id.clear();
   recording->current_id.clear();
   managed.DeleteCurrentConversation();
-  assert(recording->deleted_id.empty());
+  EXPECT_EXPRESSION(recording->deleted_id.empty());
   recording->current_id = "conversation-1";
   managed.SelectConversation("conversation-1");
   managed.SelectConversation("");
   managed.DeleteConversation("conversation-1");
   managed.DeleteConversation("");
-  assert(recording->started_new);
-  assert(recording->selected_id == "conversation-1");
-  assert(recording->deleted_id == "conversation-1");
+  EXPECT_EXPRESSION(recording->started_new);
+  EXPECT_EXPRESSION(recording->selected_id == "conversation-1");
+  EXPECT_EXPRESSION(recording->deleted_id == "conversation-1");
 
   linecode::application::ConversationSelectionBarrier selection_barrier;
   const auto first_selection = selection_barrier.Begin("conversation-b");
-  assert(selection_barrier.Matches(first_selection, "conversation-b"));
-  assert(selection_barrier.DefersAppendTo("conversation-b"));
-  assert(!selection_barrier.DefersAppendTo("conversation-a"));
+  EXPECT_EXPRESSION(selection_barrier.Matches(first_selection, "conversation-b"));
+  EXPECT_EXPRESSION(selection_barrier.DefersAppendTo("conversation-b"));
+  EXPECT_EXPRESSION(!selection_barrier.DefersAppendTo("conversation-a"));
 
   // A send immediately after select is tagged with this generation and must
   // defer local_order allocation until the selected history has loaded.
-  assert(selection_barrier.Generation() == first_selection);
+  EXPECT_EXPRESSION(selection_barrier.Generation() == first_selection);
   selection_barrier.Settle(first_selection);
-  assert(!selection_barrier.DefersAppendTo("conversation-b"));
+  EXPECT_EXPRESSION(!selection_barrier.DefersAppendTo("conversation-b"));
 
   const auto selection_before_new = selection_barrier.Begin("conversation-b");
   selection_barrier.Invalidate();
-  assert(!selection_barrier.Matches(selection_before_new, "conversation-b"));
+  EXPECT_EXPRESSION(!selection_barrier.Matches(selection_before_new, "conversation-b"));
 
   const auto selection_before_delete =
       selection_barrier.Begin("conversation-b");
   selection_barrier.Invalidate();
-  assert(!selection_barrier.Matches(selection_before_delete,
+  EXPECT_EXPRESSION(!selection_barrier.Matches(selection_before_delete,
                                     "conversation-b"));
 }

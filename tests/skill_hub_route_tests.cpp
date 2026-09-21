@@ -1,22 +1,22 @@
 #include <array>
-#include <cassert>
+#include "gtest_support.h"
 #include <string>
 #include <variant>
 
 #include "domain/app_state.h"
 #include "domain/skill_hub_route.h"
 
-int main() {
+TEST(skill_hub_route_tests, LegacySuite) {
   using namespace linecode::domain;
 
   const AppRoute store = AppRoute::skill_store;
-  assert(store == AppRoute::skill_store);
-  assert(store.SkillStoreDetailValue() == nullptr);
+  EXPECT_EXPRESSION(store == AppRoute::skill_store);
+  EXPECT_EXPRESSION(store.SkillStoreDetailValue() == nullptr);
 
   const AppRoute detail = AppRoute::SkillStoreDetail("safe-skill");
-  assert(detail.PageValue() == nullptr);
-  assert(detail.SkillStoreDetailValue() != nullptr);
-  assert(detail.SkillStoreDetailValue()->slug == "safe-skill");
+  EXPECT_EXPRESSION(detail.PageValue() == nullptr);
+  EXPECT_EXPRESSION(detail.SkillStoreDetailValue() != nullptr);
+  EXPECT_EXPRESSION(detail.SkillStoreDetailValue()->slug == "safe-skill");
 
   constexpr std::array destinations{
       SkillHubDestination::account,
@@ -41,21 +41,21 @@ int main() {
   };
   for (const auto destination : destinations) {
     const AppRoute route = AppRoute::SkillHubSite(destination);
-    assert(route.SkillHubSiteValue() != nullptr);
+    EXPECT_EXPRESSION(route.SkillHubSiteValue() != nullptr);
     const auto *value = std::get_if<SkillHubSiteRoute::Destination>(
         &route.SkillHubSiteValue()->target);
-    assert(value != nullptr);
-    assert(value->value == destination);
+    EXPECT_EXPRESSION(value != nullptr);
+    EXPECT_EXPRESSION(value->value == destination);
   }
 
   const AppRoute official =
       AppRoute::SkillHubSkillSite("official", "safe-skill");
   const auto *site = official.SkillHubSiteValue();
-  assert(site != nullptr);
+  EXPECT_EXPRESSION(site != nullptr);
   const auto *skill = std::get_if<SkillHubSiteRoute::Skill>(&site->target);
-  assert(skill != nullptr);
-  assert(skill->name_space == "official");
-  assert(skill->slug == "safe-skill");
-  assert(official == AppRoute::SkillHubSkillSite("official", "safe-skill"));
-  assert(!(official == AppRoute::SkillHubSkillSite("another", "safe-skill")));
+  EXPECT_EXPRESSION(skill != nullptr);
+  EXPECT_EXPRESSION(skill->name_space == "official");
+  EXPECT_EXPRESSION(skill->slug == "safe-skill");
+  EXPECT_EXPRESSION(official == AppRoute::SkillHubSkillSite("official", "safe-skill"));
+  EXPECT_EXPRESSION(!(official == AppRoute::SkillHubSkillSite("another", "safe-skill")));
 }

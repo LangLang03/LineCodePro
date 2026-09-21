@@ -168,10 +168,18 @@ GenerationController::Begin(std::string text) {
 std::expected<GenerationWork, SendMessageError>
 GenerationController::Begin(
     std::string text, std::vector<domain::InputAttachment> attachments) {
+  return Begin(std::move(text), std::move(attachments), std::nullopt);
+}
+
+std::expected<GenerationWork, SendMessageError>
+GenerationController::Begin(
+    std::string text, std::vector<domain::InputAttachment> attachments,
+    std::optional<domain::ChatImage> image) {
   if (state_.phase == GenerationPhase::running)
     return std::unexpected(SendMessageError::generation_in_progress);
 
-  auto sent = session_.Send(std::move(text), std::move(attachments));
+  auto sent = session_.Send(std::move(text), std::move(attachments),
+                            std::move(image));
   if (!sent)
     return std::unexpected(sent.error());
 
@@ -356,7 +364,7 @@ bool GenerationController::Observe(const std::uint64_t generation_id,
 void GenerationController::PersistPartial(bool error,
                                           std::string error_message) {
   if (state_.streamed_text.empty() && state_.streamed_reasoning.empty() &&
-      state_.promoted_content.empty() && state_.timeline.empty())
+      state_.promoted_content.empty() && state_.timeline.empty() && !error)
     return;
   domain::ChatMessage message{};
   message.content = state_.promoted_content;

@@ -8,9 +8,6 @@
 namespace linecode::application {
 namespace {
 
-constexpr std::string_view kThemeModeKey = "@lineai_theme_mode";
-constexpr std::string_view kCustomColorsKey = "@lineai_custom_theme_colors";
-
 std::string EscapeJson(std::string_view value) {
   std::string result;
   result.reserve(value.size());
@@ -75,7 +72,8 @@ ThemeSettingsRepository::ThemeSettingsRepository(
 }
 
 ThemeSettingsState ThemeSettingsRepository::Load() const {
-  const auto stored_mode = settings_->Read(kThemeModeKey).value_or("system");
+  const auto stored_mode =
+      settings_->Read(ThemeSettingsKeys::mode).value_or("system");
   const auto selected = domain::ParseThemeMode(stored_mode);
   const auto resolved =
       selected == domain::ThemeMode::system
@@ -96,7 +94,7 @@ ThemeSettingsState ThemeSettingsRepository::Load() const {
 }
 
 ThemeSettingsState ThemeSettingsRepository::SelectMode(domain::ThemeMode mode) {
-  settings_->Write(kThemeModeKey,
+  settings_->Write(ThemeSettingsKeys::mode,
                    std::string(domain::SerializeThemeMode(mode)));
   return Load();
 }
@@ -105,9 +103,11 @@ ThemeSettingsState ThemeSettingsRepository::SaveCustomColors(
     const domain::ThemeColorDraft &colors) {
   if (!domain::IsValidThemeDraft(colors))
     return Load();
-  settings_->Write(kCustomColorsKey, EncodeCustomColors(colors));
-  settings_->Write(kThemeModeKey, std::string(domain::SerializeThemeMode(
-                                      domain::ThemeMode::custom)));
+  settings_->Write(ThemeSettingsKeys::custom_colors,
+                   EncodeCustomColors(colors));
+  settings_->Write(ThemeSettingsKeys::mode,
+                   std::string(domain::SerializeThemeMode(
+                       domain::ThemeMode::custom)));
   return Load();
 }
 
@@ -115,7 +115,7 @@ domain::ThemeColorDraft
 ThemeSettingsRepository::LoadCustomColors(bool &has_saved) const {
   auto result = domain::EditableThemeDraft(
       domain::PaletteForMode(domain::ThemeMode::custom));
-  const auto raw = settings_->Read(kCustomColorsKey);
+  const auto raw = settings_->Read(ThemeSettingsKeys::custom_colors);
   if (!raw || raw->empty())
     return result;
   for (std::size_t index = 0; index < domain::theme_color_count; ++index) {

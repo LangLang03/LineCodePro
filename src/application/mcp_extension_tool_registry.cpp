@@ -67,8 +67,20 @@ void McpExtensionToolRegistry::Update(
               .name = name,
               .description = Description(extension, tool),
               .parameters_json = schemas_->Normalize(tool.input_schema_json),
+              .agent_category = AgentToolCategory::system,
               .category = "mcp",
               .agent_selectable = false,
+              .agent_scope_ids = {"custom:" + extension.id},
+              .presentation = {
+                  .english_name = tool.name,
+                  .english_description = tool.description.empty()
+                                             ? extension.name
+                                             : tool.description,
+                  .chinese_name = tool.name,
+                  .chinese_description = tool.description.empty()
+                                             ? extension.name
+                                             : tool.description,
+              },
           },
           .extension = extension,
           .tool = tool,

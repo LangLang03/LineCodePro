@@ -16,7 +16,10 @@ huxerui::Task<CompletionObserver::ToolReviewDecision>
 ToolReviewBroker::Review(CompletionObserver::ToolReviewRequest request) {
   if (!handler_)
     co_return CompletionObserver::ToolReviewDecision::reject;
-  co_return co_await handler_(std::move(request));
+  // Keep the callable alive while its Task is suspended. The screen may detach
+  // the broker during unmount, which replaces `handler_` immediately.
+  auto handler = handler_;
+  co_return co_await handler(std::move(request));
 }
 
 } // namespace linecode::application

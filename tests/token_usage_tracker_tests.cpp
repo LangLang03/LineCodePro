@@ -1,6 +1,6 @@
 // Contract tests for the ported token usage tracker.
 
-#include <cassert>
+#include "gtest_support.h"
 #include <cstdint>
 #include <iostream>
 
@@ -24,15 +24,15 @@ CompletionResponse Response(const std::int64_t input,
 // estimate until a protocol reports real usage.
 void StartsEmpty() {
   const TokenUsageTracker tracker;
-  assert(tracker.LastInputTokens() == 0);
-  assert(tracker.LastOutputTokens() == 0);
+  EXPECT_EXPRESSION(tracker.LastInputTokens() == 0);
+  EXPECT_EXPRESSION(tracker.LastOutputTokens() == 0);
 }
 
 void RecordsBothCounts() {
   TokenUsageTracker tracker;
   tracker.Record(Response(1234, 56));
-  assert(tracker.LastInputTokens() == 1234);
-  assert(tracker.LastOutputTokens() == 56);
+  EXPECT_EXPRESSION(tracker.LastInputTokens() == 1234);
+  EXPECT_EXPRESSION(tracker.LastOutputTokens() == 56);
 }
 
 // A protocol that omits usage must not wipe the last real measurement; this is
@@ -41,30 +41,30 @@ void IgnoresNonPositiveCounts() {
   TokenUsageTracker tracker;
   tracker.Record(Response(900, 40));
   tracker.Record(Response(0, 0));
-  assert(tracker.LastInputTokens() == 900);
-  assert(tracker.LastOutputTokens() == 40);
+  EXPECT_EXPRESSION(tracker.LastInputTokens() == 900);
+  EXPECT_EXPRESSION(tracker.LastOutputTokens() == 40);
 
   // A response that only carries one of the two updates only that one.
   tracker.Record(Response(1500, 0));
-  assert(tracker.LastInputTokens() == 1500);
-  assert(tracker.LastOutputTokens() == 40);
+  EXPECT_EXPRESSION(tracker.LastInputTokens() == 1500);
+  EXPECT_EXPRESSION(tracker.LastOutputTokens() == 40);
 }
 
 void ResetClearsBoth() {
   TokenUsageTracker tracker;
   tracker.Record(Response(700, 30));
   tracker.Reset();
-  assert(tracker.LastInputTokens() == 0);
-  assert(tracker.LastOutputTokens() == 0);
+  EXPECT_EXPRESSION(tracker.LastInputTokens() == 0);
+  EXPECT_EXPRESSION(tracker.LastOutputTokens() == 0);
 }
 
 } // namespace
 
-int main() {
+TEST(token_usage_tracker_tests, LegacySuite) {
   StartsEmpty();
   RecordsBothCounts();
   IgnoresNonPositiveCounts();
   ResetClearsBoth();
   std::cout << "token_usage_tracker_tests passed\n";
-  return 0;
+  return;
 }

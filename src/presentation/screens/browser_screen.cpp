@@ -134,8 +134,6 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation) {
           .OnClick([navigation] { navigation.Pop(); })
           .With(Frame{.width = 36.0F, .height = 36.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                Semantics{.role = SemanticRole::Button,
-                          .label = app::strings::common_back},
                 Focusable(), PointerCursor(PointerCursorKind::Hand)),
       Stack{Text(app::strings::in_app_browser_default_title)
                 .Style(Label(17.0F, FontWeight::Bold))}
@@ -157,16 +155,13 @@ inline constexpr std::string_view kUnsupportedUrlData =
   const auto navigation = UseNavigation<domain::AppRoute>();
   const bool initial_url_allowed =
       IsAllowedBrowserUrl(route.url, route.allow_any_http);
-  const auto line_colors = UseEnvironment<LineColors>();
   auto requested_url = UseState(
       initial_url_allowed ? route.url : std::string{kUnsupportedUrlData});
   const WebViewController controller = UseWebViewController();
 
   View browser =
       WebView({.url = requested_url.Get(),
-               .java_script_enabled = route.java_script_enabled,
-               .dom_storage_enabled = true,
-               .background_color = line_colors.background},
+               .java_script_enabled = route.java_script_enabled},
               controller)
           .On<WebViewEvents::NavigationRequested>(
               [allow_any_http = route.allow_any_http,
@@ -175,12 +170,11 @@ inline constexpr std::string_view kUnsupportedUrlData =
                   return true;
                 return IsAllowedBrowserUrl(request.url, allow_any_http);
               })
-          .With(Grow(), Frame{.min_height = 1.0F}, ClipChildren(),
-                Semantics{.label = app::strings::in_app_browser_content_desc});
+          .With(Grow(), Frame{.min_height = 1.0F}, ClipChildren());
 
   return Column{
       Header(navigation),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       Column{Text(route.url)
                  .Style(Label(13.0F, FontWeight::Regular, colors::secondary))
                  // Public HuxerUI Text currently has no one-line/middle-

@@ -26,9 +26,15 @@ constexpr float kSheetBottomInset = 0.0F;
 constexpr float kSheetHostMaximumWidth =
     kSheetMaximumWidth + (kSheetHorizontalInset * 2.0F);
 constexpr float kMinimumRowHeight = 52.0F;
+constexpr float kDescribedRowMinimumHeight = 68.5714F;
 constexpr float kAttachmentPanelHeight = 640.0F;
 constexpr float kAttachmentTreeIndent = 18.0F;
 constexpr std::size_t kMaximumAttachmentTreeDepth = 24;
+#if defined(__ANDROID__)
+constexpr float kPhysicalDividerHeight = 1.0F / 2.625F;
+#else
+constexpr float kPhysicalDividerHeight = 1.0F;
+#endif
 
 class InsetSheetFrame final : public Layout<InsetSheetFrame> {
 public:
@@ -78,6 +84,7 @@ template <typename Action> struct MenuItem final {
   std::optional<StringVariant> description;
   bool available;
   bool selected = false;
+  float minimum_height = 0.0F;
 };
 
 template <typename Action>
@@ -122,7 +129,7 @@ View DescribedMenuRow(const MenuItem<Action> &item,
     content.emplace_back(Stack{
         Image(app::images::check)
             .Tint(colors::accent)
-            .With(Frame{.width = 16.0F, .height = 16.0F}),
+            .With(Frame{.width = 18.0F, .height = 18.0F}),
     }
                              .With(Frame{.width = 18.0F, .height = 18.0F},
                                    Align(HorizontalAlignment::Center,
@@ -136,7 +143,11 @@ View DescribedMenuRow(const MenuItem<Action> &item,
       .OnClick([callbacks = std::move(callbacks), action = item.action] {
         SelectAction(callbacks, action);
       })
-      .With(Frame{.min_height = kMinimumRowHeight},
+      .With(Frame{.min_height = item.minimum_height > 0.0F
+                                    ? item.minimum_height
+                                    : item.description.has_value()
+                                        ? kDescribedRowMinimumHeight
+                                        : kMinimumRowHeight},
             Align(HorizontalAlignment::Stretch, VerticalAlignment::Center),
             Background(item.selected ? colors::accent_muted
                                      : Color::Transparent()),
@@ -170,8 +181,10 @@ View InsetSheet(View panel) {
                              : 0.0F}));
 }
 
-View StandardSheet(StringVariant title, std::vector<View> rows) {
-  rows.emplace_back(Stack{}.With(Frame{.width = 1.0F, .height = 16.0F}));
+View StandardSheet(StringVariant title, std::vector<View> rows,
+                   float bottom_content_padding = 16.0F) {
+  rows.emplace_back(Stack{}.With(
+      Frame{.width = 1.0F, .height = bottom_content_padding}));
   View panel =
       Column{
           Column{
@@ -189,9 +202,9 @@ View StandardSheet(StringVariant title, std::vector<View> rows) {
                       colors::text})
                   .With(Padding(EdgeInsets{.top = 12.0F,
                                            .right = 24.0F,
-                                           .bottom = 20.0F,
+                                           .bottom = 21.52F,
                                            .left = 24.0F})),
-              Stack{}.With(Frame{.height = 1.0F},
+              Stack{}.With(Frame{.height = kPhysicalDividerHeight},
                            Background(colors::border_light)),
           }
               .With(CrossAlign(CrossAxisAlignment::Stretch)),
@@ -210,6 +223,16 @@ View StandardSheet(StringVariant title, std::vector<View> rows) {
 bool ContainsPath(const std::vector<std::string> &paths,
                   std::string_view path) {
   return std::ranges::find(paths, path) != paths.end();
+}
+
+std::string AttachmentDisplayPath(std::string_view path) {
+  constexpr std::string_view data_symlink = "/data/data/";
+  constexpr std::string_view canonical_data = "/data/user/0/";
+  if (!path.starts_with(data_symlink))
+    return std::string{path};
+  std::string result{canonical_data};
+  result.append(path.substr(data_symlink.size()));
+  return result;
 }
 
 View AttachmentInlineIcon(ImageResource icon, Color tint, float size) {
@@ -276,12 +299,12 @@ void AppendAttachmentRows(std::vector<View> &rows,
           .Style(TextStyle{Font::System(16.0F).WithWeight(
                                root ? FontWeight::Bold : FontWeight::Regular),
                            root ? colors::text : colors::secondary})
-          .With(Frame{.max_height = 22.0F}, ClipChildren()));
+          .With(Frame{.max_height = 18.67F}, ClipChildren()));
   if (root) {
     labels.emplace_back(
-        Text(node.path)
+        Text(AttachmentDisplayPath(node.path))
             .Style(TextStyle{Font::System(11.0F), colors::tertiary})
-            .With(Frame{.max_height = 16.0F}, Padding(EdgeInsets{.top = 2.0F}),
+            .With(Frame{.max_height = 15.0F}, Padding(EdgeInsets{.top = 2.0F}),
                   ClipChildren()));
   }
   content.emplace_back(Stack{}.With(Frame{.width = 8.0F, .height = 1.0F}));
@@ -485,7 +508,8 @@ View ChatPermissionMenu(const ChatPermissionMenuState &state,
       MenuItem<ChatPermissionAction>{
           ChatPermissionAction::manage_all_files,
           app::strings::permission_mode_manage_all_files, storage_description,
-          state.manage_all_files_available, state.external_storage_granted},
+          state.manage_all_files_available, state.external_storage_granted,
+          85.7143F},
       MenuItem<ChatPermissionAction>{
           ChatPermissionAction::revoke_saved_commands,
           app::strings::chat_permissions_clear, std::nullopt, true},
@@ -539,8 +563,6 @@ View ChatAttachmentPicker(const ChatAttachmentPickerState &state,
           })
           .With(Frame{.width = 48.0F, .height = 48.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                Semantics{.role = SemanticRole::Button,
-                          .label = app::strings::common_close},
                 Focusable(), PointerCursor(PointerCursorKind::Hand));
 
   View panel =
@@ -566,14 +588,16 @@ View ChatAttachmentPicker(const ChatAttachmentPickerState &state,
                       .With(Padding(EdgeInsets{.top = 3.0F})),
               }
                   .With(Grow()),
-              std::move(close).With(Padding(EdgeInsets{.left = 12.0F})),
+              Stack{}.With(Frame{.width = 12.0F}),
+              std::move(close),
           }
               .With(Padding(EdgeInsets{.top = 20.0F,
                                        .right = 20.0F,
                                        .bottom = 16.0F,
                                        .left = 20.0F}),
                     CrossAlign(CrossAxisAlignment::Center)),
-          Stack{}.With(Frame{.height = 1.0F}, Background(colors::border_light)),
+          Stack{}.With(Frame{.height = kPhysicalDividerHeight},
+                       Background(colors::border_light)),
           std::move(body),
       }
           .With(Frame{.height = kAttachmentPanelHeight,

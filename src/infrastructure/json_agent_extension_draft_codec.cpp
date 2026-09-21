@@ -50,7 +50,9 @@ std::string JsonAgentExtensionDraftCodec::EncodeContext(
   for (const auto &tool : context.tools) {
     tools.emplace_back(json::Object{{"name", tool.name},
                                     {"category", tool.category},
-                                    {"description", tool.description}});
+                                    {"displayName", tool.display_name},
+                                    {"description",
+                                     tool.display_description}});
   }
   json::Array mcps;
   mcps.reserve(context.mcps.size());

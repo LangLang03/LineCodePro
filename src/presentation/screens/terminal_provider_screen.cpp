@@ -182,7 +182,7 @@ bool AlreadyInstalled(const TerminalProviderPageState &state,
 
 } // namespace
 
-[[huxerui::composable]] View TerminalProviderScreen(
+[[huxerui::composable]] View TerminalProviderContent(
     std::shared_ptr<application::TerminalProviderStore> store,
     std::shared_ptr<application::TerminalProviderDiscovery> discovery) {
   const auto navigation = UseNavigation<domain::AppRoute>();
@@ -349,6 +349,18 @@ bool AlreadyInstalled(const TerminalProviderPageState &state,
   return LegacySettingsPage(
       app::strings::screen_terminal_provider_title,
       [navigation] { navigation.Pop(); }, std::move(content));
+}
+
+[[huxerui::composable]] View TerminalProviderScreen(
+    std::shared_ptr<application::TerminalProviderStore> store,
+    std::shared_ptr<application::TerminalProviderDiscovery> discovery) {
+  ThemeDefinition overrides;
+  overrides.Set(LineDialogBottomSheetStyle(UseLineColors()));
+  return Theme(
+      std::move(overrides),
+      Scope([store = std::move(store), discovery = std::move(discovery)] {
+        return TerminalProviderContent(store, discovery);
+      }));
 }
 
 } // namespace linecode::presentation

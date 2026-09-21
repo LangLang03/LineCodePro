@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
@@ -42,7 +42,7 @@ public:
     const auto seed = std::chrono::steady_clock::now().time_since_epoch().count();
     path_ = std::filesystem::temp_directory_path() /
             ("linecode-skill-tests-" + std::to_string(seed));
-    assert(std::filesystem::create_directories(path_));
+    EXPECT_EXPRESSION(std::filesystem::create_directories(path_));
   }
 
   ~TemporaryDirectory() {
@@ -148,38 +148,38 @@ void DomainMetadataAndMarkdownMatchLegacy() {
   const auto frontmatter = linecode::domain::ParseSkillMetadata(
       "---\nname: 'PDF Helper'\ndescription: \"中文说明\"\n---\n# Ignored\n",
       "fallback");
-  assert(frontmatter.name == "PDF Helper");
-  assert(frontmatter.description == "中文说明");
+  EXPECT_EXPRESSION(frontmatter.name == "PDF Helper");
+  EXPECT_EXPRESSION(frontmatter.description == "中文说明");
 
   const auto fallback = linecode::domain::ParseSkillMetadata(
       "# Markdown Name\n\nFirst description line\n", "directory");
-  assert(fallback.name == "Markdown Name");
-  assert(fallback.description == "First description line");
+  EXPECT_EXPRESSION(fallback.name == "Markdown Name");
+  EXPECT_EXPRESSION(fallback.description == "First description line");
 
   const auto generated =
       linecode::domain::BuildSkillMarkdown("A: Skill", "line\nbreak", "");
-  assert(generated);
-  assert(generated->contains("name: \"A: Skill\""));
-  assert(generated->contains("description: \"line\\nbreak\""));
-  assert(generated->contains("## 触发条件"));
+  EXPECT_EXPRESSION(generated);
+  EXPECT_EXPRESSION(generated->contains("name: \"A: Skill\""));
+  EXPECT_EXPRESSION(generated->contains("description: \"line\\nbreak\""));
+  EXPECT_EXPRESSION(generated->contains("## 触发条件"));
 }
 
 void LocalCreateDiscoverInstallAndDelete() {
   TemporaryDirectory temporary;
   const auto app = temporary.Path() / "app-skills";
   const auto project = temporary.Path() / "workspace";
-  assert(std::filesystem::create_directories(app));
-  assert(std::filesystem::create_directories(project));
+  EXPECT_EXPRESSION(std::filesystem::create_directories(app));
+  EXPECT_EXPRESSION(std::filesystem::create_directories(project));
   const SkillRoots roots{.app = huxerui::File{app.string()},
                          .project = huxerui::File{project.string()}};
   HuxSkillFiles files{std::make_shared<FixedClock>()};
 
   const auto created = files.Create(roots, SkillLocation::app, "Local Skill",
                                     "Description", "# Local Skill\nBody");
-  assert(created);
-  assert(created->name == "Local Skill");
-  assert(created->location == SkillLocation::app);
-  assert(huxerui::File{created->skill_markdown_path}.IsFile());
+  EXPECT_EXPRESSION(created);
+  EXPECT_EXPRESSION(created->name == "Local Skill");
+  EXPECT_EXPRESSION(created->location == SkillLocation::app);
+  EXPECT_EXPRESSION(huxerui::File{created->skill_markdown_path}.IsFile());
 
   const auto project_skill = files.Install(SkillInstallRequest{
       .roots = roots,
@@ -188,51 +188,51 @@ void LocalCreateDiscoverInstallAndDelete() {
       .package = SkillMarkdownPackage{
           .markdown = "---\nname: imported\ndescription: installed\n---\n"},
   });
-  assert(project_skill);
-  assert(project_skill->location == SkillLocation::project);
+  EXPECT_EXPRESSION(project_skill);
+  EXPECT_EXPRESSION(project_skill->location == SkillLocation::project);
 
   const auto discovered = files.Discover(roots);
-  assert(discovered && discovered->size() == 4);
-  assert(std::ranges::any_of(*discovered, [](const auto &skill) {
+  EXPECT_EXPRESSION(discovered && discovered->size() == 4);
+  EXPECT_EXPRESSION(std::ranges::any_of(*discovered, [](const auto &skill) {
     return skill.name == "imported";
   }));
-  assert(std::ranges::any_of(*discovered, [](const auto &skill) {
+  EXPECT_EXPRESSION(std::ranges::any_of(*discovered, [](const auto &skill) {
     return skill.name == "Local Skill";
   }));
-  assert(std::ranges::any_of(*discovered, [](const auto &skill) {
+  EXPECT_EXPRESSION(std::ranges::any_of(*discovered, [](const auto &skill) {
     return skill.name == "skill-creator";
   }));
 
   const auto creator = huxerui::File{app.string()}.Resolve(
       "skill-creator/SKILL.md");
-  assert(creator.WriteString("legacy tool: skill_create\n"));
+  EXPECT_EXPRESSION(creator.WriteString("legacy tool: skill_create\n"));
   const auto resynchronized = files.Discover(roots);
   const auto creator_text = creator.ReadString();
-  assert(resynchronized && creator_text.Succeeded());
-  assert(creator_text.Value().contains("# Skill Creator"));
-  assert(!creator_text.Value().contains("skill_create"));
+  EXPECT_EXPRESSION(resynchronized && creator_text.Succeeded());
+  EXPECT_EXPRESSION(creator_text.Value().contains("# Skill Creator"));
+  EXPECT_EXPRESSION(!creator_text.Value().contains("skill_create"));
 
-  assert(files.Delete(roots, *project_skill));
-  assert(!huxerui::File{project_skill->root_path}.Exists());
+  EXPECT_EXPRESSION(files.Delete(roots, *project_skill));
+  EXPECT_EXPRESSION(!huxerui::File{project_skill->root_path}.Exists());
 
   auto outside = *created;
   outside.root_path = temporary.Path().string();
-  assert(!files.Delete(roots, outside));
+  EXPECT_EXPRESSION(!files.Delete(roots, outside));
 
   auto already_missing = *created;
-  assert(huxerui::File{already_missing.root_path}.DeleteRecursively());
-  assert(files.Delete(roots, already_missing));
+  EXPECT_EXPRESSION(huxerui::File{already_missing.root_path}.DeleteRecursively());
+  EXPECT_EXPRESSION(files.Delete(roots, already_missing));
 }
 
 void DirectoryAndZipPackagesAreInstalledWithRollback() {
   TemporaryDirectory temporary;
   const auto app = temporary.Path() / "app-skills";
   const auto source = temporary.Path() / "source";
-  assert(std::filesystem::create_directories(app));
-  assert(std::filesystem::create_directories(source / "references"));
-  assert(huxerui::File{(source / "SKILL.md").string()}.WriteString(
+  EXPECT_EXPRESSION(std::filesystem::create_directories(app));
+  EXPECT_EXPRESSION(std::filesystem::create_directories(source / "references"));
+  EXPECT_EXPRESSION(huxerui::File{(source / "SKILL.md").string()}.WriteString(
       "# Directory Skill\nDirectory description\n"));
-  assert(huxerui::File{(source / "references" / "guide.md").string()}
+  EXPECT_EXPRESSION(huxerui::File{(source / "references" / "guide.md").string()}
              .WriteString("guide"));
   const SkillRoots roots{.app = huxerui::File{app.string()},
                          .project = std::nullopt};
@@ -244,8 +244,8 @@ void DirectoryAndZipPackagesAreInstalledWithRollback() {
       .name = "directory",
       .package = SkillDirectoryPackage{huxerui::File{source.string()}},
   });
-  assert(copied && copied->name == "Directory Skill");
-  assert(huxerui::File{copied->root_path}.Resolve("references/guide.md").IsFile());
+  EXPECT_EXPRESSION(copied && copied->name == "Directory Skill");
+  EXPECT_EXPRESSION(huxerui::File{copied->root_path}.Resolve("references/guide.md").IsFile());
 
   std::error_code symlink_error;
   const auto source_link = temporary.Path() / "source-link";
@@ -259,12 +259,12 @@ void DirectoryAndZipPackagesAreInstalledWithRollback() {
         .package =
             SkillDirectoryPackage{huxerui::File{source_link.string()}},
     });
-    assert(!linked);
+    EXPECT_EXPRESSION(!linked);
   }
 
   const auto archive = GitHubStyleZip();
   const auto decoded = linecode::infrastructure::ReadLineCodeZip(archive);
-  assert(decoded && decoded->size() == 2);
+  EXPECT_EXPRESSION(decoded && decoded->size() == 2);
   const auto installed_zip = files.Install(SkillInstallRequest{
       .roots = roots,
       .location = SkillLocation::app,
@@ -272,26 +272,26 @@ void DirectoryAndZipPackagesAreInstalledWithRollback() {
       .package = SkillZipPackage{.archive = archive,
                                  .strip_common_root = true},
   });
-  assert(installed_zip && installed_zip->name == "ZIP Skill");
-  assert(huxerui::File{installed_zip->root_path}.Resolve("scripts/run.py").IsFile());
+  EXPECT_EXPRESSION(installed_zip && installed_zip->name == "ZIP Skill");
+  EXPECT_EXPRESSION(huxerui::File{installed_zip->root_path}.Resolve("scripts/run.py").IsFile());
 
   const auto before = files.Discover(roots);
-  assert(before);
+  EXPECT_EXPRESSION(before);
   const auto invalid = files.Install(SkillInstallRequest{
       .roots = roots,
       .location = SkillLocation::app,
       .name = "invalid",
       .package = SkillMarkdownPackage{.markdown = "not empty but no metadata"},
   });
-  assert(invalid); // A standalone SKILL.md is itself a valid package.
+  EXPECT_EXPRESSION(invalid); // A standalone SKILL.md is itself a valid package.
   const auto bad_zip = files.Install(SkillInstallRequest{
       .roots = roots,
       .location = SkillLocation::app,
       .name = "bad-zip",
       .package = SkillZipPackage{.archive = Text("not-a-zip")},
   });
-  assert(!bad_zip);
-  assert(!huxerui::File{app.string()}.Child("bad-zip").Exists());
+  EXPECT_EXPRESSION(!bad_zip);
+  EXPECT_EXPRESSION(!huxerui::File{app.string()}.Child("bad-zip").Exists());
 }
 
 void SkillHubRequestsValidateAndEncodeInputs() {
@@ -303,35 +303,35 @@ void SkillHubRequestsValidateAndEncodeInputs() {
                                         .source = "all",
                                         .sort_by = "stars",
                                         .order = "desc"});
-  assert(list.url.contains("page=1&pageSize=50"));
-  assert(list.url.contains("keyword=PDF%20%E5%B7%A5%E5%85%B7"));
-  assert(!list.url.contains("source="));
+  EXPECT_EXPRESSION(list.url.contains("page=1&pageSize=50"));
+  EXPECT_EXPRESSION(list.url.contains("keyword=PDF%20%E5%B7%A5%E5%85%B7"));
+  EXPECT_EXPRESSION(!list.url.contains("source="));
 
   const auto file = BuildSkillHubFileRequest(
       "pdf-helper", "1.2.0", "references/api.md", "community");
-  assert(file);
-  assert(file->url.ends_with(
+  EXPECT_EXPRESSION(file);
+  EXPECT_EXPRESSION(file->url.ends_with(
       "version=1.2.0&path=references%2Fapi.md&namespace=community"));
-  assert(!BuildSkillHubFileRequest("../escape", "1", "SKILL.md"));
-  assert(!BuildSkillHubFileRequest("safe", "1", "../SKILL.md"));
-  assert(ValidateSkillHubCookie("sid=value"));
-  assert(!ValidateSkillHubCookie("sid=value\r\nX-Test: injected"));
+  EXPECT_EXPRESSION(!BuildSkillHubFileRequest("../escape", "1", "SKILL.md"));
+  EXPECT_EXPRESSION(!BuildSkillHubFileRequest("safe", "1", "../SKILL.md"));
+  EXPECT_EXPRESSION(ValidateSkillHubCookie("sid=value"));
+  EXPECT_EXPRESSION(!ValidateSkillHubCookie("sid=value\r\nX-Test: injected"));
   const auto session_request = BuildSkillHubSessionRequest(
       SkillHubMethod::post, "/api/v1/auth/logout", "sid=value", "{}");
-  assert(session_request);
-  assert(session_request->method == SkillHubMethod::post);
-  assert(std::ranges::find(session_request->headers,
+  EXPECT_EXPRESSION(session_request);
+  EXPECT_EXPRESSION(session_request->method == SkillHubMethod::post);
+  EXPECT_EXPRESSION(std::ranges::find(session_request->headers,
                            std::pair<std::string, std::string>{"Cookie",
                                                                "sid=value"}) !=
          session_request->headers.end());
-  assert(!BuildSkillHubSessionRequest(
+  EXPECT_EXPRESSION(!BuildSkillHubSessionRequest(
       SkillHubMethod::get, "/api/v1/auth/me", "sid=x\nInjected: yes"));
-  assert(!BuildSkillHubSessionRequest(SkillHubMethod::get, "/outside", ""));
-  assert(!BuildSkillHubSessionRequest(SkillHubMethod::post,
+  EXPECT_EXPRESSION(!BuildSkillHubSessionRequest(SkillHubMethod::get, "/outside", ""));
+  EXPECT_EXPRESSION(!BuildSkillHubSessionRequest(SkillHubMethod::post,
                                       "/api/v1/comments", "",
                                       std::string(16U * 1024U + 1U, 'x')));
-  assert(ValidateSkillHubIconUrl("https://api.skillhub.cn/icon.png"));
-  assert(!ValidateSkillHubIconUrl("https://skillhub.cn.evil.test/icon.png"));
+  EXPECT_EXPRESSION(ValidateSkillHubIconUrl("https://api.skillhub.cn/icon.png"));
+  EXPECT_EXPRESSION(!ValidateSkillHubIconUrl("https://skillhub.cn.evil.test/icon.png"));
 }
 
 void SkillHubModelsDecodeLegacyShapes() {
@@ -346,10 +346,10 @@ void SkillHubModelsDecodeLegacyShapes() {
       "subCategories":[{"key":"pdf","name":"PDF 工具"}]
     }]}
   })json");
-  assert(page && page->total == 1 && page->skills.size() == 1);
-  assert(page->skills[0].description == "中文说明");
-  assert(page->skills[0].requires_api_key);
-  assert(page->skills[0].subcategories ==
+  EXPECT_EXPRESSION(page && page->total == 1 && page->skills.size() == 1);
+  EXPECT_EXPRESSION(page->skills[0].description == "中文说明");
+  EXPECT_EXPRESSION(page->skills[0].requires_api_key);
+  EXPECT_EXPRESSION(page->skills[0].subcategories ==
          std::vector<std::string>{"PDF 工具"});
 
   const auto comments = DecodeSkillHubComments(R"json({"items":[{
@@ -358,14 +358,14 @@ void SkillHubModelsDecodeLegacyShapes() {
       {"id":2,"authorName":"回复者","content":"回复","createdAt":20}
     ]}
   }]})json");
-  assert(comments && comments->size() == 1);
-  assert(comments->front().reply_count == 1);
-  assert(comments->front().replies.front().content == "回复");
+  EXPECT_EXPRESSION(comments && comments->size() == 1);
+  EXPECT_EXPRESSION(comments->front().reply_count == 1);
+  EXPECT_EXPRESSION(comments->front().replies.front().content == "回复");
 
   const auto session = DecodeSkillHubSession(
       R"json({"user":{"displayName":"测试用户","handle":"tester","avatarUrl":"avatar"}})json");
-  assert(session && session->authenticated);
-  assert(session->account.handle == "tester");
+  EXPECT_EXPRESSION(session && session->authenticated);
+  EXPECT_EXPRESSION(session->account.handle == "tester");
 
   const auto detail = DecodeSkillHubDetail(R"json({
     "skill":{"slug":"pdf-helper","displayName":"PDF Helper",
@@ -381,31 +381,31 @@ void SkillHubModelsDecodeLegacyShapes() {
     "securityReports":{"keen":{"status":"BENIGN","statusText":"安全"},
       "sanbu":{"status":"suspicious","statusText":"需审查"}}
   })json");
-  assert(detail && detail->slug == "pdf-helper");
-  assert(detail->name == "PDF Helper" && detail->description == "中文详情");
-  assert(detail->version == "2.0.0" && detail->downloads == 9);
-  assert(detail->verified && detail->requires_api_key);
-  assert(detail->canonical_name == "@community/pdf-helper");
-  assert(detail->namespace_handle == "community");
-  assert(detail->security_status == "suspicious");
-  assert(detail->tags == std::vector<std::string>({"pdf", "tool"}));
+  EXPECT_EXPRESSION(detail && detail->slug == "pdf-helper");
+  EXPECT_EXPRESSION(detail->name == "PDF Helper" && detail->description == "中文详情");
+  EXPECT_EXPRESSION(detail->version == "2.0.0" && detail->downloads == 9);
+  EXPECT_EXPRESSION(detail->verified && detail->requires_api_key);
+  EXPECT_EXPRESSION(detail->canonical_name == "@community/pdf-helper");
+  EXPECT_EXPRESSION(detail->namespace_handle == "community");
+  EXPECT_EXPRESSION(detail->security_status == "suspicious");
+  EXPECT_EXPRESSION(detail->tags == std::vector<std::string>({"pdf", "tool"}));
 
   const auto fallback_detail = DecodeSkillHubDetail(
       R"json({"skill":{"displayName":"No Slug"}})json", "known-slug");
-  assert(fallback_detail && fallback_detail->slug == "known-slug");
+  EXPECT_EXPRESSION(fallback_detail && fallback_detail->slug == "known-slug");
 
   const auto files = DecodeSkillHubFiles(
       R"json({"files":[{"path":"SKILL.md","sha256":"abc","size":17},
       {"path":"scripts/run.py","sha256":"def","size":42}]})json");
-  assert(files && files->size() == 2);
-  assert(files->front().path == "SKILL.md" && files->back().size == 42);
+  EXPECT_EXPRESSION(files && files->size() == 2);
+  EXPECT_EXPRESSION(files->front().path == "SKILL.md" && files->back().size == 42);
 
   const auto versions = DecodeSkillHubVersions(R"json({"versions":[{
     "version":"2.0.0","changelog":"更新","createdAt":55,
     "securityReports":{"keen":{"status":"benign","statusText":"安全"}}
   }]})json");
-  assert(versions && versions->size() == 1);
-  assert(versions->front().security_status == "benign");
+  EXPECT_EXPRESSION(versions && versions->size() == 1);
+  EXPECT_EXPRESSION(versions->front().security_status == "benign");
 
   const auto evaluation = DecodeSkillHubEvaluation(R"json({
     "userSummary":"总体很好","dimensions":{
@@ -413,42 +413,42 @@ void SkillHubModelsDecodeLegacyShapes() {
       "trust":{"score":6,"userReason":"","suggestion":" 加测试 "}
     }
   })json");
-  assert(evaluation && evaluation->status == "completed");
-  assert(evaluation->score == 7.0 && evaluation->summary == "总体很好");
-  assert(evaluation->highlights == std::vector<std::string>{"有效"});
-  assert(evaluation->suggestions == std::vector<std::string>{"加测试"});
+  EXPECT_EXPRESSION(evaluation && evaluation->status == "completed");
+  EXPECT_EXPRESSION(evaluation->score == 7.0 && evaluation->summary == "总体很好");
+  EXPECT_EXPRESSION(evaluation->highlights == std::vector<std::string>{"有效"});
+  EXPECT_EXPRESSION(evaluation->suggestions == std::vector<std::string>{"加测试"});
 
   const auto test_cases = DecodeSkillHubTestCases(R"json({"testcases":[
     {"question":"如何用？","answer":"这样用。"},
     {"question":"安全吗？","answer":"先审计。"}
   ]})json");
-  assert(test_cases && test_cases->size() == 2);
-  assert(test_cases->front().title == "测试用例 1");
-  assert(test_cases->back().expected == "先审计。");
+  EXPECT_EXPRESSION(test_cases && test_cases->size() == 2);
+  EXPECT_EXPRESSION(test_cases->front().title == "测试用例 1");
+  EXPECT_EXPRESSION(test_cases->back().expected == "先审计。");
 
   const auto api_error = DecodeSkillHubPage(
       R"json({"code":-1,"message":"invalid request"})json");
-  assert(!api_error && api_error.error().message.contains("invalid request"));
+  EXPECT_EXPRESSION(!api_error && api_error.error().message.contains("invalid request"));
 }
 
 void GitHubSourcesAreResolvedWithoutUnboundedRetry() {
   using namespace linecode::infrastructure;
   const auto root =
       ResolveGitHubSkillSource("https://github.com/acme/demo-skill");
-  assert(root && !root->markdown);
-  assert(root->primary_url ==
+  EXPECT_EXPRESSION(root && !root->markdown);
+  EXPECT_EXPRESSION(root->primary_url ==
          "https://codeload.github.com/acme/demo-skill/zip/refs/heads/main");
-  assert(root->fallback_url ==
+  EXPECT_EXPRESSION(root->fallback_url ==
          "https://codeload.github.com/acme/demo-skill/zip/refs/heads/master");
 
   const auto blob = ResolveGitHubSkillSource(
       "https://github.com/acme/demo/blob/main/skills/foo/SKILL.md");
-  assert(blob && blob->markdown);
-  assert(blob->primary_url ==
+  EXPECT_EXPRESSION(blob && blob->markdown);
+  EXPECT_EXPRESSION(blob->primary_url ==
          "https://raw.githubusercontent.com/acme/demo/main/skills/foo/SKILL.md");
 
-  assert(!ResolveGitHubSkillSource("https://example.com/skill"));
-  assert(!ResolveGitHubSkillSource("http://github.com/acme/demo"));
+  EXPECT_EXPRESSION(!ResolveGitHubSkillSource("https://example.com/skill"));
+  EXPECT_EXPRESSION(!ResolveGitHubSkillSource("http://github.com/acme/demo"));
 }
 
 class ProbeSkillFiles final : public linecode::application::SkillFiles {
@@ -594,13 +594,13 @@ void RepositoryPreservesEnabledStateAndCoordinatesDeletion() {
                                  {.show_debug_overlay = false});
   huxerui::testing::UiTest ui(app);
   ui.PumpUntil([] { return repository_scenario->done; });
-  assert(repository_scenario->passed);
+  EXPECT_EXPRESSION(repository_scenario->passed);
   repository_scenario.reset();
 }
 
 } // namespace
 
-int main() {
+TEST(skill_services_tests, LegacySuite) {
   DomainMetadataAndMarkdownMatchLegacy();
   LocalCreateDiscoverInstallAndDelete();
   DirectoryAndZipPackagesAreInstalledWithRollback();

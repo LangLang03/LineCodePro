@@ -1,0 +1,72 @@
+name: Bug report
+description: Report a reproducible LineCode Pro defect
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Remove API keys, SSH credentials, private source, and personal data from every attachment.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Android device
+        - Android emulator
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: LineCode Pro version
+      description: Include version name, version code, or commit SHA.
+      placeholder: 1.2.8-max (32)
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Device/OS, architecture, model protocol, and workspace mode when relevant.
+      placeholder: Android 16 emulator, x86_64, OpenAI-compatible, local workspace
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots, recordings, or sanitized logs
+      description: Drag files here. For UI mismatches, include both the affected state and the reference state when possible.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I searched existing issues and did not find the same report.
+          required: true
+        - label: I removed secrets, private code, and personal data from this report.
+          required: true

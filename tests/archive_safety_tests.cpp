@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <cassert>
+#include "gtest_support.h"
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -48,7 +48,7 @@ std::size_t FindSignature(const Bytes &bytes, std::uint32_t signature) {
       return offset;
     }
   }
-  assert(false);
+  EXPECT_EXPRESSION(false);
   return 0;
 }
 
@@ -66,10 +66,10 @@ Bytes DeflatedZip(std::string_view name, std::string_view content,
   stream.avail_in = static_cast<uInt>(content.size());
   stream.next_out = compressed.data();
   stream.avail_out = static_cast<uInt>(compressed.size());
-  assert(deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -MAX_WBITS,
+  EXPECT_EXPRESSION(deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -MAX_WBITS,
                       8, Z_DEFAULT_STRATEGY) == Z_OK);
-  assert(deflate(&stream, Z_FINISH) == Z_STREAM_END);
-  assert(deflateEnd(&stream) == Z_OK);
+  EXPECT_EXPRESSION(deflate(&stream, Z_FINISH) == Z_STREAM_END);
+  EXPECT_EXPRESSION(deflateEnd(&stream) == Z_OK);
   compressed.resize(stream.total_out);
 
   const auto checksum = static_cast<std::uint32_t>(
@@ -138,26 +138,26 @@ void TestZipRoundTripAndLegacyDeflate() {
       ZipEntryData{"home/a.txt", Text("alpha")},
   };
   const auto encoded = WriteLineCodeZip(entries);
-  assert(encoded);
+  EXPECT_EXPRESSION(encoded);
   const auto decoded = ReadLineCodeZip(*encoded);
-  assert(decoded && *decoded == entries);
+  EXPECT_EXPRESSION(decoded && *decoded == entries);
 
   for (const bool descriptor : {false, true}) {
     const auto legacy = DeflatedZip("database.json", "legacy", descriptor);
     const auto legacy_decoded = ReadLineCodeZip(legacy);
-    assert(legacy_decoded && legacy_decoded->size() == 1);
-    assert(legacy_decoded->front().content == Text("legacy"));
+    EXPECT_EXPRESSION(legacy_decoded && legacy_decoded->size() == 1);
+    EXPECT_EXPRESSION(legacy_decoded->front().content == Text("legacy"));
   }
   const auto empty = DeflatedZip("empty", "", true);
   const auto empty_decoded = ReadLineCodeZip(empty);
-  assert(empty_decoded && empty_decoded->front().content.empty());
+  EXPECT_EXPRESSION(empty_decoded && empty_decoded->front().content.empty());
 }
 
 void TestZipRejectsTraversalAndTampering() {
-  assert(!linecode::infrastructure::IsSafeArchivePath("../escape"));
-  assert(!linecode::infrastructure::IsSafeArchivePath("a\\b"));
-  assert(!linecode::infrastructure::IsSafeArchivePath("C:/escape"));
-  assert(!linecode::infrastructure::IsSafeArchivePath("home/C:/escape"));
+  EXPECT_EXPRESSION(!linecode::infrastructure::IsSafeArchivePath("../escape"));
+  EXPECT_EXPRESSION(!linecode::infrastructure::IsSafeArchivePath("a\\b"));
+  EXPECT_EXPRESSION(!linecode::infrastructure::IsSafeArchivePath("C:/escape"));
+  EXPECT_EXPRESSION(!linecode::infrastructure::IsSafeArchivePath("home/C:/escape"));
 
   std::string maximum_depth{"home"};
   for (std::size_t depth = 1; depth <
@@ -165,29 +165,29 @@ void TestZipRejectsTraversalAndTampering() {
        ++depth) {
     maximum_depth += "/d";
   }
-  assert(linecode::infrastructure::IsSafeArchivePath(maximum_depth));
-  assert(!linecode::infrastructure::IsSafeArchivePath(maximum_depth + "/d"));
+  EXPECT_EXPRESSION(linecode::infrastructure::IsSafeArchivePath(maximum_depth));
+  EXPECT_EXPRESSION(!linecode::infrastructure::IsSafeArchivePath(maximum_depth + "/d"));
 
   auto encoded = WriteLineCodeZip(
       std::vector{ZipEntryData{"home/a.txt", Text("alpha")}});
-  assert(encoded);
+  EXPECT_EXPRESSION(encoded);
   auto crc_corrupt = *encoded;
   const auto central = FindSignature(crc_corrupt, 0x02014B50U);
   crc_corrupt[central + 16U] ^= std::byte{1};
-  assert(!ReadLineCodeZip(crc_corrupt));
+  EXPECT_EXPRESSION(!ReadLineCodeZip(crc_corrupt));
 
   auto local_name_corrupt = *encoded;
   local_name_corrupt[30] = std::byte{'x'};
-  assert(!ReadLineCodeZip(local_name_corrupt));
+  EXPECT_EXPRESSION(!ReadLineCodeZip(local_name_corrupt));
 
   auto trailing = *encoded;
   trailing.push_back(std::byte{0});
-  assert(!ReadLineCodeZip(trailing));
+  EXPECT_EXPRESSION(!ReadLineCodeZip(trailing));
 
   auto multi_disk = *encoded;
   const auto end = FindSignature(multi_disk, 0x06054B50U);
   multi_disk[end + 4U] = std::byte{1};
-  assert(!ReadLineCodeZip(multi_disk));
+  EXPECT_EXPRESSION(!ReadLineCodeZip(multi_disk));
 
   auto bomb = *encoded;
   const auto bomb_central = FindSignature(bomb, 0x02014B50U);
@@ -196,7 +196,7 @@ void TestZipRejectsTraversalAndTampering() {
     bomb[bomb_central + 24U + index] =
         static_cast<std::byte>((too_large >> (index * 8U)) & 0xFFU);
   }
-  assert(!ReadLineCodeZip(bomb));
+  EXPECT_EXPRESSION(!ReadLineCodeZip(bomb));
 }
 
 void TestManifestValidation() {
@@ -206,13 +206,13 @@ void TestManifestValidation() {
     "workspaceRoots":["home","project","skills"]
   })";
   const auto manifest = ValidateArchiveManifest(valid);
-  assert(manifest && manifest->contains_database);
-  assert(!ValidateArchiveManifest(R"({"format":"other"})"));
-  assert(!ValidateArchiveManifest(R"({
+  EXPECT_EXPRESSION(manifest && manifest->contains_database);
+  EXPECT_EXPRESSION(!ValidateArchiveManifest(R"({"format":"other"})"));
+  EXPECT_EXPRESSION(!ValidateArchiveManifest(R"({
     "format":"linecode","formatVersion":2,"container":"zip",
     "createdAt":123,"database":true,"workspaceRoots":[]
   })"));
-  assert(!ValidateArchiveManifest(R"({
+  EXPECT_EXPRESSION(!ValidateArchiveManifest(R"({
     "format":"linecode","formatVersion":1,"container":"zip",
     "createdAt":123,"database":true,"workspaceRoots":["../home"]
   })"));
@@ -227,21 +227,21 @@ void TestTypedDatabaseCells() {
                "weight":{"type":"float","value":1.5},
                "gone":{"type":"null"}}]}}
   })";
-  assert(ValidateDatabaseSnapshot(valid, 4));
-  assert(!ValidateDatabaseSnapshot(R"({
+  EXPECT_EXPRESSION(ValidateDatabaseSnapshot(valid, 4));
+  EXPECT_EXPRESSION(!ValidateDatabaseSnapshot(R"({
     "format":"linecode-database","schemaVersion":5,"tables":{}
   })", 4));
-  assert(!ValidateDatabaseSnapshot(R"({
+  EXPECT_EXPRESSION(!ValidateDatabaseSnapshot(R"({
     "format":"linecode-database","schemaVersion":4,
     "tables":{"settings":{"columns":["key"],"rows":[
       {"key":{"type":"integer","value":"1"}}]}}}
   })", 4));
-  assert(!ValidateDatabaseSnapshot(R"({
+  EXPECT_EXPRESSION(!ValidateDatabaseSnapshot(R"({
     "format":"linecode-database","schemaVersion":4,
     "tables":{"settings":{"columns":["key","value"],"rows":[
       {"key":{"type":"string","value":"a"}}]}}}
   })", 4));
-  assert(!ValidateDatabaseSnapshot(R"({
+  EXPECT_EXPRESSION(!ValidateDatabaseSnapshot(R"({
     "format":"linecode-database","schemaVersion":4,
     "tables":{"settings":{"columns":["value"],"rows":[
       {"value":{"type":"blob","value":"%%%="}}]}}}
@@ -306,31 +306,31 @@ std::vector<ZipEntryData> LegacyFixture() {
 void TestLegacyAsyncStorageFixture() {
   const auto decoded = linecode::infrastructure::DecodeLegacyArchive(
       LegacyFixture(), 999);
-  assert(decoded);
-  assert(decoded->models.size() == 1);
+  EXPECT_EXPRESSION(decoded);
+  EXPECT_EXPRESSION(decoded->models.size() == 1);
   const auto &model = decoded->models.front().config;
-  assert(model.id == "m-openai");
-  assert(model.api_key == "legacy-secret");
-  assert(model.tool_call_limit == 18);
-  assert(model.compression_model_enabled);
-  assert(!model.compression_model_auto);
-  assert(model.compression_model_id == "compact");
-  assert(model.context_size == 32000);
-  assert(decoded->selected_model_id == "m-openai");
-  assert(decoded->settings.size() == 1);
-  assert(decoded->settings.at("@linecode_chat_mode") == "agent");
-  assert(decoded->conversations.size() == 1);
+  EXPECT_EXPRESSION(model.id == "m-openai");
+  EXPECT_EXPRESSION(model.api_key == "legacy-secret");
+  EXPECT_EXPRESSION(model.tool_call_limit == 18);
+  EXPECT_EXPRESSION(model.compression_model_enabled);
+  EXPECT_EXPRESSION(!model.compression_model_auto);
+  EXPECT_EXPRESSION(model.compression_model_id == "compact");
+  EXPECT_EXPRESSION(model.context_size == 32000);
+  EXPECT_EXPRESSION(decoded->selected_model_id == "m-openai");
+  EXPECT_EXPRESSION(decoded->settings.size() == 1);
+  EXPECT_EXPRESSION(decoded->settings.at("@linecode_chat_mode") == "agent");
+  EXPECT_EXPRESSION(decoded->conversations.size() == 1);
   const auto &conversation = decoded->conversations.front();
-  assert(conversation.id == "c1");
-  assert(conversation.title == "Legacy chat");
-  assert(conversation.created_at == 100);
-  assert(conversation.messages.size() == 2);
-  assert(conversation.messages[0].id == "c1:m1");
-  assert(conversation.messages[0].role == "assistant");
-  assert(conversation.messages[0].reasoning_content == "legacy reasoning");
-  assert(conversation.messages[1].id == "imported_1");
-  assert(conversation.messages[1].role == "user");
-  assert(decoded->current_conversation_id == "c1");
+  EXPECT_EXPRESSION(conversation.id == "c1");
+  EXPECT_EXPRESSION(conversation.title == "Legacy chat");
+  EXPECT_EXPRESSION(conversation.created_at == 100);
+  EXPECT_EXPRESSION(conversation.messages.size() == 2);
+  EXPECT_EXPRESSION(conversation.messages[0].id == "c1:m1");
+  EXPECT_EXPRESSION(conversation.messages[0].role == "assistant");
+  EXPECT_EXPRESSION(conversation.messages[0].reasoning_content == "legacy reasoning");
+  EXPECT_EXPRESSION(conversation.messages[1].id == "imported_1");
+  EXPECT_EXPRESSION(conversation.messages[1].role == "user");
+  EXPECT_EXPRESSION(decoded->current_conversation_id == "c1");
 }
 
 void TestLegacyChunkedConversationFixture() {
@@ -351,9 +351,9 @@ void TestLegacyChunkedConversationFixture() {
       ZipEntryData{"async-storage.json", Text(json::Serialize(storage))}};
   const auto decoded =
       linecode::infrastructure::DecodeLegacyArchive(entries, 777);
-  assert(decoded && decoded->conversations.size() == 1);
-  assert(decoded->conversations.front().created_at == 777);
-  assert(decoded->conversations.front().messages.front().content == "joined");
+  EXPECT_EXPRESSION(decoded && decoded->conversations.size() == 1);
+  EXPECT_EXPRESSION(decoded->conversations.front().created_at == 777);
+  EXPECT_EXPRESSION(decoded->conversations.front().messages.front().content == "joined");
 }
 
 void TestInvalidLegacyArchiveDoesNotReachDatabaseBoundary() {
@@ -374,8 +374,8 @@ void TestInvalidLegacyArchiveDoesNotReachDatabaseBoundary() {
       linecode::infrastructure::DecodeLegacyArchive(entries, 123);
   if (staged)
     database.Import(*staged);
-  assert(!staged);
-  assert(!database.mutated);
+  EXPECT_EXPRESSION(!staged);
+  EXPECT_EXPRESSION(!database.mutated);
 
   json::Array chunked{
       StorageEntry("@lineai_conv_broken",
@@ -384,13 +384,13 @@ void TestInvalidLegacyArchiveDoesNotReachDatabaseBoundary() {
   };
   const std::vector missing_chunk{
       ZipEntryData{"async-storage.json", Text(json::Serialize(chunked))}};
-  assert(!linecode::infrastructure::DecodeLegacyArchive(missing_chunk, 123));
-  assert(!database.mutated);
+  EXPECT_EXPRESSION(!linecode::infrastructure::DecodeLegacyArchive(missing_chunk, 123));
+  EXPECT_EXPRESSION(!database.mutated);
 }
 
 } // namespace
 
-int main() {
+TEST(archive_safety_tests, LegacySuite) {
   TestZipRoundTripAndLegacyDeflate();
   TestZipRejectsTraversalAndTampering();
   TestManifestValidation();

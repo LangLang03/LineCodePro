@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <memory>
 #include <optional>
 #include <string>
@@ -150,50 +150,50 @@ huxerui::View MemoryContextProbe() {
 }
 
 void AssertMemoryContextContract(const Scenario &scenario) {
-  assert(scenario.done);
-  assert(scenario.learning_context.has_value());
-  assert(scenario.learning_context->has_value());
-  assert((*scenario.learning_context)->learning_enabled);
-  assert((*scenario.learning_context)->prompt.contains("C++23"));
-  assert((*scenario.learning_context)->prompt.contains("SQLite"));
-  assert((*scenario.learning_context)->prompt.contains("native-cpp"));
+  EXPECT_EXPRESSION(scenario.done);
+  EXPECT_EXPRESSION(scenario.learning_context.has_value());
+  EXPECT_EXPRESSION(scenario.learning_context->has_value());
+  EXPECT_EXPRESSION((*scenario.learning_context)->learning_enabled);
+  EXPECT_EXPRESSION((*scenario.learning_context)->prompt.contains("C++23"));
+  EXPECT_EXPRESSION((*scenario.learning_context)->prompt.contains("SQLite"));
+  EXPECT_EXPRESSION((*scenario.learning_context)->prompt.contains("native-cpp"));
 
-  assert(scenario.learning_commit.has_value());
-  assert(scenario.learning_commit->has_value());
-  assert(scenario.manual_context.has_value());
-  assert(scenario.manual_context->has_value());
-  assert(!(*scenario.manual_context)->learning_enabled);
-  assert((*scenario.manual_context)->prompt.contains("手工保存"));
-  assert((*scenario.manual_context)->prompt.contains("始终使用中文回复"));
-  assert(scenario.disabled_commit.has_value());
-  assert(scenario.disabled_commit->has_value());
+  EXPECT_EXPRESSION(scenario.learning_commit.has_value());
+  EXPECT_EXPRESSION(scenario.learning_commit->has_value());
+  EXPECT_EXPRESSION(scenario.manual_context.has_value());
+  EXPECT_EXPRESSION(scenario.manual_context->has_value());
+  EXPECT_EXPRESSION(!(*scenario.manual_context)->learning_enabled);
+  EXPECT_EXPRESSION((*scenario.manual_context)->prompt.contains("手工保存"));
+  EXPECT_EXPRESSION((*scenario.manual_context)->prompt.contains("始终使用中文回复"));
+  EXPECT_EXPRESSION(scenario.disabled_commit.has_value());
+  EXPECT_EXPRESSION(scenario.disabled_commit->has_value());
 
   const auto &store = *scenario.store;
-  assert(store.retrieval_projects ==
+  EXPECT_EXPRESSION(store.retrieval_projects ==
          std::vector<std::string>{"project-alpha"});
-  assert(store.excluded_conversations ==
+  EXPECT_EXPRESSION(store.excluded_conversations ==
          std::vector<std::string>{"conversation-current"});
-  assert(store.manual_projects == std::vector<std::string>{"project-alpha"});
-  assert(store.marked_ids ==
+  EXPECT_EXPRESSION(store.manual_projects == std::vector<std::string>{"project-alpha"});
+  EXPECT_EXPRESSION(store.marked_ids ==
          std::vector<std::vector<std::string>>{{"memory-cpp23"}});
 
-  assert(store.indexed_turns.size() == 1U);
-  assert(store.indexed_turns.front().messages.size() == 2U);
-  assert(store.indexed_turns.front().messages.back().role == "assistant");
-  assert(store.extracted.size() == 1U);
-  assert(store.extracted.front().scope ==
+  EXPECT_EXPRESSION(store.indexed_turns.size() == 1U);
+  EXPECT_EXPRESSION(store.indexed_turns.front().messages.size() == 2U);
+  EXPECT_EXPRESSION(store.indexed_turns.front().messages.back().role == "assistant");
+  EXPECT_EXPRESSION(store.extracted.size() == 1U);
+  EXPECT_EXPRESSION(store.extracted.front().scope ==
          linecode::domain::MemoryScope::project);
-  assert(store.extracted.front().project_id == "project-alpha");
-  assert(store.extracted.front().content == "使用 C++23");
+  EXPECT_EXPRESSION(store.extracted.front().project_id == "project-alpha");
+  EXPECT_EXPRESSION(store.extracted.front().content == "使用 C++23");
 
-  assert(store.events ==
+  EXPECT_EXPRESSION(store.events ==
          std::vector<std::string>{"load-retrieval", "mark-used", "index-turn",
                                   "save-extracted", "load-manual"});
 }
 
 } // namespace
 
-int main() {
+TEST(memory_context_service_tests, LegacySuite) {
   auto store = std::make_shared<ProbeMemoryStore>();
   store->retrieval_corpus.memories.push_back(MemoryRecord{
       .id = "memory-cpp23",

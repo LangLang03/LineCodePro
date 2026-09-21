@@ -14,6 +14,7 @@ namespace linecode::application {
 struct PendingMessage final {
   std::string text;
   std::vector<domain::InputAttachment> attachments;
+  std::optional<domain::ChatImage> image;
 
   bool operator==(const PendingMessage &) const = default;
 };
@@ -24,7 +25,8 @@ class PendingMessageQueue final {
 public:
   [[nodiscard]] std::expected<void, SendMessageError>
   Enqueue(std::string text,
-          std::vector<domain::InputAttachment> attachments = {});
+          std::vector<domain::InputAttachment> attachments = {},
+          std::optional<domain::ChatImage> image = std::nullopt);
   [[nodiscard]] std::optional<PendingMessage> TakeNext();
   [[nodiscard]] bool Remove(std::size_t index);
   void Clear() noexcept;

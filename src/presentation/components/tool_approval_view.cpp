@@ -128,7 +128,6 @@ void Submit(const std::function<void(std::string)> &callback,
 View ApprovalAction(StringVariant label, bool primary, bool enabled,
                     std::string tool_call_id,
                     std::function<void(std::string)> callback) {
-  const auto accessible_label = label;
   return Stack{
       Text(std::move(label))
           .Style(Label(13.0F, primary ? colors::text_on_color : colors::text))
@@ -147,8 +146,7 @@ View ApprovalAction(StringVariant label, bool primary, bool enabled,
                            : static_cast<Color>(colors::border),
                    1.0F),
             CornerRadius(18.0F), Enabled{enabled}, Focusable(),
-            PointerCursor(PointerCursorKind::Hand),
-            Semantics{.role = SemanticRole::Button, .label = accessible_label});
+            PointerCursor(PointerCursorKind::Hand));
 }
 
 View ApprovalActions(const ToolApprovalViewState &state,
@@ -182,9 +180,7 @@ View ApprovalDetails(const ToolApprovalPresentation &presentation) {
   return ScrollView(Column{
                         Text(explanation)
                             .Style(Label(15.0F, colors::text))
-                            .With(Padding(EdgeInsets{.top = 6.0F}),
-                                  Semantics{.live_region =
-                                                SemanticLiveRegion::Polite}),
+                            .With(Padding(EdgeInsets{.top = 6.0F})),
                         ScrollView(SelectionArea(Text(presentation.action)
                                                      .Style(TextStyle{
                                                          Font::Monospace(13.0F),

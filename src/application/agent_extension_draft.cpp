@@ -67,10 +67,11 @@ CompletionAgentExtensionDraftGenerator::CompletionAgentExtensionDraftGenerator(
     std::shared_ptr<CompletionGateway> completion,
     std::shared_ptr<ToolRegistry> tools,
     std::shared_ptr<McpExtensionStore> mcps,
-    std::shared_ptr<const AgentDraftCodec> codec)
+    std::shared_ptr<const AgentDraftCodec> codec,
+    const ToolTextLanguage language)
     : models_(std::move(models)), completion_(std::move(completion)),
       tools_(std::move(tools)), mcps_(std::move(mcps)),
-      codec_(std::move(codec)) {
+      codec_(std::move(codec)), language_(language) {
   if (!models_ || !completion_ || !tools_ || !mcps_ || !codec_)
     throw std::invalid_argument(
         "CompletionAgentExtensionDraftGenerator requires all dependencies");
@@ -95,7 +96,12 @@ CompletionAgentExtensionDraftGenerator::LoadContext() {
       continue;
     context.tools.push_back({.name = tool.name,
                              .category = tool.category,
-                             .description = tool.description,
+                             .display_name = std::string{
+                                 tool.presentation.DisplayName(language_,
+                                                               tool.name)},
+                             .display_description = std::string{
+                                 tool.presentation.DisplayDescription(
+                                     language_, tool.description)},
                              .selected_by_default =
                                  tool.agent_selected_by_default});
   }

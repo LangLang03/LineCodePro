@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <memory>
 #include <string>
 #include <utility>
@@ -85,16 +85,18 @@ void IndexesOnlyEnabledTools() {
                   .input_schema_json = {}}}),
   });
   const auto tools = registry.Tools();
-  assert(tools.size() == 1);
-  assert(tools[0].name == "mcpx_42svxm_repo_search");
-  assert(tools[0].description ==
+  EXPECT_EXPRESSION(tools.size() == 1);
+  EXPECT_EXPRESSION(tools[0].name == "mcpx_42svxm_repo_search");
+  EXPECT_EXPRESSION(tools[0].agent_scope_ids ==
+         std::vector<std::string>{"custom:server-1"});
+  EXPECT_EXPRESSION(tools[0].description ==
          "Invoke the tool repo search of the custom HTTP MCP \"Source "
          "MCP\".\nSearch repositories\nMCP address: "
          "https://mcp.example/rpc");
-  assert(tools[0].parameters_json ==
+  EXPECT_EXPRESSION(tools[0].parameters_json ==
          R"({"required":["query"],"type":"object"})");
-  assert(registry.Contains(tools[0].name));
-  assert(!registry.Contains("mcpx_missing"));
+  EXPECT_EXPRESSION(registry.Contains(tools[0].name));
+  EXPECT_EXPRESSION(!registry.Contains("mcpx_missing"));
 }
 
 void ReplacesInvalidSchemasAndRemovedBindings() {
@@ -109,14 +111,14 @@ void ReplacesInvalidSchemasAndRemovedBindings() {
         .enabled = true,
         .description = {},
         .input_schema_json = R"({"type":"string"})"}})});
-  assert(registry.Tools().size() == 2);
+  EXPECT_EXPRESSION(registry.Tools().size() == 2);
   for (const auto &tool : registry.Tools()) {
-    assert(tool.parameters_json ==
+    EXPECT_EXPRESSION(tool.parameters_json ==
            R"({"additionalProperties":true,"properties":{},"type":"object"})");
   }
   registry.Update({});
-  assert(registry.Tools().empty());
-  assert(!registry.Contains("mcpx_42svxm_bad"));
+  EXPECT_EXPRESSION(registry.Tools().empty());
+  EXPECT_EXPRESSION(!registry.Contains("mcpx_42svxm_bad"));
 }
 
 void LastDuplicateWinsWithoutChangingOrder() {
@@ -133,15 +135,15 @@ void LastDuplicateWinsWithoutChangingOrder() {
                   .description = "new",
                   .input_schema_json = {}}}),
   });
-  assert(registry.Tools().size() == 1);
-  assert(registry.Tools()[0].description.contains("Second"));
-  assert(registry.Tools()[0].description.contains("new"));
-  assert(!registry.Tools()[0].description.contains("old"));
+  EXPECT_EXPRESSION(registry.Tools().size() == 1);
+  EXPECT_EXPRESSION(registry.Tools()[0].description.contains("Second"));
+  EXPECT_EXPRESSION(registry.Tools()[0].description.contains("new"));
+  EXPECT_EXPRESSION(!registry.Tools()[0].description.contains("old"));
 }
 
 } // namespace
 
-int main() {
+TEST(mcp_extension_tool_registry_tests, LegacySuite) {
   IndexesOnlyEnabledTools();
   ReplacesInvalidSchemasAndRemovedBindings();
   LastDuplicateWinsWithoutChangingOrder();

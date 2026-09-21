@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <cassert>
+#include "gtest_support.h"
 #include <chrono>
 #include <iostream>
 #include <memory>
@@ -24,14 +24,22 @@ using linecode::application::DiffRestoreResult;
 using linecode::application::DiffReviewService;
 using linecode::application::DiffRevertResult;
 using linecode::application::DiffStore;
+using linecode::application::DiffStoreResult;
 using linecode::domain::DiffRecord;
+
+template <class Value> Value Require(DiffStoreResult<Value> result) {
+  EXPECT_EXPRESSION(result);
+  return std::move(*result);
+}
+
+void Require(DiffStoreResult<void> result) { EXPECT_EXPRESSION(result); }
 
 // In-memory stand-in for `SqliteDiffStore`: the review service only needs the
 // legacy guard semantics plus a visible call log. One vector is authoritative so
 // `MarkReverted`/`SetReview` are observable through every read path.
 class FakeDiffStore final : public DiffStore {
 public:
-  [[nodiscard]] huxerui::Task<DiffRecord>
+  [[nodiscard]] huxerui::Task<DiffStoreResult<DiffRecord>>
   Record(std::string file_path, std::string old_content, std::string new_content,
          bool old_exists) override {
     DiffRecord record{
@@ -49,7 +57,7 @@ public:
     co_return record;
   }
 
-  [[nodiscard]] huxerui::Task<std::optional<DiffRecord>>
+  [[nodiscard]] huxerui::Task<DiffStoreResult<std::optional<DiffRecord>>>
   Find(std::string diff_id) override {
     ++find_calls;
     if (diff_id.empty())
@@ -60,13 +68,13 @@ public:
     co_return *found;
   }
 
-  [[nodiscard]] huxerui::Task<std::vector<DiffRecord>>
+  [[nodiscard]] huxerui::Task<DiffStoreResult<std::vector<DiffRecord>>>
   Chain(std::string file_path) override {
     ++chain_calls;
     co_return chain_for(file_path);
   }
 
-  [[nodiscard]] huxerui::Task<DiffRevertResult>
+  [[nodiscard]] huxerui::Task<DiffStoreResult<DiffRevertResult>>
   CheckRevert(std::string diff_id) override {
     ++check_calls;
     const auto *found = find(diff_id);
@@ -95,19 +103,20 @@ public:
                                 .record = *found};
   }
 
-  [[nodiscard]] huxerui::Task<void> MarkReverted(std::string diff_id) override {
+  [[nodiscard]] huxerui::Task<DiffStoreResult<void>>
+  MarkReverted(std::string diff_id) override {
     ++mark_calls;
     if (auto *found = find(diff_id); found != nullptr)
       found->reverted = true;
-    co_return;
+    co_return DiffStoreResult<void>{};
   }
 
-  [[nodiscard]] huxerui::Task<void> SetReview(std::string diff_id,
-                                              std::string state,
-                                              std::string message) override {
+  [[nodiscard]] huxerui::Task<DiffStoreResult<void>>
+  SetReview(std::string diff_id, std::string state,
+            std::string message) override {
     ++set_review_calls;
     if (diff_id.empty())
-      co_return;
+      co_return DiffStoreResult<void>{};
     last_reviewed_id = diff_id;
     last_state = state;
     last_message = message;
@@ -115,7 +124,7 @@ public:
       found->review_state = state;
       found->review_message = message;
     }
-    co_return;
+    co_return DiffStoreResult<void>{};
   }
 
   void Add(DiffRecord record) { records.push_back(std::move(record)); }
@@ -204,7 +213,7 @@ huxerui::View ReviewProbe() {
       store.Add(MakeRecord("second", "/projects/second.txt", 30, true));
 
       const auto set_reviews_before = store.set_review_calls;
-      co_await service.Review("", "rejected", "pending");
+      Require(co_await service.Review("", "rejected", "pending"));
       if (store.set_review_calls != set_reviews_before || restorer.calls != 0 ||
           store.mark_calls != 0) {
         std::cerr << "check 1 failed\n";
@@ -213,13 +222,13 @@ huxerui::View ReviewProbe() {
 
       // 2. State normalization: only the exact legacy token rejects, and an
       // accepted change is recorded without touching the file.
-      co_await service.Review("call-1", "Rejected", "kept");
+      Require(co_await service.Review("call-1", "Rejected", "kept"));
       if (store.last_state != "accepted" || !store.last_message.empty() ||
           restorer.calls != 0) {
         std::cerr << "check 2 failed: state='" << store.last_state << "'\n";
         ok = false;
       }
-      co_await service.Review("call-2", "", "kept");
+      Require(co_await service.Review("call-2", "", "kept"));
       if (store.last_state != "accepted" || restorer.calls != 0) {
         std::cerr << "check 3 failed\n";
         ok = false;
@@ -227,7 +236,7 @@ huxerui::View ReviewProbe() {
 
       // 3. The exact "rejected" token reverts: the file is restored, the record
       // is marked, and the message names the file rather than the identifier.
-      co_await service.Review("call-3", "rejected", "kept");
+      Require(co_await service.Review("call-3", "rejected", "kept"));
       if (store.last_state != "rejected" || restorer.calls != 1 ||
           restorer.restored.back().id != "kept" || store.mark_calls != 1 ||
           !store.find("kept")->reverted ||
@@ -243,7 +252,7 @@ huxerui::View ReviewProbe() {
       // message verbatim, clears the state, and never touches the file.
       const auto restore_calls_before = restorer.calls;
       const auto mark_calls_before = store.mark_calls;
-      co_await service.RejectWithRevert("pending");
+      Require(co_await service.RejectWithRevert("pending"));
       if (store.last_reviewed_id != "pending" || !store.last_state.empty() ||
           store.last_message !=
               "Please revert subsequent changes to this file first" ||
@@ -255,7 +264,7 @@ huxerui::View ReviewProbe() {
       }
 
       // 5. An unknown identifier reports the legacy "not found" message.
-      co_await service.RejectWithRevert("missing");
+      Require(co_await service.RejectWithRevert("missing"));
       if (!store.last_state.empty() ||
           store.last_message != "Specified diff record not found" ||
           restorer.calls != restore_calls_before) {
@@ -265,7 +274,7 @@ huxerui::View ReviewProbe() {
 
       // 6. Reverting a different record through `RejectWithRevert` restores its
       // file and marks it.
-      co_await service.RejectWithRevert("second");
+      Require(co_await service.RejectWithRevert("second"));
       if (restorer.calls != restore_calls_before + 1 ||
           restorer.restored.back().id != "second" ||
           !restorer.restored.back().old_exists || store.mark_calls != 2 ||
@@ -282,7 +291,7 @@ huxerui::View ReviewProbe() {
       store.Add(MakeRecord("denied", "/projects/denied.txt", 40, false));
       restorer.result = {.success = false,
                          .message = "Cannot delete file: /projects/denied.txt"};
-      co_await service.RejectWithRevert("denied");
+      Require(co_await service.RejectWithRevert("denied"));
       if (!store.last_state.empty() ||
           store.last_message !=
               "File restore failed: Cannot delete file: /projects/denied.txt" ||
@@ -294,7 +303,7 @@ huxerui::View ReviewProbe() {
       // 8. Both restore paths hand the resolved record to the port: deletion for
       // a created file, rewrite for an existing one.
       restorer.result = {.success = true, .message = std::string{}};
-      co_await service.RejectWithRevert("denied");
+      Require(co_await service.RejectWithRevert("denied"));
       if (restorer.restored.back().id != "denied" ||
           restorer.restored.back().old_exists || store.mark_calls != 3 ||
           !store.find("denied")->reverted) {
@@ -302,7 +311,7 @@ huxerui::View ReviewProbe() {
         ok = false;
       }
       store.Add(MakeRecord("rewritten", "/projects/sub/new.txt", 50, true));
-      co_await service.RejectWithRevert("rewritten");
+      Require(co_await service.RejectWithRevert("rewritten"));
       if (restorer.restored.back().id != "rewritten" ||
           !restorer.restored.back().old_exists ||
           restorer.restored.back().old_content != "before" ||
@@ -315,7 +324,7 @@ huxerui::View ReviewProbe() {
       // the legacy controller still reports the resolved file path.
       const auto reverted_restores = restorer.calls;
       const auto reverted_marks = store.mark_calls;
-      co_await service.RejectWithRevert("kept");
+      Require(co_await service.RejectWithRevert("kept"));
       if (restorer.calls != reverted_restores ||
           store.mark_calls != reverted_marks ||
           store.last_state != "rejected" ||
@@ -329,9 +338,10 @@ huxerui::View ReviewProbe() {
       // invalidates the entry so the next read sees the committed state.
       store.Add(MakeRecord(std::string{"cached"},
                            std::string{"/projects/cached.txt"}, 60, true));
-      co_await service.RejectWithRevert("cached");
+      Require(co_await service.RejectWithRevert("cached"));
       store.find_calls = 0;
-      const auto cached_hit = co_await service.CachedReview("cached");
+      const auto cached_hit =
+          Require(co_await service.CachedReview("cached"));
       if (!cached_hit || cached_hit->id != "cached" ||
           cached_hit->review_state != "rejected" ||
           cached_hit->review_message != "Reverted change to /projects/cached.txt" ||
@@ -339,10 +349,13 @@ huxerui::View ReviewProbe() {
         std::cerr << "check 12 failed: finds=" << store.find_calls << "\n";
         ok = false;
       }
-      const auto blocked_local = co_await service.CachedReview("pending");
-      const auto absent_first = co_await service.CachedReview("nowhere");
+      const auto blocked_local =
+          Require(co_await service.CachedReview("pending"));
+      const auto absent_first =
+          Require(co_await service.CachedReview("nowhere"));
       const auto finds_after_misses = store.find_calls;
-      const auto absent_second = co_await service.CachedReview("nowhere");
+      const auto absent_second =
+          Require(co_await service.CachedReview("nowhere"));
       // The blocked record is cached with the legacy shape: no explicit state,
       // the guard message, and `reverted == 0` (so no synthetic "rejected").
       if (!blocked_local || !blocked_local->review_state.empty() ||
@@ -355,8 +368,9 @@ huxerui::View ReviewProbe() {
         std::cerr << "check 13 failed: finds=" << store.find_calls << "\n";
         ok = false;
       }
-      co_await service.Review("call-9", "accepted", "cached");
-      const auto refreshed = co_await service.CachedReview("cached");
+      Require(co_await service.Review("call-9", "accepted", "cached"));
+      const auto refreshed =
+          Require(co_await service.CachedReview("cached"));
       if (!refreshed || refreshed->EffectiveReviewState() != "accepted" ||
           !refreshed->review_message.empty() || store.find_calls != 2) {
         std::cerr << "check 14 failed: finds=" << store.find_calls << "\n";
@@ -384,15 +398,15 @@ void ReviewServiceMirrorsLegacyToolReviewController() {
       ui.Pump(std::chrono::milliseconds{1});
       std::this_thread::sleep_for(std::chrono::milliseconds{1});
     }
-    assert(scenario->done);
-    assert(scenario->passed);
+    EXPECT_EXPRESSION(scenario->done);
+    EXPECT_EXPRESSION(scenario->passed);
   }
   scenario.reset();
 }
 
 } // namespace
 
-int main() {
+TEST(diff_review_service_tests, LegacySuite) {
   ReviewServiceMirrorsLegacyToolReviewController();
   std::cout << "diff review service tests passed\n";
 }

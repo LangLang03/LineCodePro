@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <string>
 
 #include "application/ports/termux_integration.h"
@@ -23,15 +23,15 @@ void ParsesCompleteSetupOutput() {
       kPrivateKey + "\nLINEAI_PRIVATE_KEY_END\n";
 
   const auto result = linecode::domain::ParseTermuxSetupOutput(output);
-  assert(result.has_value());
-  assert(result->config.host == "127.0.0.1");
-  assert(result->config.port == 8022);
-  assert(result->config.username == "u0_a123");
-  assert(result->config.private_key == kPrivateKey);
-  assert(result->shell == "zsh");
-  assert(result->rc_path.ends_with("/.zshrc"));
-  assert(result->verification_output.starts_with("LineAI SSH OK"));
-  assert(result->ConnectionVerified());
+  EXPECT_EXPRESSION(result.has_value());
+  EXPECT_EXPRESSION(result->config.host == "127.0.0.1");
+  EXPECT_EXPRESSION(result->config.port == 8022);
+  EXPECT_EXPRESSION(result->config.username == "u0_a123");
+  EXPECT_EXPRESSION(result->config.private_key == kPrivateKey);
+  EXPECT_EXPRESSION(result->shell == "zsh");
+  EXPECT_EXPRESSION(result->rc_path.ends_with("/.zshrc"));
+  EXPECT_EXPRESSION(result->verification_output.starts_with("LineAI SSH OK"));
+  EXPECT_EXPRESSION(result->ConnectionVerified());
 }
 
 void NormalizesMissingHostAndInvalidPort() {
@@ -42,10 +42,10 @@ void NormalizesMissingHostAndInvalidPort() {
       "LINEAI_PRIVATE_KEY_BEGIN\nkey\nLINEAI_PRIVATE_KEY_END\n";
 
   const auto result = linecode::domain::ParseTermuxSetupOutput(output);
-  assert(result.has_value());
-  assert(result->config.host == linecode::domain::kDefaultSshHost);
-  assert(result->config.port == linecode::domain::kDefaultSshPort);
-  assert(!result->ConnectionVerified());
+  EXPECT_EXPRESSION(result.has_value());
+  EXPECT_EXPRESSION(result->config.host == linecode::domain::kDefaultSshHost);
+  EXPECT_EXPRESSION(result->config.port == linecode::domain::kDefaultSshPort);
+  EXPECT_EXPRESSION(!result->ConnectionVerified());
 }
 
 void RejectsAndRedactsMalformedOutput() {
@@ -54,10 +54,10 @@ void RejectsAndRedactsMalformedOutput() {
       "LINEAI_PRIVATE_KEY_BEGIN\nnever-log-this-key\n";
 
   const auto result = linecode::domain::ParseTermuxSetupOutput(output);
-  assert(!result.has_value());
-  assert(result.error().code == linecode::domain::TermuxErrorCode::parse_failed);
-  assert(!result.error().detail.contains("never-log-this-key"));
-  assert(result.error().detail.contains("saved to SSH Private key"));
+  EXPECT_EXPRESSION(!result.has_value());
+  EXPECT_EXPRESSION(result.error().code == linecode::domain::TermuxErrorCode::parse_failed);
+  EXPECT_EXPRESSION(!result.error().detail.contains("never-log-this-key"));
+  EXPECT_EXPRESSION(result.error().detail.contains("saved to SSH Private key"));
 }
 
 void RedactsEveryPrivateKeyBlock() {
@@ -66,24 +66,24 @@ void RedactsEveryPrivateKeyBlock() {
       "middle\nLINEAI_PRIVATE_KEY_BEGIN\nsecond\nLINEAI_PRIVATE_KEY_END\nafter";
   const auto redacted =
       linecode::domain::RedactTermuxPrivateKey(output, "[redacted]");
-  assert(redacted == "before\n[redacted]\nmiddle\n[redacted]\nafter");
+  EXPECT_EXPRESSION(redacted == "before\n[redacted]\nmiddle\n[redacted]\nafter");
 }
 
 void SetupContractContainsRequiredTermuxOperations() {
   using namespace linecode::application;
-  assert(kTermuxAllowExternalAppsCommand.contains(
+  EXPECT_EXPRESSION(kTermuxAllowExternalAppsCommand.contains(
       "allow-external-apps=true"));
-  assert(kTermuxAllowExternalAppsCommand.contains("termux-reload-settings"));
-  assert(kTermuxOpenSshSetupScript.contains("pkg install -y openssh"));
-  assert(kTermuxOpenSshSetupScript.contains("ssh-keygen -t rsa -b 4096"));
-  assert(kTermuxOpenSshSetupScript.contains("LINEAI_TERMUX_TEST_EXIT"));
-  assert(kTermuxOpenSshSetupScript.contains("LINEAI_PRIVATE_KEY_BEGIN"));
-  assert(kTermuxOpenSshSetupScript.contains("-p 8022"));
+  EXPECT_EXPRESSION(kTermuxAllowExternalAppsCommand.contains("termux-reload-settings"));
+  EXPECT_EXPRESSION(kTermuxOpenSshSetupScript.contains("pkg install -y openssh"));
+  EXPECT_EXPRESSION(kTermuxOpenSshSetupScript.contains("ssh-keygen -t rsa -b 4096"));
+  EXPECT_EXPRESSION(kTermuxOpenSshSetupScript.contains("LINEAI_TERMUX_TEST_EXIT"));
+  EXPECT_EXPRESSION(kTermuxOpenSshSetupScript.contains("LINEAI_PRIVATE_KEY_BEGIN"));
+  EXPECT_EXPRESSION(kTermuxOpenSshSetupScript.contains("-p 8022"));
 }
 
 } // namespace
 
-int main() {
+TEST(termux_integration_tests, LegacySuite) {
   ParsesCompleteSetupOutput();
   NormalizesMissingHostAndInvalidPort();
   RejectsAndRedactsMalformedOutput();

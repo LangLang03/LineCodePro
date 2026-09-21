@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include "application/shell_result_content.h"
 #include "infrastructure/archive_json.h"
 
 namespace linecode::application {
@@ -23,11 +24,11 @@ ToolRegistryError Error(ToolRegistryErrorCode code, std::string message) {
 }
 
 bool ShellEnabled(const domain::McpExecutionSettings &settings) {
-  const auto found = std::ranges::find(
-      settings.groups, std::string_view{"shell"},
-      [](const domain::McpToolGroupState &group) {
-        return std::string_view{group.id};
-      });
+  const auto found =
+      std::ranges::find(settings.groups, std::string_view{"shell"},
+                        [](const domain::McpToolGroupState &group) {
+                          return std::string_view{group.id};
+                        });
   return found != settings.groups.end() && found->enabled &&
          domain::SupportsMcpExecutionMode(found->supported_modes,
                                           settings.mode);
@@ -42,8 +43,9 @@ ParseShellArguments(std::string_view text) {
   auto parsed = json::Parse(text);
   const auto *object = parsed ? json::AsObject(&*parsed) : nullptr;
   if (!object) {
-    return std::unexpected(Error(ToolRegistryErrorCode::invalid_arguments,
-                                 "shell_execute arguments must be a JSON object"));
+    return std::unexpected(
+        Error(ToolRegistryErrorCode::invalid_arguments,
+              "shell_execute arguments must be a JSON object"));
   }
   const auto *command = json::AsString(json::Find(*object, "command"));
   if (!command || command->empty()) {
@@ -63,35 +65,25 @@ ParseShellArguments(std::string_view text) {
     else if (const auto *number = std::get_if<double>(timeout))
       milliseconds = static_cast<std::int64_t>(*number);
     if (!milliseconds) {
-      return std::unexpected(Error(
-          ToolRegistryErrorCode::invalid_arguments,
-          "shell_execute timeoutMs must be a number"));
+      return std::unexpected(Error(ToolRegistryErrorCode::invalid_arguments,
+                                   "shell_execute timeoutMs must be a number"));
     }
     request.timeout_milliseconds =
-        std::clamp(*milliseconds, std::int64_t{1'000},
-                   std::int64_t{300'000});
+        std::clamp(*milliseconds, std::int64_t{1'000}, std::int64_t{300'000});
   }
   return ParsedShellArguments{.request = std::move(request)};
 }
 
 template <class Value, class Start>
 huxerui::Task<TerminalProviderResult<Value>> AwaitGateway(Start start) {
-  auto result = std::make_shared<
-      std::optional<TerminalProviderResult<Value>>>();
+  auto result =
+      std::make_shared<std::optional<TerminalProviderResult<Value>>>();
   std::invoke(std::move(start), [result](TerminalProviderResult<Value> value) {
     result->emplace(std::move(value));
   });
   while (!result->has_value())
     co_await huxerui::Delay(5ms);
   co_return std::move(**result);
-}
-
-std::string EncodeShellResult(const TerminalShellResult &result) {
-  return json::Serialize(json::Object{
-      {"exit_code", static_cast<std::int64_t>(result.exit_code)},
-      {"stdout", result.standard_output},
-      {"stderr", result.standard_error},
-  });
 }
 
 } // namespace
@@ -121,13 +113,11 @@ TerminalProviderToolRegistry::Refresh() {
       ShellEnabled(*settings)) {
     auto providers = co_await providers_->ListTerminalProviders();
     if (!providers) {
-      co_return std::unexpected(
-          Error(ToolRegistryErrorCode::load_failed,
-                std::move(providers.error().message)));
+      co_return std::unexpected(Error(ToolRegistryErrorCode::load_failed,
+                                      std::move(providers.error().message)));
     }
-    const auto enabled =
-        std::ranges::find(*providers, true,
-                          &domain::TerminalProviderConfig::enabled);
+    const auto enabled = std::ranges::find(
+        *providers, true, &domain::TerminalProviderConfig::enabled);
     if (enabled != providers->end()) {
       next_provider = *enabled;
       next_tools.push_back(RegisteredTool{
@@ -140,8 +130,17 @@ TerminalProviderToolRegistry::Refresh() {
           // Legacy read-only policy permits shell on an isolated remote or
           // terminal-provider target, while local mutation tools remain denied.
           .allowed_in_read_only = true,
-          .permanent_grant_supported = true,
+          .permanent_grant_arguments = {{.name = "command", .required = true},
+                                        {.name = "cwd", .required = false}},
+          .agent_category = AgentToolCategory::system,
           .category = "shell",
+          .presentation = {.english_name = "Run terminal command",
+                           .english_description =
+                               "Execute a shell command through the connected "
+                               "terminal provider.",
+                           .chinese_name = "运行终端命令",
+                           .chinese_description =
+                               "通过已连接的终端提供者执行 Shell 命令。"},
       });
     }
   }
@@ -160,14 +159,13 @@ huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>>
 TerminalProviderToolRegistry::Invoke(std::string name,
                                      std::string arguments_json) {
   if (name != kTerminalShellToolName) {
-    co_return std::unexpected(
-        Error(ToolRegistryErrorCode::unknown_tool,
-              "Unknown terminal-provider tool: " + name));
+    co_return std::unexpected(Error(ToolRegistryErrorCode::unknown_tool,
+                                    "Unknown terminal-provider tool: " + name));
   }
   if (!active_provider_) {
-    co_return std::unexpected(Error(
-        ToolRegistryErrorCode::unavailable,
-        "No enabled terminal provider is selected for shell execution"));
+    co_return std::unexpected(
+        Error(ToolRegistryErrorCode::unavailable,
+              "No enabled terminal provider is selected for shell execution"));
   }
   auto arguments = ParseShellArguments(arguments_json);
   if (!arguments)
@@ -184,7 +182,8 @@ TerminalProviderToolRegistry::Invoke(std::string name,
                                     std::move(invoked.error().message)));
   }
   co_return ToolInvocationResult{
-      .content = EncodeShellResult(*invoked),
+      .content =
+          ShellResultContent(invoked->standard_output, invoked->standard_error),
       .error = invoked->exit_code != 0,
   };
 }

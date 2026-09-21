@@ -14,6 +14,7 @@
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/components/legacy_settings_card_frame.h"
 #include "presentation/components/line_dialog_presentation.h"
+#include "presentation/legacy_text_presentation.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -38,8 +39,6 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation) {
           .OnClick([navigation] { navigation.Pop(); })
           .With(Frame{.width = 36.0F, .height = 36.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                Semantics{.role = SemanticRole::Button,
-                          .label = app::strings::common_back},
                 Focusable(), PointerCursor(PointerCursorKind::Hand)),
       Stack{Text(app::strings::screen_data_title)
                 .Style(Label(17.0F, FontWeight::Bold))}
@@ -211,9 +210,10 @@ Task<void> ImportArchive(
 
   return Column{
       Header(navigation),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(Column{
-                     Text(app::strings::screen_data_section_all)
+                     Text(LegacySectionTitle(
+                              UseString(app::strings::screen_data_section_all)))
                          .Style(Label(11.0F, FontWeight::Medium,
                                       colors::tertiary))
                          .With(Padding(EdgeInsets{.top = 20.0F,

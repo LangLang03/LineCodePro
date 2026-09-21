@@ -15,8 +15,10 @@
 
 #include "domain/app_state.h"
 #include "domain/tool_settings.h"
+#include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/components/legacy_settings_page.h"
 #include "presentation/image_model_presentation.h"
+#include "presentation/legacy_text_presentation.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -297,10 +299,10 @@ View FormField(TextEditingValue value, StringVariant label,
       .With(Spacing(4.0F), CrossAlign(CrossAxisAlignment::Stretch));
 }
 
-View SectionHeader(StringResource title) {
+View SectionHeader(std::string title) {
   return Text(std::move(title))
       .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
-      .With(Padding(EdgeInsets{.top = 8.0F, .bottom = 8.0F}));
+      .With(Padding(EdgeInsets{.top = 20.0F, .bottom = 12.0F}));
 }
 
 View ActionButton(ImageResource icon, std::function<void()> action) {
@@ -481,7 +483,8 @@ ToolSettingsScreen(std::shared_ptr<ToolSettingsService> service,
 
   std::vector<View> content;
   content.reserve(10);
-  content.push_back(SectionHeader(app::strings::screen_tools_section_images));
+  content.push_back(SectionHeader(LegacySectionTitle(
+      UseString(app::strings::screen_tools_section_images))));
   for (const auto &presentation : image_model_presentations) {
     content.push_back(ImageModelCard(
         presentation, editor->image_model_labels[presentation.label_slot],
@@ -490,7 +493,8 @@ ToolSettingsScreen(std::shared_ptr<ToolSettingsService> service,
         }));
     content.push_back(Gap(12.0F));
   }
-  content.push_back(SectionHeader(app::strings::screen_tools_section_search));
+  content.push_back(SectionHeader(LegacySectionTitle(
+      UseString(app::strings::screen_tools_section_search))));
   content.push_back(WebSearchCard(editor.Get(), std::move(choose_provider),
                                   std::move(edit_field)));
   content.push_back(Gap(12.0F));
@@ -504,9 +508,9 @@ ToolSettingsScreen(std::shared_ptr<ToolSettingsService> service,
   return Column{
       LegacySettingsPageHeader(app::strings::screen_tools_title,
                                [navigation] { navigation.Pop(); }),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(Column(std::move(content))
-                     .With(Padding(EdgeInsets{.top = 16.0F,
+                     .With(Padding(EdgeInsets{.top = 0.0F,
                                               .right = 16.0F,
                                               .bottom = 0.0F,
                                               .left = 16.0F}),

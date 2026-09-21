@@ -124,16 +124,23 @@ struct TodoToolDescriptor final {
   std::string_view name;
   std::string_view description;
   std::string_view parameters_json;
+  ToolPresentation presentation;
   bool allowed_in_read_only{};
   huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>> (
       *execute)(TodoStateStore &store, std::string_view arguments_json);
 };
 
-constexpr std::array<TodoToolDescriptor, 1> kTodoTools{{
+const std::array<TodoToolDescriptor, 1> kTodoTools{{
     {
         .name = kTodoUpdateToolName,
         .description = kTodoUpdateDescription,
         .parameters_json = kTodoUpdateSchema,
+        .presentation =
+            {.english_name = "Update TODO list",
+             .english_description =
+                 "Replace the current session TODO list and its progress.",
+             .chinese_name = "更新 TODO 列表",
+             .chinese_description = "更新当前会话的完整 TODO 列表和任务进度。"},
         // TodoUpdateTool does not override isAllowedInReadonlyMode(), so the
         // BaseTool default (false) applies: mutating session state stays denied
         // in read-only mode.
@@ -154,26 +161,26 @@ RegisteredTool CatalogEntry(const TodoToolDescriptor &descriptor) {
       .description = std::string{descriptor.description},
       .parameters_json = std::string{descriptor.parameters_json},
       .allowed_in_read_only = descriptor.allowed_in_read_only,
-      .permanent_grant_supported = false,
+      .agent_category = AgentToolCategory::system,
       .category = std::string{kTodoCategory},
+      .presentation = descriptor.presentation,
   };
 }
 
 bool TodoGroupEnabled(const domain::McpExecutionSettings &settings) {
-  const auto found = std::ranges::find(
-      settings.groups, kTodoGroupId,
-      [](const domain::McpToolGroupState &group) {
-        return std::string_view{group.id};
-      });
+  const auto found =
+      std::ranges::find(settings.groups, kTodoGroupId,
+                        [](const domain::McpToolGroupState &group) {
+                          return std::string_view{group.id};
+                        });
   return found != settings.groups.end() && found->enabled &&
          domain::SupportsMcpExecutionMode(found->supported_modes,
                                           settings.mode);
 }
 
 bool Exposed(const std::vector<RegisteredTool> &tools, std::string_view name) {
-  return std::ranges::any_of(tools, [name](const RegisteredTool &tool) {
-    return tool.name == name;
-  });
+  return std::ranges::any_of(
+      tools, [name](const RegisteredTool &tool) { return tool.name == name; });
 }
 
 huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>>

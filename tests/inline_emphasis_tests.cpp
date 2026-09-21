@@ -1,7 +1,7 @@
 // Branch-by-branch port tests for `cn.lineai.ui.theme.InlineEmphasisParser`,
 // the parser `ThinkingBlockView.styledContent()` used for streamed reasoning
 // summaries.
-#include <cassert>
+#include "gtest_support.h"
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -19,8 +19,8 @@ using linecode::domain::ParsedInlineEmphasis;
 void AssertParsed(std::string_view source, std::string_view text,
                   const std::vector<InlineEmphasisSpan>& spans) {
   const auto parsed = ParseInlineEmphasis(source);
-  assert(parsed.text == text);
-  assert(parsed.spans == spans);
+  EXPECT_EXPRESSION(parsed.text == text);
+  EXPECT_EXPRESSION(parsed.spans == spans);
 }
 
 /// Convenience for the common case of one span that covers the whole text.
@@ -31,7 +31,7 @@ void AssertSingleSpan(std::string_view source, std::string_view text,
 
 } // namespace
 
-int main() {
+TEST(inline_emphasis_tests, LegacySuite) {
   // `InlineEmphasisParser.java:36-47`: plain text passes through untouched.
   AssertParsed("", "", {});
   AssertParsed("plain summary", "plain summary", {});
@@ -122,11 +122,11 @@ int main() {
 
   // Adjacent spans of different styles stay ordered and non-overlapping.
   const auto mixed = ParseInlineEmphasis("**a***b*");
-  assert(mixed.text == "ab");
-  assert(mixed.spans.size() == 2);
-  assert((mixed.spans[0] ==
+  EXPECT_EXPRESSION(mixed.text == "ab");
+  EXPECT_EXPRESSION(mixed.spans.size() == 2);
+  EXPECT_EXPRESSION((mixed.spans[0] ==
           InlineEmphasisSpan{0, 1, InlineEmphasisStyle::Bold}));
-  assert((mixed.spans[1] ==
+  EXPECT_EXPRESSION((mixed.spans[1] ==
           InlineEmphasisSpan{1, 2, InlineEmphasisStyle::Italic}));
 
   // Every span of a larger input stays inside the emitted text and is ordered.
@@ -134,10 +134,10 @@ int main() {
       ParseInlineEmphasis("**一**`二`*三* plain **四**");
   std::size_t previous_end = 0;
   for (const auto& span : document.spans) {
-    assert(span.start >= previous_end);
-    assert(span.end <= document.text.size());
-    assert(span.start < span.end);
+    EXPECT_EXPRESSION(span.start >= previous_end);
+    EXPECT_EXPRESSION(span.end <= document.text.size());
+    EXPECT_EXPRESSION(span.start < span.end);
     previous_end = span.end;
   }
-  assert(document.spans.size() == 3);
+  EXPECT_EXPRESSION(document.spans.size() == 3);
 }

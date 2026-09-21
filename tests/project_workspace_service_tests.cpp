@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <cassert>
+#include "gtest_support.h"
 #include <chrono>
 #include <filesystem>
 #include <iostream>
@@ -46,7 +46,7 @@ public:
         std::chrono::steady_clock::now().time_since_epoch().count();
     path_ = fs::temp_directory_path() /
             ("linecode-workspace-tests-" + std::to_string(seed));
-    assert(fs::create_directories(path_));
+    EXPECT_EXPRESSION(fs::create_directories(path_));
   }
 
   ~TemporaryDirectory() {
@@ -122,55 +122,55 @@ huxerui::Task<void> ProjectLifecyclePersistsAndKeepsProjectData() {
                                   std::make_shared<FixedClock>()};
 
   auto initial = co_await service.ListProjects();
-  assert(initial && initial->size() == 1);
-  assert(initial->front().id == linecode::domain::default_project_id);
-  assert(initial->front().selected);
+  EXPECT_EXPRESSION(initial && initial->size() == 1);
+  EXPECT_EXPRESSION(initial->front().id == linecode::domain::default_project_id);
+  EXPECT_EXPRESSION(initial->front().selected);
 
   auto managed = co_await service.CreateManagedProject("  Demo / Project  ");
-  assert(managed && managed->id == "managed:demo-project");
-  assert(managed->label == "Demo-Project");
-  assert(managed->source == ProjectSource::managed);
-  assert(fs::is_directory(managed->path));
-  assert(fs::is_directory(fs::path{managed->path} / ".linecode" / "skills"));
-  assert(co_await service.CreateDirectory(managed->id, "src"));
-  assert(
+  EXPECT_EXPRESSION(managed && managed->id == "managed:demo-project");
+  EXPECT_EXPRESSION(managed->label == "Demo-Project");
+  EXPECT_EXPRESSION(managed->source == ProjectSource::managed);
+  EXPECT_EXPRESSION(fs::is_directory(managed->path));
+  EXPECT_EXPRESSION(fs::is_directory(fs::path{managed->path} / ".linecode" / "skills"));
+  EXPECT_EXPRESSION(co_await service.CreateDirectory(managed->id, "src"));
+  EXPECT_EXPRESSION(
       co_await service.WriteText(managed->id, "src/main.cpp", "int main() {}"));
   auto managed_text = co_await service.ReadText(managed->id, "src/main.cpp");
-  assert(managed_text && *managed_text == "int main() {}");
+  EXPECT_EXPRESSION(managed_text && *managed_text == "int main() {}");
   auto managed_tree = co_await service.LoadTree(managed->id);
-  assert(managed_tree && FindNode(*managed_tree, "main.cpp"));
+  EXPECT_EXPRESSION(managed_tree && FindNode(*managed_tree, "main.cpp"));
 
   const auto external_root = temporary.Path() / "external";
-  assert(fs::create_directories(external_root));
+  EXPECT_EXPRESSION(fs::create_directories(external_root));
   auto external = co_await service.RegisterExternalProject(
       external_root.string(), " External ");
-  assert(external && external->source == ProjectSource::external);
-  assert(external->id.starts_with("external:"));
-  assert(external->label == "External");
+  EXPECT_EXPRESSION(external && external->source == ProjectSource::external);
+  EXPECT_EXPRESSION(external->id.starts_with("external:"));
+  EXPECT_EXPRESSION(external->label == "External");
   auto external_selected = co_await service.SelectedProject();
-  assert(external_selected && external_selected->id == external->id);
+  EXPECT_EXPRESSION(external_selected && external_selected->id == external->id);
 
   auto selected = co_await service.SelectProject(managed->id);
-  assert(selected && selected->selected);
-  assert(co_await service.DeleteProject(managed->id));
+  EXPECT_EXPRESSION(selected && selected->selected);
+  EXPECT_EXPRESSION(co_await service.DeleteProject(managed->id));
   auto fallback_selected = co_await service.SelectedProject();
-  assert(fallback_selected &&
+  EXPECT_EXPRESSION(fallback_selected &&
          fallback_selected->id == linecode::domain::default_project_id);
-  assert(fs::is_directory(
+  EXPECT_EXPRESSION(fs::is_directory(
       managed->path)); // Legacy removal forgets the record only.
 
   ProjectWorkspaceService reloaded{catalog, files,
                                    std::make_shared<FixedClock>()};
   auto projects = co_await reloaded.ListProjects();
-  assert(projects && projects->size() == 2);
-  assert(std::ranges::any_of(*projects, [&](const auto &project) {
+  EXPECT_EXPRESSION(projects && projects->size() == 2);
+  EXPECT_EXPRESSION(std::ranges::any_of(*projects, [&](const auto &project) {
     return project.id == external->id &&
            project.source == ProjectSource::external;
   }));
   auto protected_delete = co_await reloaded.DeleteProject(
       std::string{linecode::domain::default_project_id});
-  assert(!protected_delete);
-  assert(protected_delete.error().code ==
+  EXPECT_EXPRESSION(!protected_delete);
+  EXPECT_EXPRESSION(protected_delete.error().code ==
          ProjectWorkspaceErrorCode::protected_project);
   co_return;
 }
@@ -183,12 +183,12 @@ huxerui::Task<void> ManagedCreationRollsBackWhenCatalogCommitFails() {
                                   std::make_shared<FixedClock>()};
 
   auto created = co_await service.CreateManagedProject("Rollback Me");
-  assert(!created);
-  assert(created.error().code == ProjectWorkspaceErrorCode::io);
-  assert(
+  EXPECT_EXPRESSION(!created);
+  EXPECT_EXPRESSION(created.error().code == ProjectWorkspaceErrorCode::io);
+  EXPECT_EXPRESSION(
       !fs::exists(temporary.Path() / ".linecode" / "project" / "Rollback-Me"));
-  assert(catalog->catalog.projects.size() == 1);
-  assert(catalog->catalog.selected_id == linecode::domain::default_project_id);
+  EXPECT_EXPRESSION(catalog->catalog.projects.size() == 1);
+  EXPECT_EXPRESSION(catalog->catalog.selected_id == linecode::domain::default_project_id);
   co_return;
 }
 
@@ -201,16 +201,16 @@ huxerui::Task<void> ProjectDeletionFailurePreservesCatalogAndSelection() {
                                   std::make_shared<FixedClock>()};
 
   auto created = co_await service.CreateManagedProject("Keep Me");
-  assert(created);
-  assert(catalog->catalog.selected_id == created->id);
+  EXPECT_EXPRESSION(created);
+  EXPECT_EXPRESSION(catalog->catalog.selected_id == created->id);
   auto removed = co_await service.DeleteProject(created->id);
-  assert(!removed && removed.error().code == ProjectWorkspaceErrorCode::io);
-  assert(catalog->catalog.selected_id == created->id);
-  assert(
+  EXPECT_EXPRESSION(!removed && removed.error().code == ProjectWorkspaceErrorCode::io);
+  EXPECT_EXPRESSION(catalog->catalog.selected_id == created->id);
+  EXPECT_EXPRESSION(
       std::ranges::any_of(catalog->catalog.projects, [&](const auto &project) {
         return project.id == created->id && project.selected;
       }));
-  assert(fs::is_directory(created->path));
+  EXPECT_EXPRESSION(fs::is_directory(created->path));
   co_return;
 }
 
@@ -230,15 +230,15 @@ CatalogRejectsInvalidReplacementWithoutLosingPreviousState() {
                     .updated_at = 2}},
       .selected_id = "default",
   };
-  assert(co_await store.ReplaceCatalog(valid));
+  EXPECT_EXPRESSION(co_await store.ReplaceCatalog(valid));
   auto loaded = co_await store.LoadCatalog();
-  assert(loaded && *loaded == valid);
+  EXPECT_EXPRESSION(loaded && *loaded == valid);
 
   auto invalid = valid;
   invalid.selected_id = "missing";
-  assert(!(co_await store.ReplaceCatalog(invalid)));
+  EXPECT_EXPRESSION(!(co_await store.ReplaceCatalog(invalid)));
   loaded = co_await store.LoadCatalog();
-  assert(loaded && *loaded == valid);
+  EXPECT_EXPRESSION(loaded && *loaded == valid);
   co_return;
 }
 
@@ -248,7 +248,7 @@ huxerui::Task<void> LegacyCatalogMigratesInPlaceAndRemainsArchiveVisible() {
   auto database = co_await Database::OpenAsync(
       huxerui::File{database_file.string()},
       huxerui::sqlite::OpenOptions{.create_parent_directories = true});
-  assert(database);
+  EXPECT_EXPRESSION(database);
   auto seeded = co_await database->TransactionAsync(
       [root = temporary.Path().string()](
           Transaction &transaction) -> huxerui::sqlite::Result<void> {
@@ -294,24 +294,24 @@ huxerui::Task<void> LegacyCatalogMigratesInPlaceAndRemainsArchiveVisible() {
           return selected.Error();
         return {};
       });
-  assert(seeded);
+  EXPECT_EXPRESSION(seeded);
 
   SqliteProjectCatalogStore store{huxerui::File{database_file.string()}};
   auto loaded = co_await store.LoadCatalog();
-  assert(loaded && loaded->projects.size() == 2);
-  assert(loaded->selected_id == "managed:legacy");
-  assert(std::ranges::none_of(loaded->projects, [](const auto &project) {
+  EXPECT_EXPRESSION(loaded && loaded->projects.size() == 2);
+  EXPECT_EXPRESSION(loaded->selected_id == "managed:legacy");
+  EXPECT_EXPRESSION(std::ranges::none_of(loaded->projects, [](const auto &project) {
     return project.id.starts_with("ssh:");
   }));
 
   auto replacement = *loaded;
   replacement.projects.front().label = "Migrated local";
-  assert(co_await store.ReplaceCatalog(replacement));
+  EXPECT_EXPRESSION(co_await store.ReplaceCatalog(replacement));
   auto raw_projects = co_await database->QueryAsync<std::string>(
       "SELECT id FROM projects ORDER BY id ASC",
       [](const RowView &row) { return row.Get<std::string>(0); });
-  assert(raw_projects && raw_projects->size() == 3);
-  assert(std::ranges::find(*raw_projects, "ssh:default") !=
+  EXPECT_EXPRESSION(raw_projects && raw_projects->size() == 3);
+  EXPECT_EXPRESSION(std::ranges::find(*raw_projects, "ssh:default") !=
          raw_projects->end());
   // The archive exporter enumerates ordinary SQLite tables and includes the
   // legacy `projects` name; writing in place keeps these rows archive-visible.
@@ -319,23 +319,23 @@ huxerui::Task<void> LegacyCatalogMigratesInPlaceAndRemainsArchiveVisible() {
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name = "
       "'projects'",
       [](const RowView &row) { return row.Get<std::string>(0); });
-  assert(table && table->size() == 1);
+  EXPECT_EXPRESSION(table && table->size() == 1);
 
   auto trigger = co_await database->ExecuteAsync(
       "CREATE TRIGGER reject_project BEFORE INSERT ON projects "
       "WHEN NEW.label = 'explode' BEGIN SELECT RAISE(ABORT, 'injected'); END");
-  assert(trigger);
+  EXPECT_EXPRESSION(trigger);
   auto rejected = replacement;
   rejected.projects.front().label = "explode";
   auto failed = co_await store.ReplaceCatalog(std::move(rejected));
-  assert(!failed && failed.error().code == ProjectWorkspaceErrorCode::io);
+  EXPECT_EXPRESSION(!failed && failed.error().code == ProjectWorkspaceErrorCode::io);
   auto preserved = co_await store.LoadCatalog();
-  assert(preserved && *preserved == replacement);
+  EXPECT_EXPRESSION(preserved && *preserved == replacement);
   auto selected_setting = co_await database->QueryAsync<std::string>(
       "SELECT value FROM settings WHERE key = ?",
       [](const RowView &row) { return row.Get<std::string>(0); },
       std::string{"@linecode_selected_project_local"});
-  assert(selected_setting && selected_setting->size() == 1 &&
+  EXPECT_EXPRESSION(selected_setting && selected_setting->size() == 1 &&
          selected_setting->front() == "managed:legacy");
   co_return;
 }
@@ -356,22 +356,22 @@ huxerui::Task<void> ProjectCatalogSurvivesArchiveRoundTrip() {
       .selected_id = "external:/archive-visible",
   };
   SqliteProjectCatalogStore source_store{huxerui::File{source_file.string()}};
-  assert(co_await source_store.ReplaceCatalog(catalog));
+  EXPECT_EXPRESSION(co_await source_store.ReplaceCatalog(catalog));
   SqliteArchiveDatabase source_archive{huxerui::File{source_file.string()}};
   auto exported = co_await source_archive.ExportRedacted();
-  assert(exported);
-  assert(exported->json.contains("\"projects\""));
-  assert(exported->json.contains("external:/archive-visible"));
+  EXPECT_EXPRESSION(exported);
+  EXPECT_EXPRESSION(exported->json.contains("\"projects\""));
+  EXPECT_EXPRESSION(exported->json.contains("external:/archive-visible"));
 
   SqliteArchiveDatabase destination_archive{
       huxerui::File{destination_file.string()}};
   auto restored =
       co_await destination_archive.ReplaceFromSnapshot(exported->json);
-  assert(restored);
+  EXPECT_EXPRESSION(restored);
   SqliteProjectCatalogStore destination_store{
       huxerui::File{destination_file.string()}};
   auto loaded = co_await destination_store.LoadCatalog();
-  assert(loaded && *loaded == catalog);
+  EXPECT_EXPRESSION(loaded && *loaded == catalog);
   co_return;
 }
 
@@ -403,18 +403,18 @@ huxerui::Task<void> LocalAndSshCatalogsRemainIsolated() {
                     .updated_at = 4}},
       .selected_id = "ssh:default",
   };
-  assert(co_await local.ReplaceCatalog(local_catalog));
-  assert(co_await ssh.ReplaceCatalog(ssh_catalog));
+  EXPECT_EXPRESSION(co_await local.ReplaceCatalog(local_catalog));
+  EXPECT_EXPRESSION(co_await ssh.ReplaceCatalog(ssh_catalog));
   auto loaded_local = co_await local.LoadCatalog();
   auto loaded_ssh = co_await ssh.LoadCatalog();
-  assert(loaded_local && *loaded_local == local_catalog);
-  assert(loaded_ssh && *loaded_ssh == ssh_catalog);
+  EXPECT_EXPRESSION(loaded_local && *loaded_local == local_catalog);
+  EXPECT_EXPRESSION(loaded_ssh && *loaded_ssh == ssh_catalog);
 
   auto updated_local = local_catalog;
   updated_local.projects.front().label = "Local only";
-  assert(co_await local.ReplaceCatalog(updated_local));
+  EXPECT_EXPRESSION(co_await local.ReplaceCatalog(updated_local));
   loaded_ssh = co_await ssh.LoadCatalog();
-  assert(loaded_ssh && *loaded_ssh == ssh_catalog);
+  EXPECT_EXPRESSION(loaded_ssh && *loaded_ssh == ssh_catalog);
   co_return;
 }
 
@@ -454,8 +454,8 @@ void RunAsyncProjectTests() {
     for (int attempt = 0; attempt < 5'000 && !async_scenario->done; ++attempt) {
       ui.Pump(std::chrono::milliseconds{1});
     }
-    assert(async_scenario->done);
-    assert(async_scenario->passed);
+    EXPECT_EXPRESSION(async_scenario->done);
+    EXPECT_EXPRESSION(async_scenario->passed);
   }
   async_scenario.reset();
 }
@@ -464,96 +464,96 @@ void RecursiveFileOperationsAreTransactionalAtCommitBoundaries() {
   TemporaryDirectory temporary;
   auto files = FileStore(temporary);
   auto root = files->PrepareDefaultProject();
-  assert(root);
+  EXPECT_EXPRESSION(root);
 
-  assert(files->CreateDirectory(*root, "src"));
-  assert(files->CreateDirectory(*root, "src/nested"));
-  assert(files->CreateFile(*root, "src/nested/a.txt"));
-  assert(files->WriteText(*root, "src/nested/a.txt", "alpha"));
+  EXPECT_EXPRESSION(files->CreateDirectory(*root, "src"));
+  EXPECT_EXPRESSION(files->CreateDirectory(*root, "src/nested"));
+  EXPECT_EXPRESSION(files->CreateFile(*root, "src/nested/a.txt"));
+  EXPECT_EXPRESSION(files->WriteText(*root, "src/nested/a.txt", "alpha"));
   auto original_text = files->ReadText(*root, "src/nested/a.txt");
-  assert(original_text && *original_text == "alpha");
+  EXPECT_EXPRESSION(original_text && *original_text == "alpha");
 
   auto tree = files->LoadTree(*root);
-  assert(tree);
+  EXPECT_EXPRESSION(tree);
   const auto *nested = FindNode(*tree, "nested");
-  assert(nested && nested->directory);
-  assert(FindNode(*tree, "a.txt"));
+  EXPECT_EXPRESSION(nested && nested->directory);
+  EXPECT_EXPRESSION(FindNode(*tree, "a.txt"));
 
-  assert(files->Rename(*root, "src/nested/a.txt", "b.txt"));
-  assert(files->Copy(*root, "src", "src-copy"));
+  EXPECT_EXPRESSION(files->Rename(*root, "src/nested/a.txt", "b.txt"));
+  EXPECT_EXPRESSION(files->Copy(*root, "src", "src-copy"));
   auto copied_text = files->ReadText(*root, "src-copy/nested/b.txt");
-  assert(copied_text && *copied_text == "alpha");
-  assert(files->Move(*root, "src-copy/nested/b.txt", "moved.txt"));
+  EXPECT_EXPRESSION(copied_text && *copied_text == "alpha");
+  EXPECT_EXPRESSION(files->Move(*root, "src-copy/nested/b.txt", "moved.txt"));
   auto moved_text = files->ReadText(*root, "moved.txt");
-  assert(moved_text && *moved_text == "alpha");
+  EXPECT_EXPRESSION(moved_text && *moved_text == "alpha");
 
-  assert(files->CreateFile(*root, "occupied.txt"));
-  assert(files->WriteText(*root, "occupied.txt", "keep"));
+  EXPECT_EXPRESSION(files->CreateFile(*root, "occupied.txt"));
+  EXPECT_EXPRESSION(files->WriteText(*root, "occupied.txt", "keep"));
   auto conflict = files->Copy(*root, "moved.txt", "occupied.txt");
-  assert(!conflict &&
+  EXPECT_EXPRESSION(!conflict &&
          conflict.error().code == ProjectWorkspaceErrorCode::conflict);
   auto preserved_target = files->ReadText(*root, "occupied.txt");
   auto preserved_source = files->ReadText(*root, "moved.txt");
-  assert(preserved_target && *preserved_target == "keep");
-  assert(preserved_source && *preserved_source == "alpha");
+  EXPECT_EXPRESSION(preserved_target && *preserved_target == "keep");
+  EXPECT_EXPRESSION(preserved_source && *preserved_source == "alpha");
 
   auto move_conflict = files->Move(*root, "moved.txt", "occupied.txt");
-  assert(!move_conflict &&
+  EXPECT_EXPRESSION(!move_conflict &&
          move_conflict.error().code == ProjectWorkspaceErrorCode::conflict);
   auto move_failure_preserved = files->ReadText(*root, "moved.txt");
-  assert(move_failure_preserved && *move_failure_preserved == "alpha");
+  EXPECT_EXPRESSION(move_failure_preserved && *move_failure_preserved == "alpha");
 
   auto bad_write = files->WriteText(*root, "occupied.txt/child", "damage");
-  assert(!bad_write);
+  EXPECT_EXPRESSION(!bad_write);
   auto write_failure_preserved = files->ReadText(*root, "occupied.txt");
-  assert(write_failure_preserved && *write_failure_preserved == "keep");
+  EXPECT_EXPRESSION(write_failure_preserved && *write_failure_preserved == "keep");
 
-  assert(files->Delete(*root, "src-copy"));
-  assert(!fs::exists(fs::path{*root} / "src-copy"));
-  assert(files->Delete(*root, "moved.txt"));
-  assert(!fs::exists(fs::path{*root} / "moved.txt"));
+  EXPECT_EXPRESSION(files->Delete(*root, "src-copy"));
+  EXPECT_EXPRESSION(!fs::exists(fs::path{*root} / "src-copy"));
+  EXPECT_EXPRESSION(files->Delete(*root, "moved.txt"));
+  EXPECT_EXPRESSION(!fs::exists(fs::path{*root} / "moved.txt"));
 }
 
 void TraversalAndSymbolicLinksNeverEscapeWorkspace() {
   TemporaryDirectory temporary;
   auto files = FileStore(temporary);
   auto root = files->PrepareDefaultProject();
-  assert(root);
+  EXPECT_EXPRESSION(root);
   const auto outside = temporary.Path() / "outside.txt";
-  assert(huxerui::File{outside.string()}.WriteString("outside"));
+  EXPECT_EXPRESSION(huxerui::File{outside.string()}.WriteString("outside"));
 
   const auto traversal = files->WriteText(*root, "../outside.txt", "changed");
-  assert(!traversal);
-  assert(traversal.error().code ==
+  EXPECT_EXPRESSION(!traversal);
+  EXPECT_EXPRESSION(traversal.error().code ==
          ProjectWorkspaceErrorCode::outside_workspace);
-  assert(huxerui::File{outside.string()}.ReadString().Value() == "outside");
-  assert(!files->Delete(*root, ".linecode"));
+  EXPECT_EXPRESSION(huxerui::File{outside.string()}.ReadString().Value() == "outside");
+  EXPECT_EXPRESSION(!files->Delete(*root, ".linecode"));
 
   std::error_code link_error;
   fs::create_symlink(outside, fs::path{*root} / "outside-link", link_error);
   if (!link_error) {
     auto tree = files->LoadTree(*root);
-    assert(tree);
+    EXPECT_EXPRESSION(tree);
     const auto *link = FindNode(*tree, "outside-link");
-    assert(link && link->symbolic_link && !link->directory);
+    EXPECT_EXPRESSION(link && link->symbolic_link && !link->directory);
     auto read = files->ReadText(*root, "outside-link");
-    assert(!read);
-    assert(read.error().code == ProjectWorkspaceErrorCode::symbolic_link);
+    EXPECT_EXPRESSION(!read);
+    EXPECT_EXPRESSION(read.error().code == ProjectWorkspaceErrorCode::symbolic_link);
     auto removed = files->Delete(*root, "outside-link");
-    assert(!removed);
-    assert(huxerui::File{outside.string()}.ReadString().Value() == "outside");
+    EXPECT_EXPRESSION(!removed);
+    EXPECT_EXPRESSION(huxerui::File{outside.string()}.ReadString().Value() == "outside");
 
-    assert(files->CreateDirectory(*root, "copy-with-link"));
+    EXPECT_EXPRESSION(files->CreateDirectory(*root, "copy-with-link"));
     std::error_code nested_link_error;
     fs::create_symlink(outside,
                        fs::path{*root} / "copy-with-link" / "nested-link",
                        nested_link_error);
-    assert(!nested_link_error);
+    EXPECT_EXPRESSION(!nested_link_error);
     auto copied = files->Copy(*root, "copy-with-link", "rejected-copy");
-    assert(!copied &&
+    EXPECT_EXPRESSION(!copied &&
            copied.error().code == ProjectWorkspaceErrorCode::symbolic_link);
-    assert(!fs::exists(fs::path{*root} / "rejected-copy"));
-    assert(std::ranges::none_of(
+    EXPECT_EXPRESSION(!fs::exists(fs::path{*root} / "rejected-copy"));
+    EXPECT_EXPRESSION(std::ranges::none_of(
         fs::directory_iterator{*root}, [](const auto &entry) {
           return entry.path().filename().string().starts_with(
               ".linecode-copy-stage-");
@@ -566,15 +566,15 @@ void TraversalAndSymbolicLinksNeverEscapeWorkspace() {
   if (!root_link_error) {
     auto linked_root =
         files->ResolveDirectory((temporary.Path() / "workspace-link").string());
-    assert(!linked_root);
-    assert(linked_root.error().code ==
+    EXPECT_EXPRESSION(!linked_root);
+    EXPECT_EXPRESSION(linked_root.error().code ==
            ProjectWorkspaceErrorCode::symbolic_link);
   }
 }
 
 } // namespace
 
-int main() {
+TEST(project_workspace_service_tests, LegacySuite) {
   RecursiveFileOperationsAreTransactionalAtCommitBoundaries();
   TraversalAndSymbolicLinksNeverEscapeWorkspace();
   RunAsyncProjectTests();

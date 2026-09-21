@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <cassert>
+#include "gtest_support.h"
 #include <chrono>
 #include <cstddef>
 #include <memory>
@@ -350,73 +350,80 @@ huxerui::View Probe() {
   huxerui::Lifecycle([scenario, tasks] {
     const auto handle = tasks.Launch([scenario]() -> huxerui::Task<void> {
       auto refreshed = co_await scenario->tools->Refresh();
-      assert(refreshed);
-      assert(scenario->tools->Tools().size() == 1U);
-      assert(scenario->tools->Tools().front().name == "shell_execute");
+      EXPECT_EXPRESSION(refreshed);
+      EXPECT_EXPRESSION(scenario->tools->Tools().size() == 1U);
+      EXPECT_EXPRESSION(scenario->tools->Tools().front().name == "shell_execute");
+      EXPECT_EXPRESSION(scenario->tools->Tools().front().agent_category ==
+             application::AgentToolCategory::system);
 
       auto invoked = co_await scenario->tools->Invoke(
           "shell_execute",
           R"({"command":"pwd","cwd":"/home/line","timeoutMs":50})");
-      assert(invoked && !invoked->error);
-      assert(invoked->content.contains("remote output"));
-      assert(scenario->remote->command);
-      assert(scenario->remote->command->timeout == 1s);
-      assert(scenario->remote->command->working_directory == "/home/line");
+      EXPECT_EXPRESSION(invoked && !invoked->error);
+      EXPECT_EXPRESSION(invoked->content == "remote output");
+      EXPECT_EXPRESSION(scenario->remote->command);
+      EXPECT_EXPRESSION(scenario->remote->command->timeout == 1s);
+      EXPECT_EXPRESSION(scenario->remote->command->working_directory == "/home/line");
+
+      auto failed = co_await scenario->tools->Invoke(
+          "shell_execute", R"({"command":"false"})");
+      EXPECT_EXPRESSION(failed && failed->error);
+      EXPECT_EXPRESSION(failed->content == "remote output\nfailed");
 
       auto tree = co_await scenario->workspace->LoadTree(
           scenario->settings->config, "~");
-      assert(tree && tree->name == "line");
-      assert(tree->children.front().directory);
-      assert(tree->children.front().name == "src");
+      EXPECT_EXPRESSION(tree && tree->name == "line");
+      EXPECT_EXPRESSION(tree->children.front().directory);
+      EXPECT_EXPRESSION(tree->children.front().name == "src");
 
       auto text = co_await scenario->workspace->ReadText(
           scenario->settings->config, "~", "readme.md");
-      assert(text && *text == "readme");
+      EXPECT_EXPRESSION(text && *text == "readme");
 
       auto binary = co_await scenario->workspace->ReadBytes(
           scenario->settings->config, "~", "image.bin");
-      assert(binary);
-      assert(*binary == std::vector<std::byte>(
+      EXPECT_EXPRESSION(binary);
+      EXPECT_EXPRESSION(*binary == std::vector<std::byte>(
                             {std::byte{0x00}, std::byte{0xFF},
                              std::byte{0x80}, std::byte{0x42}}));
 
       auto binary_limit = co_await scenario->workspace->ReadBytes(
           scenario->settings->config, "~", "image.bin", 3U);
-      assert(!binary_limit);
-      assert(binary_limit.error().code == application::SshErrorCode::size_limit);
+      EXPECT_EXPRESSION(!binary_limit);
+      EXPECT_EXPRESSION(binary_limit.error().code == application::SshErrorCode::size_limit);
 
       auto binary_traversal = co_await scenario->workspace->ReadBytes(
           scenario->settings->config, "~", "../image.bin");
-      assert(!binary_traversal);
-      assert(binary_traversal.error().code ==
+      EXPECT_EXPRESSION(!binary_traversal);
+      EXPECT_EXPRESSION(binary_traversal.error().code ==
              application::SshErrorCode::outside_workspace);
 
       auto traversal = co_await scenario->workspace->ReadText(
           scenario->settings->config, "~", "../secret");
-      assert(!traversal);
-      assert(traversal.error().code ==
+      EXPECT_EXPRESSION(!traversal);
+      EXPECT_EXPRESSION(traversal.error().code ==
              application::SshErrorCode::outside_workspace);
 
       auto link = co_await scenario->workspace->ReadText(
           scenario->settings->config, "~", "link/secret");
-      assert(!link);
-      assert(link.error().code == application::SshErrorCode::symbolic_link);
+      EXPECT_EXPRESSION(!link);
+      EXPECT_EXPRESSION(link.error().code == application::SshErrorCode::symbolic_link);
 
       auto protected_write = co_await scenario->workspace->WriteText(
           scenario->settings->config, "~", ".linecode/config", "secret");
-      assert(!protected_write);
-      assert(protected_write.error().code ==
+      EXPECT_EXPRESSION(!protected_write);
+      EXPECT_EXPRESSION(protected_write.error().code ==
              application::SshErrorCode::protected_path);
 
       auto created = co_await scenario->workspace->CreateFile(
           scenario->settings->config, "~", "new.txt");
-      assert(created);
-      assert(scenario->remote->entries.contains("/home/line/new.txt"));
+      EXPECT_EXPRESSION(created);
+      EXPECT_EXPRESSION(scenario->remote->entries.contains("/home/line/new.txt"));
 
       auto protected_rename = co_await scenario->workspace->Rename(
           scenario->settings->config, "~", "new.txt", ".linecode");
-      assert(!protected_rename);
-      assert(protected_rename.error().code ==
+      EXPECT_EXPRESSION(!protected_rename);
+      EXPECT_EXPRESSION(protected_rename.error().code ==
              application::SshErrorCode::protected_path);
 
       std::string long_name{"a"};
@@ -427,30 +434,30 @@ huxerui::View Probe() {
       std::string expected_name{"a"};
       for (std::size_t index{}; index < 59U; ++index)
         expected_name += "界";
-      assert(managed);
-      assert(*managed == "/home/line/.linecode/project/" + expected_name);
+      EXPECT_EXPRESSION(managed);
+      EXPECT_EXPRESSION(*managed == "/home/line/.linecode/project/" + expected_name);
 
       auto projects = co_await scenario->projects->ListProjects();
-      assert(projects && projects->size() == 1U);
-      assert(projects->front().id == application::kDefaultSshProjectId);
-      assert(projects->front().source == domain::ProjectSource::ssh);
+      EXPECT_EXPRESSION(projects && projects->size() == 1U);
+      EXPECT_EXPRESSION(projects->front().id == application::kDefaultSshProjectId);
+      EXPECT_EXPRESSION(projects->front().source == domain::ProjectSource::ssh);
       auto selected = co_await scenario->projects->SelectedProject();
-      assert(selected && selected->path.empty());
+      EXPECT_EXPRESSION(selected && selected->path.empty());
       auto routed_text = co_await scenario->projects->ReadText(
           std::string{application::kDefaultSshProjectId}, "readme.md");
-      assert(routed_text && *routed_text == "readme");
+      EXPECT_EXPRESSION(routed_text && *routed_text == "readme");
 
       scenario->mcp->value.mode = domain::McpExecutionMode::local;
       auto local = co_await scenario->projects->SelectedProject();
-      assert(local && local->id == "local-sentinel");
+      EXPECT_EXPRESSION(local && local->id == "local-sentinel");
       scenario->mcp->value.mode = domain::McpExecutionMode::terminal_provider;
       auto unavailable = co_await scenario->projects->ListProjects();
-      assert(!unavailable);
-      assert(unavailable.error().message.contains("No workspace backend"));
+      EXPECT_EXPRESSION(!unavailable);
+      EXPECT_EXPRESSION(unavailable.error().message.contains("No workspace backend"));
       scenario->mcp->fail_load = true;
       auto settings_failure = co_await scenario->projects->ListProjects();
-      assert(!settings_failure);
-      assert(settings_failure.error().message.contains("injected"));
+      EXPECT_EXPRESSION(!settings_failure);
+      EXPECT_EXPRESSION(settings_failure.error().message.contains("injected"));
       scenario->mcp->fail_load = false;
       scenario->mcp->value.mode = domain::McpExecutionMode::ssh;
 
@@ -463,11 +470,11 @@ huxerui::View Probe() {
 
 } // namespace
 
-int main() {
+TEST(ssh_backend_tests, LegacySuite) {
   active = std::make_shared<Scenario>();
   const huxerui::Application application(Probe, {.show_debug_overlay = false});
   huxerui::testing::UiTest ui(application);
   ui.PumpUntil([] { return active->done; });
-  assert(active->transport->connections >= 4U);
+  EXPECT_EXPRESSION(active->transport->connections >= 4U);
   active.reset();
 }

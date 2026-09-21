@@ -28,23 +28,28 @@ public:
     const auto generation = ++generation_;
     active_ = Intent{.conversation_id = std::move(conversation_id),
                      .generation = generation};
+    has_active_ = true;
     return generation;
   }
 
   void Invalidate() noexcept {
     ++generation_;
-    active_.reset();
+    has_active_ = false;
   }
 
   [[nodiscard]] bool Matches(std::uint64_t generation,
                              std::string_view conversation_id) const noexcept {
-    return active_.has_value() && active_->generation == generation &&
-           active_->conversation_id == conversation_id;
+    if (!has_active_)
+      return false;
+    return active_.generation == generation &&
+           active_.conversation_id == conversation_id;
   }
 
   [[nodiscard]] bool
   DefersAppendTo(std::string_view conversation_id) const noexcept {
-    return active_.has_value() && active_->conversation_id == conversation_id;
+    if (!has_active_)
+      return false;
+    return active_.conversation_id == conversation_id;
   }
 
   [[nodiscard]] std::uint64_t Generation() const noexcept {
@@ -52,9 +57,8 @@ public:
   }
 
   void Settle(std::uint64_t generation) noexcept {
-    if (active_.has_value() && active_->generation == generation) {
-      active_.reset();
-    }
+    if (has_active_ && active_.generation == generation)
+      has_active_ = false;
   }
 
 private:
@@ -64,7 +68,8 @@ private:
   };
 
   std::uint64_t generation_{};
-  std::optional<Intent> active_;
+  Intent active_{};
+  bool has_active_{};
 };
 
 class ConversationStore {

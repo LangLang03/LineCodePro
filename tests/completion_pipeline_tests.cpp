@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <algorithm>
 #include <chrono>
 #include <memory>
@@ -67,7 +67,7 @@ void EncodesOpenAiRequestWithoutLosingUtf8OrControlCharacters() {
       .permission_scope = {},
   };
   const auto json = EncodeOpenAiChatRequest(request);
-  assert(json == "{\"model\":\"linecode-test-model\",\"messages\":["
+  EXPECT_EXPRESSION(json == "{\"model\":\"linecode-test-model\",\"messages\":["
                  "{\"role\":\"user\",\"content\":\"你好\\n\\\"LineCode\\\"\"},"
                  "{\"role\":\"assistant\",\"content\":\"ready\\\\ok\"}],"
                  "\"temperature\":0.2,"
@@ -78,89 +78,89 @@ void EncodesOpenAiRequestWithoutLosingUtf8OrControlCharacters() {
 void DecodesBufferedFixtureAndUnicodeEscapes() {
   const auto response = DecodeOpenAiChatResponse(
       R"json({"choices":[{"message":{"content":"固定\u56de\u590d \ud83c\udf0d","reasoning_content":"先思考"}}],"usage":{"prompt_tokens":2,"completion_tokens":3}})json");
-  assert(response.has_value());
-  assert(response->text == "固定回复 🌍");
-  assert(response->reasoning_content == "先思考");
-  assert(response->input_tokens == 2);
-  assert(response->output_tokens == 3);
+  EXPECT_EXPRESSION(response.has_value());
+  EXPECT_EXPRESSION(response->text == "固定回复 🌍");
+  EXPECT_EXPRESSION(response->reasoning_content == "先思考");
+  EXPECT_EXPRESSION(response->input_tokens == 2);
+  EXPECT_EXPRESSION(response->output_tokens == 3);
 
   const auto missing = DecodeOpenAiChatResponse(R"json({"choices":[]})json");
-  assert(!missing.has_value());
+  EXPECT_EXPRESSION(!missing.has_value());
   const auto malformed = DecodeOpenAiChatResponse("{");
-  assert(!malformed.has_value());
+  EXPECT_EXPRESSION(!malformed.has_value());
 }
 
 void DecodesOpenAiSsePayloadsAndDoneSentinel() {
   const auto role = DecodeOpenAiChatStreamEvent(
       R"json({"choices":[{"delta":{"role":"assistant","content":""},"finish_reason":null}]})json");
-  assert(role.has_value());
-  assert(role->text_delta == "");
+  EXPECT_EXPRESSION(role.has_value());
+  EXPECT_EXPRESSION(role->text_delta == "");
 
   const auto delta = DecodeOpenAiChatStreamEvent(
       R"json({"choices":[{"delta":{"content":"固定回复","reasoning_content":"思考"},"finish_reason":null}]})json");
-  assert(delta.has_value());
-  assert(delta->text_delta == "固定回复");
-  assert(delta->reasoning_delta == "思考");
+  EXPECT_EXPRESSION(delta.has_value());
+  EXPECT_EXPRESSION(delta->text_delta == "固定回复");
+  EXPECT_EXPRESSION(delta->reasoning_delta == "思考");
 
   const auto stopped = DecodeOpenAiChatStreamEvent(
       R"json({"choices":[{"delta":{},"finish_reason":"stop"}]})json");
-  assert(stopped.has_value());
-  assert(!stopped->done);
-  assert(!stopped->text_delta.has_value());
+  EXPECT_EXPRESSION(stopped.has_value());
+  EXPECT_EXPRESSION(!stopped->done);
+  EXPECT_EXPRESSION(!stopped->text_delta.has_value());
 
   const auto done = DecodeOpenAiChatStreamEvent(" \t[DONE]\r\n");
-  assert(done.has_value());
-  assert(done->done);
+  EXPECT_EXPRESSION(done.has_value());
+  EXPECT_EXPRESSION(done->done);
 
   const auto api_error = DecodeOpenAiChatStreamEvent(
       R"json({"error":{"message":"fixture failed"}})json");
-  assert(!api_error.has_value());
-  assert(api_error.error().message.find("fixture failed") != std::string::npos);
+  EXPECT_EXPRESSION(!api_error.has_value());
+  EXPECT_EXPRESSION(api_error.error().message.find("fixture failed") != std::string::npos);
 
   const auto filtered = DecodeOpenAiChatStreamEvent(
       R"json({"choices":[{"delta":{},"finish_reason":"content_filter"}]})json");
-  assert(!filtered.has_value());
+  EXPECT_EXPRESSION(!filtered.has_value());
 }
 
 void BoundsAggregateStreamTextAcrossManySmallDeltas() {
   BoundedTextAccumulator text{6U};
-  assert(text.Append("ab"));
-  assert(text.Append("cd"));
-  assert(text.Append("ef"));
+  EXPECT_EXPRESSION(text.Append("ab"));
+  EXPECT_EXPRESSION(text.Append("cd"));
+  EXPECT_EXPRESSION(text.Append("ef"));
   const auto over_limit = text.Append("g");
-  assert(!over_limit.has_value());
-  assert(over_limit.error().maximum_bytes == 6U);
-  assert(text.Value() == "abcdef");
+  EXPECT_EXPRESSION(!over_limit.has_value());
+  EXPECT_EXPRESSION(over_limit.error().maximum_bytes == 6U);
+  EXPECT_EXPRESSION(text.Value() == "abcdef");
 
   BoundedTextAccumulator utf8{6U};
-  assert(utf8.Append("你"));
-  assert(utf8.Append("好"));
-  assert(!utf8.Append("!"));
-  assert(utf8.Value() == "你好");
+  EXPECT_EXPRESSION(utf8.Append("你"));
+  EXPECT_EXPRESSION(utf8.Append("好"));
+  EXPECT_EXPRESSION(!utf8.Append("!"));
+  EXPECT_EXPRESSION(utf8.Value() == "你好");
 }
 
 void JoinsEndpointExactlyOnce() {
-  assert(OpenAiChatEndpoint(" https://api.example.test/v1/ ") ==
+  EXPECT_EXPRESSION(OpenAiChatEndpoint(" https://api.example.test/v1/ ") ==
          "https://api.example.test/v1/chat/completions");
-  assert(OpenAiChatEndpoint("https://api.example.test/v1/chat/completions/") ==
+  EXPECT_EXPRESSION(OpenAiChatEndpoint("https://api.example.test/v1/chat/completions/") ==
          "https://api.example.test/v1/chat/completions");
 }
 
 void EnforcesHttpsOrLiteralPrivateCleartextHosts() {
-  assert(ValidateModelBaseUrl("https://models.example.test/v1"));
-  assert(ValidateModelBaseUrl("http://localhost:18080/v1"));
-  assert(ValidateModelBaseUrl("http://127.0.0.1:18080/v1"));
-  assert(ValidateModelBaseUrl("http://10.0.2.2:18080/v1"));
-  assert(ValidateModelBaseUrl("http://192.168.1.4/v1"));
-  assert(ValidateModelBaseUrl("http://[::1]:18080/v1"));
+  EXPECT_EXPRESSION(ValidateModelBaseUrl("https://models.example.test/v1"));
+  EXPECT_EXPRESSION(ValidateModelBaseUrl("http://localhost:18080/v1"));
+  EXPECT_EXPRESSION(ValidateModelBaseUrl("http://127.0.0.1:18080/v1"));
+  EXPECT_EXPRESSION(ValidateModelBaseUrl("http://10.0.2.2:18080/v1"));
+  EXPECT_EXPRESSION(ValidateModelBaseUrl("http://192.168.1.4/v1"));
+  EXPECT_EXPRESSION(ValidateModelBaseUrl("http://[::1]:18080/v1"));
 
   const auto public_http =
       ValidateModelBaseUrl("http://models.example.test/v1");
-  assert(!public_http.has_value());
-  assert(public_http.error().code == ModelUrlError::cleartext_not_allowed);
-  assert(!ValidateModelBaseUrl("http://127.0.0.1.evil.test/v1"));
-  assert(!ValidateModelBaseUrl("file:///tmp/model"));
-  assert(!ValidateModelBaseUrl("http://user@127.0.0.1/v1"));
+  EXPECT_EXPRESSION(!public_http.has_value());
+  EXPECT_EXPRESSION(public_http.error().code == ModelUrlError::cleartext_not_allowed);
+  EXPECT_EXPRESSION(!ValidateModelBaseUrl("http://127.0.0.1.evil.test/v1"));
+  EXPECT_EXPRESSION(!ValidateModelBaseUrl("file:///tmp/model"));
+  EXPECT_EXPRESSION(!ValidateModelBaseUrl("http://user@127.0.0.1/v1"));
 }
 
 void GenerationControllerRejectsStaleResultsAndPersistsAssistant() {
@@ -171,52 +171,52 @@ void GenerationControllerRejectsStaleResultsAndPersistsAssistant() {
   GenerationController controller(session);
 
   auto first = controller.Begin("first");
-  assert(first.has_value());
-  assert(first->messages.size() == 2U);
-  assert(first->messages[0].content == "history");
-  assert(first->messages[1].content == "first");
-  assert(controller.State().phase == GenerationPhase::running);
-  assert(controller.Observe(
+  EXPECT_EXPRESSION(first.has_value());
+  EXPECT_EXPRESSION(first->messages.size() == 2U);
+  EXPECT_EXPRESSION(first->messages[0].content == "history");
+  EXPECT_EXPRESSION(first->messages[1].content == "first");
+  EXPECT_EXPRESSION(controller.State().phase == GenerationPhase::running);
+  EXPECT_EXPRESSION(controller.Observe(
       first->generation_id,
       linecode::application::CompletionTextDelta{.text = "流"}));
-  assert(controller.Observe(
+  EXPECT_EXPRESSION(controller.Observe(
       first->generation_id,
       linecode::application::CompletionTextDelta{.text = "式"}));
-  assert(controller.State().streamed_text == "流式");
+  EXPECT_EXPRESSION(controller.State().streamed_text == "流式");
   const auto concurrent = controller.Begin("must not run concurrently");
-  assert(!concurrent.has_value());
-  assert(concurrent.error() ==
+  EXPECT_EXPRESSION(!concurrent.has_value());
+  EXPECT_EXPRESSION(concurrent.error() ==
          linecode::application::SendMessageError::generation_in_progress);
-  assert(recording->Messages().size() == 2U);
+  EXPECT_EXPRESSION(recording->Messages().size() == 2U);
 
   controller.Cancel();
-  assert(controller.State().phase == GenerationPhase::cancelled);
-  assert(controller.State().streamed_text.empty());
-  assert(recording->Messages().size() == 3U);
-  assert(recording->Messages().back().content == "流式");
-  assert(!recording->Messages().back().error);
-  assert(!controller.Observe(
+  EXPECT_EXPRESSION(controller.State().phase == GenerationPhase::cancelled);
+  EXPECT_EXPRESSION(controller.State().streamed_text.empty());
+  EXPECT_EXPRESSION(recording->Messages().size() == 3U);
+  EXPECT_EXPRESSION(recording->Messages().back().content == "流式");
+  EXPECT_EXPRESSION(!recording->Messages().back().error);
+  EXPECT_EXPRESSION(!controller.Observe(
       first->generation_id,
       linecode::application::CompletionTextDelta{.text = "stale"}));
-  assert(!controller.Complete(first->generation_id,
+  EXPECT_EXPRESSION(!controller.Complete(first->generation_id,
                               CompletionResponse{.text = "stale",
                                                  .reasoning_content = {},
                                                  .tool_calls = {},
                                                  .input_tokens = 0,
                                                  .output_tokens = 0}));
-  assert(recording->Messages().size() == 3U);
+  EXPECT_EXPRESSION(recording->Messages().size() == 3U);
 
   auto second = controller.Begin("second");
-  assert(second.has_value());
-  assert(second->generation_id > first->generation_id);
-  assert(controller.Observe(
+  EXPECT_EXPRESSION(second.has_value());
+  EXPECT_EXPRESSION(second->generation_id > first->generation_id);
+  EXPECT_EXPRESSION(controller.Observe(
       second->generation_id,
       linecode::application::CompletionReasoningDelta{
           .turn_index = 0,
           .text = "先读取文件",
           .kind = linecode::application::CompletionReasoningKind::thinking,
           .starts_new_segment = true}));
-  assert(controller.Observe(
+  EXPECT_EXPRESSION(controller.Observe(
       second->generation_id,
       linecode::application::CompletionToolCallEvent{
           .turn_index = 0,
@@ -232,47 +232,47 @@ void GenerationControllerRejectsStaleResultsAndPersistsAssistant() {
           .display = {},
           .created_at_millis = 1,
           .duration_millis = 2}));
-  assert(controller.Observe(
+  EXPECT_EXPRESSION(controller.Observe(
       second->generation_id,
       linecode::application::CompletionTextDelta{.turn_index = 1,
                                                  .text = "这是 LineCode 自动化测试的固定回复。"}));
-  assert(controller.Complete(
+  EXPECT_EXPRESSION(controller.Complete(
       second->generation_id,
       CompletionResponse{.text = "这是 LineCode 自动化测试的固定回复。",
                          .reasoning_content = {},
                          .tool_calls = {},
                          .input_tokens = 0,
                          .output_tokens = 0}));
-  assert(controller.State().phase == GenerationPhase::completed);
-  assert(recording->Messages().back().role == MessageRole::assistant);
-  assert(recording->Messages().back().content ==
+  EXPECT_EXPRESSION(controller.State().phase == GenerationPhase::completed);
+  EXPECT_EXPRESSION(recording->Messages().back().role == MessageRole::assistant);
+  EXPECT_EXPRESSION(recording->Messages().back().content ==
          "这是 LineCode 自动化测试的固定回复。");
-  assert(recording->Messages().back().timeline.size() == 2U);
+  EXPECT_EXPRESSION(recording->Messages().back().timeline.size() == 2U);
   const auto completed_message_count = recording->Messages().size();
-  assert(!controller.Complete(
+  EXPECT_EXPRESSION(!controller.Complete(
       second->generation_id,
       CompletionResponse{.text = "同一 generation 不应重复落盘",
                          .reasoning_content = {},
                          .tool_calls = {},
                          .input_tokens = 0,
                          .output_tokens = 0}));
-  assert(recording->Messages().size() == completed_message_count);
+  EXPECT_EXPRESSION(recording->Messages().size() == completed_message_count);
 
   auto third = controller.Begin("third");
-  assert(third.has_value());
-  assert(std::ranges::any_of(third->messages, [](const auto &message) {
+  EXPECT_EXPRESSION(third.has_value());
+  EXPECT_EXPRESSION(std::ranges::any_of(third->messages, [](const auto &message) {
     return message.role == linecode::application::CompletionRole::tool &&
            message.tool_result && message.tool_result->call_id == "call-1" &&
            message.tool_result->content == "fixture";
   }));
-  assert(controller.Observe(
+  EXPECT_EXPRESSION(controller.Observe(
       third->generation_id,
       linecode::application::CompletionReasoningDelta{
           .turn_index = 0,
           .text = "partial reasoning",
           .kind = linecode::application::CompletionReasoningKind::summary,
           .starts_new_segment = false}));
-  assert(controller.Observe(
+  EXPECT_EXPRESSION(controller.Observe(
       third->generation_id,
       linecode::application::CompletionToolCallEvent{
           .turn_index = 0,
@@ -282,33 +282,33 @@ void GenerationControllerRejectsStaleResultsAndPersistsAssistant() {
           .display = {},
           .created_at_millis = 4,
           .duration_millis = 0}));
-  assert(controller.Fail(third->generation_id,
+  EXPECT_EXPRESSION(controller.Fail(third->generation_id,
                          CompletionError{.code = CompletionErrorCode::transport,
                                          .message = "fixture unavailable"}));
-  assert(controller.State().phase == GenerationPhase::failed);
-  assert(controller.State().error == "fixture unavailable");
-  assert(recording->Messages().back().error);
-  assert(recording->Messages().back().error_message == "fixture unavailable");
-  assert(recording->Messages().back().reasoning_content ==
+  EXPECT_EXPRESSION(controller.State().phase == GenerationPhase::failed);
+  EXPECT_EXPRESSION(controller.State().error == "fixture unavailable");
+  EXPECT_EXPRESSION(recording->Messages().back().error);
+  EXPECT_EXPRESSION(recording->Messages().back().error_message == "fixture unavailable");
+  EXPECT_EXPRESSION(recording->Messages().back().reasoning_content ==
          "partial reasoning");
   const auto *failed_tool =
       std::get_if<linecode::domain::AssistantToolEvent>(
           &recording->Messages().back().timeline.back());
-  assert(failed_tool && failed_tool->result && failed_tool->result->error &&
+  EXPECT_EXPRESSION(failed_tool && failed_tool->result && failed_tool->result->error &&
          failed_tool->call.status ==
              linecode::domain::ToolCallStatus::failed);
   controller.Reset();
-  assert(controller.State().phase == GenerationPhase::idle);
-  assert(controller.State().error.empty());
+  EXPECT_EXPRESSION(controller.State().phase == GenerationPhase::idle);
+  EXPECT_EXPRESSION(controller.State().error.empty());
 
   auto image = controller.Begin("generate an image");
-  assert(image.has_value());
+  EXPECT_EXPRESSION(image.has_value());
   const std::string raw_image_result =
       R"json({"linecode_image_generation":true,"display_markdown":"![fixture](data:image/png;base64,AAAA)","model_content":"Generated image for: fixture"})json";
   const auto image_display =
       linecode::application::DefaultToolResultDisplayProjector()->Project(
           "image_generation", raw_image_result, false);
-  assert(controller.Observe(
+  EXPECT_EXPRESSION(controller.Observe(
       image->generation_id,
       linecode::application::CompletionToolCallEvent{
           .turn_index = 0,
@@ -325,11 +325,11 @@ void GenerationControllerRejectsStaleResultsAndPersistsAssistant() {
           .display = image_display,
           .created_at_millis = 8,
           .duration_millis = 9}));
-  assert(controller.Observe(
+  EXPECT_EXPRESSION(controller.Observe(
       image->generation_id,
       linecode::application::CompletionTextDelta{
           .turn_index = 1, .text = "Image complete."}));
-  assert(controller.Complete(
+  EXPECT_EXPRESSION(controller.Complete(
       image->generation_id,
       CompletionResponse{.text = "Image complete.",
                          .reasoning_content = {},
@@ -337,29 +337,41 @@ void GenerationControllerRejectsStaleResultsAndPersistsAssistant() {
                          .input_tokens = 0,
                          .output_tokens = 0}));
   const auto &image_message = recording->Messages().back();
-  assert(image_message.content ==
+  EXPECT_EXPRESSION(image_message.content ==
          "![fixture](data:image/png;base64,AAAA)\n\nImage complete.");
 
   auto after_image = controller.Begin("continue after image");
-  assert(after_image.has_value());
+  EXPECT_EXPRESSION(after_image.has_value());
   for (const auto &message : after_image->messages) {
-    assert(!message.content.contains("data:image/"));
-    if (message.tool_result)
-      assert(!message.tool_result->content.contains("data:image/"));
+    EXPECT_EXPRESSION(!message.content.contains("data:image/"));
+    if (message.tool_result) {
+      EXPECT_EXPRESSION(!message.tool_result->content.contains("data:image/"));
+    }
   }
-  assert(std::ranges::any_of(after_image->messages, [](const auto &message) {
+  EXPECT_EXPRESSION(std::ranges::any_of(after_image->messages, [](const auto &message) {
     return message.tool_result &&
            message.tool_result->call_id == "call-image" &&
            message.tool_result->content == "Generated image for: fixture";
   }));
   controller.Cancel();
 
+  linecode::domain::ChatImage input_image{
+      .name = "photo.png",
+      .mime_type = "image/png",
+      .base64 = "iVBORw0KGgo=",
+  };
+  auto image_input = controller.Begin("describe", {}, input_image);
+  EXPECT_EXPRESSION(image_input.has_value());
+  EXPECT_EXPRESSION(recording->Messages().back().image == input_image);
+  EXPECT_EXPRESSION(image_input->messages.back().image == input_image);
+  controller.Cancel();
+
   auto attachment_only =
       controller.Begin("", {{"notes.md", "/workspace/notes.md", "local"}});
-  assert(attachment_only.has_value());
-  assert(recording->Messages().back().content.empty());
-  assert(recording->Messages().back().attachments.size() == 1U);
-  assert(controller.Observe(
+  EXPECT_EXPRESSION(attachment_only.has_value());
+  EXPECT_EXPRESSION(recording->Messages().back().content.empty());
+  EXPECT_EXPRESSION(recording->Messages().back().attachments.size() == 1U);
+  EXPECT_EXPRESSION(controller.Observe(
       attachment_only->generation_id,
       linecode::application::CompletionToolCallEvent{
           .turn_index = 0,
@@ -375,14 +387,14 @@ void GenerationControllerRejectsStaleResultsAndPersistsAssistant() {
   const auto *cancelled_tool =
       std::get_if<linecode::domain::AssistantToolEvent>(
           &recording->Messages().back().timeline.back());
-  assert(cancelled_tool && cancelled_tool->result &&
+  EXPECT_EXPRESSION(cancelled_tool && cancelled_tool->result &&
          cancelled_tool->call.status ==
              linecode::domain::ToolCallStatus::rejected);
 }
 
 } // namespace
 
-int main() {
+TEST(completion_pipeline_tests, LegacySuite) {
   EncodesOpenAiRequestWithoutLosingUtf8OrControlCharacters();
   DecodesBufferedFixtureAndUnicodeEscapes();
   DecodesOpenAiSsePayloadsAndDoneSentinel();

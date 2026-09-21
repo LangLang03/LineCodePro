@@ -2,7 +2,7 @@
 // make it addressable, the prompt the model sees, and the delegation it hands
 // to the sub-agent runner.
 
-#include <cassert>
+#include "gtest_support.h"
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -55,27 +55,27 @@ domain::AgentExtension Agent() {
 
 void SafeNamesMatchTheLegacyRules() {
   // Allowed characters survive untouched.
-  assert(SafeCustomToolNamePart("code-reviewer", "agent", 55) ==
+  EXPECT_EXPRESSION(SafeCustomToolNamePart("code-reviewer", "agent", 55) ==
          "code-reviewer");
   // Anything else becomes an underscore, runs collapse, the ends are trimmed.
-  assert(SafeCustomToolNamePart("  Code Reviewer!  ", "agent", 55) ==
+  EXPECT_EXPRESSION(SafeCustomToolNamePart("  Code Reviewer!  ", "agent", 55) ==
          "Code_Reviewer");
-  assert(SafeCustomToolNamePart("a..b", "agent", 55) == "a_b");
-  assert(SafeCustomToolNamePart("__x__", "agent", 55) == "x");
+  EXPECT_EXPRESSION(SafeCustomToolNamePart("a..b", "agent", 55) == "a_b");
+  EXPECT_EXPRESSION(SafeCustomToolNamePart("__x__", "agent", 55) == "x");
   // An empty or all-punctuation slug falls back.
-  assert(SafeCustomToolNamePart("", "agent", 55) == "agent");
-  assert(SafeCustomToolNamePart("!!!", "agent", 55) == "agent");
+  EXPECT_EXPRESSION(SafeCustomToolNamePart("", "agent", 55) == "agent");
+  EXPECT_EXPRESSION(SafeCustomToolNamePart("!!!", "agent", 55) == "agent");
   // A name that does not start with a letter is prefixed with the fallback.
-  assert(SafeCustomToolNamePart("9lives", "agent", 55) == "agent_9lives");
+  EXPECT_EXPRESSION(SafeCustomToolNamePart("9lives", "agent", 55) == "agent_9lives");
   // The length cap applies to the kept characters, not the input.
-  assert(SafeCustomToolNamePart(std::string(80, 'a'), "agent", 55).size() ==
+  EXPECT_EXPRESSION(SafeCustomToolNamePart(std::string(80, 'a'), "agent", 55).size() ==
          55U);
 }
 
 void ToolNamesUseTheLegacyPrefix() {
-  assert(CustomAgentToolName("code-reviewer") == "agentx_code-reviewer");
+  EXPECT_EXPRESSION(CustomAgentToolName("code-reviewer") == "agentx_code-reviewer");
   // A slug that sanitizes to nothing still yields an addressable name.
-  assert(CustomAgentToolName("") == "agentx_agent");
+  EXPECT_EXPRESSION(CustomAgentToolName("") == "agentx_agent");
 }
 
 // ---------------------------------------------------------------------------
@@ -85,26 +85,26 @@ void ToolNamesUseTheLegacyPrefix() {
 void PromptMatchesTheLegacyShape() {
   const auto agent = Agent();
   const auto prompt = BuildCustomAgentPrompt(agent, "look at src/", "");
-  assert(prompt.starts_with("You are the custom Agent \"Code Reviewer\" "
+  EXPECT_EXPRESSION(prompt.starts_with("You are the custom Agent \"Code Reviewer\" "
                             "(code-reviewer).\n\n"));
-  assert(prompt.find("## Agent Definition\nReview the diff and report "
+  EXPECT_EXPRESSION(prompt.find("## Agent Definition\nReview the diff and report "
                      "findings.\n\n") != std::string::npos);
-  assert(prompt.find("## Trigger\nwhen a review is requested\n\n") !=
+  EXPECT_EXPRESSION(prompt.find("## Trigger\nwhen a review is requested\n\n") !=
          std::string::npos);
   // The legacy spliced the collection's `toString()`, i.e. its bracketed form.
-  assert(prompt.find("## Expected Tool Scope\n[file_read, glob]\n\n") !=
+  EXPECT_EXPRESSION(prompt.find("## Expected Tool Scope\n[file_read, glob]\n\n") !=
          std::string::npos);
-  assert(prompt.find("## Expected MCP Scope\n[mcp_1]\n\n") !=
+  EXPECT_EXPRESSION(prompt.find("## Expected MCP Scope\n[mcp_1]\n\n") !=
          std::string::npos);
-  assert(prompt.ends_with("## Current Task\nlook at src/"));
-  assert(prompt.find("Supplementary Context") == std::string::npos);
+  EXPECT_EXPRESSION(prompt.ends_with("## Current Task\nlook at src/"));
+  EXPECT_EXPRESSION(prompt.find("Supplementary Context") == std::string::npos);
 
   // Supplementary context is trimmed and appended last.
   const auto with_context =
       BuildCustomAgentPrompt(agent, "task", "  extra  ");
-  assert(with_context.ends_with("## Supplementary Context\nextra"));
+  EXPECT_EXPRESSION(with_context.ends_with("## Supplementary Context\nextra"));
   // Blank context adds nothing.
-  assert(BuildCustomAgentPrompt(agent, "task", "   ") ==
+  EXPECT_EXPRESSION(BuildCustomAgentPrompt(agent, "task", "   ") ==
          BuildCustomAgentPrompt(agent, "task", ""));
 }
 
@@ -114,10 +114,10 @@ void PromptOmitsEmptySections() {
   agent.tool_names.clear();
   agent.mcp_ids.clear();
   const auto prompt = BuildCustomAgentPrompt(agent, "task", "");
-  assert(prompt.find("## Trigger") == std::string::npos);
-  assert(prompt.find("Expected Tool Scope") == std::string::npos);
-  assert(prompt.find("Expected MCP Scope") == std::string::npos);
-  assert(prompt.ends_with("## Current Task\ntask"));
+  EXPECT_EXPRESSION(prompt.find("## Trigger") == std::string::npos);
+  EXPECT_EXPRESSION(prompt.find("Expected Tool Scope") == std::string::npos);
+  EXPECT_EXPRESSION(prompt.find("Expected MCP Scope") == std::string::npos);
+  EXPECT_EXPRESSION(prompt.ends_with("## Current Task\ntask"));
 }
 
 void DescriptionCapsTheCapabilityExcerpt() {
@@ -125,15 +125,15 @@ void DescriptionCapsTheCapabilityExcerpt() {
   agent.trigger.clear();
   agent.prompt = std::string(1200, 'p');
   const auto description = CustomAgentToolDescription(agent);
-  assert(description.starts_with("Invoke the custom Agent \"Code Reviewer\"."));
+  EXPECT_EXPRESSION(description.starts_with("Invoke the custom Agent \"Code Reviewer\"."));
   // `substring(0, 900)` on the raw prompt, untrimmed.
-  assert(description == "Invoke the custom Agent \"Code Reviewer\"."
+  EXPECT_EXPRESSION(description == "Invoke the custom Agent \"Code Reviewer\"."
                         "\nCapabilities: " +
                             std::string(900, 'p'));
 
   agent.trigger = "trig";
   const auto with_trigger = CustomAgentToolDescription(agent);
-  assert(with_trigger.find("\nTrigger: trig\nCapabilities: ") !=
+  EXPECT_EXPRESSION(with_trigger.find("\nTrigger: trig\nCapabilities: ") !=
          std::string::npos);
 }
 
@@ -144,19 +144,19 @@ void SchemaRequiresOnlyTheTask() {
   // exactly how a broken schema reached the wire once. The provider rejects
   // the whole request body in that case, so validity is the real assertion.
   const auto parsed = infrastructure::archive_json::Parse(schema);
-  assert(parsed.has_value());
+  EXPECT_EXPRESSION(parsed.has_value());
   const auto *object = infrastructure::archive_json::AsObject(&*parsed);
-  assert(object != nullptr);
+  EXPECT_EXPRESSION(object != nullptr);
   const auto *properties = infrastructure::archive_json::AsObject(
       infrastructure::archive_json::Find(*object, "properties"));
-  assert(properties != nullptr);
-  assert(properties->size() == 4U);
+  EXPECT_EXPRESSION(properties != nullptr);
+  EXPECT_EXPRESSION(properties->size() == 4U);
   for (const auto key : {"task", "context", "read_scope", "write_scope"})
-    assert(properties->contains(key));
+    EXPECT_EXPRESSION(properties->contains(key));
   const auto *required = infrastructure::archive_json::AsArray(
       infrastructure::archive_json::Find(*object, "required"));
-  assert(required != nullptr && required->size() == 1U);
-  assert(*infrastructure::archive_json::AsString(&required->front()) ==
+  EXPECT_EXPRESSION(required != nullptr && required->size() == 1U);
+  EXPECT_EXPRESSION(*infrastructure::archive_json::AsString(&required->front()) ==
          "task");
 }
 
@@ -262,7 +262,7 @@ void Run(Harness &target) {
   huxerui::testing::UiTest ui(application);
   for (std::size_t frame = 0; frame < 20'000U && !harness->done; ++frame)
     ui.Pump(std::chrono::milliseconds{1});
-  assert(harness->done);
+  EXPECT_EXPRESSION(harness->done);
   target.refreshed = harness->refreshed;
   target.invoked = harness->invoked;
   target.invoke_error = harness->invoke_error;
@@ -278,15 +278,17 @@ void OnlyEnabledAgentsBecomeTools() {
   target.store->agents = {Agent(), disabled};
   Run(target);
 
-  assert(target.refreshed);
+  EXPECT_EXPRESSION(target.refreshed);
   const auto tools = target.registry->Tools();
-  assert(tools.size() == 1U);
-  assert(tools.front().name == "agentx_code-reviewer");
-  assert(tools.front().category == "agent");
+  EXPECT_EXPRESSION(tools.size() == 1U);
+  EXPECT_EXPRESSION(tools.front().name == "agentx_code-reviewer");
+  EXPECT_EXPRESSION(tools.front().category == "agent");
   // Not opted into read-only mode, matching the legacy tool.
-  assert(!tools.front().allowed_in_read_only);
-  assert(target.registry->Contains("agentx_code-reviewer"));
-  assert(!target.registry->Contains("agentx_disabled-one"));
+  EXPECT_EXPRESSION(!tools.front().allowed_in_read_only);
+  EXPECT_EXPRESSION(tools.front().agent_category ==
+         application::AgentToolCategory::system);
+  EXPECT_EXPRESSION(target.registry->Contains("agentx_code-reviewer"));
+  EXPECT_EXPRESSION(!target.registry->Contains("agentx_disabled-one"));
 }
 
 // The delegated run has to carry the agent's own prompt, its selected tools
@@ -299,22 +301,22 @@ void InvokeDelegatesTheAgentsConfiguration() {
       R"json({"task":"look at src/","context":" extra ","read_scope":["src"],"write_scope":[]})json";
   Run(target);
 
-  assert(target.invoked.has_value());
-  assert(!target.invoked->error);
-  assert(target.invoked->content == "agent output");
-  assert(target.runner->requests.size() == 1U);
+  EXPECT_EXPRESSION(target.invoked.has_value());
+  EXPECT_EXPRESSION(!target.invoked->error);
+  EXPECT_EXPRESSION(target.invoked->content == "agent output");
+  EXPECT_EXPRESSION(target.runner->requests.size() == 1U);
   const auto &request = target.runner->requests.front();
-  assert(request.type == "sub-coding");
-  assert(request.description == "Code Reviewer");
-  assert(request.prompt.starts_with("You are the custom Agent \"Code "
+  EXPECT_EXPRESSION(request.type == "sub-coding");
+  EXPECT_EXPRESSION(request.description == "Code Reviewer");
+  EXPECT_EXPRESSION(request.prompt.starts_with("You are the custom Agent \"Code "
                                     "Reviewer\" (code-reviewer)."));
-  assert(request.prompt.ends_with("## Supplementary Context\nextra"));
-  assert(request.read_scope == std::vector<std::string>{"src"});
-  assert(request.write_scope.empty());
+  EXPECT_EXPRESSION(request.prompt.ends_with("## Supplementary Context\nextra"));
+  EXPECT_EXPRESSION(request.read_scope == std::vector<std::string>{"src"});
+  EXPECT_EXPRESSION(request.write_scope.empty());
   // The agent's own selection travels with the run.
-  assert(request.custom_tool_names ==
+  EXPECT_EXPRESSION(request.custom_tool_names ==
          (std::vector<std::string>{"file_read", "glob"}));
-  assert(request.custom_mcp_ids == std::vector<std::string>{"mcp_1"});
+  EXPECT_EXPRESSION(request.custom_mcp_ids == std::vector<std::string>{"mcp_1"});
 }
 
 void InvokeRejectsAnEmptyTask() {
@@ -324,11 +326,11 @@ void InvokeRejectsAnEmptyTask() {
   target.invoke_arguments = R"json({"task":"   "})json";
   Run(target);
 
-  assert(target.invoked.has_value());
-  assert(target.invoked->error);
-  assert(target.invoked->content == "Custom Agent task cannot be empty.");
+  EXPECT_EXPRESSION(target.invoked.has_value());
+  EXPECT_EXPRESSION(target.invoked->error);
+  EXPECT_EXPRESSION(target.invoked->content == "Custom Agent task cannot be empty.");
   // The runner is never reached.
-  assert(target.runner->requests.empty());
+  EXPECT_EXPRESSION(target.runner->requests.empty());
 }
 
 void InvokeReportsAMissingRunner() {
@@ -339,9 +341,9 @@ void InvokeReportsAMissingRunner() {
   target.invoke_arguments = R"json({"task":"do it"})json";
   Run(target);
 
-  assert(target.invoked.has_value());
-  assert(target.invoked->error);
-  assert(target.invoked->content ==
+  EXPECT_EXPRESSION(target.invoked.has_value());
+  EXPECT_EXPRESSION(target.invoked->error);
+  EXPECT_EXPRESSION(target.invoked->content ==
          "Agent runner not available, cannot run custom Agent.");
 }
 
@@ -352,14 +354,14 @@ void InvokeRejectsAnUnknownTool() {
   target.invoke_arguments = R"json({"task":"do it"})json";
   Run(target);
 
-  assert(target.invoke_error.has_value());
-  assert(target.invoke_error->code ==
+  EXPECT_EXPRESSION(target.invoke_error.has_value());
+  EXPECT_EXPRESSION(target.invoke_error->code ==
          application::ToolRegistryErrorCode::unknown_tool);
 }
 
 } // namespace
 
-int main() {
+TEST(custom_agent_tool_tests, LegacySuite) {
   SafeNamesMatchTheLegacyRules();
   ToolNamesUseTheLegacyPrefix();
   PromptMatchesTheLegacyShape();
@@ -372,5 +374,5 @@ int main() {
   InvokeReportsAMissingRunner();
   InvokeRejectsAnUnknownTool();
   std::cout << "custom_agent_tool_tests passed\n";
-  return 0;
+  return;
 }

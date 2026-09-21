@@ -1,6 +1,7 @@
 #include "infrastructure/tutorial_markdown_parser.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <cstddef>
@@ -188,12 +189,14 @@ bool ValidImageDimensions(const ImageMetadata &metadata) noexcept {
 
 bool LooksLikeStandaloneImage(std::string_view line) noexcept {
   line = Trim(line);
-  return line.starts_with("![") && line.ends_with(')') &&
-         line.find("](data:image/") != std::string_view::npos;
+  if (!line.starts_with("![") || !line.ends_with(')'))
+    return false;
+  const auto label_end = line.find("](", 2U);
+  return label_end != std::string_view::npos && label_end + 3U <= line.size();
 }
 
 std::optional<domain::TutorialImageBlock>
-ParseDataImage(std::string_view line) {
+ParseImage(std::string_view line) {
   line = Trim(line);
   if (!LooksLikeStandaloneImage(line))
     return std::nullopt;
@@ -202,6 +205,20 @@ ParseDataImage(std::string_view line) {
     return std::nullopt;
   const auto target = line.substr(label_end + 2U,
                                   line.size() - label_end - 3U);
+  const std::string alternative_text{line.substr(2U, label_end - 2U)};
+  if (target.starts_with('/')) {
+    return domain::TutorialImageBlock{
+        .alternative_text = alternative_text,
+        .source = domain::TutorialAbsolutePathImage{
+            .path = std::string{target}},
+    };
+  }
+  if (target.starts_with("file://")) {
+    return domain::TutorialImageBlock{
+        .alternative_text = alternative_text,
+        .source = domain::TutorialFileUriImage{.uri = std::string{target}},
+    };
+  }
   constexpr std::string_view prefix{"data:"};
   constexpr std::string_view delimiter{";base64,"};
   if (!target.starts_with(prefix))
@@ -223,12 +240,108 @@ ParseDataImage(std::string_view line) {
       !ValidImageDimensions(*metadata))
     return std::nullopt;
   return domain::TutorialImageBlock{
-      .alternative_text = std::string{line.substr(2U, label_end - 2U)},
-      .mime_type = std::move(metadata->mime_type),
-      .encoded = std::move(*decoded),
-      .pixel_width = metadata->width,
-      .pixel_height = metadata->height,
+      .alternative_text = alternative_text,
+      .source = domain::TutorialEncodedImage{
+          .mime_type = std::move(metadata->mime_type),
+          .encoded = std::move(*decoded),
+          .pixel_width = metadata->width,
+          .pixel_height = metadata->height,
+      },
   };
+}
+
+bool StartsWithAsciiCaseInsensitive(std::string_view value,
+                                    std::string_view prefix) noexcept {
+  return value.size() >= prefix.size() &&
+         std::ranges::equal(value.substr(0U, prefix.size()), prefix,
+                            [](char left, char right) {
+                              return std::tolower(
+                                         static_cast<unsigned char>(left)) ==
+                                     std::tolower(
+                                         static_cast<unsigned char>(right));
+                            });
+}
+
+bool StartsWithHtmlTag(std::string_view line, std::string_view tag) noexcept {
+  const std::string opening = "<" + std::string{tag};
+  if (!StartsWithAsciiCaseInsensitive(line, opening) ||
+      line.size() == opening.size())
+    return false;
+  const char boundary = line[opening.size()];
+  return boundary == '>' || boundary == '/' ||
+         std::isspace(static_cast<unsigned char>(boundary));
+}
+
+struct HtmlBlockStart final {
+  std::string closing_token;
+  bool ends_at_blank_line = false;
+};
+
+std::optional<HtmlBlockStart> HtmlBlock(std::string_view line) {
+  line = Trim(line);
+  if (line.starts_with("<!--"))
+    return HtmlBlockStart{.closing_token = "-->"};
+  if (line.starts_with("<?"))
+    return HtmlBlockStart{.closing_token = "?>"};
+  if (line.starts_with("<![CDATA["))
+    return HtmlBlockStart{.closing_token = "]]>"};
+  if (line.starts_with("<!") && line.size() > 2U &&
+      std::isupper(static_cast<unsigned char>(line[2U])))
+    return HtmlBlockStart{.closing_token = ">"};
+
+  constexpr std::array<std::string_view, 4> raw_tags{
+      "script", "pre", "style", "textarea"};
+  for (const auto tag : raw_tags) {
+    if (StartsWithHtmlTag(line, tag))
+      return HtmlBlockStart{.closing_token = "</" + std::string{tag} + ">"};
+  }
+
+  if (line.size() < 3U || line.front() != '<')
+    return std::nullopt;
+  std::size_t name = line[1] == '/' ? 2U : 1U;
+  if (name >= line.size() ||
+      !std::isalpha(static_cast<unsigned char>(line[name])))
+    return std::nullopt;
+  while (name < line.size() &&
+         (std::isalnum(static_cast<unsigned char>(line[name])) ||
+          line[name] == '-'))
+    ++name;
+  if (name >= line.size() ||
+      (line[name] != '>' && line[name] != '/' &&
+       !std::isspace(static_cast<unsigned char>(line[name]))))
+    return std::nullopt;
+  return HtmlBlockStart{.closing_token = {}, .ends_at_blank_line = true};
+}
+
+bool ContainsAsciiCaseInsensitive(std::string_view value,
+                                  std::string_view needle) noexcept {
+  return std::ranges::search(value, needle,
+                             [](char left, char right) {
+                               return std::tolower(
+                                          static_cast<unsigned char>(left)) ==
+                                      std::tolower(
+                                          static_cast<unsigned char>(right));
+                             })
+             .begin() != value.end();
+}
+
+std::string ConsumeHtmlBlock(const std::vector<std::string_view>& lines,
+                             std::size_t& index,
+                             const HtmlBlockStart& start) {
+  std::string html;
+  while (index < lines.size()) {
+    const auto line = lines[index];
+    if (start.ends_at_blank_line && Trim(line).empty())
+      break;
+    if (!html.empty())
+      html.push_back('\n');
+    html.append(line);
+    ++index;
+    if (!start.closing_token.empty() &&
+        ContainsAsciiCaseInsensitive(line, start.closing_token))
+      break;
+  }
+  return html;
 }
 
 void AppendInline(TutorialInlineLine& output, std::string_view text,
@@ -516,7 +629,7 @@ domain::TutorialDocument ParseLines(const std::vector<std::string_view>& lines,
     }
 
     if (LooksLikeStandaloneImage(line)) {
-      if (auto image = ParseDataImage(line)) {
+      if (auto image = ParseImage(line)) {
         document.blocks.emplace_back(std::move(*image));
       } else {
         // Never expose a rejected data URI as a clickable link or keep its
@@ -525,6 +638,12 @@ domain::TutorialDocument ParseLines(const std::vector<std::string_view>& lines,
             domain::TutorialParagraph{ParseInline("Image unavailable")});
       }
       ++index;
+      continue;
+    }
+
+    if (const auto html = HtmlBlock(line)) {
+      document.blocks.emplace_back(domain::TutorialHtmlBlock{
+          .html = ConsumeHtmlBlock(lines, index, *html)});
       continue;
     }
 
@@ -606,6 +725,7 @@ domain::TutorialDocument ParseLines(const std::vector<std::string_view>& lines,
            !Trim(lines[index]).starts_with("```") &&
            !Trim(lines[index]).starts_with('>') &&
            !LooksLikeStandaloneImage(lines[index]) &&
+           !HtmlBlock(lines[index]) &&
            !ParseListPrefix(lines[index]) &&
            !(lines[index].contains('|') && index + 1 < lines.size() &&
              IsTableSeparator(lines[index + 1]))) {

@@ -1,8 +1,10 @@
 #include "infrastructure/sqlite_model_store.h"
 
+#include <algorithm>
 #include <chrono>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "infrastructure/legacy_model_schema.h"
 
@@ -93,6 +95,28 @@ constexpr std::string_view kSelectColumns =
     "tool_call_limit, compression_model_enabled, compression_model_auto, "
     "compression_model_id, context_size";
 
+Result<void> EnsureSchema(Transaction &transaction) {
+  auto created =
+      transaction.Execute(std::string{legacy_model_schema::create_table});
+  if (!created)
+    return created.Error();
+
+  auto columns = transaction.Query<std::string>(
+      "PRAGMA table_info(model_configs)",
+      [](const RowView &row) { return row.Get<std::string>(1); });
+  if (!columns)
+    return columns.Error();
+
+  for (const auto &migration : legacy_model_schema::column_migrations) {
+    if (std::ranges::contains(*columns, migration.column))
+      continue;
+    auto altered = transaction.Execute(std::string{migration.statement});
+    if (!altered)
+      return altered.Error();
+  }
+  return {};
+}
+
 } // namespace
 
 SqliteModelStore::SqliteModelStore(huxerui::File database_file)
@@ -109,8 +133,7 @@ SqliteModelStore::Open() {
   if (!opened) {
     co_return std::unexpected(StoreError(opened.Error()));
   }
-  auto schema = co_await opened->ExecuteAsync(
-      std::string{legacy_model_schema::create_table});
+  auto schema = co_await opened->TransactionAsync(EnsureSchema);
   if (!schema) {
     co_return std::unexpected(StoreError(schema.Error()));
   }

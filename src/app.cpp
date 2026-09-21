@@ -7,6 +7,7 @@
 #include "infrastructure/android_storage_permission.h"
 #include "infrastructure/android_terminal_provider.h"
 #include "infrastructure/android_termux_integration.h"
+#include "infrastructure/android_window_insets.h"
 #include "infrastructure/workspace_directory_share.h"
 #endif
 #if defined(__ANDROID__) || defined(_WIN32)
@@ -38,6 +39,7 @@ const Application application{
              linecode::infrastructure::InstallAndroidStoragePermission,
              linecode::infrastructure::InstallAndroidTerminalProvider,
              linecode::infrastructure::InstallAndroidTermuxIntegration,
+             linecode::infrastructure::InstallAndroidWindowInsets,
              linecode::infrastructure::InstallWorkspaceDirectoryShare,
              linecode::infrastructure::InstallChatExport,
              linecode::infrastructure::InstallExternalLink,

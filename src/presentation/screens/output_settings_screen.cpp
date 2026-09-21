@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <memory>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -9,8 +10,10 @@
 #include <huxerui/huxerui.h>
 
 #include "domain/app_state.h"
+#include "infrastructure/tutorial_markdown_parser.h"
 #include "presentation/components/legacy_settings_page.h"
 #include "presentation/components/legacy_switch.h"
+#include "presentation/components/tutorial_markdown.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -126,99 +129,11 @@ View BrowserOptionRow(ImageResource icon, StringResource title,
             Focusable(), PointerCursor(PointerCursorKind::Hand));
 }
 
-View MarkdownTableRow(StringResource left, StringResource right, bool header,
-                      Color background, bool link = false) {
-  const auto style = Label(13.0F,
-                           header ? FontWeight::Bold : FontWeight::Regular,
-                           link ? colors::accent
-                                : header ? colors::text : colors::secondary);
-  auto right_style = style;
-  if (link)
-    right_style.decoration = TextDecoration::Underline;
-  return Row{
-      Text(left).Style(style).With(
-          Grow(), Padding(10.0F), Border(colors::border_light, 0.5F)),
-      Text(right).Style(right_style).With(
-          Grow(), Padding(10.0F), Border(colors::border_light, 0.5F)),
-  }
-      .With(Frame{.height = 40.0F}, Background(background));
-}
-
-View CodeSample(bool wraps) {
-  View code = Text(app::strings::screen_output_preview_code)
-                  .Style(TextStyle{Font::Monospace(13.0F), colors::text});
-  View body;
-  if (wraps) {
-    body = std::move(code);
-  } else {
-    body = ScrollView(std::move(code).With(Frame{.min_width = 760.0F}))
-               .ScrollAxis(Axis::Horizontal);
-  }
-  return Column{
-      Row{
-          Text(app::strings::screen_output_preview_code_language)
-              .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
-          Spacer(),
-          Stack{Glyph(app::images::copy, 18.0F, colors::tertiary)}.With(
-              Frame{.width = 48.0F, .height = 48.0F},
-              Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
-      }
-          .With(Frame{.min_height = 48.0F},
-                CrossAlign(CrossAxisAlignment::Center)),
-      body,
-  }
-      .With(Spacing(8.0F), Padding(EdgeInsets{.top = 8.0F,
-                                             .right = 16.0F,
-                                             .bottom = 16.0F,
-                                             .left = 16.0F}),
-            CrossAlign(CrossAxisAlignment::Stretch),
-            Background(colors::surface_light), CornerRadius(12.0F));
-}
-
-View MarkdownListItem(StringResource text) {
-  return Row{
-      Text("•")
-          .Style(Label(16.0F, FontWeight::Regular, colors::secondary))
-          .Align(TextAlign::Trailing)
-          .With(Frame{.width = 22.0F}),
-      Text(text)
-          .Style(Label(16.0F))
-          .With(Grow(), Padding(EdgeInsets{.bottom = 8.0F})),
-  }
-      .With(Spacing(8.0F), Padding(EdgeInsets{.bottom = 3.0F}),
-            CrossAlign(CrossAxisAlignment::Start));
-}
-
-View MarkdownPreview(bool code_wrap_enabled) {
-  return Column{
-      Text(app::strings::screen_output_preview_heading)
-          .Style(Label(20.0F, FontWeight::Medium))
-          .With(Padding(EdgeInsets{.top = 9.2F, .bottom = 21.6F})),
-      Column{
-          MarkdownListItem(app::strings::screen_output_preview_bullet_style),
-          MarkdownListItem(app::strings::screen_output_preview_bullet_wrap),
-      }
-          .With(Spacing(1.6F),
-                Padding(EdgeInsets{.top = 1.0F, .bottom = 7.0F}),
-                CrossAlign(CrossAxisAlignment::Stretch)),
-      Column{
-          MarkdownTableRow(app::strings::screen_output_preview_table_type,
-                           app::strings::screen_output_preview_table_status,
-                           true, colors::surface_light),
-          MarkdownTableRow(app::strings::screen_output_preview_table_table,
-                           app::strings::screen_output_preview_table_enabled,
-                           false, colors::surface),
-          MarkdownTableRow(app::strings::screen_output_preview_table_link,
-                           app::strings::screen_output_preview_link_label,
-                           false, colors::code, true),
-      }
-          .With(Padding(EdgeInsets{.top = 4.0F, .bottom = 8.0F}),
-                CrossAlign(CrossAxisAlignment::Stretch), CornerRadius(12.0F)),
-      CodeSample(code_wrap_enabled).With(
-          Padding(EdgeInsets{.top = 4.0F, .bottom = 8.0F})),
-  }
-      .With(Padding(16.0F),
-            CrossAlign(CrossAxisAlignment::Stretch));
+View MarkdownPreview(std::string_view markdown, bool code_wrap_enabled) {
+  const infrastructure::TutorialMarkdownParser parser;
+  return TutorialMarkdownDocumentView(parser.Parse(markdown), code_wrap_enabled,
+                                      1.0F, {}, {})
+      .With(Padding(16.0F), CrossAlign(CrossAxisAlignment::Stretch));
 }
 
 View PreviewNavigationRow(std::function<void()> open_preview) {
@@ -306,7 +221,10 @@ OutputSettingsScreen(std::shared_ptr<OutputSettingsService> service) {
                         })}));
   content.push_back(
       LegacySettingsSection(app::strings::screen_output_section_preview,
-                            {MarkdownPreview(state->code_wrap_enabled)}));
+                            {MarkdownPreview(
+                                UseString(app::strings::
+                                              screen_output_preview_markdown),
+                                state->code_wrap_enabled)}));
   content.push_back(LegacySettingsSection(
       app::strings::screen_output_section_toolcall,
       {PreviewNavigationRow([navigation] {

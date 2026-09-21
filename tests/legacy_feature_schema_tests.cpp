@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <cassert>
+#include "gtest_support.h"
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -117,7 +117,7 @@ void FreshDatabaseGetsTheLegacyFeatureSchema() {
   for (const std::string_view table :
        {"memories", "working_memory", "conversation_index", "skills",
         "extension_agents", "extension_mcps", "ipc_providers"}) {
-    assert(Contains(tables, table));
+    EXPECT_EXPRESSION(Contains(tables, table));
   }
 
   const auto indexes = database.TextColumn(
@@ -126,39 +126,39 @@ void FreshDatabaseGetsTheLegacyFeatureSchema() {
        {"idx_conversation_index_project", "idx_memories_scope_project",
         "idx_working_memory_project", "idx_extension_agents_enabled",
         "idx_extension_mcps_enabled", "idx_ipc_providers_enabled"}) {
-    assert(Contains(indexes, index));
+    EXPECT_EXPRESSION(Contains(indexes, index));
   }
 
-  assert((database.TextColumn(
+  EXPECT_EXPRESSION((database.TextColumn(
               "PRAGMA index_info(idx_conversation_index_project)", 2) ==
           std::vector<std::string>{"project_id", "updated_at"}));
-  assert((
+  EXPECT_EXPRESSION((
       database.TextColumn("PRAGMA index_info(idx_memories_scope_project)", 2) ==
       std::vector<std::string>{"scope", "project_id"}));
-  assert((
+  EXPECT_EXPRESSION((
       database.TextColumn("PRAGMA index_info(idx_working_memory_project)", 2) ==
       std::vector<std::string>{"project_id", "expires_at"}));
-  assert((database.TextColumn("PRAGMA index_info(idx_extension_agents_enabled)",
+  EXPECT_EXPRESSION((database.TextColumn("PRAGMA index_info(idx_extension_agents_enabled)",
                               2) ==
           std::vector<std::string>{"enabled", "updated_at"}));
-  assert((
+  EXPECT_EXPRESSION((
       database.TextColumn("PRAGMA index_info(idx_extension_mcps_enabled)", 2) ==
       std::vector<std::string>{"enabled", "updated_at"}));
-  assert((database.TextColumn("PRAGMA index_info(idx_ipc_providers_enabled)",
+  EXPECT_EXPRESSION((database.TextColumn("PRAGMA index_info(idx_ipc_providers_enabled)",
                               2) ==
           std::vector<std::string>{"enabled", "provider_type",
                                    "updated_at"}));
-  assert(database.Integer(
+  EXPECT_EXPRESSION(database.Integer(
              "SELECT desc FROM pragma_index_xinfo("
              "'idx_conversation_index_project') WHERE name = 'updated_at'") ==
          1);
-  assert(database.Integer(
+  EXPECT_EXPRESSION(database.Integer(
              "SELECT desc FROM pragma_index_xinfo("
              "'idx_extension_agents_enabled') WHERE name = 'updated_at'") == 1);
-  assert(database.Integer(
+  EXPECT_EXPRESSION(database.Integer(
              "SELECT desc FROM pragma_index_xinfo("
              "'idx_extension_mcps_enabled') WHERE name = 'updated_at'") == 1);
-  assert(database.Integer(
+  EXPECT_EXPRESSION(database.Integer(
              "SELECT desc FROM pragma_index_xinfo("
              "'idx_ipc_providers_enabled') WHERE name = 'updated_at'") == 1);
 }
@@ -167,31 +167,31 @@ void ColumnsAndDefaultsStayArchiveCompatible() {
   Database database;
   ApplySchema(database);
 
-  assert((database.TextColumn("PRAGMA table_info(memories)", 1) ==
+  EXPECT_EXPRESSION((database.TextColumn("PRAGMA table_info(memories)", 1) ==
           std::vector<std::string>{"id", "scope", "project_id", "content",
                                    "source", "confidence", "created_at",
                                    "updated_at", "last_used_at", "use_count",
                                    "raw_json"}));
-  assert((database.TextColumn("PRAGMA table_info(working_memory)", 1) ==
+  EXPECT_EXPRESSION((database.TextColumn("PRAGMA table_info(working_memory)", 1) ==
           std::vector<std::string>{"id", "project_id", "content", "source",
                                    "expires_at", "created_at", "updated_at",
                                    "raw_json"}));
-  assert((database.TextColumn("PRAGMA table_info(conversation_index)", 1) ==
+  EXPECT_EXPRESSION((database.TextColumn("PRAGMA table_info(conversation_index)", 1) ==
           std::vector<std::string>{"id", "project_id", "conversation_id",
                                    "message_id", "role", "text", "title",
                                    "created_at", "updated_at", "raw_json"}));
-  assert((database.TextColumn("PRAGMA table_info(skills)", 1) ==
+  EXPECT_EXPRESSION((database.TextColumn("PRAGMA table_info(skills)", 1) ==
           std::vector<std::string>{"id", "name", "scope", "path", "description",
                                    "enabled", "updated_at", "raw_json"}));
-  assert((database.TextColumn("PRAGMA table_info(extension_agents)", 1) ==
+  EXPECT_EXPRESSION((database.TextColumn("PRAGMA table_info(extension_agents)", 1) ==
           std::vector<std::string>{"id", "enabled", "name", "slug", "prompt",
                                    "trigger", "tool_names_json", "mcp_ids_json",
                                    "created_at", "updated_at", "raw_json"}));
-  assert((database.TextColumn("PRAGMA table_info(extension_mcps)", 1) ==
+  EXPECT_EXPRESSION((database.TextColumn("PRAGMA table_info(extension_mcps)", 1) ==
           std::vector<std::string>{"id", "enabled", "name", "url",
                                    "request_headers_json", "tools_json",
                                    "created_at", "updated_at", "raw_json"}));
-  assert((database.TextColumn("PRAGMA table_info(ipc_providers)", 1) ==
+  EXPECT_EXPRESSION((database.TextColumn("PRAGMA table_info(ipc_providers)", 1) ==
           std::vector<std::string>{"id", "enabled", "provider_type", "name",
                                    "package_name", "service_class",
                                    "created_at", "updated_at", "raw_json"}));
@@ -215,22 +215,22 @@ void ColumnsAndDefaultsStayArchiveCompatible() {
       "('ipc-1', 'terminal', 'Kept', 'dev.provider', '.Service', 8, 9)");
 
   ApplySchema(database);
-  assert(
+  EXPECT_EXPRESSION(
       database.Integer("SELECT COUNT(*) FROM memories WHERE confidence = 1 AND "
                        "use_count = 0") == 1);
-  assert(database.Integer("SELECT COUNT(*) FROM skills WHERE enabled = 1") ==
+  EXPECT_EXPRESSION(database.Integer("SELECT COUNT(*) FROM skills WHERE enabled = 1") ==
          1);
-  assert(database.Integer(
+  EXPECT_EXPRESSION(database.Integer(
              "SELECT COUNT(*) FROM extension_agents WHERE enabled = 1") == 1);
-  assert(database.Integer(
+  EXPECT_EXPRESSION(database.Integer(
              "SELECT COUNT(*) FROM extension_mcps WHERE enabled = 1") == 1);
-  assert(database.Integer(
+  EXPECT_EXPRESSION(database.Integer(
              "SELECT COUNT(*) FROM ipc_providers WHERE enabled = 1") == 1);
 }
 
 } // namespace
 
-int main() {
+TEST(legacy_feature_schema_tests, LegacySuite) {
   FreshDatabaseGetsTheLegacyFeatureSchema();
   ColumnsAndDefaultsStayArchiveCompatible();
 }

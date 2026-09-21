@@ -5,15 +5,16 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <functional>
 #include <iterator>
-#include <map>
 #include <memory>
 #include <numbers>
 #include <optional>
 #include <ranges>
 #include <set>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -22,16 +23,19 @@
 #include <app_resources.h>
 #include <huxerui/huxerui.h>
 
+#include "application/agent_result_registry.h"
 #include "application/auto_compaction_service.h"
 #include "application/behavior_settings_repository.h"
 #include "application/chat_export.h"
 #include "application/chat_session.h"
+#include "application/composer_image_input.h"
 #include "application/context_compaction.h"
 #include "application/diff_review_service.h"
 #include "application/generation_controller.h"
 #include "application/mcp_completion_loop.h"
 #include "application/mcp_execution_settings.h"
 #include "application/memory_context_service.h"
+#include "application/memory_conversation_snapshot.h"
 #include "application/output_settings.h"
 #include "application/pending_message_queue.h"
 #include "application/ports/diff_store.h"
@@ -45,24 +49,42 @@
 #include "application/slash_command_catalog.h"
 #include "application/token_usage_tracker.h"
 #include "application/tool_permission_service.h"
-#include "application/tool_text_catalog.h"
+#include "application/tool_review_coordinator.h"
 #include "domain/compaction_progress.h"
 #include "domain/context_usage.h"
-#include "domain/diff_lines.h"
-#include "domain/inline_emphasis.h"
-#include "infrastructure/tutorial_markdown_parser.h"
 #include "presentation/chat_timeline_presentation.h"
 #include "presentation/compaction_progress_presentation.h"
+#include "presentation/components/chat_composer.h"
+#include "presentation/components/chat_generation_runner.h"
+#include "presentation/components/chat_generation_state.h"
+#include "presentation/components/chat_message_view.h"
 #include "presentation/components/chat_overlays.h"
+#include "presentation/components/chat_tail_scroll.h"
+#include "presentation/components/chat_timeline_view.h"
 #include "presentation/components/tool_approval_view.h"
 #include "presentation/components/tutorial_markdown.h"
 #include "presentation/line_theme.h"
 #include "presentation/platform_features.h"
+#include "presentation/working_status_presentation.h"
 
 namespace linecode::presentation {
 namespace {
 
 using namespace huxerui;
+
+using ChatTimelineSettings = chat_timeline::Settings;
+using ComposerImageSelection = chat_composer::ImageSelection;
+using MessageActionCallbacks = chat_message::ActionCallbacks;
+using chat_composer::Composer;
+using chat_message::MessageBubble;
+using chat_timeline::AssistantMarkdown;
+using chat_timeline::AssistantTimeline;
+using chat_timeline::ChangedFilesBlock;
+using chat_timeline::CompactProgressBlock;
+using chat_timeline::DiffCache;
+using chat_timeline::HasAssistantTurnProcess;
+using chat_timeline::LoadDiffs;
+using chat_timeline::ToolRendererContext;
 
 template <class... Visitors> struct Overloaded final : Visitors... {
   using Visitors::operator()...;
@@ -73,7 +95,7 @@ TextStyle ChatTextStyle(float size, FontWeight weight = FontWeight::Regular,
   return TextStyle{Font::System(size).WithWeight(weight), color};
 }
 
-View HeaderAction(ImageResource icon, float icon_size, StringResource label,
+View HeaderAction(ImageResource icon, float icon_size,
                   std::function<void()> action) {
   return Stack{
       Image(std::move(icon))
@@ -83,201 +105,8 @@ View HeaderAction(ImageResource icon, float icon_size, StringResource label,
       .OnClick(std::move(action))
       .With(Frame{.width = 40.0F, .height = 48.0F},
             Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-            Semantics{.label = label}, Focusable(),
-            PointerCursor(PointerCursorKind::Hand));
+            Focusable(), PointerCursor(PointerCursorKind::Hand));
 }
-
-struct ComposerActionVisual final {
-  ImageResource icon;
-  Color tint;
-  Color background;
-  float icon_size = 20.0F;
-  float opacity = 1.0F;
-};
-
-enum class ComposerPrimaryActionState : std::size_t {
-  send,
-  stop,
-};
-
-struct ComposerPrimaryActionPresentation final {
-  ImageResource icon;
-  StringResource label;
-  float icon_size;
-};
-
-const std::array kComposerPrimaryActionPresentations{
-    ComposerPrimaryActionPresentation{
-        .icon = app::images::arrow_up,
-        .label = app::strings::chat_send,
-        .icon_size = 20.0F,
-    },
-    ComposerPrimaryActionPresentation{
-        .icon = app::images::stop,
-        .label = app::strings::chat_stop,
-        .icon_size = 17.0F,
-    },
-};
-
-static_assert(kComposerPrimaryActionPresentations.size() == 2);
-
-const ComposerPrimaryActionPresentation &PrimaryActionPresentationFor(
-    ComposerPrimaryActionState state) {
-  return kComposerPrimaryActionPresentations[std::to_underlying(state)];
-}
-
-View ComposerAction(ComposerActionVisual visual, bool enabled,
-                    StringResource label,
-                    std::function<void()> action) {
-  return Stack{
-      Image(std::move(visual.icon))
-          .Tint(visual.tint)
-          .With(Frame{.width = visual.icon_size,
-                      .height = visual.icon_size}),
-  }
-      .OnClick(std::move(action))
-      .With(Frame{.width = 44.0F, .height = 44.0F},
-            Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-            Background(visual.background), CornerRadius(22.0F),
-            Opacity(visual.opacity), Enabled{enabled},
-            Semantics{.label = label}, Focusable(enabled),
-            PointerCursor(enabled ? PointerCursorKind::Hand
-                                  : PointerCursorKind::Default));
-}
-
-struct ChatTailScroll final {
-  class Extension;
-
-  ScrollController controller;
-  std::string conversation_id;
-  std::size_t content_revision = 0;
-  std::uint64_t smooth_request = 0;
-
-  bool operator==(const ChatTailScroll &) const = default;
-};
-
-class ChatTailScroll::Extension final : public NodeExtension {
-public:
-  Extension(ViewNode &node, const ChatTailScroll &value) {
-    Update(node, value);
-  }
-
-  void Update(ViewNode &, const ChatTailScroll &value) {
-    controller_ = value.controller;
-    if (!initialized_) {
-      initialized_ = true;
-      conversation_id_ = value.conversation_id;
-      content_revision_ = value.content_revision;
-      smooth_request_ = value.smooth_request;
-      snap_pending_ = true;
-      return;
-    }
-
-    const bool conversation_changed = conversation_id_ != value.conversation_id;
-    const bool content_changed = content_revision_ != value.content_revision;
-    const bool smooth_requested = smooth_request_ != value.smooth_request;
-    conversation_id_ = value.conversation_id;
-    content_revision_ = value.content_revision;
-    smooth_request_ = value.smooth_request;
-
-    if (conversation_changed) {
-      follow_tail_ = true;
-      smooth_pending_ = false;
-      snap_pending_ = true;
-      motion_.Set(controller_.Offset());
-    }
-    if (smooth_requested) {
-      follow_tail_ = true;
-      snap_pending_ = false;
-      smooth_pending_ = true;
-    } else if (content_changed && follow_tail_) {
-      snap_pending_ = true;
-    }
-  }
-
-  FrameResult OnFrame(ViewNode &, const FrameInfo &frame) override {
-    if (!controller_.IsConnected())
-      return {};
-
-    if (smooth_pending_) {
-      smooth_pending_ = false;
-      motion_.Set(controller_.Offset());
-      motion_.AnimateTo(
-          controller_.MaxOffset(),
-          TweenSpec{.duration = 0.180, .easing = Easing::EaseOut});
-    }
-    if (snap_pending_) {
-      snap_pending_ = false;
-      motion_.Set(controller_.MaxOffset());
-      static_cast<void>(controller_.ScrollTo(controller_.MaxOffset()));
-      return {};
-    }
-    if (!motion_.IsRunning())
-      return {};
-
-    const auto advanced = motion_.Advance(frame);
-    static_cast<void>(controller_.ScrollTo(
-        std::clamp(motion_.Value(), 0.0F, controller_.MaxOffset())));
-    return {.needs_frame = advanced.needs_frame,
-            .wake_after = advanced.wake_after};
-  }
-
-  [[nodiscard]] bool HitTest(ViewNode &node, Point point) const override {
-    return node.Bounds().Contains(point);
-  }
-
-  PointerResult OnPointer(ViewNode &, const PointerEvent &event) override {
-    if (event.type == PointerEventType::Down)
-      PauseFollowing();
-    return event.type == PointerEventType::Down ? PointerResult::Observe
-                                                : PointerResult::Ignored;
-  }
-
-  void OnScrollActivity(ViewNode &, const ScrollActivity &activity) override {
-    if ((activity.phase == ScrollPhase::Begin ||
-         activity.phase == ScrollPhase::Update) &&
-        IsManualSource(activity.source)) {
-      PauseFollowing();
-    }
-  }
-
-private:
-  static bool IsManualSource(ScrollSource source) noexcept {
-    switch (source) {
-    case ScrollSource::Drag:
-    case ScrollSource::Wheel:
-    case ScrollSource::Momentum:
-    case ScrollSource::Scrollbar:
-    case ScrollSource::Accessibility:
-      return true;
-    case ScrollSource::Overscroll:
-    case ScrollSource::Programmatic:
-    case ScrollSource::FocusReveal:
-    case ScrollSource::DragDrop:
-      return false;
-    }
-    return false;
-  }
-
-  void PauseFollowing() {
-    follow_tail_ = false;
-    snap_pending_ = false;
-    smooth_pending_ = false;
-    motion_.Set(controller_.Offset());
-  }
-
-  ScrollController controller_;
-  MotionController motion_;
-  std::string conversation_id_;
-  std::size_t content_revision_ = 0;
-  std::uint64_t smooth_request_ = 0;
-  bool initialized_ = false;
-  bool follow_tail_ = true;
-  bool snap_pending_ = false;
-  bool smooth_pending_ = false;
-};
-
-static_assert(ViewModifier<ChatTailScroll>);
 
 View ScrollToBottomButton(std::function<void()> action) {
   return Stack{
@@ -286,19 +115,12 @@ View ScrollToBottomButton(std::function<void()> action) {
           .With(Frame{.width = 20.0F, .height = 20.0F}),
   }
       .OnClick(std::move(action))
-      .With(
-          Frame{.width = 44.0F, .height = 44.0F},
-          Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-          Background(colors::accent), Border(colors::accent, 1.0F),
-          CornerRadius(22.0F),
-          Shadow{.color = Color::Rgb(0, 0, 0, 0.24F), .blur_radius = 8.0F},
-          Semantics{.label = app::strings::message_list_scroll_to_bottom_desc},
-          Focusable(), PointerCursor(PointerCursorKind::Hand));
-}
-
-bool HasVisibleText(const std::string &text) {
-  return std::ranges::any_of(
-      text, [](unsigned char value) { return std::isspace(value) == 0; });
+      .With(Frame{.width = 44.0F, .height = 44.0F},
+            Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+            Background(colors::accent), Border(colors::accent, 1.0F),
+            CornerRadius(22.0F),
+            Shadow{.color = Color::Rgb(0, 0, 0, 0.24F), .blur_radius = 8.0F},
+            Focusable(), PointerCursor(PointerCursorKind::Hand));
 }
 
 ChatPermissionMode
@@ -318,60 +140,6 @@ std::int64_t NowMilliseconds() noexcept {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
              std::chrono::system_clock::now().time_since_epoch())
       .count();
-}
-
-struct IndexableRole final {
-  domain::MessageRole role;
-  std::string_view storage_name;
-};
-
-constexpr std::array kIndexableRoles{
-    IndexableRole{domain::MessageRole::user, "user"},
-    IndexableRole{domain::MessageRole::assistant, "assistant"},
-};
-
-std::optional<std::string_view>
-MemoryRoleName(domain::MessageRole role) noexcept {
-  const auto found =
-      std::ranges::find(kIndexableRoles, role, &IndexableRole::role);
-  if (found == kIndexableRoles.end())
-    return std::nullopt;
-  return found->storage_name;
-}
-
-domain::MemoryConversationTurn
-SnapshotConversation(const application::ChatSession &session,
-                     std::string project_id, std::string conversation_id) {
-  const auto now = NowMilliseconds();
-  std::string title;
-  const auto summary =
-      std::ranges::find(session.Conversations(), conversation_id,
-                        &application::ConversationSummary::id);
-  if (summary != session.Conversations().end())
-    title = summary->title;
-
-  std::vector<domain::MemoryConversationMessage> messages;
-  messages.reserve(session.Messages().size());
-  for (const auto &message : session.Messages()) {
-    const auto role = MemoryRoleName(message.role);
-    if (!role || message.content.empty())
-      continue;
-    messages.push_back(domain::MemoryConversationMessage{
-        .id = std::to_string(message.id),
-        .role = std::string{*role},
-        .content = message.content,
-        .timestamp = now,
-    });
-    if (title.empty() && message.role == domain::MessageRole::user)
-      title = domain::PreviewMemoryText(message.content, 28);
-  }
-  return domain::MemoryConversationTurn{
-      .project_id = std::move(project_id),
-      .conversation_id = std::move(conversation_id),
-      .title = std::move(title),
-      .messages = std::move(messages),
-      .updated_at = now,
-  };
 }
 
 ChatAttachmentNode ToAttachmentNode(const DrawerFileNode &node) {
@@ -480,34 +248,6 @@ struct CompactionLabels final {
   std::string progress;
 };
 
-// Live state of an automatic context compaction. The block itself is a real
-// `domain::ChatMessage` carrying `compact_status`; this holder only tracks
-// whether the send path is currently compacting so the transcript can show the
-// running block before the write-back lands.
-struct AutoCompactionUiState final {
-  // The transcript shows the live block only while the generation that owns the
-  // compaction is still current, so a cancelled or superseded request cannot
-  // leave a running block behind.
-  std::uint64_t generation_id{};
-  bool running{};
-  std::string status{std::string{domain::compact_status_running}};
-
-  void Begin(std::uint64_t generation) {
-    generation_id = generation;
-    status = std::string{domain::compact_status_running};
-    running = true;
-  }
-
-  void Finish(std::string next_status) {
-    status = std::move(next_status);
-    running = false;
-  }
-
-  [[nodiscard]] bool RunningFor(std::uint64_t generation) const noexcept {
-    return running && generation_id == generation;
-  }
-};
-
 // Port of `ContextCompactionController.startManualContextCompaction()`: refuse
 // while streaming, require a model and enough history, then compact and write
 // the summary back. Returns false when a guard rejected the request so the
@@ -559,25 +299,6 @@ bool StartManualContextCompaction(
   return true;
 }
 
-struct PendingToolReview final {
-  std::optional<application::CompletionObserver::ToolReviewRequest> request;
-  std::optional<application::CompletionObserver::ToolReviewDecision> decision;
-  bool submitted{};
-};
-
-void ResolveToolReview(
-    const std::shared_ptr<PendingToolReview> &pending,
-    std::string_view tool_call_id,
-    application::CompletionObserver::ToolReviewDecision decision,
-    State<std::size_t> revision) {
-  if (!pending->request || pending->submitted ||
-      pending->request->call.id != tool_call_id)
-    return;
-  pending->submitted = true;
-  pending->decision = decision;
-  revision += 1;
-}
-
 // Legacy `ContextUsageIndicatorView`: a 2dp-stroke ring whose sweep is the
 // used percentage, turning WARNING at 80% and above.
 View ContextUsageIndicator(int percent, std::function<void()> on_click) {
@@ -604,8 +325,6 @@ View ContextUsageIndicator(int percent, std::function<void()> on_click) {
       .OnClick(std::move(on_click))
       .With(Frame{.width = 40.0F, .height = 48.0F},
             Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-            Semantics{.label = StringVariant::Format(
-                          app::strings::context_usage_accessibility, percent)},
             Focusable(), PointerCursor(PointerCursorKind::Hand));
 }
 
@@ -669,10 +388,14 @@ View Header(
           ? StringVariant{app::strings::header_project_default}
           : StringVariant{project_label};
   return Row{
-      HeaderAction(app::images::menu, 19.0F, app::strings::header_menu_desc,
-                   std::move(open_drawer)),
+      HeaderAction(app::images::menu, 19.0F, std::move(open_drawer)),
       Row{
-          Text(brand_label).Style(ChatTextStyle(16.0F, FontWeight::Medium)),
+          // The legacy brand row gives the row the remaining width, but keeps
+          // the chevron immediately after the wrap-content title. The title's
+          // viewport still prevents a long project name from changing height.
+          Text(brand_label)
+              .Style(ChatTextStyle(16.0F, FontWeight::Medium))
+              .With(Frame{.max_height = 21.0F}, ClipChildren()),
           Stack{
               Image(app::images::chevron_down)
                   .Tint(colors::secondary)
@@ -685,20 +408,12 @@ View Header(
           .OnClick(std::move(show_project_picker))
           .With(Frame{.min_height = 48.0F},
                 CrossAlign(CrossAxisAlignment::Center), Grow(), Focusable(),
-                // `HeaderView.render` labels the brand container with the same
-                // text it shows (`HeaderView.java:90-93`).
-                Semantics{.label = brand_label},
                 PointerCursor(PointerCursorKind::Hand)),
       ContextUsageIndicator(context_usage.percent,
                             std::move(show_context_usage)),
-      HeaderAction(app::images::shield, 19.0F,
-                   app::strings::header_permission_desc,
-                   std::move(show_permissions)),
-      HeaderAction(app::images::plus, 19.0F,
-                   app::strings::header_new_conversation_desc,
-                   reset_conversation),
-      HeaderAction(app::images::more_vertical, 19.0F,
-                   app::strings::chat_context_more, std::move(show_more)),
+      HeaderAction(app::images::shield, 19.0F, std::move(show_permissions)),
+      HeaderAction(app::images::plus, 19.0F, reset_conversation),
+      HeaderAction(app::images::more_vertical, 19.0F, std::move(show_more)),
   }
       .With(Frame{.min_height = 56.0F},
             Padding(EdgeInsets{
@@ -717,36 +432,33 @@ View EmptyConversation(
   content.reserve(configure_model ? 3U : 2U);
   content.push_back(Text(app::strings::chat_empty_title)
                         .Style(ChatTextStyle(28.0F, FontWeight::Regular)));
-  content.push_back(
-      Column{
-          Text(configure_model
-                   ? StringVariant{app::strings::message_list_configure_desc}
-                   : StringVariant{app::strings::chat_empty_message})
-              .Style(
-                  ChatTextStyle(15.0F, FontWeight::Regular, colors::secondary)),
-      }
-          .With(Padding(EdgeInsets{.top = 20.0F}),
-                CrossAlign(CrossAxisAlignment::Start)));
+  content.push_back(Column{
+      Text(configure_model
+               ? StringVariant{app::strings::message_list_configure_desc}
+               : StringVariant{app::strings::chat_empty_message})
+          .Style(ChatTextStyle(15.0F, FontWeight::Regular, colors::secondary)),
+  }
+                        .With(Padding(EdgeInsets{.top = 20.0F}),
+                              CrossAlign(CrossAxisAlignment::Start)));
   if (configure_model) {
     content.push_back(Column{
-          Stack{
-              Text(app::strings::empty_state_add_model)
-                  .Style(ChatTextStyle(16.0F, FontWeight::Regular,
-                                       colors::text_on_color)),
-          }
-              .OnClick(
-                  [navigation] { navigation.Push(domain::AppRoute::models); })
-              .With(
-                  Frame{.height = 48.2F},
+        Stack{
+            Text(app::strings::empty_state_add_model)
+                .Style(ChatTextStyle(16.0F, FontWeight::Regular,
+                                     colors::text_on_color)),
+        }
+            .OnClick(
+                [navigation] { navigation.Push(domain::AppRoute::models); })
+            .With(Frame{.height = 48.2F},
                   Padding(EdgeInsets::Symmetric(16.2F, 0.0F)),
                   Align(HorizontalAlignment::Center, VerticalAlignment::Center),
                   Background(colors::accent), CornerRadius(22.0F), Focusable(),
                   PointerCursor(PointerCursorKind::Hand)),
-      } // 40dp, not the legacy 28dp: the description above renders shorter
-        // here (no line spacing support), so the button needs the extra
-        // margin to land on the same baseline as the legacy layout.
-          .With(Padding(EdgeInsets{.top = 40.0F}),
-                CrossAlign(CrossAxisAlignment::Start)));
+    } // 40dp, not the legacy 28dp: the description above renders shorter
+      // here (no line spacing support), so the button needs the extra
+      // margin to land on the same baseline as the legacy layout.
+                          .With(Padding(EdgeInsets{.top = 40.0F}),
+                                CrossAlign(CrossAxisAlignment::Start)));
   }
   return Column(std::move(content))
       .With(
@@ -754,149 +466,6 @@ View EmptyConversation(
           Padding(EdgeInsets{
               .top = 104.0F, .right = 28.0F, .bottom = 64.0F, .left = 28.0F}));
 }
-
-struct MessageActionCallbacks final {
-  std::function<void(const domain::ChatMessage &)> copy;
-  std::function<void(const domain::ChatMessage &)> quote;
-  std::function<void(const domain::ChatMessage &)> share;
-  std::function<void(const domain::ChatMessage &)> select_text;
-  std::function<void()> enter_multi_select;
-  std::function<void(const domain::ChatMessage &)> recall;
-  std::function<void()> export_selected;
-};
-
-View MessageActionButton(ImageResource icon, StringResource label,
-                         std::function<void()> action) {
-  return Stack{
-      Image(std::move(icon))
-          .Tint(colors::tertiary)
-          .With(Frame{.width = 16.0F, .height = 16.0F}),
-  }
-      .OnClick(std::move(action))
-      .With(Frame{.width = 40.0F, .height = 44.0F},
-            Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-            Semantics{.label = std::move(label)}, Focusable(),
-            PointerCursor(PointerCursorKind::Hand));
-}
-
-View MessageActionBar(const domain::ChatMessage &message,
-                      const MessageActionCallbacks &callbacks) {
-  const bool user = message.role == domain::MessageRole::user;
-  std::vector<View> actions{
-      MessageActionButton(app::images::copy,
-                          app::strings::message_action_copy_desc,
-                          [callbacks, message] {
-                            if (callbacks.copy)
-                              callbacks.copy(message);
-                          }),
-      MessageActionButton(app::images::quote,
-                          app::strings::message_action_quote_desc,
-                          [callbacks, message] {
-                            if (callbacks.quote)
-                              callbacks.quote(message);
-                          }),
-      MessageActionButton(app::images::share_2,
-                          app::strings::message_action_share_desc,
-                          [callbacks, message] {
-                            if (callbacks.share)
-                              callbacks.share(message);
-                          }),
-      MessageActionButton(app::images::text_cursor,
-                          app::strings::message_action_select_desc,
-                          [callbacks, message] {
-                            if (callbacks.select_text)
-                              callbacks.select_text(message);
-                          }),
-      MessageActionButton(app::images::check_square,
-                          app::strings::message_action_multi_select_desc,
-                          [callbacks] {
-                            if (callbacks.enter_multi_select)
-                              callbacks.enter_multi_select();
-                          }),
-  };
-  if (user) {
-    actions.push_back(MessageActionButton(
-        app::images::rotate_ccw, app::strings::message_action_recall_desc,
-        [callbacks, message] {
-          if (callbacks.recall)
-            callbacks.recall(message);
-        }));
-  }
-  View bar = Row(std::move(actions))
-                 .With(Frame{.height = 44.0F}, Spacing(4.0F),
-                       CrossAlign(CrossAxisAlignment::Center));
-  View aligned = user ? View{Row{Spacer(), bar}} : View{Row{bar, Spacer()}};
-  return std::move(aligned).With(
-      Padding(EdgeInsets{.top = 3.0F, .right = 4.0F}));
-}
-
-View MessageAttachments(const domain::ChatMessage &message, bool user,
-                        float top_padding) {
-  std::vector<View> chips;
-  chips.reserve(message.attachments.size());
-  for (const auto &attachment : message.attachments) {
-    chips.push_back(
-        Text(attachment.Name())
-            .Style(ChatTextStyle(11.0F, FontWeight::Medium, colors::secondary))
-            .With(Frame{.max_width = 220.0F},
-                  Padding(EdgeInsets::Symmetric(8.0F, 4.0F)),
-                  Background(colors::surface_light),
-                  Border(colors::border_light, 1.0F), CornerRadius(14.0F),
-                  ClipChildren())
-            .Key(attachment.Source() + ":" + attachment.Path()));
-  }
-  if (chips.empty())
-    return Stack{}.With(Frame{.height = 0.0F});
-  View column =
-      Column(std::move(chips))
-          .With(Spacing(4.0F), user ? CrossAlign(CrossAxisAlignment::End)
-                                    : CrossAlign(CrossAxisAlignment::Start));
-  View aligned = user ? View{Row{Spacer(), column}} : View{Row{column, Spacer()}};
-  return std::move(aligned).With(Padding(EdgeInsets{.top = top_padding}));
-}
-
-void ToggleMessageSelection(State<std::vector<std::uint64_t>> selected,
-                            std::uint64_t id) {
-  selected.Update([id](auto &ids) {
-    const auto found = std::ranges::find(ids, id);
-    if (found == ids.end())
-      ids.push_back(id);
-    else
-      ids.erase(found);
-  });
-}
-
-View MessageLongPressTarget(
-    View content, State<std::optional<std::uint64_t>> action_message,
-    bool multi_select, State<std::vector<std::uint64_t>> selected_messages,
-    std::uint64_t message_id) {
-  return std::move(content)
-      .On<LongPressEvents::Started>(
-          [action_message, multi_select, selected_messages,
-           message_id](const LongPressEvent &) {
-            if (multi_select) {
-              ToggleMessageSelection(selected_messages, message_id);
-              return;
-            }
-            action_message = action_message.Get() == message_id
-                                 ? std::optional<std::uint64_t>{}
-                                 : std::optional<std::uint64_t>{message_id};
-          })
-      .With(LongPressGesture{});
-}
-
-struct ChatTimelineSettings final {
-  bool code_wrap_enabled{};
-  bool process_auto_expand{};
-  bool thinking_auto_expand{};
-  bool thinking_scroll{true};
-  // Legacy ContextManager excluded reasoning from the estimate unless the
-  // behaviour setting kept it in the request.
-  bool preserve_reasoning{};
-  application::BrowserMode browser_mode{application::BrowserMode::builtin};
-  bool browser_javascript_enabled{};
-  bool allow_any_http{};
-};
 
 // Legacy `ShareController.showFormatPicker` presented the export formats as a
 // simple titled list of choices. The panel below keeps that shape while the
@@ -936,1100 +505,6 @@ View ExportFormatDialog(DialogContext dialog, StringVariant title,
             Background(colors::elevated), CornerRadius(16.0F), ClipChildren());
 }
 
-bool ToggleState(std::span<const std::string> toggled, std::string_view key,
-                 bool default_value) {
-  return std::ranges::contains(toggled, key) ? !default_value : default_value;
-}
-
-void ToggleKey(State<std::vector<std::string>> toggled, std::string key) {
-  toggled.Update([key = std::move(key)](auto &keys) {
-    const auto found = std::ranges::find(keys, key);
-    if (found == keys.end())
-      keys.push_back(key);
-    else
-      keys.erase(found);
-  });
-}
-
-struct ToolStatusPolicy final {
-  domain::ToolCallStatus status;
-  StringResource label;
-};
-
-const std::array kToolStatusPolicies{
-    ToolStatusPolicy{domain::ToolCallStatus::requested,
-                     app::strings::chat_tool_requested},
-    ToolStatusPolicy{domain::ToolCallStatus::awaiting_review,
-                     app::strings::chat_tool_awaiting_review},
-    ToolStatusPolicy{domain::ToolCallStatus::running,
-                     app::strings::chat_tool_running},
-    ToolStatusPolicy{domain::ToolCallStatus::completed,
-                     app::strings::chat_tool_completed},
-    ToolStatusPolicy{domain::ToolCallStatus::failed,
-                     app::strings::chat_tool_failed},
-    ToolStatusPolicy{domain::ToolCallStatus::rejected,
-                     app::strings::chat_tool_rejected},
-};
-
-StringResource ToolStatusLabel(domain::ToolCallStatus status) {
-  const auto found =
-      std::ranges::find(kToolStatusPolicies, status, &ToolStatusPolicy::status);
-  return found == kToolStatusPolicies.end() ? app::strings::chat_tool_failed
-                                            : found->label;
-}
-
-View LegacyToolHeader(const ToolTimelinePresentation &presentation,
-                      ImageResource icon, bool expanded,
-                      std::function<void()> toggle) {
-  const auto metrics = ToolTimelineMetrics(presentation.visual);
-  const auto color = presentation.failed ? colors::danger : colors::secondary;
-  std::vector<View> children;
-  children.reserve(presentation.expandable ? 5U : 4U);
-  children.push_back(
-      Stack{Image(std::move(icon))
-                .Tint(color)
-                .With(Frame{.width = metrics.icon_width,
-                            .height = metrics.icon_height})}
-          .With(Frame{.width = metrics.icon_slot_width,
-                      .height = metrics.icon_slot_height},
-                Align(HorizontalAlignment::Center, VerticalAlignment::Center)));
-  children.push_back(Text(ToolStatusLabel(presentation.status))
-                         .Style(ChatTextStyle(metrics.title_size,
-                                              FontWeight::Regular, color)));
-  children.push_back(
-      Text(presentation.title)
-          .Style(ChatTextStyle(metrics.title_size, FontWeight::Regular, color))
-          .With(Grow()));
-  if (presentation.visual == ToolTimelineVisualKind::remove &&
-      presentation.item_count > 0) {
-    children.push_back(Text("· " + std::to_string(presentation.item_count))
-                           .Style(ChatTextStyle(metrics.title_size,
-                                                FontWeight::Regular, color)));
-  }
-  if (presentation.expandable) {
-    children.push_back(Stack{
-        Image(expanded ? app::images::chevron_down : app::images::chevron_right)
-            .Tint(colors::secondary)
-            .With(Frame{.width = 24.0F, .height = 14.0F})}
-                           .With(Frame{.width = 24.0F, .height = 32.0F},
-                                 Align(HorizontalAlignment::Center,
-                                       VerticalAlignment::Center)));
-  }
-  View header = Row(std::move(children))
-                    .With(Frame{.min_height = metrics.header_height},
-                          Spacing(metrics.title_leading_margin));
-  if (presentation.expandable) {
-    header = std::move(header)
-                 .OnClick(std::move(toggle))
-                 .With(Focusable(), PointerCursor(PointerCursorKind::Hand));
-  }
-  return header;
-}
-
-View ToolCodeCard(std::string text,
-                  const ToolTimelinePresentation &presentation,
-                  float maximum_height) {
-  const auto metrics = ToolTimelineMetrics(presentation.visual);
-  return ScrollView(
-             SelectionArea(
-                 Text(std::move(text))
-                     .Style(TextStyle{Font::Monospace(metrics.detail_text_size),
-                                      presentation.failed ? colors::danger
-                                                          : colors::secondary})
-                     .With(Padding(EdgeInsets{
-                         .top = metrics.detail_vertical_padding,
-                         .right = metrics.detail_horizontal_padding,
-                         .bottom = metrics.detail_vertical_padding,
-                         .left = metrics.detail_horizontal_padding}))))
-      .ScrollAxis(Axis::Vertical)
-      .With(Frame{.max_height = maximum_height}, Background(colors::code),
-            Border(colors::code_border, 1.0F),
-            CornerRadius(metrics.detail_radius), ClipChildren(), ScrollBar());
-}
-
-View AssistantMarkdown(std::string_view markdown, bool code_wrap,
-                       const TutorialMarkdownLinkHandler &on_link = {},
-                       const TutorialMarkdownCopyHandler &on_copy = {});
-
-// Everything a write card needs about one recorded change. The review state
-// travels with the body so the card can overlay the latest decision, which is
-// what the legacy `ToolReviewController.applyLocalReviews` did at render time.
-struct DiffEntry final {
-  domain::DiffLines lines;
-  std::string review_state;
-  std::string review_message;
-};
-
-using DiffCache = std::map<std::string, DiffEntry>;
-
-// Loads the requested records and publishes them in one update, so the cards
-// recompose once instead of per record.
-Task<void> LoadDiffs(std::shared_ptr<application::DiffStore> store,
-                     State<std::shared_ptr<DiffCache>> cache,
-                     std::shared_ptr<std::set<std::string>> pending,
-                     std::vector<std::string> wanted) {
-  auto loaded = std::make_shared<DiffCache>(*cache.Get());
-  bool changed = false;
-  for (const auto &id : wanted) {
-    auto record = co_await store->Find(id);
-    if (record) {
-      loaded->insert_or_assign(
-          id, DiffEntry{.lines = domain::CalculateDiffLines(
-                            record->old_content, record->new_content),
-                        .review_state = record->EffectiveReviewState(),
-                        .review_message = record->review_message});
-      changed = true;
-    }
-    pending->erase(id);
-  }
-  if (changed)
-    cache = loaded;
-}
-
-// Everything a tool card needs beyond its own presentation: the recorded
-// change behind a write tool and the review action that accepts or reverts it.
-struct ToolRendererContext final {
-  // Diff bodies keyed by record id. Cards look themselves up, because one
-  // conversation can contain several recorded changes.
-  std::shared_ptr<const DiffCache> diff_cache;
-  // Fetches one record's body. Called from an event handler (expanding the
-  // card), never during composition, because launching a task is forbidden
-  // while composing.
-  std::function<void(std::string diff_id)> on_request_diff;
-  std::function<void(std::string tool_call_id, std::string diff_id,
-                     std::string state)>
-      on_review;
-};
-
-View ShellToolRenderer(const ToolTimelinePresentation &presentation,
-                       bool expanded, std::function<void()> toggle,
-                       const TutorialMarkdownLinkHandler &,
-                       const TutorialMarkdownCopyHandler &,
-                       const ToolRendererContext &context) {
-  std::vector<View> rows;
-  rows.push_back(LegacyToolHeader(presentation, app::images::terminal, expanded,
-                                  std::move(toggle)));
-  if (expanded && !presentation.detail.empty())
-    rows.push_back(ToolCodeCard(presentation.detail, presentation, 240.0F));
-  return Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch));
-}
-
-View ReadToolRenderer(const ToolTimelinePresentation &presentation,
-                      bool expanded, std::function<void()> toggle,
-                      const TutorialMarkdownLinkHandler &,
-                      const TutorialMarkdownCopyHandler &,
-                      const ToolRendererContext &context) {
-  std::vector<View> rows;
-  rows.push_back(LegacyToolHeader(presentation, app::images::file_text,
-                                  expanded, std::move(toggle)));
-  if (presentation.failed && !presentation.detail.empty())
-    rows.push_back(ToolCodeCard(presentation.detail, presentation, 240.0F));
-  return Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch));
-}
-
-// Legacy `DiffView`: a horizontally scrollable unified diff. Context lines
-// around every change stay visible while distant unchanged regions collapse to
-// a single gap marker, and rendering stops after 200 lines.
-View DiffView(const domain::DiffLines &diff) {
-  std::vector<bool> visible(diff.lines.size(), false);
-  for (std::size_t index = 0; index < diff.lines.size(); ++index) {
-    if (diff.lines[index].kind == domain::DiffLine::Kind::unchanged)
-      continue;
-    const auto from = index >= 3 ? index - 3 : 0;
-    const auto to = std::min(diff.lines.size(), index + 4);
-    for (auto around = from; around < to; ++around)
-      visible[around] = true;
-  }
-
-  std::vector<View> rows;
-  std::size_t displayed = 0;
-  bool omitted = false;
-  for (std::size_t index = 0; index < diff.lines.size(); ++index) {
-    if (!visible[index] && diff.added + diff.removed > 0) {
-      omitted = true;
-      continue;
-    }
-    if (displayed >= 200) {
-      rows.push_back(Text(StringVariant::Format(
-                              app::strings::tool_call_diff_truncated,
-                              static_cast<std::int64_t>(diff.lines.size())))
-                         .Style(ChatTextStyle(12.0F, FontWeight::Regular,
-                                              colors::tertiary))
-                         .With(Padding(EdgeInsets{.top = 12.0F,
-                                                  .right = 14.0F,
-                                                  .bottom = 12.0F,
-                                                  .left = 14.0F})));
-      break;
-    }
-    if (omitted) {
-      rows.push_back(
-          Text("⋯")
-              .Style(
-                  ChatTextStyle(13.0F, FontWeight::Regular, colors::tertiary))
-              .With(Padding(EdgeInsets{
-                  .top = 4.0F, .right = 0.0F, .bottom = 4.0F, .left = 18.0F})));
-      omitted = false;
-    }
-    const auto &line = diff.lines[index];
-    const bool added = line.kind == domain::DiffLine::Kind::added;
-    const bool removed = line.kind == domain::DiffLine::Kind::removed;
-    const Color text_color = added     ? colors::diff_add_text
-                             : removed ? colors::diff_delete_text
-                                       : colors::secondary;
-    rows.push_back(Row{
-        Stack{}.With(Frame{.width = 3.0F}, Grow(),
-                     Background(added     ? colors::success
-                                : removed ? colors::danger
-                                          : Color::Transparent())),
-        Text(std::to_string(line.number))
-            .Style(TextStyle{Font::Monospace(13.0F), text_color})
-            .Align(TextAlign::Trailing)
-            .With(Frame{.width = 42.0F}, Padding(EdgeInsets{.top = 3.0F,
-                                                            .right = 10.0F,
-                                                            .bottom = 3.0F,
-                                                            .left = 2.0F})),
-        Text(line.text)
-            .Style(TextStyle{Font::Monospace(13.0F), text_color})
-            .With(Padding(EdgeInsets{
-                .top = 3.0F, .right = 14.0F, .bottom = 3.0F, .left = 4.0F})),
-    }
-                       .With(Frame{.min_height = 26.0F},
-                             Background(added ? colors::diff_add_background
-                                        : removed
-                                            ? colors::diff_delete_background
-                                            : Color::Transparent()),
-                             CrossAlign(CrossAxisAlignment::Stretch)));
-    if (!line.terminated) {
-      rows.push_back(Text(app::strings::tool_call_diff_no_newline)
-                         .Style(ChatTextStyle(12.0F, FontWeight::Regular,
-                                              colors::tertiary))
-                         .With(Padding(EdgeInsets{.top = 4.0F,
-                                                  .right = 14.0F,
-                                                  .bottom = 4.0F,
-                                                  .left = 14.0F})));
-    }
-    ++displayed;
-  }
-  if (omitted) {
-    rows.push_back(
-        Text("⋯")
-            .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::tertiary))
-            .With(Padding(EdgeInsets{
-                .top = 4.0F, .right = 0.0F, .bottom = 4.0F, .left = 18.0F})));
-  }
-  return ScrollView(Column(std::move(rows))
-                        .With(CrossAlign(CrossAxisAlignment::Stretch)))
-      .ScrollAxis(Axis::Horizontal);
-}
-
-View WriteToolRenderer(const ToolTimelinePresentation &presentation,
-                       bool expanded, std::function<void()> toggle,
-                       const TutorialMarkdownLinkHandler &,
-                       const TutorialMarkdownCopyHandler &on_copy,
-                       const ToolRendererContext &context) {
-  std::vector<View> rows;
-  const auto diff_id = presentation.diff_id;
-  const auto request_diff = context.on_request_diff;
-  // Expanding asks for the body first; the card then renders it once the
-  // request publishes the loaded lines.
-  rows.push_back(
-      LegacyToolHeader(presentation, app::images::file_pen_line, expanded,
-                       [toggle = std::move(toggle), diff_id, request_diff] {
-                         std::invoke(toggle);
-                         if (request_diff && !diff_id.empty())
-                           std::invoke(request_diff, diff_id);
-                       }));
-  if (!expanded)
-    return Column(std::move(rows))
-        .With(CrossAlign(CrossAxisAlignment::Stretch));
-
-  const DiffEntry *entry = nullptr;
-  if (context.diff_cache) {
-    const auto found = context.diff_cache->find(presentation.diff_id);
-    if (found != context.diff_cache->end())
-      entry = &found->second;
-  }
-  // The store is authoritative: the transcript copy predates the decision.
-  const std::string review_state =
-      entry != nullptr && !entry->review_state.empty()
-          ? entry->review_state
-          : presentation.review_state;
-  const std::string review_message =
-      entry != nullptr && !entry->review_message.empty()
-          ? entry->review_message
-          : presentation.review_message;
-  const bool reverted = review_state == "rejected";
-  const bool accepted = review_state == "accepted";
-  const bool awaiting_review =
-      !presentation.diff_id.empty() && !reverted && !accepted;
-
-  // The legacy card derived its label from the review state, falling back to
-  // "Created" when the write produced a file that did not exist before.
-  StringResource status = app::strings::tool_call_write_done;
-  if (presentation.failed)
-    status = app::strings::chat_tool_failed;
-  else if (reverted)
-    status = app::strings::tool_call_write_reverted;
-  else if (awaiting_review)
-    status = app::strings::tool_call_status_pending_review;
-
-  std::vector<View> detail_children;
-  detail_children.push_back(Row{
-      Text(StringVariant{status})
-          .Style(ChatTextStyle(13.0F, FontWeight::Regular,
-                               presentation.failed ? colors::danger
-                                                   : colors::secondary)),
-      Text(presentation.title)
-          .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::secondary))
-          .With(Padding(EdgeInsets{.left = 4.0F})),
-      Spacer(),
-      Stack{Image(app::images::copy)
-                .Tint(colors::secondary)
-                .With(Frame{.width = 16.0F, .height = 16.0F})}
-          .OnClick([on_copy, detail = presentation.detail] {
-            if (!detail.empty())
-              std::invoke(on_copy, detail);
-          })
-          .With(Frame{.width = 44.0F, .height = 44.0F},
-                Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                Focusable(), PointerCursor(PointerCursorKind::Hand),
-                Semantics{.label = app::strings::tool_call_copy_file}),
-  }
-                                .With(Padding(EdgeInsets{.left = 12.0F}),
-                                      CrossAlign(CrossAxisAlignment::Center)));
-
-  if (entry != nullptr) {
-    detail_children.push_back(
-        ScrollView(DiffView(entry->lines))
-            .ScrollAxis(Axis::Vertical)
-            .With(Frame{.max_height = 224.0F}, ScrollBar()));
-  } else {
-    detail_children.push_back(
-        Text(presentation.diff_id.empty()
-                 ? app::strings::tool_call_diff_unavailable
-                 : app::strings::tool_call_diff_loading)
-            .Style(ChatTextStyle(12.0F, FontWeight::Regular, colors::tertiary))
-            .With(Padding(EdgeInsets{.top = 10.0F,
-                                     .right = 14.0F,
-                                     .bottom = 10.0F,
-                                     .left = 14.0F})));
-  }
-
-  const std::string message =
-      presentation.failed ? presentation.detail : review_message;
-  if (!message.empty()) {
-    detail_children.push_back(
-        Text(message)
-            .Style(ChatTextStyle(13.0F, FontWeight::Regular,
-                                 presentation.failed ? colors::danger
-                                                     : colors::secondary))
-            .With(Padding(EdgeInsets{.top = 10.0F,
-                                     .right = 14.0F,
-                                     .bottom = 10.0F,
-                                     .left = 14.0F})));
-  }
-
-  if (awaiting_review && context.on_review) {
-    const auto diff_id = presentation.diff_id;
-    const auto call_id = presentation.tool_call_id;
-    const auto on_review = context.on_review;
-    detail_children.push_back(Row{
-        Text(app::strings::tool_call_write_revert)
-            .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::text))
-            .Align(TextAlign::Center)
-            .OnClick([on_review, call_id, diff_id] {
-              std::invoke(on_review, call_id, diff_id, std::string{"rejected"});
-            })
-            .With(Frame{.min_height = 48.0F},
-                  Padding(EdgeInsets::Symmetric(14.0F, 0.0F)), Focusable(),
-                  PointerCursor(PointerCursorKind::Hand)),
-        Text(app::strings::tool_call_write_accept)
-            .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::text))
-            .Align(TextAlign::Center)
-            .OnClick([on_review, call_id, diff_id] {
-              std::invoke(on_review, call_id, diff_id, std::string{"accepted"});
-            })
-            .With(Frame{.min_height = 48.0F},
-                  Padding(EdgeInsets::Symmetric(14.0F, 0.0F)), Focusable(),
-                  PointerCursor(PointerCursorKind::Hand)),
-    }
-                                  .With(MainAlign(MainAxisAlignment::End),
-                                        CrossAlign(CrossAxisAlignment::Center),
-                                        Padding(EdgeInsets{.top = 6.0F,
-                                                           .right = 8.0F,
-                                                           .bottom = 6.0F,
-                                                           .left = 8.0F})));
-  }
-
-  rows.push_back(Column(std::move(detail_children))
-                     .With(CrossAlign(CrossAxisAlignment::Stretch),
-                           Background(colors::code),
-                           Border(colors::code_border, 1.0F),
-                           CornerRadius(12.0F), ClipChildren()));
-  return Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch));
-}
-
-View DeleteToolRenderer(const ToolTimelinePresentation &presentation,
-                        bool expanded, std::function<void()> toggle,
-                        const TutorialMarkdownLinkHandler &,
-                        const TutorialMarkdownCopyHandler &,
-                        const ToolRendererContext &context) {
-  std::vector<View> rows;
-  rows.push_back(LegacyToolHeader(presentation, app::images::trash_2, expanded,
-                                  std::move(toggle)));
-  if (expanded && !presentation.detail.empty())
-    rows.push_back(ToolCodeCard(presentation.detail, presentation, 200.0F));
-  return Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch));
-}
-
-View TodoIndicator(ToolTimelineTodoItem::State state) {
-  using State = ToolTimelineTodoItem::State;
-  if (state == State::completed) {
-    return Image(app::images::check)
-        .Tint(colors::success)
-        .With(Frame{.width = 14.0F, .height = 14.0F});
-  }
-  return Stack{}.With(Frame{.width = 14.0F, .height = 14.0F},
-                      Border(state == State::in_progress
-                                 ? static_cast<Color>(colors::accent)
-                                 : static_cast<Color>(colors::tertiary),
-                             2.0F),
-                      CornerRadius(7.0F));
-}
-
-View TodoToolRenderer(const ToolTimelinePresentation &presentation, bool,
-                      std::function<void()>,
-                      const TutorialMarkdownLinkHandler &,
-                      const TutorialMarkdownCopyHandler &,
-                      const ToolRendererContext &context) {
-  if (presentation.failed && !presentation.detail.empty())
-    return ToolCodeCard(presentation.detail, presentation, 240.0F);
-  std::vector<View> rows;
-  rows.reserve(presentation.todo_items.size());
-  for (const auto &item : presentation.todo_items) {
-    TextStyle style =
-        ChatTextStyle(14.0F, FontWeight::Regular,
-                      item.state == ToolTimelineTodoItem::State::completed
-                          ? static_cast<Color>(colors::tertiary)
-                          : static_cast<Color>(colors::text));
-    if (item.state == ToolTimelineTodoItem::State::completed)
-      style.decoration = TextDecoration::StrikeThrough;
-    rows.push_back(
-        Row{TodoIndicator(item.state), Text(item.content).Style(style)}.With(
-            Frame{.min_height = 44.0F}, Spacing(8.0F),
-            Padding(EdgeInsets::Symmetric(0.0F, 4.0F))));
-  }
-  if (rows.empty()) {
-    rows.push_back(
-        Text(app::strings::toolcall_preview_todo_empty)
-            .Style(ChatTextStyle(12.0F, FontWeight::Regular, colors::tertiary))
-            .With(Padding(EdgeInsets{
-                .top = 8.0F, .right = 16.0F, .bottom = 16.0F, .left = 16.0F})));
-  }
-  return Column(std::move(rows))
-      .With(CrossAlign(CrossAxisAlignment::Stretch),
-            Padding(EdgeInsets::Symmetric(0.0F, 12.0F)));
-}
-
-View AgentToolRenderer(const ToolTimelinePresentation &presentation,
-                       bool expanded, std::function<void()> toggle,
-                       const TutorialMarkdownLinkHandler &on_link,
-                       const TutorialMarkdownCopyHandler &on_copy,
-                       const ToolRendererContext &context) {
-  std::vector<View> title_rows;
-  title_rows.push_back(Row{
-      Text(presentation.title)
-          .Style(ChatTextStyle(14.0F, FontWeight::Bold, colors::text)),
-      Spacer(),
-      presentation.running
-          ? View{ProgressCircle().With(Frame{.width = 18.0F, .height = 18.0F})}
-          : View{Image(presentation.failed ? app::images::x
-                                           : app::images::check)
-                     .Tint(presentation.failed ? colors::danger
-                                               : colors::success)
-                     .With(Frame{.width = 18.0F, .height = 13.0F})},
-      Image(expanded ? app::images::chevron_down : app::images::chevron_right)
-          .Tint(colors::tertiary)
-          .With(Frame{.width = 16.0F, .height = 12.0F})}
-                           .OnClick(std::move(toggle))
-                           .With(Frame{.min_height = 48.0F}, Spacing(8.0F),
-                                 Padding(EdgeInsets::Symmetric(16.0F, 8.0F)),
-                                 PointerCursor(PointerCursorKind::Hand)));
-  if (expanded) {
-    std::vector<View> content;
-    if (!presentation.input_detail.empty())
-      content.push_back(Text(presentation.input_detail)
-                            .Style(ChatTextStyle(13.0F, FontWeight::Regular,
-                                                 colors::tertiary)));
-    if (!presentation.output_detail.empty())
-      content.push_back(AssistantMarkdown(presentation.output_detail, true,
-                                          on_link, on_copy));
-    if (content.empty()) {
-      // Legacy `ToolCallAgentView.java:173,181`.
-      const StringResource empty_label =
-          presentation.running
-              ? app::strings::tool_call_agent_running
-              : (presentation.failed ? app::strings::tool_call_agent_failed
-                                     : app::strings::tool_call_agent_done);
-      content.push_back(Text(empty_label)
-                            .Style(ChatTextStyle(12.0F, FontWeight::Regular,
-                                                 colors::tertiary)));
-    }
-    title_rows.push_back(
-        ScrollView(Column(std::move(content))
-                       .With(CrossAlign(CrossAxisAlignment::Stretch),
-                             Spacing(8.0F),
-                             Padding(EdgeInsets{.top = 8.0F,
-                                                .right = 16.0F,
-                                                .bottom = 16.0F,
-                                                .left = 16.0F})))
-            .ScrollAxis(Axis::Vertical)
-            .With(Frame{.max_height = 400.0F},
-                  Border(colors::code_border, 1.0F), ScrollBar()));
-  }
-  return Column(std::move(title_rows))
-      .With(CrossAlign(CrossAxisAlignment::Stretch),
-            Background(colors::elevated), Border(colors::border_light, 1.0F),
-            CornerRadius(8.0F), ClipChildren());
-}
-
-View PipelineToolRenderer(const ToolTimelinePresentation &presentation,
-                          bool expanded, std::function<void()> toggle,
-                          const TutorialMarkdownLinkHandler &on_link,
-                          const TutorialMarkdownCopyHandler &on_copy,
-                          const ToolRendererContext &context) {
-  auto copy = presentation;
-  copy.title += "  " + std::to_string(copy.completed_count) + "/" +
-                std::to_string(copy.item_count);
-  return AgentToolRenderer(copy, expanded, std::move(toggle), on_link, on_copy,
-                           context);
-}
-
-View GenericToolRenderer(const ToolTimelinePresentation &presentation,
-                         bool expanded, std::function<void()> toggle,
-                         const TutorialMarkdownLinkHandler &,
-                         const TutorialMarkdownCopyHandler &,
-                         const ToolRendererContext &context) {
-  std::vector<View> rows;
-  rows.push_back(LegacyToolHeader(presentation, app::images::mcp, expanded,
-                                  std::move(toggle)));
-  if (expanded && (!presentation.input_detail.empty() ||
-                   !presentation.output_detail.empty())) {
-    std::vector<View> sections;
-    // A resource key, not a literal: the heading is part of the card's
-    // visible text (`sheet_title_input` / `sheet_title_output`).
-    const auto add_section = [&](StringResource heading,
-                                 const std::string &body, Color color) {
-      if (body.empty())
-        return;
-      sections.push_back(Column{
-          Text(std::move(heading))
-              .Style(ChatTextStyle(12.0F, FontWeight::Bold, colors::tertiary)),
-          SelectionArea(
-              Text(body).Style(TextStyle{Font::Monospace(14.0F), color}))}
-                             .With(CrossAlign(CrossAxisAlignment::Stretch),
-                                   Spacing(4.0F),
-                                   Padding(EdgeInsets{.top = 12.0F,
-                                                      .right = 14.0F,
-                                                      .bottom = 12.0F,
-                                                      .left = 14.0F})));
-    };
-    add_section(app::strings::sheet_title_input, presentation.input_detail,
-                colors::secondary);
-    add_section(app::strings::sheet_title_output, presentation.output_detail,
-                presentation.failed ? static_cast<Color>(colors::danger)
-                                    : static_cast<Color>(colors::secondary));
-    rows.push_back(
-        ScrollView(Column(std::move(sections))
-                       .With(CrossAlign(CrossAxisAlignment::Stretch)))
-            .ScrollAxis(Axis::Vertical)
-            .With(Frame{.max_height = 240.0F}, Background(colors::code),
-                  Border(colors::code_border, 1.0F), CornerRadius(12.0F),
-                  ClipChildren(), ScrollBar()));
-  }
-  return Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch));
-}
-
-using ToolRenderer = View (*)(const ToolTimelinePresentation &, bool,
-                              std::function<void()>,
-                              const TutorialMarkdownLinkHandler &,
-                              const TutorialMarkdownCopyHandler &,
-                              const ToolRendererContext &);
-
-struct ToolRendererPolicy final {
-  ToolTimelineVisualKind visual;
-  ToolRenderer renderer;
-};
-
-const std::array kToolRendererPolicies{
-    ToolRendererPolicy{ToolTimelineVisualKind::shell, &ShellToolRenderer},
-    ToolRendererPolicy{ToolTimelineVisualKind::read, &ReadToolRenderer},
-    ToolRendererPolicy{ToolTimelineVisualKind::write, &WriteToolRenderer},
-    ToolRendererPolicy{ToolTimelineVisualKind::remove, &DeleteToolRenderer},
-    ToolRendererPolicy{ToolTimelineVisualKind::todo, &TodoToolRenderer},
-    ToolRendererPolicy{ToolTimelineVisualKind::agent, &AgentToolRenderer},
-    ToolRendererPolicy{ToolTimelineVisualKind::agent_pipeline,
-                       &PipelineToolRenderer},
-    ToolRendererPolicy{ToolTimelineVisualKind::generic, &GenericToolRenderer},
-};
-
-ToolRenderer RendererFor(ToolTimelineVisualKind visual) {
-  const auto found = std::ranges::find(kToolRendererPolicies, visual,
-                                       &ToolRendererPolicy::visual);
-  return found == kToolRendererPolicies.end() ? &GenericToolRenderer
-                                              : found->renderer;
-}
-
-View AssistantMarkdown(std::string_view markdown, bool code_wrap,
-                       const TutorialMarkdownLinkHandler &on_link,
-                       const TutorialMarkdownCopyHandler &on_copy) {
-  infrastructure::TutorialMarkdownParser parser;
-  const auto document = parser.Parse(markdown);
-  return TutorialMarkdownDocumentView(document, code_wrap, 1.0F, on_link,
-                                      on_copy)
-      .With(Frame{.max_width = 684.0F});
-}
-
-// Turns `InlineEmphasisParser` spans into text fragments. The mapping matches
-// `ThinkingBlockView.typefaceStyle()`: BOLD keeps the weight, ITALIC the slant
-// and every other style (BOLD_ITALIC) gets both.
-AttributedText ReasoningEmphasisText(std::string_view source) {
-  const auto parsed = domain::ParseInlineEmphasis(source);
-  if (parsed.spans.empty())
-    return AttributedText(parsed.text);
-  std::vector<TextSpan> spans;
-  spans.reserve(parsed.spans.size() * 2U + 1U);
-  std::size_t cursor = 0;
-  for (const auto &span : parsed.spans) {
-    if (span.start > cursor)
-      spans.emplace_back(parsed.text.substr(cursor, span.start - cursor));
-    TextSpanStyle style;
-    if (span.style != domain::InlineEmphasisStyle::Italic)
-      style.font_weight = FontWeight::Bold;
-    if (span.style != domain::InlineEmphasisStyle::Bold)
-      style.font_slant = FontSlant::Italic;
-    TextSpan emphasised(parsed.text.substr(span.start, span.end - span.start));
-    spans.push_back(std::move(emphasised).Style(std::move(style)));
-    cursor = span.end;
-  }
-  if (cursor < parsed.text.size())
-    spans.emplace_back(parsed.text.substr(cursor));
-  return AttributedText(std::span<const TextSpan>(spans));
-}
-
-View ReasoningTimelineBlock(const domain::AssistantReasoningEvent &reasoning,
-                            std::string key,
-                            const ChatTimelineSettings &settings,
-                            State<std::vector<std::string>> toggled) {
-  const bool expanded =
-      ToggleState(toggled.Get(), key, settings.thinking_auto_expand);
-  View header = Row{
-      Text(reasoning.kind == domain::ReasoningKind::summary
-               ? app::strings::chat_reasoning_summary
-               : app::strings::chat_reasoning_thinking)
-          .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::secondary)),
-      Stack{Image(expanded ? app::images::chevron_down
-                           : app::images::chevron_right)
-                .Tint(colors::tertiary)
-                .With(Frame{.width = 16.0F, .height = 16.0F})}
-          .With(Frame{.width = 28.0F, .height = 32.0F},
-                Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
-  };
-  header = std::move(header)
-               .OnClick([toggled, key] { ToggleKey(toggled, key); })
-               .With(Frame{.min_height = 48.0F},
-                     Padding(EdgeInsets::Symmetric(0.0F, 8.0F)),
-                     CrossAlign(CrossAxisAlignment::Center),
-                     PointerCursor(PointerCursorKind::Hand));
-  if (!expanded)
-    return header;
-  // `ThinkingBlockView.styledContent()` runs the streamed summary through
-  // `InlineEmphasisParser` and applies `StyleSpan(BOLD/ITALIC/BOLD_ITALIC)`
-  // rather than showing the raw markers.
-  View body = SelectionArea(
-      Text(ReasoningEmphasisText(reasoning.text))
-          .Style(ChatTextStyle(13.0F, FontWeight::Regular, colors::tertiary)));
-  if (settings.thinking_scroll) {
-    body = ScrollView(std::move(body))
-               .ScrollAxis(Axis::Vertical)
-               .With(Frame{.max_height = 180.0F}, ScrollBar());
-  }
-  return Column{
-      std::move(header),
-      Column{std::move(body)}.With(Padding(EdgeInsets{.top = 8.0F})),
-  }
-      .With(CrossAlign(CrossAxisAlignment::Stretch));
-}
-
-// Port of `cn.lineai.ui.component.ContextCompactBlockView`: one horizontal row
-// with an archive icon, the "Compacting" label, a weight-1 spacer and either an
-// indeterminate progress circle (running) or a status icon (done = CHECK,
-// error = CLOSE). The geometry comes from `CompactBlockMetrics()` so the
-// numbers stay next to the legacy references in the presentation header.
-View CompactProgressBlock(const domain::ChatMessage &message,
-                          const std::string &label) {
-  const auto presentation = PresentCompactProgress(message);
-  const auto metrics = CompactBlockMetricsDefault();
-  const Color tint = presentation.danger ? static_cast<Color>(colors::danger)
-                                         : static_cast<Color>(colors::tertiary);
-  View status =
-      presentation.show_progress_bar
-          ? View{ProgressCircle().With(Frame{.width = metrics.progress_size,
-                                             .height = metrics.progress_size})}
-          : View{Image(presentation.status_icon == CompactStatusIcon::close
-                           ? app::images::x
-                           : app::images::check)
-                     .Tint(tint)
-                     .With(Frame{.width = metrics.icon_slot,
-                                 .height = metrics.status_icon_size})};
-  return Row{
-      Stack{Image(app::images::archive)
-                .Tint(tint)
-                .With(Frame{.width = metrics.archive_icon_size,
-                            .height = metrics.archive_icon_size})}
-          .With(Frame{.width = metrics.icon_slot, .height = metrics.icon_slot},
-                Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
-      Text(label).Style(
-          ChatTextStyle(metrics.label_size, FontWeight::Regular, tint)),
-      Spacer(),
-      std::move(status),
-  }
-      .With(Frame{.min_height = metrics.min_height},
-            Padding(EdgeInsets{.top = metrics.vertical_padding,
-                               .bottom = metrics.vertical_padding}),
-            Spacing(metrics.label_left_margin),
-            CrossAlign(CrossAxisAlignment::Center));
-}
-
-View ToolTimelineCard(const domain::AssistantToolEvent &event, std::string key,
-                      State<std::vector<std::string>> toggled,
-                      const TutorialMarkdownLinkHandler &on_link,
-                      const TutorialMarkdownCopyHandler &on_copy,
-                      const ToolRendererContext &context) {
-  const auto presentation = PresentToolTimeline(event);
-  if (!presentation.visible)
-    return Stack{}.With(Frame{.height = 0.0F});
-  const bool expanded =
-      ToggleState(toggled.Get(), key, presentation.initially_expanded);
-  return RendererFor(presentation.visual)(
-      presentation, expanded,
-      [toggled, key = std::move(key)] { ToggleKey(toggled, key); }, on_link,
-      on_copy, context);
-}
-
-// Port of `AssistantTurnView.renderFiles()`: a collapsible "Edited N files"
-// row listing every recorded change of the turn.
-//
-// Legacy showed it only when the turn both produced diffs and finished with an
-// answer (`edits.isEmpty() || row.answer == null ? GONE : VISIBLE`), and it
-// counted *distinct paths* while keeping one entry per diff id, so repeated
-// edits to the same file stay individually reviewable.
-View ChangedFilesBlock(const domain::ChatMessage &message,
-                       std::int64_t stable_turn_id,
-                       State<std::vector<std::string>> toggled,
-                       const TutorialMarkdownLinkHandler &on_link,
-                       const TutorialMarkdownCopyHandler &on_copy,
-                       const ToolRendererContext &context) {
-  const auto hidden = Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
-  if (message.content.empty())
-    return hidden;
-  std::vector<const domain::AssistantToolEvent *> edits;
-  std::vector<std::string> seen_ids;
-  std::vector<std::string> paths;
-  for (const auto &event : message.timeline) {
-    const auto *tool = std::get_if<domain::AssistantToolEvent>(&event);
-    if (tool == nullptr || !tool->result.has_value())
-      continue;
-    const auto &diff_id = tool->result->diff_id;
-    if (diff_id.empty() || std::ranges::contains(seen_ids, diff_id))
-      continue;
-    seen_ids.push_back(diff_id);
-    edits.push_back(tool);
-    const auto path = ToolCallTargetPath(tool->call.arguments_json, diff_id);
-    if (!std::ranges::contains(paths, path))
-      paths.push_back(path);
-  }
-  if (edits.empty())
-    return hidden;
-  const auto block_key = std::to_string(stable_turn_id) + ":files";
-  const bool expanded = ToggleState(toggled.Get(), block_key, false);
-  auto header =
-      Row{
-          Stack{Image(app::images::file_pen_line)
-                    .Tint(colors::secondary)
-                    .With(Frame{.width = 18.0F, .height = 18.0F})}
-              .With(Frame{.width = 26.0F, .height = 32.0F},
-                    Align(HorizontalAlignment::Center,
-                          VerticalAlignment::Center)),
-          Text::Format(app::strings::chat_files_changed, paths.size())
-              .Style(ChatTextStyle(14.0F, FontWeight::Regular, colors::text))
-              .With(Padding(EdgeInsets{.left = 6.0F}), Grow()),
-          Text(app::strings::chat_review_changes)
-              .Style(ChatTextStyle(14.0F, FontWeight::Regular, colors::text))
-              .VerticalAlign(TextVerticalAlign::Center)
-              .OnClick([toggled, block_key, edit_count = edits.size()] {
-                auto next = toggled.Get();
-                if (!std::ranges::contains(next, block_key))
-                  next.push_back(block_key);
-                for (std::size_t index = 0; index < edit_count; ++index) {
-                  const auto key = block_key + ":" + std::to_string(index);
-                  if (!std::ranges::contains(next, key))
-                    next.push_back(key);
-                }
-                toggled = std::move(next);
-              })
-              .With(Frame{.min_height = 48.0F},
-                    Padding(EdgeInsets{.left = 12.0F}), Focusable(),
-                    PointerCursor(PointerCursorKind::Hand)),
-          Stack{Image(expanded ? app::images::chevron_down
-                               : app::images::chevron_right)
-                    .Tint(colors::tertiary)
-                    .With(Frame{.width = 16.0F, .height = 16.0F})}
-              .With(Frame{.width = 24.0F, .height = 32.0F},
-                    Align(HorizontalAlignment::Center,
-                          VerticalAlignment::Center)),
-      }
-          .With(CrossAlign(CrossAxisAlignment::Center),
-                Frame{.min_height = 64.0F})
-          .OnClick([toggled, block_key] {
-            auto next = toggled.Get();
-            if (std::ranges::contains(next, block_key))
-              std::erase(next, block_key);
-            else
-              next.push_back(block_key);
-            toggled = std::move(next);
-          })
-          .With(PointerCursor(PointerCursorKind::Hand));
-  std::vector<View> children;
-  if (expanded) {
-    for (std::size_t index = 0; index < edits.size(); ++index) {
-      children.push_back(ToolTimelineCard(
-          *edits[index], block_key + ":" + std::to_string(index), toggled,
-          on_link, on_copy, context));
-    }
-  }
-  View body = children.empty()
-                  ? View{Stack{}.With(Frame{.height = 0.0F})}
-                  : View{Column(std::move(children))
-                             .With(CrossAlign(CrossAxisAlignment::Stretch))};
-  return Column{Divider(), std::move(header), std::move(body)}.With(
-      CrossAlign(CrossAxisAlignment::Stretch),
-      Padding(EdgeInsets{.top = 24.0F}));
-}
-
-View AssistantTimeline(const domain::ChatMessage &message, bool live,
-                       const ChatTimelineSettings &settings,
-                       State<std::vector<std::string>> toggled,
-                       const TutorialMarkdownLinkHandler &on_link,
-                       const TutorialMarkdownCopyHandler &on_copy,
-                       const ToolRendererContext &context) {
-  const auto presentation =
-      PresentAssistantProcess(message, live, settings.process_auto_expand);
-  if (!presentation.visible)
-    return Stack{}.With(Frame{.height = 0.0F});
-  const auto stable_turn_id = message.processing_started_at > 0
-                                  ? message.processing_started_at
-                                  : static_cast<std::int64_t>(message.id);
-  const auto process_key = std::to_string(stable_turn_id) + ":process";
-  const bool expanded =
-      ToggleState(toggled.Get(), process_key, presentation.initially_expanded);
-  const auto label = presentation.failed ? app::strings::chat_process_failed
-                     : presentation.running
-                         ? app::strings::chat_process_working
-                         : app::strings::chat_process_completed;
-  std::string duration;
-  if (presentation.duration_millis > 0) {
-    duration =
-        "  " + std::to_string(presentation.duration_millis / 1'000) + "." +
-        std::to_string((presentation.duration_millis % 1'000) / 100) + "s";
-  }
-  View header = Row{
-      Text(label).Style(ChatTextStyle(13.0F, FontWeight::Regular,
-                                      presentation.failed ? colors::danger
-                                                          : colors::secondary)),
-      Text(duration).Style(ChatTextStyle(
-          13.0F, FontWeight::Regular,
-          presentation.failed ? colors::danger : colors::secondary)),
-      Stack{Image(expanded ? app::images::chevron_down
-                           : app::images::chevron_right)
-                .Tint(colors::tertiary)
-                .With(Frame{.width = 16.0F, .height = 16.0F})}
-          .With(Frame{.width = 28.0F, .height = 32.0F},
-                Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
-  };
-  header =
-      std::move(header)
-          .OnClick([toggled, process_key] { ToggleKey(toggled, process_key); })
-          .With(Frame{.min_height = 48.0F},
-                CrossAlign(CrossAxisAlignment::Center),
-                PointerCursor(PointerCursorKind::Hand));
-  std::vector<View> process_rows;
-  if (expanded) {
-    for (std::size_t index = 0; index < message.timeline.size(); ++index) {
-      const auto key =
-          std::to_string(stable_turn_id) + ":" + std::to_string(index);
-      std::visit(
-          Overloaded{
-              [&](const domain::AssistantReasoningEvent &reasoning) {
-                process_rows.push_back(
-                    ReasoningTimelineBlock(reasoning, key, settings, toggled));
-              },
-              [&](const domain::AssistantTextEvent &text) {
-                if (!text.text.empty())
-                  process_rows.push_back(AssistantMarkdown(
-                      text.text, settings.code_wrap_enabled, on_link, on_copy));
-              },
-              [&](const domain::AssistantToolEvent &tool) {
-                process_rows.push_back(ToolTimelineCard(
-                    tool, key, toggled, on_link, on_copy, context));
-              }},
-          message.timeline[index]);
-    }
-    if (message.timeline.empty() && !message.reasoning_content.empty()) {
-      process_rows.push_back(ReasoningTimelineBlock(
-          domain::AssistantReasoningEvent{.turn_index = 0,
-                                          .text = message.reasoning_content},
-          process_key + ":legacy", settings, toggled));
-    }
-  }
-  View changed_files = ChangedFilesBlock(message, stable_turn_id, toggled,
-                                         on_link, on_copy, context);
-  View process =
-      Column{
-          std::move(header),
-          Column{Divider()}.With(Padding(EdgeInsets{.bottom = 20.0F})),
-          Column(std::move(process_rows))
-              .With(CrossAlign(CrossAxisAlignment::Stretch)),
-      }
-          .With(CrossAlign(CrossAxisAlignment::Stretch));
-  return Column{
-      std::move(process),
-      std::move(changed_files),
-  }
-      .With(CrossAlign(CrossAxisAlignment::Stretch));
-}
-
-View MessageBubble(const domain::ChatMessage &message,
-                   State<std::optional<std::uint64_t>> action_message,
-                   bool multi_select,
-                   State<std::vector<std::uint64_t>> selected_messages,
-                   MessageActionCallbacks callbacks,
-                   const ChatTimelineSettings &timeline_settings,
-                   State<std::vector<std::string>> toggled_timeline,
-                   const TutorialMarkdownLinkHandler &on_link,
-                   const TutorialMarkdownCopyHandler &on_copy,
-                   const ToolRendererContext &context,
-                   std::string_view compact_label, bool live = false) {
-  if (message.role == domain::MessageRole::tool)
-    return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
-  // `ConversationTimeline.build` skips hidden messages: a compaction summary
-  // stays in the context but never renders as a user bubble.
-  if (message.hidden)
-    return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
-  // A compaction progress block flushes the surrounding group and becomes a
-  // block of its own (ui/model ConversationTimeline.java:95-99).
-  if (IsCompactTimelineBlock(message))
-    return CompactProgressBlock(message, std::string{compact_label});
-  const bool user = message.role == domain::MessageRole::user;
-  const bool selected =
-      std::ranges::contains(selected_messages.Get(), message.id);
-  const auto bubble_color = static_cast<Color>(colors::user_bubble);
-  const float luminance = bubble_color.red * 0.2126F +
-                          bubble_color.green * 0.7152F +
-                          bubble_color.blue * 0.0722F;
-  const Color user_text = luminance > 0.55F ? static_cast<Color>(colors::text)
-                                            : Color::Rgb(237, 240, 242);
-  View assistant_text =
-      message.content.empty()
-          ? Stack{}.With(Frame{.height = 0.0F})
-          : AssistantMarkdown(message.content,
-                              timeline_settings.code_wrap_enabled, on_link,
-                              on_copy);
-  if (!user && !live && !message.content.empty()) {
-    assistant_text = MessageLongPressTarget(
-        assistant_text, action_message, multi_select, selected_messages,
-        message.id);
-  }
-  View assistant_error = Stack{}.With(Frame{.height = 0.0F});
-  if (message.error && !message.error_message.empty()) {
-    assistant_error =
-        Text(message.error_message)
-            .Style(ChatTextStyle(12.0F, FontWeight::Regular, colors::danger));
-  }
-  View assistant =
-      Column{
-          AssistantTimeline(message, live, timeline_settings, toggled_timeline,
-                            on_link, on_copy, context),
-          std::move(assistant_text),
-          std::move(assistant_error),
-      }
-          .With(CrossAlign(CrossAxisAlignment::Stretch));
-  std::string_view trimmed_user_content = message.content;
-  while (!trimmed_user_content.empty() &&
-         std::isspace(
-             static_cast<unsigned char>(trimmed_user_content.front())) != 0)
-    trimmed_user_content.remove_prefix(1);
-  while (!trimmed_user_content.empty() &&
-         std::isspace(
-             static_cast<unsigned char>(trimmed_user_content.back())) != 0)
-    trimmed_user_content.remove_suffix(1);
-  const bool legacy_attachment_placeholder =
-      !message.attachments.empty() &&
-      (trimmed_user_content == "已附加文件" ||
-       trimmed_user_content == "Attached files");
-  const bool user_content_visible =
-      !message.content.empty() && !legacy_attachment_placeholder;
-  View bubble = std::move(assistant);
-  if (user) {
-    bubble = user_content_visible
-                 ? Text(message.content)
-                       .With(FontSize(16.0F), Foreground(user_text),
-                             Padding(EdgeInsets::Symmetric(15.0F, 10.0F)),
-                             Background(colors::user_bubble),
-                             CornerRadius(18.0F), Frame{.max_width = 684.0F})
-                 : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
-    if (!live && user_content_visible) {
-      bubble = MessageLongPressTarget(bubble, action_message, multi_select,
-                                      selected_messages, message.id);
-    }
-  }
-  View aligned_bubble = user ? Row{Spacer(), bubble} : Row{bubble, Spacer()};
-  std::vector<View> content{
-      aligned_bubble,
-      MessageAttachments(message, user, 4.0F),
-  };
-  if (!live && !multi_select && action_message.Get() == message.id)
-    content.push_back(MessageActionBar(message, callbacks));
-
-  auto result = Column(std::move(content));
-  // The legacy transient streaming row is display-only. It cannot enter the
-  // persisted-message action or multi-select state before generation finishes.
-  if (live)
-    return std::move(result).With(
-        Padding(EdgeInsets{.top = user ? 16.0F : 0.0F,
-                           .right = 16.0F,
-                           .bottom = user ? 32.0F : 28.0F,
-                           .left = 16.0F}),
-        Background(selected ? colors::accent_muted : Color::Transparent()),
-        Border(selected ? colors::border_light : Color::Transparent(),
-               selected ? 1.0F : 0.0F),
-        CornerRadius(selected ? 12.0F : 0.0F));
-
-  return std::move(result)
-      .OnClick([multi_select, selected_messages, id = message.id] {
-        if (multi_select)
-          ToggleMessageSelection(selected_messages, id);
-      })
-      .With(Padding(EdgeInsets{.top = user ? 16.0F : 0.0F,
-                               .right = 16.0F,
-                               .bottom = user ? 32.0F : 28.0F,
-                               .left = 16.0F}),
-            Background(selected ? colors::accent_muted : Color::Transparent()),
-            Border(selected ? colors::border_light : Color::Transparent(),
-                   selected ? 1.0F : 0.0F),
-            CornerRadius(selected ? 12.0F : 0.0F));
-}
-
 View Conversation(
     const std::shared_ptr<application::ChatSession> &session,
     const std::shared_ptr<application::GenerationController> &generation,
@@ -2049,9 +524,10 @@ View Conversation(
     std::optional<bool> has_selected_model) {
   const auto messages = session->Messages();
   if (messages.empty()) {
-    return EmptyConversation(navigation,
-                             !has_selected_model.value_or(true));
+    return EmptyConversation(navigation, !has_selected_model.value_or(true));
   }
+  const auto presentation_messages =
+      BuildConversationPresentationMessages(messages);
 
   const auto &generation_state = generation->State();
   domain::ChatMessage streaming_message{};
@@ -2091,7 +567,7 @@ View Conversation(
   View list =
       ScrollView(
           Column{
-              ForEach(messages,
+              ForEach(presentation_messages,
                       [action_message, multi_select, selected_messages,
                        callbacks, timeline_settings, toggled_timeline, on_link,
                        on_copy, context, compact_label](const auto &message) {
@@ -2175,7 +651,8 @@ View Conversation(
   }
   return Stack{std::move(list), std::move(scroll_button),
                Column{Spacer(), std::move(selection_bar)}}
-      .With(Grow());
+      .With(Grow(),
+            Align(HorizontalAlignment::Stretch, VerticalAlignment::Stretch));
 }
 
 void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
@@ -2208,1127 +685,43 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
   });
 }
 
-// Legacy `GenerationFlowController.MAX_RETRIES` / `RETRY_DELAY_MS`.
-constexpr int kMaxGenerationAttempts = 3;
-constexpr auto kRetryDelay = std::chrono::milliseconds{5000};
-
-// Legacy `GenerationFlowHost.formatRetryNotice` / `formatModelFailed`.
-// A resource template can only be resolved while composing, so the two
-// templates travel into the coroutine already resolved, exactly like
-// `CompactionLabels`.
-struct RetryLabels final {
-  // `chat_retry_attempt` ("Retry {0}/{1}, error: {2}") resolved at composition
-  // time with sentinels standing in for the two runtime values, because
-  // `UseString` validates the argument count and the attempt number is only
-  // known once a request has failed. `{1}` is the constant max, so it is
-  // substituted for real.
-  std::string attempt;
-  // `chat_model_failed`: "Model communication failed: {0}".
-  std::string failed;
-  // Guards the generation coroutine raises before it can talk to a model.
-  // These are this port's own (the legacy only warns through the composer
-  // hint), so they still have to follow the interface language.
-  std::string no_model;
-  std::string model_missing;
-};
-
-// Control characters cannot appear in a translation, so they are safe markers.
-constexpr std::string_view kAttemptMarker{"\x1f"
-                                          "0"
-                                          "\x1f"};
-constexpr std::string_view kErrorMarker{"\x1f"
-                                        "2"
-                                        "\x1f"};
-
-std::string FormatRetryNotice(const RetryLabels &labels, int attempt,
-                              std::string_view error) {
-  auto text = labels.attempt;
-  for (std::size_t at = text.find(kAttemptMarker); at != std::string::npos;
-       at = text.find(kAttemptMarker, at)) {
-    text.replace(at, kAttemptMarker.size(), std::to_string(attempt));
-    at += 1;
-  }
-  for (std::size_t at = text.find(kErrorMarker); at != std::string::npos;
-       at = text.find(kErrorMarker, at)) {
-    text.replace(at, kErrorMarker.size(), error);
-    at += error.size();
-  }
-  return text;
-}
-
-std::string FormatModelFailed(std::string_view template_text,
-                              std::string_view error) {
-  std::string text{template_text};
-  for (std::size_t at = text.find(kErrorMarker); at != std::string::npos;
-       at = text.find(kErrorMarker, at)) {
-    text.replace(at, kErrorMarker.size(), error);
-    at += error.size();
-  }
-  return text;
-}
-
-struct ComposerGenerationDependencies final {
-  std::shared_ptr<application::ChatSession> session;
-  std::shared_ptr<application::GenerationController> generation;
-  std::shared_ptr<application::ModelStore> model_store;
-  std::shared_ptr<application::McpCompletionLoop> completion_loop;
-  std::shared_ptr<application::MemoryContextService> memory_context;
-  std::shared_ptr<application::AiBehaviorSettingsRepository> behavior_settings;
-  // Feeds {{TODO_STATE}} from the live task list. Legacy
-  // `ModelPromptController.renderTodoStateForPrompt()` did the same, so the
-  // projection has to be refreshed per request rather than captured once.
-  std::shared_ptr<application::TodoStateStore> todo_state;
-  // Shared with the composition so the count survives the runner being rebuilt
-  // on every recomposition; a member here would be reset before it was read.
-  std::shared_ptr<application::TokenUsageTracker> token_usage;
-  // Installed Skill prompts. Legacy `ModelPromptController` folded these into
-  // the system prompt on every request; the C++ port keeps that by refreshing
-  // them here instead of capturing the text once.
-  std::shared_ptr<application::SkillRepository> skills;
-  // Automatic context compaction before a request. Absent in previews that do
-  // not wire a compaction service.
-  std::shared_ptr<application::ContextCompactionService> compaction;
-  // Status holder for the live progress block.
-  std::shared_ptr<AutoCompactionUiState> auto_compaction;
-};
-
-class ComposerGenerationRunner final
-    : public std::enable_shared_from_this<ComposerGenerationRunner> {
-public:
-  ComposerGenerationRunner(
-      ComposerGenerationDependencies dependencies,
-      std::shared_ptr<PendingToolReview> pending_review,
-      std::shared_ptr<application::PendingMessageQueue> pending_messages,
-      TaskScope tasks, State<TaskHandle> active_generation,
-      State<std::size_t> revision, std::string current_project_id,
-      application::PromptAssemblyContext prompt_context,
-      domain::ToolPermissionMode permission_mode, ToastHandle toast,
-      RetryLabels retry_labels)
-      : dependencies_(std::move(dependencies)),
-        retry_labels_(std::move(retry_labels)),
-        pending_review_(std::move(pending_review)),
-        pending_messages_(std::move(pending_messages)),
-        tasks_(std::move(tasks)),
-        active_generation_(std::move(active_generation)),
-        revision_(std::move(revision)),
-        current_project_id_(std::move(current_project_id)),
-        prompt_context_(std::move(prompt_context)),
-        permission_mode_(permission_mode), toast_(std::move(toast)) {}
-
-  [[nodiscard]] bool Start(application::PendingMessage message) {
-    if (dependencies_.generation->State().phase ==
-        application::GenerationPhase::running) {
-      return false;
-    }
-
-    const std::string user_text = message.text;
-    auto work = dependencies_.generation->Begin(user_text,
-                                                std::move(message.attachments));
-    if (!work)
-      return false;
-
-    revision_ += 1;
-    const std::string conversation_id{
-        dependencies_.session->CurrentConversationId()};
-    auto turn = SnapshotConversation(*dependencies_.session,
-                                     current_project_id_, conversation_id);
-    auto self = shared_from_this();
-    active_generation_ = tasks_.Launch([self = std::move(self), conversation_id,
-                                        user_text, turn = std::move(turn),
-                                        work = std::move(*work)]() mutable {
-      return self->Run(std::move(work), std::move(turn),
-                       std::move(conversation_id), std::move(user_text));
-    });
-    return true;
-  }
-
-  void CancelAndContinue() {
-    active_generation_.Get().Cancel();
-    dependencies_.generation->Cancel();
-    ResetToolReview();
-    revision_ += 1;
-    StartNext();
-  }
-
-private:
-  // Resets the live progress block when the send path leaves `compacting`,
-  // including the cancellation path where HuxerUI destroys the coroutine.
-  class AutoCompactionGuard final {
-  public:
-    explicit AutoCompactionGuard(
-        std::shared_ptr<AutoCompactionUiState> state) noexcept
-        : state_(std::move(state)) {}
-
-    ~AutoCompactionGuard() {
-      if (state_)
-        state_->running = false;
-    }
-
-    AutoCompactionGuard(const AutoCompactionGuard &) = delete;
-    AutoCompactionGuard &operator=(const AutoCompactionGuard &) = delete;
-
-    void Finish(std::string status) const {
-      if (state_)
-        state_->Finish(std::move(status));
-    }
-
-  private:
-    std::shared_ptr<AutoCompactionUiState> state_;
-  };
-
-  // Port of the pre-request trigger in `ChatInteractionController.send()`
-  // (lines 223-244) together with
-  // `ContextCompactionController.startContextCompaction()` /
-  // `startSoftContextCompaction()`: decide the trigger, show the running
-  // progress block, summarize, then write the result back. The request then
-  // continues with the refreshed transcript.
-  Task<void>
-  AutoCompactBeforeRequest(application::GenerationWork &work,
-                           const domain::ModelConfig &model,
-                           const domain::AiBehaviorSettings &behavior) {
-    if (!dependencies_.compaction || !dependencies_.auto_compaction ||
-        !dependencies_.session)
-      co_return;
-
-    auto snapshot = [this] {
-      const auto messages = dependencies_.session->Messages();
-      return std::vector<domain::ChatMessage>{messages.begin(), messages.end()};
-    };
-    auto messages = snapshot();
-    // Legacy lines 222-223: the active user message is the last entry of the
-    // conversation, because `send()` appended it before checking the trigger.
-    std::optional<std::uint64_t> active_user_message_id;
-    for (auto entry = messages.rbegin(); entry != messages.rend(); ++entry) {
-      if (entry->role == domain::MessageRole::user) {
-        active_user_message_id = entry->id;
-        break;
-      }
-    }
-    const auto preserved =
-        application::PreservedTail(messages, active_user_message_id);
-    const auto preserved_ids = application::MessageIdSet(preserved);
-    const std::optional<domain::ModelConfig> model_option{model};
-    // Legacy `ContextCompactionController` measured the live context with
-    // `tokenUsageTracker.lastInputTokens()`; 0 means no protocol has reported
-    // usage yet, and the checks fall back to the local estimate.
-    const int observed_tokens =
-        dependencies_.token_usage ? dependencies_.token_usage->LastInputTokens()
-                                  : 0;
-    const bool hard = application::ShouldAutoCompactBeforeRequest(
-        model_option, messages, observed_tokens, preserved_ids,
-        behavior.preserve_reasoning);
-    const bool soft = !hard && application::ShouldAutoSoftCompactBeforeRequest(
-                                   model_option, messages, observed_tokens,
-                                   behavior.soft_compaction, preserved_ids,
-                                   behavior.preserve_reasoning);
-    if (!hard && !soft)
-      co_return;
-
-    std::vector<domain::ChatMessage> base;
-    base.reserve(messages.size());
-    for (const auto &message : messages) {
-      if (std::ranges::contains(preserved_ids, message.id))
-        continue;
-      base.push_back(message);
-    }
-    std::vector<std::uint64_t> retained_ids;
-    std::uint64_t insert_after_id = 0;
-    if (soft) {
-      // Legacy lines 388-389: only the oldest slice is summarized.
-      base =
-          application::ContextCompactionService::SplitForSoftCompact(base).head;
-      // ... and its summary belongs right after that slice, before the tail
-      // the split left untouched.
-      if (!base.empty())
-        insert_after_id = base.back().id;
-    } else {
-      // Legacy lines 479-481: keep the recent user messages verbatim.
-      retained_ids = application::RetainedUserMessageIds(base);
-    }
-    if (!application::HasCompactableBaseMessages(base))
-      co_return;
-    // Legacy `finishContextCompaction` (lines 476-521) leaves the summarized
-    // base and the retained user messages in place and appends the summary,
-    // then the preserved tail. The append-only conversation port reproduces
-    // that order by excluding the tail too and re-appending it after the
-    // summary (see `ChatSession::ApplyCompaction`), so the model reads
-    // "summary -> recent context -> current question" instead of finding the
-    // summary after the question it is supposed to answer.
-    std::vector<std::uint64_t> excluded_ids;
-    excluded_ids.reserve(base.size() + preserved.size());
-    for (const auto &message : base) {
-      if (!std::ranges::contains(retained_ids, message.id))
-        excluded_ids.push_back(message.id);
-    }
-    for (const auto &message : preserved)
-      excluded_ids.push_back(message.id);
-
-    // Legacy lines 311-315: the running progress block is pushed before the
-    // compaction starts so the transcript shows it while the model works.
-    dependencies_.auto_compaction->Begin(work.generation_id);
-    revision_ += 1;
-    const AutoCompactionGuard guard{dependencies_.auto_compaction};
-
-    auto compacted =
-        co_await dependencies_.compaction->Compact(model, std::move(base));
-    if (!compacted) {
-      // Legacy lines 333-343 / 630-662: the block fails and the failure text is
-      // appended; the original request still runs.
-      guard.Finish(std::string{domain::compact_status_error});
-      static_cast<void>(dependencies_.session->AppendAssistant(
-          domain::CompactProgressMessage(0U, domain::compact_status_error)));
-      revision_ += 1;
-      toast_.Show(
-          application::CompactFailureMessage(compacted.error().message));
-    } else if (compacted->Empty() || compacted->summary_content.empty()) {
-      // Cancelled (`("", "")`) or "the model returned no summary": the block
-      // becomes an error and nothing is written back. Legacy line 473.
-      guard.Finish(std::string{domain::compact_status_error});
-      static_cast<void>(dependencies_.session->AppendAssistant(
-          domain::CompactProgressMessage(0U, domain::compact_status_error)));
-      revision_ += 1;
-      if (!compacted->Empty())
-        toast_.Show(application::CompactFailureNoSummary());
-    } else {
-      // The summarized messages leave the context and the summary joins it;
-      // the retained user messages stay in place and the preserved tail is
-      // re-appended after the summary, both verbatim.
-      dependencies_.session->ApplyCompaction(
-          std::move(excluded_ids), compacted->summary_content,
-          std::move(preserved), insert_after_id);
-      // Legacy lines 517-522: the completed block closes the transcript.
-      static_cast<void>(dependencies_.session->AppendAssistant(
-          domain::CompactProgressMessage(0U, domain::compact_status_done)));
-      guard.Finish(std::string{domain::compact_status_done});
-      revision_ += 1;
-    }
-    // The request snapshot predates the compaction; rebuild it so the model
-    // sees the summary instead of the summarized history (legacy
-    // `Host.startInitialModelRequest`).
-    dependencies_.generation->RefreshMessages(work);
-  }
-
-  // The same prompt serves the main loop and the sub-agent runner, so a
-  // sub-agent's writes are reviewed rather than silently executed.
-  application::ToolReviewBroker::Handler ToolReviewer() const {
-    return [pending_review = pending_review_, revision = revision_](
-               application::CompletionObserver::ToolReviewRequest request)
-               -> Task<application::CompletionObserver::ToolReviewDecision> {
-      pending_review->request = std::move(request);
-      pending_review->decision.reset();
-      pending_review->submitted = false;
-      revision += 1;
-      while (!pending_review->decision.has_value())
-        co_await Delay(std::chrono::milliseconds{20});
-      const auto decision = *pending_review->decision;
-      pending_review->request.reset();
-      pending_review->decision.reset();
-      pending_review->submitted = false;
-      revision += 1;
-      co_return decision;
-    };
-  }
-
-  void ResetToolReview() const {
-    pending_review_->request.reset();
-    pending_review_->decision.reset();
-    pending_review_->submitted = false;
-  }
-
-  void FailAndContinue(std::uint64_t generation_id,
-                       application::CompletionError error) {
-    if (dependencies_.generation->Fail(generation_id, std::move(error)))
-      revision_ += 1;
-    StartNext();
-  }
-
-  void StartNext() {
-    auto next = pending_messages_->TakeNext();
-    if (!next)
-      return;
-    revision_ += 1;
-    static_cast<void>(Start(std::move(*next)));
-  }
-
-  Task<void> Run(application::GenerationWork work,
-                 domain::MemoryConversationTurn turn,
-                 std::string conversation_id, std::string user_text) {
-    // Legacy `ContextCompactionController.onConversationChanged()`.
-    if (dependencies_.token_usage) {
-      dependencies_.token_usage->BeginConversation(
-          std::string{dependencies_.session->CurrentConversationId()},
-          dependencies_.session->Messages().empty());
-    }
-    const auto selected_id = co_await dependencies_.model_store->SelectedId();
-    if (!dependencies_.generation->IsCurrent(work.generation_id))
-      co_return;
-    if (!selected_id) {
-      FailAndContinue(
-          work.generation_id,
-          application::CompletionError{
-              .code = application::CompletionErrorCode::invalid_configuration,
-              .message = selected_id.error().message});
-      co_return;
-    }
-    if (selected_id->empty()) {
-      FailAndContinue(
-          work.generation_id,
-          application::CompletionError{
-              .code = application::CompletionErrorCode::invalid_configuration,
-              .message = retry_labels_.no_model});
-      co_return;
-    }
-
-    auto selected_model =
-        co_await dependencies_.model_store->Find(*selected_id);
-    if (!dependencies_.generation->IsCurrent(work.generation_id))
-      co_return;
-    if (!selected_model) {
-      FailAndContinue(
-          work.generation_id,
-          application::CompletionError{
-              .code = application::CompletionErrorCode::invalid_configuration,
-              .message = selected_model.error().message});
-      co_return;
-    }
-    if (!selected_model->has_value()) {
-      FailAndContinue(
-          work.generation_id,
-          application::CompletionError{
-              .code = application::CompletionErrorCode::invalid_configuration,
-              .message = retry_labels_.model_missing});
-      co_return;
-    }
-
-    auto behavior = co_await dependencies_.behavior_settings->Load();
-    if (!dependencies_.generation->IsCurrent(work.generation_id))
-      co_return;
-    if (!behavior) {
-      FailAndContinue(
-          work.generation_id,
-          application::CompletionError{
-              .code = application::CompletionErrorCode::invalid_configuration,
-              .message = behavior.error().message});
-      co_return;
-    }
-
-    // Legacy `ChatInteractionController.send()` (lines 223-244) compacted the
-    // conversation before starting the model request: the 80% hard trigger
-    // first, then the 50%-80% soft trigger when the user switch allows it. The
-    // request continues afterwards, so the model sees the summarized history.
-    co_await AutoCompactBeforeRequest(work, **selected_model, *behavior);
-    if (!dependencies_.generation->IsCurrent(work.generation_id))
-      co_return;
-
-    auto context = co_await dependencies_.memory_context->Prepare(
-        current_project_id_, user_text, conversation_id,
-        behavior->learning_mode);
-    if (!dependencies_.generation->IsCurrent(work.generation_id))
-      co_return;
-    if (!context) {
-      FailAndContinue(work.generation_id,
-                      application::CompletionError{
-                          .code = application::CompletionErrorCode::transport,
-                          .message = context.error().message});
-      co_return;
-    }
-
-    auto prompt_context = prompt_context_;
-    if (dependencies_.todo_state) {
-      auto todo = co_await dependencies_.todo_state->Load();
-      if (todo)
-        prompt_context.todo_state = application::RenderTodoState(*todo);
-    }
-    prompt_context.learning_context = context->prompt;
-    if (dependencies_.skills) {
-      auto extensions = co_await dependencies_.skills->BuildExtensionPrompt();
-      if (extensions && !extensions->empty()) {
-        // Legacy `SystemPromptProvider.build(homePath, tone, chatMode,
-        // extensionContext, ...)`: the extension block occupied the slot the
-        // template renders as {{LEARNING_CONTEXT}}.
-        if (!prompt_context.learning_context.empty())
-          prompt_context.learning_context += "\n\n";
-        prompt_context.learning_context += *extensions;
-      }
-    }
-    prompt_context.permission_mode =
-        domain::SerializeToolPermissionMode(permission_mode_);
-    prompt_context.attachment_history.assign(
-        dependencies_.session->Messages().begin(),
-        dependencies_.session->Messages().end());
-    // Legacy `retryableModelStream` reused one request snapshot for every
-    // attempt, so the retry loop below does the same.
-    const application::CompletionRequest request{
-        .model = std::move(**selected_model),
-        .messages = std::move(work.messages),
-        .tools = {},
-        .reasoning_effort = behavior->reasoning,
-        .preserve_reasoning = behavior->preserve_reasoning,
-        .stream = true,
-        .permission_scope = current_project_id_,
-    };
-    std::optional<application::CompletionResponse> response;
-    // Legacy `MAX_RETRIES = 3` / `RETRY_DELAY_MS = 5000`: the first failure
-    // announces attempt 2 of 3, the second announces 3 of 3, and the third
-    // gives up.
-    for (int attempt = 0; attempt < kMaxGenerationAttempts; ++attempt) {
-      auto current_response = co_await dependencies_.completion_loop->Complete(
-          request, prompt_context,
-          application::CompletionObserver{
-              .on_event =
-                  [generation = dependencies_.generation,
-                   generation_id = work.generation_id, revision = revision_](
-                      const application::CompletionEvent &event) {
-                    if (generation->Observe(generation_id, event))
-                      revision += 1;
-                  },
-              .on_tool_review = ToolReviewer(),
-          });
-      if (!dependencies_.generation->IsCurrent(work.generation_id))
-        co_return;
-      if (current_response) {
-        response = std::move(*current_response);
-        break;
-      }
-      const int next_attempt = attempt + 1;
-      if (next_attempt >= kMaxGenerationAttempts) {
-        FailAndContinue(work.generation_id,
-                        std::move(current_response.error()));
-        co_return;
-      }
-      // The failed attempt leaves nothing behind; the notice below is what the
-      // user sees while the request is re-issued.
-      static_cast<void>(
-          dependencies_.generation->ResetAttempt(work.generation_id));
-      domain::ChatMessage notice;
-      notice.role = domain::MessageRole::assistant;
-      notice.content = FormatRetryNotice(retry_labels_, next_attempt + 1,
-                                         current_response.error().message);
-      notice.retry_notice = true;
-      notice.processing_started_at = NowMilliseconds();
-      notice.processing_finished_at = notice.processing_started_at;
-      static_cast<void>(
-          dependencies_.session->AppendAssistant(std::move(notice)));
-      revision_ += 1;
-      co_await Delay(kRetryDelay);
-      if (!dependencies_.generation->IsCurrent(work.generation_id))
-        co_return;
-    }
-    if (!response)
-      co_return;
-
-    if (dependencies_.token_usage)
-      dependencies_.token_usage->Record(*response);
-    const std::string assistant_text = response->text;
-    const bool completed = dependencies_.generation->Complete(
-        work.generation_id, std::move(*response));
-    revision_ += 1;
-    if (!completed)
-      co_return;
-
-    turn.messages.push_back(domain::MemoryConversationMessage{
-        .id = "generation:" + std::to_string(work.generation_id),
-        .role = "assistant",
-        .content = assistant_text,
-        .timestamp = NowMilliseconds(),
-    });
-    turn.updated_at = NowMilliseconds();
-    StartNext();
-    auto committed = co_await dependencies_.memory_context->CommitTurn(
-        context->learning_enabled, std::move(turn), user_text);
-    if (!committed)
-      toast_.Show(committed.error().message);
-  }
-
-  ComposerGenerationDependencies dependencies_;
-  RetryLabels retry_labels_;
-  std::shared_ptr<PendingToolReview> pending_review_;
-  std::shared_ptr<application::PendingMessageQueue> pending_messages_;
-  TaskScope tasks_;
-  State<TaskHandle> active_generation_;
-  State<std::size_t> revision_;
-  std::string current_project_id_;
-  application::PromptAssemblyContext prompt_context_;
-  domain::ToolPermissionMode permission_mode_;
-  ToastHandle toast_;
-};
-
-View PendingMessages(
-    const std::shared_ptr<application::PendingMessageQueue> &queue,
-    State<std::size_t> revision) {
-  static_cast<void>(revision.Get());
-  constexpr std::size_t kVisibleLimit = 4;
-  std::vector<View> rows;
-  const auto items = queue->Items();
-  const auto visible = std::min(items.size(), kVisibleLimit);
-  rows.reserve(visible + (items.size() > visible ? 1U : 0U));
-  for (std::size_t index = 0; index < visible; ++index) {
-    std::string preview = items[index].text;
-    if (preview.size() > 30U)
-      preview = preview.substr(0U, 30U) + "...";
-    preview = std::to_string(index + 1U) + ". " + preview;
-    rows.emplace_back(Row{
-        Stack{}.With(Frame{.width = 3.0F, .height = 20.0F},
-                     Background(colors::warning)),
-        Text(std::move(preview))
-            .Style(ChatTextStyle(12.0F, FontWeight::Regular,
-                                 Color::Rgb(255, 170, 51)))
-            .With(Grow(), ClipChildren()),
-        Stack{Image(app::images::x)
-                  .Tint(colors::tertiary)
-                  .With(Frame{.width = 12.0F, .height = 12.0F})}
-            .OnClick([queue, revision, index] {
-              if (queue->Remove(index))
-                revision += 1;
-            })
-            .With(Frame{.width = 20.0F, .height = 20.0F},
-                  Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                  Focusable(), PointerCursor(PointerCursorKind::Hand)),
-    }
-                          .With(Padding(EdgeInsets{.top = 4.0F,
-                                                   .right = 8.0F,
-                                                   .bottom = 4.0F,
-                                                   .left = 16.0F}),
-                                Spacing(8.0F),
-                                CrossAlign(CrossAxisAlignment::Center),
-                                Background(colors::input))
-                          .Key("pending:" + std::to_string(index)));
-  }
-  if (items.size() > visible) {
-    rows.emplace_back(
-        Text::Format(app::strings::common_more_queued, items.size() - visible)
-            .Style(ChatTextStyle(12.0F, FontWeight::Regular,
-                                 Color::Rgb(204, 136, 0)))
-            .With(Padding(
-                EdgeInsets{.top = 2.0F, .bottom = 4.0F, .left = 16.0F})));
-  }
-  if (rows.empty())
-    return Stack{}.With(Frame{.height = 0.0F});
-  return Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch));
-}
-
-std::string WithQuote(const std::optional<std::string> &quote,
-                      std::string text) {
-  if (!quote || quote->empty())
-    return text;
-  std::string quoted = "> ";
-  for (const char character : *quote) {
-    quoted += character;
-    if (character == '\n')
-      quoted += "> ";
-  }
-  quoted += "\n\n";
-  quoted += text;
-  return quoted;
-}
-
-View QuotePreview(State<std::optional<std::string>> quote) {
-  if (!quote.Get())
-    return Stack{}.With(Frame{.height = 0.0F});
-  View panel =
-      Row{
-          Stack{}.With(Frame{.width = 3.0F}, Background(colors::accent),
-                       CornerRadius(2.0F)),
-          Text(*quote.Get())
-              .Style(
-                  ChatTextStyle(13.0F, FontWeight::Regular, colors::secondary))
-              .With(Frame{.max_height = 36.0F}, Grow(), ClipChildren()),
-          Stack{Image(app::images::x)
-                    .Tint(colors::tertiary)
-                    .With(Frame{.width = 16.0F, .height = 16.0F})}
-              .OnClick([quote] { quote = std::nullopt; })
-              .With(
-                  Frame{.width = 28.0F, .height = 28.0F},
-                  Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                  Focusable(), PointerCursor(PointerCursorKind::Hand)),
-      }
-          .With(Frame{.min_height = 44.0F}, Padding(8.0F), Spacing(8.0F),
-                CrossAlign(CrossAxisAlignment::Stretch),
-                Background(colors::elevated),
-                Border(colors::border_light, 1.0F), CornerRadius(14.0F),
-                ClipChildren());
-  return Column{std::move(panel)}.With(Padding(EdgeInsets{.bottom = 8.0F}));
-}
-
-StringVariant SlashDescription(std::string_view token) {
-  if (token == "/chat")
-    return app::strings::slash_command_chat_desc;
-  if (token == "/plan")
-    return app::strings::slash_command_plan_desc;
-  if (token == "/agent")
-    return app::strings::slash_command_agent_desc;
-  return app::strings::slash_command_model_desc;
-}
-
-bool SlashModeSelected(std::string_view token, domain::ChatMode mode) {
-  return (token == "/chat" && mode == domain::ChatMode::chat) ||
-         (token == "/plan" && mode == domain::ChatMode::plan) ||
-         (token == "/agent" && mode == domain::ChatMode::agent);
-}
-
-StringVariant ReasoningDescription(domain::ReasoningEffort effort) {
-  switch (effort) {
-  case domain::ReasoningEffort::off:
-    return app::strings::slash_command_reasoning_off_desc;
-  case domain::ReasoningEffort::automatic:
-    return std::string{domain::SerializeReasoningEffort(effort)};
-  case domain::ReasoningEffort::low:
-    return app::strings::slash_command_reasoning_low_desc;
-  case domain::ReasoningEffort::medium:
-    return app::strings::slash_command_reasoning_medium_desc;
-  case domain::ReasoningEffort::high:
-    return app::strings::slash_command_reasoning_high_desc;
-  case domain::ReasoningEffort::maximum:
-    return app::strings::slash_command_reasoning_max_desc;
-  }
-  std::unreachable();
-}
-
-const domain::ModelConfig *
-FindSlashModel(std::span<const domain::ModelConfig> models,
-               std::string_view id) {
-  const auto found = std::ranges::find(models, id, &domain::ModelConfig::id);
-  return found == models.end() ? nullptr : &*found;
-}
-
-std::string SlashModelName(const domain::ModelConfig &model) {
-  if (!model.name.empty() && model.name != model.id)
-    return model.name;
-  if (!model.model_id.empty())
-    return model.model_id;
-  return model.provider_label;
-}
-
-std::string SlashModelDetail(const domain::ModelConfig &model) {
-  const auto name = SlashModelName(model);
-  if (!model.model_id.empty() && model.model_id != name)
-    return model.provider_label + " · " + model.model_id;
-  return model.provider_label;
-}
-
-struct SlashPopupRow final {
-  std::string label;
-  StringVariant description;
-  bool selected{};
-  std::string replacement;
-};
-
-[[huxerui::composable]] View
-SlashSuggestionsPopup(PopupContext context,
-                      application::SlashSuggestionState state,
-                      std::vector<domain::ModelConfig> models,
-                      std::string selected_model_id, domain::ChatMode chat_mode,
-                      std::function<void(std::string)> select_replacement) {
-  StringVariant title = app::strings::slash_command_main_title;
-  std::vector<SlashPopupRow> popup_rows;
-  std::visit(
-      Overloaded{
-          [&](application::MainSlashSuggestions main) {
-            popup_rows.reserve(main.commands.size());
-            for (auto &suggestion : main.commands) {
-              popup_rows.push_back(SlashPopupRow{
-                  .label = suggestion.token,
-                  .description = SlashDescription(suggestion.token),
-                  .selected = SlashModeSelected(suggestion.token, chat_mode),
-                  .replacement = suggestion.token + " ",
-              });
-            }
-          },
-          [&](application::ModelSlashSuggestions model_state) {
-            title = app::strings::slash_command_model_title;
-            popup_rows.reserve(model_state.model_ids.size());
-            for (auto &id : model_state.model_ids) {
-              const auto *model = FindSlashModel(models, id);
-              if (!model)
-                continue;
-              popup_rows.push_back(SlashPopupRow{
-                  .label = SlashModelName(*model),
-                  .description = SlashModelDetail(*model),
-                  .selected = id == selected_model_id,
-                  .replacement = "/model " + id + " ",
-              });
-            }
-          },
-          [&](application::ReasoningSlashSuggestions reasoning_state) {
-            title = UseString(app::strings::slash_command_reasoning_title,
-                              reasoning_state.model_id);
-            popup_rows.reserve(reasoning_state.levels.size());
-            for (const auto effort : reasoning_state.levels) {
-              const auto name =
-                  std::string{domain::SerializeReasoningEffort(effort)};
-              popup_rows.push_back(SlashPopupRow{
-                  .label = name,
-                  .description = ReasoningDescription(effort),
-                  .selected = false,
-                  .replacement =
-                      "/model " + reasoning_state.model_id + " " + name,
-              });
-            }
-          },
-      },
-      std::move(state));
-
-  std::vector<View> rows;
-  rows.reserve(popup_rows.size() + 1U);
-  rows.emplace_back(
-      Text(title)
-          .Style(ChatTextStyle(13.0F, FontWeight::Medium))
-          .With(
-              Frame{.height = 22.0F},
-              Padding(EdgeInsets{.top = 1.0F, .right = 16.0F, .left = 16.0F})));
-  for (auto &row : popup_rows) {
-    rows.emplace_back(Column{
-        Row{
-            Text(row.label)
-                .Style(ChatTextStyle(13.0F, FontWeight::Medium, colors::accent))
-                .With(Grow(), ClipChildren()),
-            row.selected
-                ? Stack{}.With(Frame{.width = 7.0F, .height = 7.0F},
-                               Background(colors::accent), CornerRadius(4.0F))
-                : Stack{}.With(Frame{.width = 7.0F, .height = 7.0F}),
-        }
-            .With(CrossAlign(CrossAxisAlignment::Center)),
-        Text(row.description)
-            .Style(ChatTextStyle(12.0F, FontWeight::Regular, colors::tertiary))
-            .With(Padding(EdgeInsets{.top = 1.0F}), ClipChildren()),
-    }
-                          .OnClick([context, select_replacement,
-                                    replacement = row.replacement] {
-                            if (!select_replacement) {
-                              context.Dismiss();
-                              return;
-                            }
-                            select_replacement(replacement);
-                          })
-                          .With(Frame{.min_height = 52.0F},
-                                Padding(EdgeInsets::Symmetric(16.0F, 14.0F)),
-                                CrossAlign(CrossAxisAlignment::Stretch),
-                                Focusable(),
-                                PointerCursor(PointerCursorKind::Hand))
-                          .Key(row.replacement));
-  }
-  return ScrollView(Column(std::move(rows))
-                        .With(CrossAlign(CrossAxisAlignment::Stretch),
-                              Padding(EdgeInsets::All(8.0F))))
-      .ScrollAxis(Axis::Vertical)
-      .With(Frame{.width = 328.0F, .max_height = 300.0F},
-            Background(colors::input), Border(colors::border_light, 1.0F),
-            CornerRadius(14.0F), ClipChildren(),
-            Shadow{.color = Color::Rgb(0, 0, 0, 0.18F),
-                   .offset = Point{.x = 0.0F, .y = 2.0F},
-                   .blur_radius = 8.0F,
-                   .spread = 0.0F});
-}
-
-[[huxerui::composable]] View Composer(
-    State<TextEditingValue> draft,
-    const std::shared_ptr<application::ChatSession> &session,
-    const std::shared_ptr<application::GenerationController> &generation,
-    const std::shared_ptr<application::ModelStore> &model_store,
-    const std::shared_ptr<application::McpCompletionLoop> &completion_loop,
-    std::optional<bool> has_selected_model, TaskScope tasks,
-    State<TaskHandle> active_generation, State<std::size_t> revision,
-    State<std::vector<domain::InputAttachment>> selected_attachments,
-    std::function<void()> show_attachment_picker,
-    const std::shared_ptr<application::MemoryContextService> &memory_context,
-    const std::shared_ptr<application::AiBehaviorSettingsRepository>
-        &behavior_settings,
-    const std::shared_ptr<application::TodoStateStore> &todo_state,
-    const std::shared_ptr<application::SkillRepository> &skills,
-    const std::shared_ptr<PendingToolReview> &pending_review,
-    const std::shared_ptr<application::PendingMessageQueue> &pending_messages,
-    State<std::optional<std::string>> quote_text,
-    std::function<bool(std::string_view)> handle_slash_command,
-    domain::ChatMode chat_mode,
-    State<std::vector<domain::ModelConfig>> slash_models,
-    State<std::string> slash_selected_model_id,
-    domain::InputSettings input_settings, std::string current_project_id,
-    application::PromptAssemblyContext prompt_context,
-    domain::ToolPermissionMode permission_mode, ToastHandle toast,
-    const std::shared_ptr<application::ContextCompactionService>
-        &compaction_service,
-    const std::shared_ptr<AutoCompactionUiState> &auto_compaction,
-    RetryLabels retry_labels) {
-  // Composition-scoped so the token count survives the runner being rebuilt on
-  // every recomposition.
-  const auto token_usage =
-      UseState(std::make_shared<application::TokenUsageTracker>()).Get();
-  auto runner = std::make_shared<ComposerGenerationRunner>(
-      ComposerGenerationDependencies{
-          .session = session,
-          .generation = generation,
-          .model_store = model_store,
-          .completion_loop = completion_loop,
-          .memory_context = memory_context,
-          .behavior_settings = behavior_settings,
-          .todo_state = todo_state,
-          .token_usage = token_usage,
-          .skills = skills,
-          .compaction = compaction_service,
-          .auto_compaction = auto_compaction,
-      },
-      pending_review, pending_messages, tasks, active_generation, revision,
-      std::move(current_project_id), std::move(prompt_context), permission_mode,
-      toast, std::move(retry_labels));
-  const auto slash_popup = UsePopup();
-  auto slash_layer = UseState(std::optional<LayerId>{});
-
-  const bool generating =
-      generation->State().phase == application::GenerationPhase::running;
-  const bool has_content =
-      HasVisibleText(draft->text) || !selected_attachments->empty();
-
-  const auto dismiss_slash = [slash_popup, slash_layer] {
-    if (slash_layer.Get())
-      slash_popup.Dismiss(*slash_layer.Get());
-    slash_layer = std::nullopt;
-  };
-  using SlashPresenter = std::function<void(std::string_view)>;
-  const auto slash_presenter = std::make_shared<SlashPresenter>();
-  const std::weak_ptr<SlashPresenter> weak_slash_presenter = slash_presenter;
-  *slash_presenter = [slash_popup, slash_layer, draft, chat_mode, slash_models,
-                      slash_selected_model_id, generating,
-                      weak_slash_presenter](std::string_view text) {
-    auto state = generating ? std::optional<application::SlashSuggestionState>{}
-                            : application::ResolveSlashSuggestionState(
-                                  text, slash_models.Get());
-    if (!state) {
-      if (slash_layer.Get())
-        slash_popup.Dismiss(*slash_layer.Get());
-      slash_layer = std::nullopt;
-      return;
-    }
-    auto factory = [state = std::move(*state), models = slash_models.Get(),
-                    selected_model_id = slash_selected_model_id.Get(),
-                    chat_mode, draft,
-                    weak_slash_presenter](PopupContext context) mutable {
-      return SlashSuggestionsPopup(
-          context, std::move(state), std::move(models),
-          std::move(selected_model_id), chat_mode,
-          [draft, weak_slash_presenter](std::string replacement) {
-            draft = TextEditingValue::FromText(replacement);
-            if (const auto presenter = weak_slash_presenter.lock())
-              (*presenter)(replacement);
-          });
-    };
-    if (slash_layer.Get() && slash_popup.Update(*slash_layer.Get(), factory)) {
-      return;
-    }
-    slash_layer = slash_popup.Show(
-        std::move(factory),
-        PopupOptions{
-            .placement = {AnchorSide::Above, AnchorAlignment::Start},
-            .gap = 8.0F,
-            .viewport_margin = 16.0F,
-            .offset = {},
-            .dismiss_on_outside_press = true,
-            .dismiss_on_cancel = true,
-            .trap_focus = false,
-            .retain_anchor_focus = true,
-            .on_dismiss_request = {},
-        });
-  };
-
-  auto send = [draft, selected_attachments, pending_messages, runner,
-               handle_slash_command = std::move(handle_slash_command),
-               quote_text, generating, has_content, revision, dismiss_slash] {
-    dismiss_slash();
-    const auto submitted_text = WithQuote(quote_text.Get(), draft->text);
-    if (generating) {
-      if (!has_content) {
-        runner->CancelAndContinue();
-        return;
-      }
-      auto queued =
-          pending_messages->Enqueue(submitted_text, selected_attachments.Get());
-      if (!queued)
-        return;
-      draft = TextEditingValue::FromText("");
-      selected_attachments = std::vector<domain::InputAttachment>{};
-      quote_text = std::nullopt;
-      revision += 1;
-      return;
-    }
-    if (!has_content)
-      return;
-    if (handle_slash_command && handle_slash_command(submitted_text)) {
-      draft = TextEditingValue::FromText("");
-      selected_attachments = std::vector<domain::InputAttachment>{};
-      quote_text = std::nullopt;
-      revision += 1;
-      return;
-    }
-    if (runner->Start(application::PendingMessage{
-            .text = submitted_text,
-            .attachments = selected_attachments.Get(),
-        })) {
-      draft = TextEditingValue::FromText("");
-      selected_attachments = std::vector<domain::InputAttachment>{};
-      quote_text = std::nullopt;
-    }
-  };
-
-  const bool can_send = generating || has_content;
-  const auto primary_action_state =
-      generating && !has_content ? ComposerPrimaryActionState::stop
-                                 : ComposerPrimaryActionState::send;
-  const auto &primary_action =
-      PrimaryActionPresentationFor(primary_action_state);
-
-  std::vector<View> attachment_chips;
-  attachment_chips.reserve(selected_attachments->size());
-  for (const auto &attachment : selected_attachments.Get()) {
-    attachment_chips.emplace_back(
-        Row{
-            Text(attachment.Name())
-                .Style(
-                    ChatTextStyle(13.0F, FontWeight::Medium, colors::secondary))
-                .With(Frame{.max_width = 170.0F, .max_height = 18.0F},
-                      ClipChildren()),
-            Stack{Image(app::images::x)
-                      .Tint(colors::tertiary)
-                      .With(Frame{.width = 12.0F, .height = 12.0F})}
-                .OnClick([selected_attachments, path = attachment.Path(),
-                          source = attachment.Source()] {
-                  selected_attachments.Update(
-                      [&](std::vector<domain::InputAttachment> &current) {
-                        std::erase_if(current, [&](const auto &candidate) {
-                          return candidate.Matches(path, source);
-                        });
-                      });
-                })
-                .With(Frame{.width = 18.0F, .height = 18.0F},
-                      Align(HorizontalAlignment::Center,
-                            VerticalAlignment::Center),
-                      Focusable(), PointerCursor(PointerCursorKind::Hand)),
-        }
-            .With(Frame{.height = 34.0F},
-                  Padding(EdgeInsets{.right = 8.0F, .left = 12.0F}),
-                  Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center),
-                  Background(colors::input), Border(colors::border, 1.0F),
-                  CornerRadius(17.0F))
-            .Key(attachment.Source() + ":" + attachment.Path()));
-  }
-
-  View attachment_row = Stack{}.With(Frame{.height = 0.0F});
-  if (!attachment_chips.empty()) {
-    attachment_row =
-        ScrollView(Row(std::move(attachment_chips)).With(Spacing(8.0F)))
-            .ScrollAxis(Axis::Horizontal)
-            .With(Frame{.height = 42.0F}, Padding(EdgeInsets{.bottom = 8.0F}));
-  }
-
-  return Column{
-      std::move(attachment_row),
-      Column{
-          QuotePreview(quote_text),
-          PendingMessages(pending_messages, revision),
-          Row{
-              ComposerAction(ComposerActionVisual{
-                                 .icon = app::images::plus,
-                                 .tint = colors::secondary,
-                                 .background = Color::Transparent(),
-                                 .icon_size = 20.0F,
-                                 .opacity = generating ? 0.62F : 1.0F,
-                             },
-                             !generating,
-                             app::strings::composer_image_button_desc,
-                             std::move(show_attachment_picker)),
-              TextField(draft)
-                  .Placeholder(has_selected_model.value_or(true)
-                                   ? app::strings::composer_hint_default
-                                   : app::strings::composer_hint_no_model)
-                  .Variant(TextFieldVariant::Standard)
-                  .LineLimits(TextFieldLineLimits::MultiLine(1, 3))
-                  .InputConfiguration(TextInputConfiguration{
-                      .action = input_settings.enter_key ==
-                                        domain::EnterKeyBehavior::send
-                                    ? TextInputAction::Send
-                                    : TextInputAction::Newline,
-                      .multiline = true,
-                  })
-                  .VerticalAlign(TextVerticalAlign::Center)
-                  .OnChanged(
-                      [draft, slash_presenter](const TextEditingValue &value) {
-                        draft = value;
-                        (*slash_presenter)(value.text);
-                      })
-                  .OnSubmitted(send)
-                  .With(Frame{.min_height = 44.0F}, Grow(),
-                        slash_popup.Anchor()),
-              ComposerAction(ComposerActionVisual{
-                                 .icon = primary_action.icon,
-                                 .tint = can_send ? colors::text_on_color
-                                                  : colors::secondary,
-                                 .background = can_send
-                                                   ? colors::accent
-                                                   : Color::Transparent(),
-                                 .icon_size = primary_action.icon_size,
-                             },
-                             can_send, primary_action.label, send),
-          } // Match the legacy 148px composer body at the 420dpi reference
-            // density. A 56dp minimum rasterizes two pixels short here and
-            // makes both the editor text and circular actions look low.
-              .With(Frame{.min_height = 56.76F},
-                    Padding(EdgeInsets::Symmetric(8.0F, 6.0F)),
-                    CrossAlign(CrossAxisAlignment::End)),
-      }
-          .With(Frame{.min_height = 56.76F},
-                CrossAlign(CrossAxisAlignment::Stretch),
-                Background(colors::input), CornerRadius(20.0F)),
-  }
-      .With(Padding(EdgeInsets{
-                .top = 14.0F, .right = 20.0F, .bottom = 20.0F, .left = 20.0F}),
-            Background(colors::background));
-}
-
-View GenerationError(const application::GenerationController &generation,
-                     std::size_t revision, const std::string &failed_label) {
-  static_cast<void>(revision);
-  if (generation.State().phase != application::GenerationPhase::failed ||
-      generation.State().error.empty()) {
-    return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
-  }
-  return Text(FormatModelFailed(failed_label, generation.State().error))
-      .Style(ChatTextStyle(12.0F, FontWeight::Regular, colors::danger))
-      .With(Padding(EdgeInsets{
-          .top = 4.0F, .right = 20.0F, .bottom = 0.0F, .left = 20.0F}));
-}
-
 } // namespace
 
-[[huxerui::composable]] View ChatScreen(
-    std::function<void()> open_drawer, State<TextEditingValue> draft,
-    const std::shared_ptr<application::ChatSession> &session,
-    const std::shared_ptr<application::GenerationController> &generation,
-    const std::shared_ptr<application::ModelStore> &model_store,
-    const std::shared_ptr<application::McpCompletionLoop> &completion_loop,
-    const std::shared_ptr<application::StoragePermissionService>
-        &storage_permission,
-    std::optional<bool> has_selected_model, State<TaskHandle> active_generation,
-    State<std::size_t> revision,
-    const std::shared_ptr<application::PendingMessageQueue> &pending_messages,
-    State<DrawerModel> workspace,
-    const std::shared_ptr<application::MemoryContextService> &memory_context,
-    const std::shared_ptr<application::AiBehaviorSettingsRepository>
-        &behavior_settings,
-    const std::shared_ptr<application::TodoStateStore> &todo_state,
-    const std::shared_ptr<application::SkillRepository> &skills,
-    const std::shared_ptr<application::McpExecutionSettingsService>
-        &execution_settings,
-    const std::shared_ptr<application::ContextCompactionService>
-        &compaction_service,
-    const std::shared_ptr<application::DiffStore> &diff_store,
-    const std::shared_ptr<application::DiffReviewService> &diff_review,
-    const std::shared_ptr<application::OutputSettingsService> &output_settings,
-    const std::shared_ptr<application::ToolPermissionService> &tool_permissions,
-    const std::shared_ptr<application::ToolReviewBroker> &tool_reviews,
-    const std::shared_ptr<application::ChatModeService> &chat_modes,
-    State<application::ChatInteractionModeState> interaction_mode,
-    domain::InputSettings input_settings, std::string current_project_id,
-    application::PromptAssemblyContext prompt_context,
-    std::string project_label, std::function<void()> show_project_picker,
-    std::function<void()> refresh_workspace) {
+[[huxerui::composable]] View ChatScreen(ChatScreenServices services,
+                                        ChatScreenState state,
+                                        ChatScreenActions actions) {
+  const auto &session = services.session;
+  const auto &generation = services.generation;
+  const auto &model_store = services.model_store;
+  const auto &completion_loop = services.completion_loop;
+  const auto &agent_results = services.agent_results;
+  const auto &storage_permission = services.storage_permission;
+  const auto &pending_messages = services.pending_messages;
+  const auto &memory_context = services.memory_context;
+  const auto &behavior_settings = services.behavior_settings;
+  const auto &todo_state = services.todo_state;
+  const auto &skills = services.skills;
+  const auto &execution_settings = services.execution_settings;
+  const auto &compaction_service = services.compaction_service;
+  const auto &diff_store = services.diff_store;
+  const auto &diff_review = services.diff_review;
+  const auto &output_settings = services.output_settings;
+  const auto &tool_permissions = services.tool_permissions;
+  const auto &tool_reviews = services.tool_reviews;
+  const auto &chat_modes = services.chat_modes;
+  auto draft = state.draft;
+  const auto has_selected_model = state.has_selected_model;
+  auto active_generation = state.active_generation;
+  auto revision = state.revision;
+  auto workspace = state.workspace;
+  auto interaction_mode = state.interaction_mode;
+  auto input_settings = state.input_settings;
+  auto current_project_id = std::move(state.current_project_id);
+  auto prompt_context = std::move(state.prompt_context);
+  auto project_label = std::move(state.project_label);
+  auto open_drawer = std::move(actions.open_drawer);
+  auto show_project_picker = std::move(actions.show_project_picker);
+  auto refresh_workspace = std::move(actions.refresh_workspace);
   const auto navigation = UseNavigation<domain::AppRoute>();
   const auto bottom_sheets = UseBottomSheet();
   const auto dialogs = UseDialog();
@@ -3336,6 +729,7 @@ View GenerationError(const application::GenerationController &generation,
   const auto share_text = UseService<application::ShareTextService>();
   const auto external_link = UseService<application::ExternalLinkService>();
   const auto export_service = UseService<application::ChatExportService>();
+  const auto image_picker = UseService<FilePicker>();
   auto compaction_busy = UseState(std::make_shared<std::atomic<bool>>(false));
   auto attachment_visible = UseState(false);
   auto more_visible = UseState(false);
@@ -3348,8 +742,11 @@ View GenerationError(const application::GenerationController &generation,
   auto permission_state = UseState(application::ToolPermissionState{});
   auto external_storage_granted = UseState(false);
   auto selected_attachments = UseState(std::vector<domain::InputAttachment>{});
+  auto selected_image = UseState(std::optional<ComposerImageSelection>{});
   auto expanded_attachment_directories = UseState(std::vector<std::string>{});
-  auto pending_review = UseState(std::make_shared<PendingToolReview>());
+  auto review_coordinator =
+      UseState(std::make_shared<application::ToolReviewCoordinator>(
+          [revision] { revision += 1; }));
   auto quote_text = UseState(std::optional<std::string>{});
   auto action_message = UseState(std::optional<std::uint64_t>{});
   auto multi_select = UseState(false);
@@ -3358,9 +755,25 @@ View GenerationError(const application::GenerationController &generation,
   auto slash_selected_model_id = UseState(std::string{});
   auto timeline_settings = UseState(ChatTimelineSettings{});
   auto toggled_timeline = UseState(std::vector<std::string>{});
+  auto timeline_clock = UseState(NowMilliseconds());
   const auto conversation_scroll = UseScrollController();
   auto scroll_to_bottom_request = UseState(std::uint64_t{0});
   const auto tasks = UseTaskScope();
+  const auto generation_phase = generation->State().phase;
+  Lifecycle(
+      [tasks, generation, timeline_clock, generation_phase] {
+        if (generation_phase != application::GenerationPhase::running)
+          return;
+        tasks.Launch([generation, timeline_clock]() -> Task<void> {
+          while (generation->State().phase ==
+                 application::GenerationPhase::running) {
+            timeline_clock = NowMilliseconds();
+            co_await Delay(std::chrono::seconds{1});
+          }
+        });
+      },
+      generation_phase);
+  (void)timeline_clock.Get();
   // Diff bodies live in the store, not in the transcript. `Lifecycle` runs
   // outside composition (the task scope forbids launching during composition)
   // and re-runs whenever `revision` moves on, which is also when a new tool
@@ -3368,34 +781,38 @@ View GenerationError(const application::GenerationController &generation,
   auto diff_cache = UseState(std::make_shared<DiffCache>());
   const auto diff_pending =
       UseState(std::make_shared<std::set<std::string>>()).Get();
-  Lifecycle([tasks, session, revision, diff_store, diff_cache, diff_pending] {
-    if (!diff_store)
-      return;
-    std::vector<std::string> wanted;
-    for (const auto &message : session->Messages()) {
-      for (const auto &event : message.timeline) {
-        const auto *tool = std::get_if<domain::AssistantToolEvent>(&event);
-        if (tool == nullptr || !tool->result.has_value())
-          continue;
-        const auto &id = tool->result->diff_id;
-        if (id.empty() || diff_cache.Get()->contains(id) ||
-            diff_pending->contains(id))
-          continue;
-        diff_pending->insert(id);
-        wanted.push_back(id);
-      }
-    }
-    if (wanted.empty())
-      return;
-    tasks.Launch(
-        LoadDiffs(diff_store, diff_cache, diff_pending, std::move(wanted)));
-  });
+  Lifecycle(
+      [tasks, session, revision, diff_store, diff_cache, diff_pending] {
+        if (!diff_store)
+          return;
+        std::vector<std::string> wanted;
+        for (const auto &message : session->Messages()) {
+          for (const auto &event : message.timeline) {
+            const auto *tool = std::get_if<domain::AssistantToolEvent>(&event);
+            if (tool == nullptr || !tool->result.has_value())
+              continue;
+            const auto &id = tool->result->diff_id;
+            if (id.empty() || diff_cache.Get()->contains(id) ||
+                diff_pending->contains(id))
+              continue;
+            diff_pending->insert(id);
+            wanted.push_back(id);
+          }
+        }
+        if (wanted.empty())
+          return;
+        tasks.Launch(
+            LoadDiffs(diff_store, diff_cache, diff_pending, std::move(wanted)));
+      },
+      revision);
 
   // Same loader, driven by the card's expand event.
   auto request_diff = [tasks, diff_store, diff_cache,
                        diff_pending](std::string diff_id) {
-    if (!diff_store || diff_id.empty() || diff_cache.Get()->contains(diff_id) ||
-        diff_pending->contains(diff_id))
+    if (!diff_store || diff_id.empty() || diff_pending->contains(diff_id))
+      return;
+    const auto cached = diff_cache.Get()->find(diff_id);
+    if (cached != diff_cache.Get()->end() && cached->second.available)
       return;
     diff_pending->insert(diff_id);
     tasks.Launch(LoadDiffs(diff_store, diff_cache, diff_pending,
@@ -3422,30 +839,13 @@ View GenerationError(const application::GenerationController &generation,
   auto auto_compaction = UseState(std::make_shared<AutoCompactionUiState>());
   const auto toast = UseToast();
 
-  Lifecycle([reviews = tool_reviews, pending_review = pending_review.Get(),
-             revision] {
-    if (reviews) {
-      reviews->SetHandler(
-          [pending_review,
-           revision](application::CompletionObserver::ToolReviewRequest request)
-              -> Task<application::CompletionObserver::ToolReviewDecision> {
-            pending_review->request = std::move(request);
-            pending_review->decision.reset();
-            pending_review->submitted = false;
-            revision += 1;
-            while (!pending_review->decision.has_value())
-              co_await Delay(std::chrono::milliseconds{20});
-            const auto decision = *pending_review->decision;
-            pending_review->request.reset();
-            pending_review->decision.reset();
-            pending_review->submitted = false;
-            revision += 1;
-            co_return decision;
-          });
-    }
-    return [reviews] {
+  Lifecycle([reviews = tool_reviews, coordinator = review_coordinator.Get()] {
+    if (reviews)
+      reviews->SetHandler(coordinator->ReviewHandler());
+    return [reviews, coordinator] {
+      coordinator->Close();
       if (reviews)
-        reviews->SetHandler(nullptr);
+        reviews->SetHandler({});
     };
   });
   Lifecycle([tasks, tool_permissions, permission_state, toast] {
@@ -3872,6 +1272,50 @@ View GenerationError(const application::GenerationController &generation,
     });
   };
 
+  auto show_image_picker = [image_picker, tasks, selected_image, generation,
+                            toast] {
+    if (generation->State().phase == application::GenerationPhase::running)
+      return;
+    if (!image_picker || !image_picker->CanOpenFiles()) {
+      toast.Show(app::strings::composer_image_picker_unavailable);
+      return;
+    }
+    tasks.Launch([image_picker, selected_image, toast]() -> Task<void> {
+      auto selected = co_await image_picker->OpenFileAsync(FilePickerFilter{
+          .name = "Image",
+          .extensions = {"png", "jpg", "jpeg"},
+          .content_types = {"image/png", "image/jpeg"},
+      });
+      if (!selected)
+        co_return;
+      if (selected->Size().value_or(0U) >
+          application::max_composer_image_input_bytes) {
+        toast.Show(app::strings::composer_image_load_failed);
+        co_return;
+      }
+      toast.Show(app::strings::composer_image_loading);
+      auto bytes = co_await selected->ReadBytesAsync();
+      if (!bytes.Succeeded()) {
+        toast.Show(app::strings::composer_image_load_failed);
+        co_return;
+      }
+      Bytes owned = std::move(bytes).Value();
+      auto message = application::EncodeComposerImage(selected->Name(), owned);
+      if (!message) {
+        toast.Show(app::strings::composer_image_load_failed);
+        co_return;
+      }
+      try {
+        selected_image = ComposerImageSelection{
+            .message = std::move(*message),
+            .preview = ImageAsset::FromEncoded(std::move(owned)),
+        };
+      } catch (const std::invalid_argument &) {
+        toast.Show(app::strings::composer_image_load_failed);
+      }
+    });
+  };
+
   const MessageActionCallbacks message_actions{
       .copy =
           [clipboard, toast](const domain::ChatMessage &message) {
@@ -3912,8 +1356,9 @@ View GenerationError(const application::GenerationController &generation,
             action_message = std::nullopt;
           },
       .recall =
-          [session, generation, draft, selected_attachments, quote_text,
-           action_message, revision](const domain::ChatMessage &message) {
+          [session, generation, draft, selected_attachments, selected_image,
+           quote_text, action_message,
+           revision](const domain::ChatMessage &message) {
             if (generation->State().phase ==
                 application::GenerationPhase::running) {
               return;
@@ -3923,6 +1368,7 @@ View GenerationError(const application::GenerationController &generation,
               return;
             draft = TextEditingValue::FromText(recalled->content);
             selected_attachments = recalled->attachments;
+            selected_image = std::nullopt;
             quote_text = std::nullopt;
             action_message = std::nullopt;
             revision += 1;
@@ -3959,51 +1405,75 @@ View GenerationError(const application::GenerationController &generation,
   };
 
   View composer_or_review;
-  if (generation->State().phase == application::GenerationPhase::running &&
-      pending_review.Get()->request) {
-    const auto &request = *pending_review.Get()->request;
+  const auto pending_review = review_coordinator.Get()->Current();
+  if (pending_review) {
+    const auto &request = pending_review->request;
     composer_or_review = ToolApprovalView(
         ToolApprovalViewState{
             .tool_call_id = request.call.id,
             .tool_name = request.call.name,
             .arguments = request.call.arguments_json,
             .can_allow_permanently = request.can_allow_always,
-            .submitted = pending_review.Get()->submitted,
+            .submitted = pending_review->submitted,
         },
         ToolApprovalCallbacks{
             .on_reject =
-                [pending = pending_review.Get(), revision](std::string id) {
-                  ResolveToolReview(pending, id,
-                                    application::CompletionObserver::
-                                        ToolReviewDecision::reject,
-                                    revision);
+                [coordinator = review_coordinator.Get()](std::string id) {
+                  coordinator->Resolve(id, application::CompletionObserver::
+                                               ToolReviewDecision::reject);
                 },
             .on_allow_once =
-                [pending = pending_review.Get(), revision](std::string id) {
-                  ResolveToolReview(pending, id,
-                                    application::CompletionObserver::
-                                        ToolReviewDecision::allow_once,
-                                    revision);
+                [coordinator = review_coordinator.Get()](std::string id) {
+                  coordinator->Resolve(id, application::CompletionObserver::
+                                               ToolReviewDecision::allow_once);
                 },
             .on_allow_always =
-                [pending = pending_review.Get(), revision](std::string id) {
-                  ResolveToolReview(pending, id,
-                                    application::CompletionObserver::
-                                        ToolReviewDecision::allow_always,
-                                    revision);
+                [coordinator = review_coordinator.Get()](std::string id) {
+                  coordinator->Resolve(id,
+                                       application::CompletionObserver::
+                                           ToolReviewDecision::allow_always);
                 },
         });
   } else {
-    composer_or_review =
-        Composer(draft, session, generation, model_store, completion_loop,
-                 has_selected_model, tasks, active_generation, revision,
-                 selected_attachments, show_attachments, memory_context,
-                 behavior_settings, todo_state, skills, pending_review.Get(),
-                 pending_messages, quote_text, handle_slash_command,
-                 interaction_mode->chat_mode, slash_models,
-                 slash_selected_model_id, input_settings, current_project_id,
-                 std::move(prompt_context), permission_state->mode, toast,
-                 compaction_service, auto_compaction.Get(), retry_labels);
+    composer_or_review = Composer(
+        chat_composer::Services{
+            .session = session,
+            .generation = generation,
+            .model_store = model_store,
+            .completion_loop = completion_loop,
+            .memory_context = memory_context,
+            .behavior_settings = behavior_settings,
+            .todo_state = todo_state,
+            .skills = skills,
+            .tool_reviews = review_coordinator.Get(),
+            .pending_messages = pending_messages,
+            .compaction = compaction_service,
+        },
+        chat_composer::ViewState{
+            .draft = draft,
+            .has_selected_model = has_selected_model,
+            .tasks = tasks,
+            .active_generation = active_generation,
+            .revision = revision,
+            .attachments = selected_attachments,
+            .image = selected_image,
+            .quote = quote_text,
+            .chat_mode = interaction_mode->chat_mode,
+            .slash_models = slash_models,
+            .selected_model_id = slash_selected_model_id,
+            .input_settings = input_settings,
+            .current_project_id = current_project_id,
+            .prompt_context = std::move(prompt_context),
+            .permission_mode = permission_state->mode,
+            .toast = toast,
+            .auto_compaction = auto_compaction.Get(),
+            .retry_labels = retry_labels,
+        },
+        chat_composer::Actions{
+            .show_attachment_picker = show_attachments,
+            .show_image_picker = show_image_picker,
+            .handle_slash_command = handle_slash_command,
+        });
   }
 
   const TutorialMarkdownLinkHandler open_markdown_link =
@@ -4041,16 +1511,21 @@ View GenerationError(const application::GenerationController &generation,
   // The write card asks for a decision by identifier; accepting only records
   // the state while rejecting also restores the previous file contents.
   auto review_change = [diff_review, diff_store, tasks, revision, diff_cache,
-                        diff_pending](std::string tool_call_id,
-                                      std::string diff_id, std::string state) {
+                        diff_pending,
+                        toast](std::string tool_call_id, std::string diff_id,
+                               std::string state) {
     if (!diff_review || tool_call_id.empty())
       return;
     tasks.Launch([diff_review, diff_store,
                   tool_call_id = std::move(tool_call_id),
                   diff_id = std::move(diff_id), state = std::move(state),
-                  revision, diff_cache, diff_pending]() -> Task<void> {
-      co_await diff_review->Review(std::move(tool_call_id), std::move(state),
-                                   std::move(diff_id));
+                  revision, diff_cache, diff_pending, toast]() -> Task<void> {
+      auto reviewed = co_await diff_review->Review(std::move(tool_call_id),
+                                                   std::move(state), diff_id);
+      if (!reviewed) {
+        toast.Show(reviewed.error().message);
+        co_return;
+      }
       // Re-read the record so the card shows the decision that was just made
       // instead of the transcript's stale copy.
       if (diff_store && !diff_id.empty()) {
@@ -4072,25 +1547,22 @@ View GenerationError(const application::GenerationController &generation,
   };
   auto show_context_usage = [context_usage_sheet, context_snapshot,
                              context_usage_labels] {
-    context_usage_sheet.Show([snapshot = context_snapshot,
-                              labels = context_usage_labels](
-                                 bool visible,
-                                 std::function<void()> dismiss) -> View {
-      if (!visible)
-        return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
-      return ChatSheetPanel(Column{
-          Stack{}.With(Frame{.width = 36.0F, .height = 4.0F},
-                       Background(colors::tertiary), CornerRadius(2.0F)),
-          ContextUsageSheet(snapshot, labels),
-      }
-                                .With(Padding(EdgeInsets{.top = 22.0F,
-                                                         .right = 24.0F,
-                                                         .bottom = 24.0F,
-                                                         .left = 24.0F}),
-                                      CrossAlign(CrossAxisAlignment::Stretch),
-                                      Background(colors::background),
-                                      CornerRadius(24.0F)));
-    });
+    context_usage_sheet.Show(
+        [snapshot = context_snapshot, labels = context_usage_labels](
+            bool visible, std::function<void()> dismiss) -> View {
+          if (!visible)
+            return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
+          return ChatSheetPanel(
+              Column{
+                  ContextUsageSheet(snapshot, labels),
+              }
+                  .With(Padding(EdgeInsets{.top = 22.0F,
+                                           .right = 24.0F,
+                                           .bottom = 24.0F,
+                                           .left = 24.0F}),
+                        CrossAlign(CrossAxisAlignment::Stretch),
+                        Background(colors::background), CornerRadius(24.0F)));
+        });
   };
 
   return Column{
@@ -4104,11 +1576,12 @@ View GenerationError(const application::GenerationController &generation,
                    open_markdown_link, copy_code,
                    ToolRendererContext{.diff_cache = diff_cache.Get(),
                                        .on_request_diff = request_diff,
-                                       .on_review = review_change},
+                                       .on_review = review_change,
+                                       .agent_results = agent_results,
+                                       .toggled_timeline = toggled_timeline},
                    auto_compaction.Get(), compaction_labels.progress,
                    conversation_scroll, scroll_to_bottom_request,
                    has_selected_model),
-      GenerationError(*generation, revision.Get(), retry_labels.failed),
       std::move(composer_or_review),
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch),

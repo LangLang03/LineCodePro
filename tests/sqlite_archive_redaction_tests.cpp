@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <chrono>
 #include <filesystem>
 #include <memory>
@@ -105,12 +105,12 @@ huxerui::View RedactionProbe() {
 }
 
 void AssertMissing(std::string_view output, std::string_view secret) {
-  assert(!output.contains(secret));
+  EXPECT_EXPRESSION(!output.contains(secret));
 }
 
 } // namespace
 
-int main() {
+TEST(sqlite_archive_redaction_tests, LegacySuite) {
   const auto nonce =
       std::chrono::steady_clock::now().time_since_epoch().count();
   const auto temporary = std::filesystem::temp_directory_path() /
@@ -134,18 +134,18 @@ int main() {
       ui.Pump(std::chrono::milliseconds{1});
       std::this_thread::sleep_for(std::chrono::milliseconds{1});
     }
-    assert(active_scenario->done);
+    EXPECT_EXPRESSION(active_scenario->done);
     if (!active_scenario->error.empty())
       throw std::runtime_error(active_scenario->error);
   }
 
   const auto &output = active_scenario->exported;
-  assert(output.contains("model-safe"));
-  assert(output.contains("ssh-safe.test"));
-  assert(output.contains("application/json"));
-  assert(output.contains("mcp-safe"));
-  assert(output.contains("conversation-safe"));
-  assert(output.contains("reasoning-safe"));
+  EXPECT_EXPRESSION(output.contains("model-safe"));
+  EXPECT_EXPRESSION(output.contains("ssh-safe.test"));
+  EXPECT_EXPRESSION(output.contains("application/json"));
+  EXPECT_EXPRESSION(output.contains("mcp-safe"));
+  EXPECT_EXPRESSION(output.contains("conversation-safe"));
+  EXPECT_EXPRESSION(output.contains("reasoning-safe"));
   AssertMissing(output, "model-api-secret");
   AssertMissing(output, "model-raw-secret");
   AssertMissing(output, "ssh-secret");

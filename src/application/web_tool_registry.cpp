@@ -59,9 +59,9 @@ struct WebToolContext final {
   WebToolsGateway *gateway{};
 };
 
-using WebToolExecutor = huxerui::Task<
-    std::expected<ToolInvocationResult, ToolRegistryError>> (*)(
-    WebToolContext context, std::string arguments_json);
+using WebToolExecutor =
+    huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>> (*)(
+        WebToolContext context, std::string arguments_json);
 
 // Declarative tool table: name, schema, read-only policy and executor live in
 // one row, and Invoke dispatches through FindPlan without any name-based
@@ -70,8 +70,9 @@ struct WebToolPlan final {
   std::string_view name;
   std::string_view description;
   std::string_view parameters_json;
+  ToolPresentation presentation;
   bool allowed_in_read_only;
-  bool permanent_grant_supported;
+  AgentToolCategory agent_category;
   WebToolExecutor execute;
 };
 
@@ -132,9 +133,8 @@ ParseWebFetchArguments(std::string_view text) {
   auto parsed = json::Parse(text);
   const auto *object = parsed ? json::AsObject(&*parsed) : nullptr;
   if (object == nullptr) {
-    return std::unexpected(
-        Error(ToolRegistryErrorCode::invalid_arguments,
-              "web_fetch arguments must be a JSON object"));
+    return std::unexpected(Error(ToolRegistryErrorCode::invalid_arguments,
+                                 "web_fetch arguments must be a JSON object"));
   }
   const auto *url = json::AsString(json::Find(*object, "url"));
   if (url == nullptr) {
@@ -173,9 +173,8 @@ ParseWebSearchArguments(std::string_view text) {
   auto parsed = json::Parse(text);
   const auto *object = parsed ? json::AsObject(&*parsed) : nullptr;
   if (object == nullptr) {
-    return std::unexpected(
-        Error(ToolRegistryErrorCode::invalid_arguments,
-              "web_search arguments must be a JSON object"));
+    return std::unexpected(Error(ToolRegistryErrorCode::invalid_arguments,
+                                 "web_search arguments must be a JSON object"));
   }
   const auto *query = json::AsString(json::Find(*object, "query"));
   if (query == nullptr) {
@@ -200,8 +199,9 @@ ParseWebSearchArguments(std::string_view text) {
 }
 
 // WebSearchTool.execute (WebSearchTool.java:93-108) result rendering.
-std::string FormatSearchResults(
-    std::string_view query, const std::vector<WebSearchResultItem> &results) {
+std::string
+FormatSearchResults(std::string_view query,
+                    const std::vector<WebSearchResultItem> &results) {
   if (results.empty()) {
     return "No web results found for \"" + std::string{query} + "\".";
   }
@@ -256,8 +256,8 @@ ExecuteWebSearch(WebToolContext context, std::string arguments_json) {
   }
   auto settings = co_await context.settings->Load();
   if (!settings) {
-    co_return std::unexpected(Error(ToolRegistryErrorCode::load_failed,
-                                    settings.error().message));
+    co_return std::unexpected(
+        Error(ToolRegistryErrorCode::load_failed, settings.error().message));
   }
   const auto query = arguments->query;
   auto results = co_await context.gateway->Search(WebSearchRequest{
@@ -271,25 +271,36 @@ ExecuteWebSearch(WebToolContext context, std::string arguments_json) {
       .content = FormatSearchResults(query, *results), .error = false};
 }
 
-constexpr std::array kWebToolPlans{
+const std::array kWebToolPlans{
     WebToolPlan{
         .name = kWebFetchToolName,
         .description = kWebFetchDescription,
         .parameters_json = kWebFetchParameters,
+        .presentation = {.english_name = "Read web page",
+                         .english_description =
+                             "Open a web page and extract its readable text.",
+                         .chinese_name = "读取网页",
+                         .chinese_description =
+                             "打开网页并提取其中可阅读的文本。"},
         // BaseTool.isAllowedInReadonlyMode() defaults to false and
         // WebFetchTool does not override it.
         .allowed_in_read_only = false,
-        .permanent_grant_supported = false,
+        .agent_category = AgentToolCategory::read,
         .execute = &ExecuteWebFetch,
     },
     WebToolPlan{
         .name = kWebSearchToolName,
         .description = kWebSearchDescription,
         .parameters_json = kWebSearchParameters,
+        .presentation = {.english_name = "Search the web",
+                         .english_description =
+                             "Search online sources for current information.",
+                         .chinese_name = "搜索网页",
+                         .chinese_description = "搜索在线来源以获取最新信息。"},
         // BaseTool.isAllowedInReadonlyMode() defaults to false and
         // WebSearchTool does not override it.
         .allowed_in_read_only = false,
-        .permanent_grant_supported = false,
+        .agent_category = AgentToolCategory::read,
         .execute = &ExecuteWebSearch,
     },
 };
@@ -300,11 +311,11 @@ const WebToolPlan *FindPlan(std::string_view name) noexcept {
 }
 
 bool WebToolGroupEnabled(const domain::McpExecutionSettings &settings) {
-  const auto found = std::ranges::find(
-      settings.groups, kWebToolGroupId,
-      [](const domain::McpToolGroupState &group) {
-        return std::string_view{group.id};
-      });
+  const auto found =
+      std::ranges::find(settings.groups, kWebToolGroupId,
+                        [](const domain::McpToolGroupState &group) {
+                          return std::string_view{group.id};
+                        });
   return found != settings.groups.end() && found->enabled &&
          domain::SupportsMcpExecutionMode(found->supported_modes,
                                           settings.mode);
@@ -328,8 +339,8 @@ huxerui::Task<std::expected<void, ToolRegistryError>>
 WebToolRegistry::Refresh() {
   auto settings = co_await settings_->Load();
   if (!settings) {
-    co_return std::unexpected(Error(ToolRegistryErrorCode::load_failed,
-                                    settings.error().message));
+    co_return std::unexpected(
+        Error(ToolRegistryErrorCode::load_failed, settings.error().message));
   }
   tools_.clear();
   if (WebToolGroupEnabled(*settings)) {
@@ -339,10 +350,11 @@ WebToolRegistry::Refresh() {
           .description = std::string{plan.description},
           .parameters_json = std::string{plan.parameters_json},
           .allowed_in_read_only = plan.allowed_in_read_only,
-          .permanent_grant_supported = plan.permanent_grant_supported,
+          .agent_category = plan.agent_category,
           .category = std::string{kWebToolGroupId},
           .agent_selectable = true,
           .agent_selected_by_default = false,
+          .presentation = plan.presentation,
       });
     }
   }
@@ -361,9 +373,9 @@ WebToolRegistry::Invoke(std::string name, std::string arguments_json) {
                                     "Unknown web tool: " + name));
   }
   if (std::ranges::find(tools_, name, &RegisteredTool::name) == tools_.end()) {
-    co_return std::unexpected(Error(
-        ToolRegistryErrorCode::unavailable,
-        "Web tools are disabled for the current execution mode"));
+    co_return std::unexpected(
+        Error(ToolRegistryErrorCode::unavailable,
+              "Web tools are disabled for the current execution mode"));
   }
   co_return co_await plan->execute(
       WebToolContext{.settings = tool_settings_.get(),

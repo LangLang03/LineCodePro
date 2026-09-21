@@ -96,7 +96,8 @@ View SwitchRow(ImageResource icon, StringResource title,
   }
       .OnClick(
           [checked, changed = std::move(row_changed)] { changed(!checked); })
-      .With(Spacing(12.0F), Padding(EdgeInsets::All(16.0F)),
+      .With(Frame{.min_height = 72.38F}, Spacing(12.0F),
+            Padding(EdgeInsets::All(16.0F)),
             CrossAlign(CrossAxisAlignment::Center), Focusable(),
             PointerCursor(PointerCursorKind::Hand));
 }

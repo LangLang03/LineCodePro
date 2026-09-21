@@ -7,6 +7,7 @@
 #include <huxerui/task.h>
 
 #include "domain/agent_pipeline.h"
+#include "domain/agent_run_progress.h"
 
 namespace linecode::application {
 
@@ -15,6 +16,7 @@ struct AgentRunResult final {
   std::string output;
   int tool_call_count{};
   bool error{};
+  domain::AgentProgressSnapshot progress{};
 };
 
 // Everything a sub-agent run needs that the tool registry does not own: the
@@ -40,6 +42,9 @@ struct AgentRunRequest final {
   std::vector<std::string> custom_tool_names{};
   std::vector<std::string> custom_mcp_ids{};
   // Tool call that requested this run, used to tie progress to the card.
+  // The current ToolRegistry::Invoke boundary carries no invocation context,
+  // so registry-dispatched runs leave this empty. Do not synthesize it; a
+  // future invocation-context port must provide the real parent id.
   std::string tool_call_id;
 };
 

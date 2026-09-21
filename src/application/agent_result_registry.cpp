@@ -12,6 +12,8 @@
 #include <string_view>
 #include <utility>
 
+#include "application/agent_run_progress_codec.h"
+#include "application/utf8_text.h"
 #include "infrastructure/archive_json.h"
 
 namespace linecode::application {
@@ -47,53 +49,6 @@ std::string Trim(std::string_view text) {
 }
 
 bool IsBlank(std::string_view text) { return Trim(text).empty(); }
-
-// UTF-16 code unit length, matching Java `String.length()`: a non-BMP code
-// point counts as two. Malformed input is clamped to the remaining bytes.
-std::size_t Utf16Length(std::string_view value) noexcept {
-  std::size_t units = 0;
-  std::size_t index = 0;
-  while (index < value.size()) {
-    const auto byte = static_cast<unsigned char>(value[index]);
-    std::size_t width = 1;
-    if ((byte & 0xE0U) == 0xC0U)
-      width = 2;
-    else if ((byte & 0xF0U) == 0xE0U)
-      width = 3;
-    else if ((byte & 0xF8U) == 0xF0U)
-      width = 4;
-    width = std::min(width, value.size() - index);
-    units += width == 4U ? 2U : 1U;
-    index += width;
-  }
-  return units;
-}
-
-// Byte offset after at most `units` UTF-16 code units, never splitting a code
-// point. Legacy `substring(0, 240)` could cut a surrogate pair in half; that
-// cannot be represented in UTF-8, so the whole code point is dropped instead.
-std::size_t Utf16PrefixBytes(std::string_view value,
-                             std::size_t units) noexcept {
-  std::size_t index = 0;
-  std::size_t used = 0;
-  while (index < value.size()) {
-    const auto byte = static_cast<unsigned char>(value[index]);
-    std::size_t width = 1;
-    if ((byte & 0xE0U) == 0xC0U)
-      width = 2;
-    else if ((byte & 0xF0U) == 0xE0U)
-      width = 3;
-    else if ((byte & 0xF8U) == 0xF0U)
-      width = 4;
-    width = std::min(width, value.size() - index);
-    const std::size_t cost = width == 4U ? 2U : 1U;
-    if (used + cost > units)
-      break;
-    used += cost;
-    index += width;
-  }
-  return index;
-}
 
 std::string Base36(std::uint64_t value) {
   constexpr std::string_view kDigits = "0123456789abcdefghijklmnopqrstuvwxyz";
@@ -146,8 +101,7 @@ std::string JsonString(const json::Object &object, std::string_view key,
   return OptString(value);
 }
 
-bool JsonBool(const json::Object &object, std::string_view key,
-              bool fallback) {
+bool JsonBool(const json::Object &object, std::string_view key, bool fallback) {
   const auto *value = json::Find(object, key);
   if (value == nullptr)
     return fallback;
@@ -190,9 +144,10 @@ std::string ClampAgentPreview(std::string_view value) {
   if (value.empty())
     return {};
   const auto trimmed = Trim(value);
-  if (Utf16Length(trimmed) <= kAgentPreviewMaxChars)
+  if (utf8::Utf16CodeUnitLength(trimmed) <= kAgentPreviewMaxChars)
     return trimmed;
-  return trimmed.substr(0U, Utf16PrefixBytes(trimmed, kAgentPreviewMaxChars));
+  return trimmed.substr(
+      0U, utf8::PrefixBytesForUtf16Units(trimmed, kAgentPreviewMaxChars));
 }
 
 std::string AgentPreviewFrom(std::string_view full_output) {
@@ -201,14 +156,12 @@ std::string AgentPreviewFrom(std::string_view full_output) {
   return ClampAgentPreview(full_output);
 }
 
-AgentResultRecord
-CreateAgentResultRecord(std::string agent_id, std::string tool_call_id,
-                        std::string tool_name, std::string status,
-                        std::string type, std::string description,
-                        std::string preview, std::string full_output,
-                        std::string thinking, std::string progress_json,
-                        int tool_call_count, bool error, bool async,
-                        int generation_id, std::int64_t updated_at_ms) {
+AgentResultRecord CreateAgentResultRecord(
+    std::string agent_id, std::string tool_call_id, std::string tool_name,
+    std::string status, std::string type, std::string description,
+    std::string preview, std::string full_output, std::string thinking,
+    std::string progress_json, int tool_call_count, bool error, bool async,
+    int generation_id, std::int64_t updated_at_ms) {
   return AgentResultRecord{
       .agent_id = std::move(agent_id),
       .tool_call_id = std::move(tool_call_id),
@@ -229,12 +182,9 @@ CreateAgentResultRecord(std::string agent_id, std::string tool_call_id,
   };
 }
 
-AgentResultRecord AgentResultRecord::Running(std::string agent_id,
-                                             std::string tool_call_id,
-                                             std::string tool_name,
-                                             std::string type,
-                                             std::string description,
-                                             bool async, int generation_id) {
+AgentResultRecord AgentResultRecord::Running(
+    std::string agent_id, std::string tool_call_id, std::string tool_name,
+    std::string type, std::string description, bool async, int generation_id) {
   return CreateAgentResultRecord(
       std::move(agent_id), std::move(tool_call_id), std::move(tool_name),
       "running", std::move(type), std::move(description), "", "", "", "", 0,
@@ -249,14 +199,14 @@ AgentResultRecord::WithPreview(std::string next_preview) const {
       tool_call_count, error, async, generation_id, AgentResultNowMillis());
 }
 
-AgentResultRecord AgentResultRecord::WithStatus(std::string next_status,
-                                                bool next_error,
-                                                std::string next_preview) const {
-  return CreateAgentResultRecord(
-      agent_id, tool_call_id, tool_name, std::move(next_status), type,
-      description, std::move(next_preview), full_output, thinking, progress_json,
-      tool_call_count, next_error, async, generation_id,
-      AgentResultNowMillis());
+AgentResultRecord
+AgentResultRecord::WithStatus(std::string next_status, bool next_error,
+                              std::string next_preview) const {
+  return CreateAgentResultRecord(agent_id, tool_call_id, tool_name,
+                                 std::move(next_status), type, description,
+                                 std::move(next_preview), full_output, thinking,
+                                 progress_json, tool_call_count, next_error,
+                                 async, generation_id, AgentResultNowMillis());
 }
 
 AgentResultRecord AgentResultRecord::WithFullOutput(
@@ -321,6 +271,28 @@ AgentResultRegistry::GetRecord(std::string_view agent_id) const {
                                  : std::optional<AgentResultRecord>{*found};
 }
 
+std::optional<AgentResultView>
+AgentResultRegistry::Read(const std::string_view agent_id) const {
+  const auto record = GetRecord(agent_id);
+  if (!record)
+    return std::nullopt;
+  auto progress = ParseAgentProgress(record->progress_json);
+  return AgentResultView{
+      .agent_id = record->agent_id,
+      .status = record->status,
+      .type = record->type,
+      .description = record->description,
+      .preview = record->preview,
+      .full_output = record->full_output,
+      .thinking = record->thinking,
+      .tool_call_count = record->tool_call_count,
+      .error = record->error,
+      .async = record->async,
+      .progress =
+          progress ? std::move(*progress) : domain::AgentProgressSnapshot{},
+  };
+}
+
 bool AgentResultRegistry::Contains(std::string_view agent_id) const {
   return GetRecord(agent_id).has_value();
 }
@@ -350,17 +322,19 @@ void AgentResultRegistry::UpdateStatus(std::string_view agent_id,
   *found = found->WithStatus(std::move(status), error, std::move(preview));
 }
 
-void AgentResultRegistry::UpdateFullOutput(
-    std::string_view agent_id, std::string full_output, std::string thinking,
-    std::string progress_json, int tool_call_count, bool error) {
+void AgentResultRegistry::UpdateFullOutput(std::string_view agent_id,
+                                           std::string full_output,
+                                           std::string thinking,
+                                           std::string progress_json,
+                                           int tool_call_count, bool error) {
   const std::scoped_lock guard{lock_};
   const auto found =
       std::ranges::find(records_, agent_id, &AgentResultRecord::agent_id);
   if (found == records_.end())
     return;
-  *found = found->WithFullOutput(std::move(full_output), std::move(thinking),
-                                 std::move(progress_json), tool_call_count,
-                                 error);
+  *found =
+      found->WithFullOutput(std::move(full_output), std::move(thinking),
+                            std::move(progress_json), tool_call_count, error);
 }
 
 void AgentResultRegistry::ClearGeneration(int generation_id) {
@@ -384,8 +358,8 @@ AgentResultRegistry::ToCompactJson(const AgentResultRecord &record) {
   object.emplace("type", json::Value{record.type});
   object.emplace("description", json::Value{record.description});
   object.emplace("preview", json::Value{record.preview});
-  object.emplace("tool_call_count",
-                 json::Value{static_cast<std::int64_t>(record.tool_call_count)});
+  object.emplace("tool_call_count", json::Value{static_cast<std::int64_t>(
+                                        record.tool_call_count)});
   object.emplace("error", json::Value{record.error});
   object.emplace("async", json::Value{record.async});
   // Legacy only emits the originating tool call id when it has one.
@@ -425,14 +399,20 @@ std::string AgentResultRegistry::MetaJson(const AgentResultRecord &record) {
   object.emplace("preview", json::Value{record.preview});
   object.emplace("error", json::Value{record.error});
   object.emplace("async", json::Value{record.async});
-  object.emplace("tool_call_count",
-                 json::Value{static_cast<std::int64_t>(record.tool_call_count)});
+  object.emplace("tool_call_count", json::Value{static_cast<std::int64_t>(
+                                        record.tool_call_count)});
+  if (!record.thinking.empty())
+    object.emplace("thinking", json::Value{record.thinking});
+  if (!record.progress_json.empty()) {
+    auto progress = json::Parse(record.progress_json);
+    object.emplace("progress", progress ? std::move(*progress)
+                                        : json::Value{record.progress_json});
+  }
   return json::Serialize(json::Value{std::move(object)});
 }
 
-std::string
-AgentResultRegistry::RunningJson(const AgentResultRecord &record,
-                                 std::string_view message) {
+std::string AgentResultRegistry::RunningJson(const AgentResultRecord &record,
+                                             std::string_view message) {
   json::Object object;
   object.emplace("agent_id", json::Value{record.agent_id});
   object.emplace("status", json::Value{record.status});
@@ -487,6 +467,15 @@ AgentOutputResult AgentResultRegistry::Fetch(std::string_view agent_id,
                      : std::move(body),
       .error = false,
   };
+}
+
+std::optional<AgentResultView>
+ResolveAgentResultReference(const std::string_view compact_ref,
+                            const AgentResultReader &reader) {
+  const auto reference = AgentResultRegistry::ParseCompact(compact_ref);
+  if (!reference)
+    return std::nullopt;
+  return reader.Read(reference->agent_id);
 }
 
 } // namespace linecode::application

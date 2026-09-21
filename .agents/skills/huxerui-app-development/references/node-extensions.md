@@ -41,11 +41,11 @@ Use the [mounted coordinate APIs](layout-and-ui.md#mounted-coordinate-spaces) fo
 
 - ordinary visual state: `Indication`, animation modifiers, or theme style;
 - semantic output: typed event;
-- measurement: custom `Layout` or `VirtualLayout`;
+- measurement: a built-in layout first, then custom `Layout` or `VirtualLayout` only for new geometry;
 - mount/unmount work: `Lifecycle`;
 - asynchronous work: `TaskScope`;
-- non-visual platform service: `PlatformModule`;
-- embedded platform control: `PlatformView`.
+- non-visual platform service: an existing root service first, otherwise `PlatformModule`;
+- embedded platform control: an existing component first, otherwise `PlatformView`.
 
 Continue with a `NodeExtension` only when none of these mechanisms owns the required mounted behavior.
 

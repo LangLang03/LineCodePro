@@ -2030,12 +2030,12 @@ ExtensionsScreen(bool terminal_provider_available) {
   return Column{
       LegacySettingsPageHeader(app::strings::screen_extensions_title,
                                [navigation] { navigation.Pop(); }),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(Column(std::move(cards))
                      .With(Spacing(8.0F),
                            Padding(EdgeInsets{.top = 16.0F,
                                               .right = 16.0F,
-                                              .bottom = 100.0F,
+                                              .bottom = 108.0F,
                                               .left = 16.0F}),
                            CrossAlign(CrossAxisAlignment::Stretch)))
           .ScrollAxis(Axis::Vertical)
@@ -2119,7 +2119,7 @@ ExtensionDetailScreen(domain::ExtensionKind kind,
       Column{
           DetailHeader(presentation, state, sheets, skill_draft, tasks, dialogs,
                        picker, services, navigation, toast),
-          Divider(),
+          LegacyScreenHeaderDivider(),
           ScrollView(Column(std::move(content))
                          .With(CrossAlign(CrossAxisAlignment::Stretch)))
               .ScrollAxis(Axis::Vertical)
@@ -2213,8 +2213,8 @@ AgentExtensionEditorScreen(std::optional<std::string> id,
     for (const auto &tool : state->available_tools) {
       const bool selected = Contains(state->selected_tools, tool.name);
       tool_rows.push_back(AgentOptionRow(
-          app::images::settings, tool.name,
-          std::format("{} · {}", tool.category, tool.description), selected,
+          app::images::settings, tool.display_name, tool.display_description,
+          selected,
           [state, name = tool.name] {
             auto next = state.Get();
             Toggle(next.selected_tools, name);
@@ -2261,7 +2261,7 @@ AgentExtensionEditorScreen(std::optional<std::string> id,
       Column{
           EditorHeader(app::strings::screen_agent_add_title, state->busy,
                        navigation, std::move(save)),
-          Divider(),
+          LegacyScreenHeaderDivider(),
           ScrollView(Column(std::move(content))
                          .With(CrossAlign(CrossAxisAlignment::Stretch)))
               .ScrollAxis(Axis::Vertical)
@@ -2324,19 +2324,21 @@ McpExtensionEditorScreen(std::optional<std::string> id,
                   CrossAlign(CrossAxisAlignment::Stretch))));
 
     std::vector<View> header_rows;
-    header_rows.push_back(DetailActionRow(
-        app::images::plus, app::strings::screen_mcp_add_header,
-        app::strings::screen_mcp_add_header_desc,
-        [state] {
-          auto next = state.Get();
-          next.headers.push_back({
-              .key = next.next_header_key++,
-              .name = TextEditingValue::FromText(""),
-              .value = TextEditingValue::FromText(""),
-          });
-          state = std::move(next);
-        },
-        68.0F, &NoDetailAccessory));
+    header_rows.push_back(
+        DetailActionRow(
+            app::images::plus, app::strings::screen_mcp_add_header,
+            app::strings::screen_mcp_add_header_desc,
+            [state] {
+              auto next = state.Get();
+              next.headers.push_back({
+                  .key = next.next_header_key++,
+                  .name = TextEditingValue::FromText(""),
+                  .value = TextEditingValue::FromText(""),
+              });
+              state = std::move(next);
+            },
+            68.0F, &NoDetailAccessory)
+            .Key("mcp-header-add"));
     const auto compact_header_field =
         CompactHeaderFieldOverrides(UseEnvironment<TextFieldStyle>());
     for (const auto &header : state->headers) {
@@ -2355,8 +2357,8 @@ McpExtensionEditorScreen(std::optional<std::string> id,
                           if (found != next.headers.end())
                             found->name = value;
                           state = std::move(next);
-                        }))
-                  .With(Grow(), Frame{.height = 42.0F}),
+                        })
+                        .With(Grow(), Frame{.height = 42.0F})),
               Theme(compact_header_field,
                     TextField(header.value)
                         .Placeholder(app::strings::screen_mcp_header_value_hint)
@@ -2369,8 +2371,8 @@ McpExtensionEditorScreen(std::optional<std::string> id,
                           if (found != next.headers.end())
                             found->value = value;
                           state = std::move(next);
-                        }))
-                  .With(Grow(), Frame{.height = 42.0F}),
+                        })
+                        .With(Grow(), Frame{.height = 42.0F})),
               Stack{Glyph(app::images::trash_2, 16.0F, colors::tertiary)}
                   .OnClick([state, key] {
                     auto next = state.Get();
@@ -2453,7 +2455,7 @@ McpExtensionEditorScreen(std::optional<std::string> id,
       Column{
           EditorHeader(app::strings::screen_mcp_add_title, state->saving,
                        navigation, std::move(save)),
-          Divider(),
+          LegacyScreenHeaderDivider(),
           ScrollView(Column(std::move(content))
                          .With(CrossAlign(CrossAxisAlignment::Stretch)))
               .ScrollAxis(Axis::Vertical)

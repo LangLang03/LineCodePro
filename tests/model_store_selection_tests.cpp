@@ -1,9 +1,11 @@
-#include <cassert>
+#include "gtest_support.h"
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <sqlite3.h>
 
@@ -168,7 +170,7 @@ void SelectedEqualsOneTakesPriority() {
   database.Insert("selected-newer", 1, 20);
   database.Insert("non-standard", 2, 30);
 
-  assert(database.SelectedId() == "selected-newer");
+  EXPECT_EXPRESSION(database.SelectedId() == "selected-newer");
 }
 
 void NoSelectedEqualsOneFallsBackToLegacySortOrder() {
@@ -177,12 +179,12 @@ void NoSelectedEqualsOneFallsBackToLegacySortOrder() {
   database.Insert("zero-newest", 0, 40);
   database.Insert("two-older", 2, 10);
 
-  assert(database.SelectedId() == "two-older");
+  EXPECT_EXPRESSION(database.SelectedId() == "two-older");
 
   Database all_unselected;
   all_unselected.Insert("older", 0, 10);
   all_unselected.Insert("newest", 0, 20);
-  assert(all_unselected.SelectedId() == "newest");
+  EXPECT_EXPRESSION(all_unselected.SelectedId() == "newest");
 }
 
 void SelectingOneModelClearsEveryPreviousMarker() {
@@ -193,8 +195,8 @@ void SelectingOneModelClearsEveryPreviousMarker() {
 
   database.Select("target", 40);
 
-  assert(database.SelectedCount() == 1);
-  assert(database.SelectedId() == "target");
+  EXPECT_EXPRESSION(database.SelectedCount() == 1);
+  EXPECT_EXPRESSION(database.SelectedId() == "target");
 }
 
 void SelectingMissingOrEmptyIdUsesLegacyFallback() {
@@ -203,13 +205,13 @@ void SelectingMissingOrEmptyIdUsesLegacyFallback() {
   database.Insert("other", 0, 20);
 
   database.Select("missing", 30);
-  assert(database.SelectedCount() == 0);
-  assert(database.SelectedId() == "other");
+  EXPECT_EXPRESSION(database.SelectedCount() == 0);
+  EXPECT_EXPRESSION(database.SelectedId() == "other");
 
   database.Select("other", 40);
   database.Select("", 50);
-  assert(database.SelectedCount() == 0);
-  assert(database.SelectedId() == "other");
+  EXPECT_EXPRESSION(database.SelectedCount() == 0);
+  EXPECT_EXPRESSION(database.SelectedId() == "other");
 }
 
 void DeletingCurrentModelFallsBackToNewestRemainingModel() {
@@ -220,24 +222,52 @@ void DeletingCurrentModelFallsBackToNewestRemainingModel() {
 
   database.Delete("current");
 
-  assert(database.SelectedCount() == 0);
-  assert(database.SelectedId() == "newest");
+  EXPECT_EXPRESSION(database.SelectedCount() == 0);
+  EXPECT_EXPRESSION(database.SelectedId() == "newest");
 }
 
 void EmptyTableIsTheOnlyEmptySelection() {
   Database database;
 
-  assert(!database.SelectedId());
+  EXPECT_EXPRESSION(!database.SelectedId());
+}
+
+void LegacyColumnsAreAddedDeclaratively() {
+  sqlite3 *handle = nullptr;
+  EXPECT_EXPRESSION(sqlite3_open(":memory:", &handle) == SQLITE_OK);
+  char *error = nullptr;
+  EXPECT_EXPRESSION(sqlite3_exec(handle,
+                      "CREATE TABLE model_configs (id TEXT PRIMARY KEY)",
+                      nullptr, nullptr, &error) == SQLITE_OK);
+  for (const auto &migration : schema::column_migrations) {
+    EXPECT_EXPRESSION(sqlite3_exec(handle, std::string{migration.statement}.c_str(),
+                        nullptr, nullptr, &error) == SQLITE_OK);
+  }
+  sqlite3_stmt *statement = nullptr;
+  EXPECT_EXPRESSION(sqlite3_prepare_v2(handle, "PRAGMA table_info(model_configs)", -1,
+                            &statement, nullptr) == SQLITE_OK);
+  std::vector<std::string> columns;
+  while (sqlite3_step(statement) == SQLITE_ROW) {
+    const auto *text = sqlite3_column_text(statement, 1);
+    columns.emplace_back(text == nullptr
+                             ? ""
+                             : reinterpret_cast<const char *>(text));
+  }
+  sqlite3_finalize(statement);
+  sqlite3_close(handle);
+  for (const auto &migration : schema::column_migrations)
+    EXPECT_EXPRESSION(std::ranges::contains(columns, migration.column));
 }
 
 } // namespace
 
-int main() {
+TEST(model_store_selection_tests, LegacySuite) {
   SelectedEqualsOneTakesPriority();
   NoSelectedEqualsOneFallsBackToLegacySortOrder();
   SelectingOneModelClearsEveryPreviousMarker();
   SelectingMissingOrEmptyIdUsesLegacyFallback();
   DeletingCurrentModelFallsBackToNewestRemainingModel();
   EmptyTableIsTheOnlyEmptySelection();
-  return 0;
+  LegacyColumnsAreAddedDeclaratively();
+  return;
 }

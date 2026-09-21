@@ -12,6 +12,7 @@
 #include "domain/app_state.h"
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/components/legacy_settings_card_frame.h"
+#include "presentation/legacy_text_presentation.h"
 #include "presentation/line_theme.h"
 #include "presentation/prompt_template_presentation.h"
 
@@ -139,7 +140,7 @@ std::string Variables(const domain::PromptTemplateDefinition &definition) {
   return result;
 }
 
-View Section(StringVariant title, View body) {
+View Section(std::string title, View body) {
   return Column{
       Text(std::move(title))
           .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
@@ -223,24 +224,29 @@ View Editor(std::size_t index, StringVariant description, std::string source,
 
   ThemeDefinition field_theme;
   field_theme.Set(PromptEditorFieldStyle());
-  auto field =
-      Theme(field_theme,
-            TextField(snapshot.editing)
-                .LineLimits(TextFieldLineLimits::MultiLine())
-                .InputConfiguration(TextInputConfiguration{
-                    .type = TextInputType::Text,
-                    .capitalization = TextCapitalization::None,
-                    .action = TextInputAction::Newline,
-                    .multiline = true,
-                    .secure = false,
-                    .autocorrect = false})
-                .VerticalAlign(TextVerticalAlign::Top)
-                .OnChanged([index, editors](const TextEditingValue &value) {
-                  editors.Update([index, &value](auto &next) {
-                    next.at(index).editing = value;
-                  });
-                })
-                .With(Frame{.min_height = 220.0F}, Enabled(!snapshot.busy)));
+  // Theme is represented by an Environment node, which must remain a pure
+  // environment boundary. Put layout/interaction behavior on its child.
+  auto field = Theme(
+      field_theme,
+      TextField(snapshot.editing)
+          .LineLimits(TextFieldLineLimits::MultiLine())
+          .InputConfiguration(TextInputConfiguration{
+              .type = TextInputType::Text,
+              .capitalization = TextCapitalization::None,
+              .action = TextInputAction::Newline,
+              .multiline = true,
+              .secure = false,
+              .autocorrect = false})
+          .VerticalAlign(TextVerticalAlign::Top)
+          .OnChanged([index, editors](const TextEditingValue &value) {
+            // State::Update owns its mutation callback. Keep the new
+            // controlled value alive independently of the input event.
+            editors.Update([index, value](auto &next) {
+              next.at(index).editing = value;
+            });
+          })
+          .With(Frame{.min_height = 220.0F}, Enabled(!snapshot.busy),
+                Padding(EdgeInsets{.top = 12.0F})));
 
   auto actions =
       Row{
@@ -267,7 +273,7 @@ View Editor(std::size_t index, StringVariant description, std::string source,
                    Variables(definition))
           .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
           .With(Padding(EdgeInsets{.top = 8.0F})),
-      std::move(field).With(Padding(EdgeInsets{.top = 12.0F})),
+      std::move(field),
       std::move(actions).With(Padding(EdgeInsets{.top = 12.0F})),
   }
       .With(Padding(EdgeInsets::All(16.0F)),
@@ -302,6 +308,7 @@ View Editor(std::size_t index, StringVariant description, std::string source,
   std::vector<View> content;
   std::string intro =
       UseString(app::strings::screen_prompt_templates_variables);
+  std::string item_prefix = "\n\n- ";
   for (std::size_t index = 0; index < editors->size(); ++index) {
     const auto &definition = editors->at(index).item.definition;
     const auto *presentation = FindPromptTemplatePresentation(
@@ -312,9 +319,10 @@ View Editor(std::size_t index, StringVariant description, std::string source,
         presentation ? StringVariant{presentation->title} : unknown;
     const StringVariant description =
         presentation ? StringVariant{presentation->description} : unknown;
-    intro += "\n\n- " + UseString(title) +
+    intro += item_prefix + UseString(title) +
              UseString(app::strings::screen_prompt_templates_item_separator) +
              UseString(description);
+    item_prefix = "\n- ";
     const auto variables = Variables(definition);
     if (!variables.empty()) {
       intro += UseString(app::strings::screen_prompt_templates_item_variables,
@@ -322,7 +330,8 @@ View Editor(std::size_t index, StringVariant description, std::string source,
     }
   }
   content.push_back(
-      Section(app::strings::screen_prompt_templates_section,
+      Section(LegacySectionTitle(
+                  UseString(app::strings::screen_prompt_templates_section)),
               Text(intro)
                   .Style(Label(13.0F, FontWeight::Regular, colors::secondary))
                   .With(Padding(EdgeInsets::All(16.0F)))));
@@ -341,15 +350,16 @@ View Editor(std::size_t index, StringVariant description, std::string source,
       source = UseString(*presentation->builtin_source);
     }
     content.push_back(
-        Section(title, Editor(index, description, std::move(source), editors,
-                              repository, tasks, toast))
+        Section(LegacySectionTitle(UseString(title)),
+                Editor(index, description, std::move(source), editors,
+                       repository, tasks, toast))
             .Key(editors->at(index).item.definition.id));
   }
   content.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 100.0F}));
 
   return Column{
       Header(navigation),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(Column(std::move(content))
                      .With(CrossAlign(CrossAxisAlignment::Stretch),
                            Background(colors::background)))

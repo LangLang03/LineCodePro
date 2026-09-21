@@ -86,6 +86,20 @@ struct TermuxTypography final {
 
 inline constexpr TermuxTypography kTypography{};
 
+// Android's TextView uses BREAK_STRATEGY_SIMPLE plus 3dp extra line spacing
+// for this fixed shell snippet.  Keep its observed eight-line presentation
+// separate from the unmodified command copied to the clipboard.
+inline constexpr std::array<std::string_view, 8> kCommandDisplayLines{
+    "mkdir -p ~/.termux",
+    "properties_path=\"$HOME/.termux/termux.properties\"",
+    "touch \"$properties_path\"",
+    "grep -qxF 'allow-external-apps=true'",
+    "\"$properties_path\" || printf",
+    "'\\nallow-external-apps=true\\n' >>",
+    "\"$properties_path\"",
+    "termux-reload-settings >/dev/null 2>&1 || true",
+};
+
 using ResolvedStringMember = std::string ResolvedStrings::*;
 
 TextStyle Label(float size, FontWeight weight = FontWeight::Regular,
@@ -394,6 +408,29 @@ View ActionButton(const ActionSpec &spec, const ActionContext &context) {
             Focusable(), PointerCursor(PointerCursorKind::Hand));
 }
 
+View CommandDisplay() {
+  std::vector<View> lines;
+  lines.reserve(kCommandDisplayLines.size());
+  for (const auto line : kCommandDisplayLines) {
+    lines.push_back(Text(std::string(line))
+                        .Style(TextStyle{Font::Monospace(
+                                             kTypography.command.size),
+                                         colors::secondary}));
+  }
+
+  return SelectionArea(
+             Column(std::move(lines))
+                 .With(Spacing(1.0F),
+                       CrossAlign(CrossAxisAlignment::Stretch)))
+      .With(Frame{.min_height = kTypography.command.minimum_height},
+            Padding(EdgeInsets{.top = 11.0F,
+                               .right = 12.0F,
+                               .bottom = 12.0F,
+                               .left = 12.0F}),
+            Background(colors::code), Border(colors::code_border, 1.0F),
+            CornerRadius(8.0F));
+}
+
 View StatusView(const TermuxStatus &status) {
   const Color foreground = status.error ? colors::danger : colors::secondary;
   return Text(status.title + '\n' + status.message)
@@ -522,7 +559,7 @@ View StatusView(const TermuxStatus &status) {
 
   return Column{
       Header(navigation),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(
           Column{
               Card({
@@ -542,17 +579,7 @@ View StatusView(const TermuxStatus &status) {
               Card({
                   SectionTitle(app::strings::screen_termux_section_intent),
                   Gap(8.0F),
-                  SelectionArea(
-                      Text(std::string(
-                               application::kTermuxAllowExternalAppsCommand))
-                          .Style(TextStyle{Font::Monospace(
-                                               kTypography.command.size),
-                                           colors::secondary}))
-                      .With(Frame{.min_height =
-                                      kTypography.command.minimum_height},
-                            Padding(12.0F), Background(colors::code),
-                            Border(colors::code_border, 1.0F),
-                            CornerRadius(8.0F)),
+                  CommandDisplay(),
               }),
               Card(std::move(action_card)),
           }.With(Spacing(12.0F),

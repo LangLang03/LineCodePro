@@ -1,11 +1,17 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "domain/app_state.h"
+
+namespace linecode::application {
+class AgentResultReader;
+}
 
 namespace linecode::presentation {
 
@@ -20,6 +26,20 @@ enum class ToolTimelineVisualKind : std::uint8_t {
   generic,
 };
 
+// Semantic icon tokens are resolved to platform assets by the view layer.
+// Keeping the token in the registration prevents tool-name conditionals from
+// leaking into renderers when a new read-family tool is added.
+enum class ToolTimelineIconKind : std::uint8_t {
+  file,
+  folder,
+  search,
+  globe,
+  paintbrush,
+  sparkles,
+  bot,
+  book_open,
+};
+
 struct ToolTimelineTodoItem final {
   enum class State : std::uint8_t { pending, in_progress, completed };
 
@@ -29,14 +49,30 @@ struct ToolTimelineTodoItem final {
   bool operator==(const ToolTimelineTodoItem &) const = default;
 };
 
+struct AgentRunTimelinePresentation final {
+  std::string id{};
+  std::string type{};
+  std::string description{};
+  std::vector<std::string> dependencies{};
+  std::string status{};
+  std::string thinking{};
+  std::string output{};
+  std::vector<domain::AssistantToolEvent> tool_calls{};
+  bool failed{};
+
+  bool operator==(const AgentRunTimelinePresentation &) const = default;
+};
+
 struct ToolTimelinePresentation final {
   ToolTimelineVisualKind visual{ToolTimelineVisualKind::generic};
+  ToolTimelineIconKind icon{ToolTimelineIconKind::file};
   domain::ToolCallStatus status{domain::ToolCallStatus::requested};
   std::string title{};
   std::string detail{};
   std::string input_detail{};
   std::string output_detail{};
   std::string auxiliary{};
+  std::string agent_id{};
   // Recorded file change for write-family tools; empty when the tool produced
   // no revertable change. The `{}` keeps `-Wmissing-field-initializers` quiet
   // at designated-initializer call sites.
@@ -48,10 +84,12 @@ struct ToolTimelinePresentation final {
   std::string review_state{};
   std::string review_message{};
   std::vector<ToolTimelineTodoItem> todo_items{};
+  std::vector<AgentRunTimelinePresentation> agent_runs{};
   int item_count{};
   int completed_count{};
   int running_count{};
   int failed_count{};
+  int tool_call_count{};
   bool running{};
   bool failed{};
   bool expandable{true};
@@ -67,6 +105,7 @@ struct ToolTimelineRendererRegistration final {
   std::string name;
   ToolNameMatch match{ToolNameMatch::exact};
   ToolTimelineVisualKind visual{ToolTimelineVisualKind::generic};
+  ToolTimelineIconKind icon{ToolTimelineIconKind::file};
 };
 
 // Runtime registry keeps the timeline open for extension without name-based UI
@@ -78,6 +117,9 @@ public:
 
   [[nodiscard]] ToolTimelineVisualKind
   Resolve(std::string_view tool_name) const noexcept;
+
+  [[nodiscard]] ToolTimelineIconKind
+  ResolveIcon(std::string_view tool_name) const noexcept;
 
 private:
   std::vector<ToolTimelineRendererRegistration> registrations_;
@@ -127,6 +169,7 @@ ToolTimelineMetrics(ToolTimelineVisualKind visual) noexcept {
 struct AssistantProcessPresentation final {
   bool visible{};
   bool running{};
+  bool pending_review{};
   bool failed{};
   bool initially_expanded{};
   std::int64_t duration_millis{};
@@ -135,7 +178,9 @@ struct AssistantProcessPresentation final {
 };
 
 [[nodiscard]] ToolTimelinePresentation
-PresentToolTimeline(const domain::AssistantToolEvent &event);
+PresentToolTimeline(const domain::AssistantToolEvent &event,
+                    const application::AgentResultReader *agent_results =
+                        nullptr);
 
 // The file a tool call targets, read from its arguments. Legacy
 // `AssistantTurnView.renderFiles()` labelled its "N files changed" block by
@@ -146,6 +191,19 @@ PresentToolTimeline(const domain::AssistantToolEvent &event);
 
 [[nodiscard]] AssistantProcessPresentation PresentAssistantProcess(
     const domain::ChatMessage &message, bool live,
-    bool process_auto_expand) noexcept;
+    bool process_auto_expand, std::int64_t now_millis = 0) noexcept;
+
+// Compact elapsed time used by the process disclosure header. This mirrors
+// legacy ProcessingDuration instead of exposing fractional seconds.
+[[nodiscard]] std::string FormatProcessingDuration(
+    std::int64_t elapsed_millis);
+
+// Builds the transcript rows exactly as the legacy ConversationTimeline did:
+// adjacent assistant records that belong to one model turn are presented as
+// one process disclosure plus one final answer. Persistence and model context
+// remain untouched; this is a presentation-only projection.
+[[nodiscard]] std::vector<domain::ChatMessage>
+BuildConversationPresentationMessages(
+    std::span<const domain::ChatMessage> messages);
 
 } // namespace linecode::presentation

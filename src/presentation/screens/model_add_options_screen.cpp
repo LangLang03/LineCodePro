@@ -155,11 +155,11 @@ ModelAddOptionsScreen(ModelAddOptionsActions actions) {
 
   return Column{
       Header(actions),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(Column(std::move(content))
                      .With(Padding(EdgeInsets{.top = 16.35F,
                                               .right = 16.0F,
-                                              .bottom = 100.0F,
+                                              .bottom = 16.0F,
                                               .left = 16.0F}),
                            CrossAlign(CrossAxisAlignment::Stretch)))
           .ScrollAxis(Axis::Vertical)

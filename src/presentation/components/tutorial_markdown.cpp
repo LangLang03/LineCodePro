@@ -1,8 +1,11 @@
 #include "presentation/components/tutorial_markdown.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
+#include <filesystem>
 #include <functional>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -10,11 +13,13 @@
 #include <vector>
 
 #include <app_resources.h>
+#include <huxerui/file.h>
 #include <huxerui/huxerui.h>
 
-#include "presentation/line_theme.h"
+#include "presentation/components/tutorial_table_layout.h"
 #include "presentation/markdown_link_policy.h"
 #include "presentation/markdown_linkify.h"
+#include "presentation/line_theme.h"
 
 namespace linecode::presentation {
 namespace {
@@ -179,7 +184,14 @@ View QuoteBlock(const domain::TutorialQuote& quote, std::size_t depth,
          CrossAlign(CrossAxisAlignment::Stretch));
 }
 
-View ListItem(const domain::TutorialListItem& item, bool wraps, float scale,
+constexpr std::array<std::string_view, 3> kUnorderedMarkers{"•", "-", "+"};
+
+std::string_view UnorderedMarkerForDepth(std::size_t depth) noexcept {
+  return kUnorderedMarkers[depth % kUnorderedMarkers.size()];
+}
+
+View ListItem(const domain::TutorialListItem& item, bool ordered, bool wraps,
+              float scale,
               const TutorialMarkdownLinkHandler& on_link,
               const TutorialMarkdownCopyHandler& on_copy) {
   // `MarkdownRenderer.java:154-155` renders the children of the `ListItem`
@@ -191,19 +203,30 @@ View ListItem(const domain::TutorialListItem& item, bool wraps, float scale,
       content.push_back(BlockView(block, item.depth + 1, wraps, scale, on_link,
                                   on_copy));
   }
-  return Row {
-    Text(item.marker)
+  auto row = Row {
+    Text(ordered ? StringVariant{item.marker}
+                 : StringVariant{UnorderedMarkerForDepth(item.depth)})
         .Style(Label(16.0F * scale, FontWeight::Regular, colors::secondary))
         .Align(TextAlign::Trailing)
         .With(Frame{.width = 22.0F + static_cast<float>(item.depth) * 4.0F}),
     Column(std::move(content))
         .With(Grow(), CrossAlign(CrossAxisAlignment::Stretch)),
-  }.With(Spacing(8.0F),
+  }.With(Frame{.min_height = 31.0F}, Spacing(8.0F),
          Padding(EdgeInsets{.top = 0.0F,
                             .right = 0.0F,
-                            .bottom = 3.0F,
+                            .bottom = 0.0F,
                             .left = static_cast<float>(item.depth) * 8.0F}),
          CrossAlign(CrossAxisAlignment::Start));
+  // Android's renderer gives the paragraph its full row height and then adds
+  // a separate 3dp item margin. Keeping the margin outside the 31dp row is
+  // important: padding it inside the minimum-height frame makes every list
+  // item about 3dp too short and shifts all following Markdown blocks upward.
+  return Column {std::move(row)}.With(
+      Padding(EdgeInsets{.top = 0.0F,
+                         .right = 0.0F,
+                         .bottom = 3.0F,
+                         .left = 0.0F}),
+      CrossAlign(CrossAxisAlignment::Stretch));
 }
 
 View ListBlock(const domain::TutorialList& list, bool wraps, float scale,
@@ -212,7 +235,8 @@ View ListBlock(const domain::TutorialList& list, bool wraps, float scale,
   std::vector<View> items;
   items.reserve(list.items.size());
   for (const auto& item : list.items)
-    items.push_back(ListItem(item, wraps, scale, on_link, on_copy));
+    items.push_back(
+        ListItem(item, list.ordered, wraps, scale, on_link, on_copy));
   return Column(std::move(items))
       .With(Padding(EdgeInsets{.top = 1.0F,
                                .right = 0.0F,
@@ -228,8 +252,9 @@ View CodeBlock(const domain::TutorialCodeBlock& block, bool wraps,
       TextStyle{Font::Monospace(13.0F * scale), colors::text});
   View body = code;
   if (!wraps) {
-    body = ScrollView(std::move(code).With(Frame{.min_width = 760.0F}))
-               .ScrollAxis(Axis::Horizontal);
+    // Keep the code block at its natural width.  Forcing every block to the
+    // desktop card width made even a one-line snippet overflow on phones.
+    body = ScrollView(std::move(code)).ScrollAxis(Axis::Horizontal);
   }
   View copy_icon = Stack {
     Image(app::images::copy)
@@ -243,8 +268,7 @@ View CodeBlock(const domain::TutorialCodeBlock& block, bool wraps,
                     .OnClick([on_copy, source = block.code] {
                       std::invoke(on_copy, source);
                     })
-                    .With(Semantics{.label = app::strings::markdown_code_copy_desc},
-                          Focusable(), PointerCursor(PointerCursorKind::Hand));
+                    .With(Focusable(), PointerCursor(PointerCursorKind::Hand));
   }
   View card = Column {
     Row {
@@ -260,73 +284,126 @@ View CodeBlock(const domain::TutorialCodeBlock& block, bool wraps,
                                            .bottom = 16.0F,
                                            .left = 16.0F}),
          CrossAlign(CrossAxisAlignment::Stretch), Background(colors::code),
-         CornerRadius(12.0F));
+         CornerRadius(12.0F), ClipChildren());
   return Stack {card}.With(Padding(EdgeInsets{.top = 4.0F,
                                               .right = 0.0F,
                                               .bottom = 8.0F,
                                               .left = 0.0F}));
 }
 
-View ImageBlock(const domain::TutorialImageBlock &block, float scale) {
+ImageAsset ImageSourceAsset(const domain::TutorialImageSource& source) {
+  return std::visit(
+      Overloaded{
+          [](const domain::TutorialEncodedImage& encoded) {
+            // Markdown pinch/text scaling never resized images in the legacy
+            // view, so encoded pixels always use their native 1x density.
+            return ImageAsset::CopyEncoded(encoded.encoded);
+          },
+          [](const domain::TutorialAbsolutePathImage& local) {
+            return ImageAsset::FromFile(
+                std::filesystem::path{local.path});
+          },
+          [](const domain::TutorialFileUriImage& local) {
+            const auto uri = Uri::Parse(local.uri);
+            if (!uri || uri->Scheme() != "file")
+              throw std::invalid_argument("invalid local image URI");
+            return ImageAsset::FromFile(
+                std::filesystem::path{File(*uri).Path()});
+          },
+      },
+      source);
+}
+
+View ImageBlock(const domain::TutorialImageBlock& block, float scale) {
   try {
-    const auto asset = ImageAsset::CopyEncoded(block.encoded, scale);
-    return Stack{Image(asset)
-                     .Fit(ImageFit::ScaleDown)
-                     .Align(HorizontalAlignment::Center,
-                            VerticalAlignment::Center)
-                     .With(Frame{.max_width = 684.0F,
-                                 .max_height = 420.0F},
-                           CornerRadius(12.0F), ClipChildren())}
-        .With(Align(HorizontalAlignment::Start,
-                    VerticalAlignment::Center),
-              Padding(EdgeInsets{.top = 4.0F,
+    const auto asset = ImageSourceAsset(block.source);
+    std::vector<View> content;
+    content.push_back(Image(asset)
+                          .Fit(ImageFit::ScaleDown)
+                          .Align(HorizontalAlignment::Center,
+                                 VerticalAlignment::Center)
+                          .With(Frame{.max_height = 520.0F}));
+    if (!block.alternative_text.empty() &&
+        block.alternative_text.size() <= 120U) {
+      content.push_back(
+          Text(block.alternative_text)
+              .Style(Label(11.0F * scale, FontWeight::Regular,
+                           colors::tertiary))
+              .With(Padding(EdgeInsets{.top = 4.0F,
+                                       .right = 0.0F,
+                                       .bottom = 0.0F,
+                                       .left = 0.0F})));
+    }
+    return Column(std::move(content))
+        .With(Padding(EdgeInsets{.top = 2.0F,
                                  .right = 0.0F,
-                                 .bottom = 8.0F,
+                                 .bottom = 18.0F,
                                  .left = 0.0F}),
-              Semantics{.label = block.alternative_text});
+              CrossAlign(CrossAxisAlignment::Stretch));
   } catch (const std::invalid_argument &) {
-    return Text(block.alternative_text)
-        .Style(Label(13.0F * scale, FontWeight::Regular, colors::danger));
+    const auto style =
+        Label(13.0F * scale, FontWeight::Regular, colors::tertiary);
+    const auto padding = Padding(EdgeInsets{.top = 2.0F,
+                                             .right = 0.0F,
+                                             .bottom = 18.0F,
+                                             .left = 0.0F});
+    return block.alternative_text.empty()
+               ? View{Text(app::strings::markdown_image_label)
+                          .Style(style)
+                          .With(padding)}
+               : View{Text::Format(app::strings::markdown_image_fallback,
+                                   block.alternative_text)
+                          .Style(style)
+                          .With(padding)};
   }
 }
 
 View TableCell(const domain::TutorialInlineLine& content, bool header,
                bool alternate, float scale,
-               const TutorialMarkdownLinkHandler& on_link) {
-  return RichLabel(content, 13.0F, scale, on_link,
-                   header ? FontWeight::Bold : FontWeight::Regular,
-                   header ? colors::text : colors::secondary)
-      .With(Frame{.width = 156.0F, .min_height = 38.0F}, Padding(8.0F),
-            Background(header ? colors::surface_light
-                              : alternate ? colors::code : colors::surface),
-            Border(colors::border_light, 0.5F));
-}
-
-View TableRow(const std::vector<domain::TutorialInlineLine>& cells,
-              bool header, bool alternate, float scale,
-              const TutorialMarkdownLinkHandler& on_link) {
-  std::vector<View> views;
-  views.reserve(cells.size());
-  for (const auto& cell : cells)
-    views.push_back(TableCell(cell, header, alternate, scale, on_link));
-  return Row(std::move(views));
+               const TutorialMarkdownLinkHandler& on_link,
+               TutorialTableCellCoordinates position) {
+  return Stack {
+    RichLabel(content, 13.0F, scale, on_link,
+              header ? FontWeight::Bold : FontWeight::Regular,
+              header ? colors::text : colors::secondary)
+        .With(Frame{.max_width = 196.0F}),
+  }.With(Frame{.min_width = 84.0F, .min_height = 38.0F},
+         Padding(EdgeInsets::Symmetric(12.0F, 8.0F)),
+         Align(HorizontalAlignment::Stretch, VerticalAlignment::Center),
+         Background(header ? colors::surface_light
+                           : alternate ? colors::code : colors::surface),
+         Border(colors::border_light, 1.0F))
+      .LayoutValue<TutorialTableCellPosition>(position);
 }
 
 View TableBlock(const domain::TutorialTable& table, float scale,
                 const TutorialMarkdownLinkHandler& on_link) {
-  std::vector<View> rows;
-  rows.reserve(table.rows.size() + 1);
-  rows.push_back(TableRow(table.header, true, false, scale, on_link));
-  for (std::size_t index = 0; index < table.rows.size(); ++index)
-    rows.push_back(
-        TableRow(table.rows[index], false, index % 2 == 1, scale, on_link));
-  return ScrollView(Column(std::move(rows)))
+  std::vector<View> cells;
+  const auto append_row = [&cells, scale, &on_link](
+                              const auto& row, std::size_t row_index,
+                              bool header, bool alternate) {
+    for (std::size_t column = 0U; column < row.size(); ++column) {
+      cells.push_back(TableCell(
+          row[column], header, alternate, scale, on_link,
+          TutorialTableCellCoordinates{.row = row_index, .column = column}));
+    }
+  };
+  cells.reserve(table.header.size() +
+                std::accumulate(table.rows.begin(), table.rows.end(),
+                                std::size_t{}, [](std::size_t count,
+                                                 const auto& row) {
+                                  return count + row.size();
+                                }));
+  append_row(table.header, 0U, true, false);
+  for (std::size_t row = 0U; row < table.rows.size(); ++row)
+    append_row(table.rows[row], row + 1U, false, row % 2U == 1U);
+  return ScrollView(TutorialTableLayout(std::move(cells)))
       .ScrollAxis(Axis::Horizontal)
       .With(Padding(EdgeInsets{.top = 4.0F,
                                .right = 0.0F,
                                .bottom = 8.0F,
                                .left = 0.0F}),
-            CornerRadius(12.0F));
+            CornerRadius(12.0F), ClipChildren());
 }
 
 View ThematicBreakBlock() {
@@ -375,6 +452,12 @@ View BlockView(const domain::TutorialBlock& block, std::size_t depth,
           },
           [scale](const domain::TutorialImageBlock& value) {
             return ImageBlock(value, scale);
+          },
+          [wraps, scale, &on_copy](const domain::TutorialHtmlBlock& value) {
+            return CodeBlock(
+                domain::TutorialCodeBlock{.language = "html",
+                                          .code = value.html},
+                wraps, scale, on_copy);
           },
           [scale, &on_link](const domain::TutorialTable& value) {
             return TableBlock(value, scale, on_link);

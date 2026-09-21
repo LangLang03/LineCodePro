@@ -2,6 +2,7 @@
 
 #include <array>
 #include <functional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -13,6 +14,7 @@
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/components/legacy_settings_card_frame.h"
 #include "presentation/components/legacy_switch.h"
+#include "presentation/legacy_text_presentation.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -80,7 +82,7 @@ View SwitchRow(ImageResource icon, StringResource title, StringResource descript
             PointerCursor(PointerCursorKind::Hand));
 }
 
-View Section(StringResource title, std::vector<View> rows) {
+View Section(std::string title, std::vector<View> rows) {
   std::vector<View> children;
   children.reserve(rows.size() * 2);
   for (std::size_t index = 0; index < rows.size(); ++index) {
@@ -88,7 +90,8 @@ View Section(StringResource title, std::vector<View> rows) {
     if (index + 1 < rows.size()) children.push_back(Divider());
   }
   return Column{
-      Text(title).Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
+      Text(std::move(title))
+          .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
           .With(Frame{.height = 47.625F},
                 Padding(EdgeInsets{.top = 20.0F,
                                    .right = 16.0F,
@@ -213,13 +216,23 @@ struct ReasoningMeta final {
               &application::AiBehaviorSettingsRepository::SetPreserveReasoning);
 
   return Column{
-      Header(navigation), Divider(),
+      Header(navigation), LegacyScreenHeaderDivider(),
       ScrollView(Column{
-          Section(app::strings::screen_llm_section_thinking, std::move(reasoning_rows)),
-          Section(app::strings::screen_llm_section_learning, std::move(learning_rows)),
-          Section(app::strings::screen_llm_section_tone, std::move(tone_rows)),
-          Section(app::strings::screen_llm_section_prompts, std::move(prompt_rows)),
-          Section(app::strings::screen_llm_section_thinking_display, std::move(display_rows)),
+          Section(LegacySectionTitle(
+                      UseString(app::strings::screen_llm_section_thinking)),
+                  std::move(reasoning_rows)),
+          Section(LegacySectionTitle(
+                      UseString(app::strings::screen_llm_section_learning)),
+                  std::move(learning_rows)),
+          Section(LegacySectionTitle(
+                      UseString(app::strings::screen_llm_section_tone)),
+                  std::move(tone_rows)),
+          Section(LegacySectionTitle(
+                      UseString(app::strings::screen_llm_section_prompts)),
+                  std::move(prompt_rows)),
+          Section(LegacySectionTitle(UseString(
+                      app::strings::screen_llm_section_thinking_display)),
+                  std::move(display_rows)),
           Stack{}.With(Frame{.width = 1.0F, .height = 100.0F}),
       }.With(CrossAlign(CrossAxisAlignment::Stretch), Background(colors::background)))
           .ScrollAxis(Axis::Vertical).With(Grow()),

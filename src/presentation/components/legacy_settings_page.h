@@ -12,7 +12,7 @@ namespace linecode::presentation {
 LegacySettingsPageHeader(huxerui::StringResource title,
                          std::function<void()> on_back);
 
-[[nodiscard]] huxerui::View
+[[nodiscard]] [[huxerui::composable]] huxerui::View
 LegacySettingsSection(huxerui::StringResource title,
                       std::vector<huxerui::View> rows);
 

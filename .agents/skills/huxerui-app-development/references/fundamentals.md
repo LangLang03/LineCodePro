@@ -108,7 +108,7 @@ tasks.Launch([]() -> Task<void> {
 });
 ```
 
-`UseApplication()` returns the current Runtime's `ApplicationHandle`. Its `StartupActivation()` exposes the cold-start `ApplicationActivation`, whose alternatives are `LaunchActivation`, `UrlActivation`, and `FileActivation`. `UrlActivation::url` is a validated `Uri`, while `FileActivation` retains platform-granted `FileReference` capabilities. Its `OnActivation(...)` receives only later activations while the declaring composition lifetime is mounted.
+`UseApplication()` returns the current Runtime's `ApplicationHandle`. Its `StartupActivation()` exposes the cold-start `ApplicationActivation`, whose alternatives are `LaunchActivation`, `UrlActivation`, `FileActivation`, and `NotificationActivation`. `UrlActivation::url` is a validated `Uri`, `FileActivation` retains platform-granted `FileReference` capabilities, and `NotificationActivation` carries a stable application-owned local-notification identifier. Its `OnActivation(...)` receives only later activations while the declaring composition lifetime is mounted.
 
 `ApplicationHandle::LifecycleState()` reads and subscribes to the current `ApplicationLifecycleState`; use `ApplicationHandle::OnLifecycleChange(...)` when every ordered transition matters. Obtain the handle with `UseApplication()`, register callbacks during composition, and keep navigation or file-opening policy in application state.
 
@@ -116,6 +116,8 @@ tasks.Launch([]() -> Task<void> {
 Await them from a `TaskScope`; the continuation resumes on its UI thread and may update `State` directly.
 Native manifests, Apple usage descriptions, entitlements, request rationale, and final feature policy remain application-shell responsibilities.
 Treat `PermissionStatus::Unavailable` as a normal platform-capability result rather than inventing a fallback permission path.
+
+`ApplicationHandle::LocalNotifications()` provides local operating-system notifications. For authorization, native templates, scheduling, and activation data, read [local-notifications.md](local-notifications.md).
 
 ## Reconciliation
 

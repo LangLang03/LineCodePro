@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <map>
 #include <memory>
 #include <string>
@@ -33,8 +33,8 @@ public:
     values.insert_or_assign(std::move(key), std::move(value));
     co_return application::SettingsResult<void>{};
   }
-  huxerui::Task<application::SettingsResult<void>>
-  SetBoolean(std::string, bool) override {
+  huxerui::Task<application::SettingsResult<void>> SetBoolean(std::string,
+                                                              bool) override {
     co_return application::SettingsResult<void>{};
   }
   huxerui::Task<application::SettingsResult<void>>
@@ -78,7 +78,8 @@ huxerui::View Probe() {
           .description = "shell",
           .parameters_json = R"({"type":"object"})",
           .allowed_in_read_only = true,
-          .permanent_grant_supported = true,
+          .permanent_grant_arguments = {{.name = "command", .required = true},
+                                        {.name = "cwd", .required = false}},
       };
       const application::RegisteredTool write{
           .name = "file_write",
@@ -88,49 +89,86 @@ huxerui::View Probe() {
       const application::CompletionToolCall call{
           .id = "call-1",
           .name = "shell_execute",
-          .arguments_json =
-              R"({"command":"echo hi","cwd":"  /tmp  "})",
+          .arguments_json = R"({"command":"echo hi","cwd":"  /tmp  "})",
       };
 
       auto state = co_await scenario->permissions->Load();
-      assert(state && state->mode == domain::ToolPermissionMode::automatic);
-      auto decision = co_await scenario->permissions->Evaluate(
-          shell, call, "/workspace");
-      assert(decision && *decision ==
-                             application::ToolPermissionDecision::execute);
+      EXPECT_EXPRESSION(state &&
+                        state->mode == domain::ToolPermissionMode::automatic);
+      auto decision =
+          co_await scenario->permissions->Evaluate(shell, call, "/workspace");
+      EXPECT_EXPRESSION(decision &&
+                        *decision ==
+                            application::ToolPermissionDecision::execute);
 
-      assert(co_await scenario->permissions->SetMode(
+      EXPECT_EXPRESSION(co_await scenario->permissions->SetMode(
           domain::ToolPermissionMode::confirm));
-      decision = co_await scenario->permissions->Evaluate(
-          shell, call, "/workspace");
-      assert(decision && *decision ==
-                             application::ToolPermissionDecision::review);
-      assert(co_await scenario->permissions->RememberPermanentGrant(
+      decision =
+          co_await scenario->permissions->Evaluate(shell, call, "/workspace");
+      EXPECT_EXPRESSION(
+          decision && *decision == application::ToolPermissionDecision::review);
+      EXPECT_EXPRESSION(co_await scenario->permissions->RememberPermanentGrant(
           shell, call, "/workspace"));
-      assert(scenario->store->values.at("@linecode_command_grants_v1") ==
-             R"(["7cfd9c6d86143c042be688a69dd04fa5132cccac02493c524fe3b1c97f778c4c"])"
-      );
-      decision = co_await scenario->permissions->Evaluate(
-          shell, call, "/workspace");
-      assert(decision && *decision ==
-                             application::ToolPermissionDecision::execute);
+      EXPECT_EXPRESSION(
+          scenario->store->values.at("@linecode_command_grants_v1") ==
+          R"(["7cfd9c6d86143c042be688a69dd04fa5132cccac02493c524fe3b1c97f778c4c"])");
+      decision =
+          co_await scenario->permissions->Evaluate(shell, call, "/workspace");
+      EXPECT_EXPRESSION(decision &&
+                        *decision ==
+                            application::ToolPermissionDecision::execute);
 
-      assert(co_await scenario->permissions->SetMode(
-          domain::ToolPermissionMode::read_only));
+      const application::RegisteredTool extension_tool{
+          .name = "custom_deploy",
+          .description = "custom",
+          .parameters_json = R"({"type":"object"})",
+          .permanent_grant_arguments = {{.name = "target", .required = true}},
+      };
+      const application::CompletionToolCall extension_call{
+          .id = "call-extension",
+          .name = "custom_deploy",
+          .arguments_json = R"({"target":" staging "})",
+      };
       decision = co_await scenario->permissions->Evaluate(
-          shell, call, "/workspace");
-      assert(decision && *decision ==
-                             application::ToolPermissionDecision::execute);
+          extension_tool, extension_call, "/workspace");
+      EXPECT_EXPRESSION(
+          decision && *decision == application::ToolPermissionDecision::review);
+      EXPECT_EXPRESSION(co_await scenario->permissions->RememberPermanentGrant(
+          extension_tool, extension_call, "/workspace"));
+      decision = co_await scenario->permissions->Evaluate(
+          extension_tool, extension_call, "/workspace");
+      EXPECT_EXPRESSION(decision &&
+                        *decision ==
+                            application::ToolPermissionDecision::execute);
+
+      const application::CompletionToolCall missing_grant_argument{
+          .id = "call-extension-missing",
+          .name = "custom_deploy",
+          .arguments_json = "{}",
+      };
+      decision = co_await scenario->permissions->Evaluate(
+          extension_tool, missing_grant_argument, "/workspace");
+      EXPECT_EXPRESSION(
+          decision && *decision == application::ToolPermissionDecision::review);
+
+      EXPECT_EXPRESSION(co_await scenario->permissions->SetMode(
+          domain::ToolPermissionMode::read_only));
+      decision =
+          co_await scenario->permissions->Evaluate(shell, call, "/workspace");
+      EXPECT_EXPRESSION(decision &&
+                        *decision ==
+                            application::ToolPermissionDecision::execute);
       decision = co_await scenario->permissions->Evaluate(
           write,
           application::CompletionToolCall{
               .id = "call-2", .name = "file_write", .arguments_json = "{}"},
           "/workspace");
-      assert(decision && *decision == application::ToolPermissionDecision::deny);
+      EXPECT_EXPRESSION(decision &&
+                        *decision == application::ToolPermissionDecision::deny);
 
-      assert(co_await scenario->permissions->ClearPermanentGrants());
+      EXPECT_EXPRESSION(co_await scenario->permissions->ClearPermanentGrants());
       state = co_await scenario->permissions->Load();
-      assert(state && !state->has_permanent_grants);
+      EXPECT_EXPRESSION(state && !state->has_permanent_grants);
       scenario->done = true;
     });
     return [handle] { handle.Cancel(); };
@@ -140,13 +178,12 @@ huxerui::View Probe() {
 
 } // namespace
 
-int main() {
+TEST(tool_permission_service_tests, LegacySuite) {
   active = std::make_shared<Scenario>();
   active->store = std::make_shared<MemorySettings>();
   active->permissions =
       std::make_shared<application::ToolPermissionService>(active->store);
-  const huxerui::Application application(Probe,
-                                         {.show_debug_overlay = false});
+  const huxerui::Application application(Probe, {.show_debug_overlay = false});
   huxerui::testing::UiTest ui(application);
   ui.PumpUntil([] { return active->done; });
   active.reset();

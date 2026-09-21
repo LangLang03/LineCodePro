@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -15,6 +16,7 @@
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/components/legacy_settings_card_frame.h"
 #include "presentation/components/legacy_switch.h"
+#include "presentation/legacy_text_presentation.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -86,7 +88,7 @@ View SwitchRow(ImageResource icon, StringResource title,
                                       : PointerCursorKind::Default));
 }
 
-View Section(StringResource title, std::vector<View> rows) {
+View Section(std::string title, std::vector<View> rows) {
   std::vector<View> children;
   for (std::size_t index = 0; index < rows.size(); ++index) {
     children.push_back(std::move(rows[index]));
@@ -148,6 +150,10 @@ View Section(StringResource title, std::vector<View> rows) {
     return [mounted] { *mounted = false; };
   });
   const bool interactive = state->Interactive();
+  const auto coding_title = LegacySectionTitle(
+      UseString(app::strings::screen_keep_alive_section_coding));
+  const auto system_title = LegacySectionTitle(
+      UseString(app::strings::screen_keep_alive_section_system));
   auto save = [service, state, toast](bool KeepAlivePreferences::*field,
                                       bool enabled) {
     if (!state->Interactive())
@@ -213,11 +219,9 @@ View Section(StringResource title, std::vector<View> rows) {
                 }));
 
   return Column{
-      Header(navigation), Divider(),
-      ScrollView(Column{Section(app::strings::screen_keep_alive_section_coding,
-                                std::move(coding)),
-                        Section(app::strings::screen_keep_alive_section_system,
-                                std::move(system)),
+      Header(navigation), LegacyScreenHeaderDivider(),
+      ScrollView(Column{Section(coding_title, std::move(coding)),
+                        Section(system_title, std::move(system)),
                         Stack{}.With(Frame{.width = 1.0F, .height = 100.0F})}
                      .With(CrossAlign(CrossAxisAlignment::Stretch),
                            Background(colors::background)))

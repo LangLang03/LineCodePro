@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -198,36 +198,36 @@ huxerui::View Probe() {
   huxerui::Lifecycle([scenario, tasks] {
     const auto handle = tasks.Launch([scenario]() -> huxerui::Task<void> {
       auto refreshed = co_await scenario->composite->Refresh();
-      assert(refreshed);
-      assert(scenario->composite->Tools().size() == 2U);
-      assert(scenario->composite->Tools()[0].name == "static_tool");
-      assert(scenario->composite->Tools()[1].name ==
+      EXPECT_EXPRESSION(refreshed);
+      EXPECT_EXPRESSION(scenario->composite->Tools().size() == 2U);
+      EXPECT_EXPRESSION(scenario->composite->Tools()[0].name == "static_tool");
+      EXPECT_EXPRESSION(scenario->composite->Tools()[1].name ==
              application::kTerminalShellToolName);
 
       auto invoked = co_await scenario->composite->Invoke(
           std::string{application::kTerminalShellToolName},
           R"({"command":"pwd","cwd":"/workspace","timeoutMs":12.5})");
-      assert(invoked);
-      assert(!invoked->error);
-      assert(invoked->content.contains("fixed terminal output"));
-      assert(scenario->gateway->invoked_provider);
-      assert(scenario->gateway->invoked_request);
-      assert(scenario->gateway->invoked_request->command == "pwd");
-      assert(scenario->gateway->invoked_request->working_directory ==
+      EXPECT_EXPRESSION(invoked);
+      EXPECT_EXPRESSION(!invoked->error);
+      EXPECT_EXPRESSION(invoked->content == "fixed terminal output");
+      EXPECT_EXPRESSION(scenario->gateway->invoked_provider);
+      EXPECT_EXPRESSION(scenario->gateway->invoked_request);
+      EXPECT_EXPRESSION(scenario->gateway->invoked_request->command == "pwd");
+      EXPECT_EXPRESSION(scenario->gateway->invoked_request->working_directory ==
              "/workspace");
-      assert(scenario->gateway->invoked_request->timeout_milliseconds ==
+      EXPECT_EXPRESSION(scenario->gateway->invoked_request->timeout_milliseconds ==
              1'000);
 
       auto invalid = co_await scenario->composite->Invoke(
           std::string{application::kTerminalShellToolName}, "{}");
-      assert(!invalid);
-      assert(invalid.error().code ==
+      EXPECT_EXPRESSION(!invalid);
+      EXPECT_EXPRESSION(invalid.error().code ==
              application::ToolRegistryErrorCode::invalid_arguments);
 
       scenario->settings->value.mode = domain::McpExecutionMode::local;
       refreshed = co_await scenario->composite->Refresh();
-      assert(refreshed);
-      assert(scenario->composite->Tools().size() == 1U);
+      EXPECT_EXPRESSION(refreshed);
+      EXPECT_EXPRESSION(scenario->composite->Tools().size() == 1U);
 
       scenario->done = true;
     });
@@ -238,7 +238,7 @@ huxerui::View Probe() {
 
 } // namespace
 
-int main() {
+TEST(runtime_tool_registry_tests, LegacySuite) {
   active = std::make_shared<Scenario>();
   active->settings = std::make_shared<StubSettings>();
   active->providers = std::make_shared<StubProviders>();

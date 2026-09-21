@@ -376,8 +376,7 @@ SkillHubLoginScreen(const SkillHubScreenServices &services) {
                                   bridge_error, check_in_flight, navigation,
                                   toast, session_unavailable);
               })
-          .With(Grow(), Frame{.min_height = 1.0F}, ClipChildren(),
-                Semantics{.label = app::strings::skillhub_login_page_desc}),
+          .With(Grow(), Frame{.min_height = 1.0F}, ClipChildren()),
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::background), SafeAreaPadding{});

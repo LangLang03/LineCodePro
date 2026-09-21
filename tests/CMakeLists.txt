@@ -15,14 +15,9 @@ else ()
     find_package(HuxerUI CONFIG REQUIRED COMPONENTS shared testing)
 endif ()
 find_package(ZLIB REQUIRED)
-
-# Keep assertion-based specifications active even when this small native test
-# project is configured as Release.
-if (MSVC)
-    add_compile_options(/UNDEBUG)
-else ()
-    add_compile_options(-UNDEBUG)
-endif ()
+find_package(GTest CONFIG REQUIRED)
+include(GoogleTest)
+link_libraries(GTest::gtest_main)
 
 add_executable(linecodepro_tests
         application_tests.cpp
@@ -63,6 +58,26 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME app_route_tests COMMAND app_route_tests)
+
+add_executable(working_status_presentation_tests
+        working_status_presentation_tests.cpp
+)
+target_include_directories(working_status_presentation_tests PRIVATE ../src)
+target_compile_features(working_status_presentation_tests PRIVATE cxx_std_23)
+set_target_properties(working_status_presentation_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(working_status_presentation_tests PRIVATE
+            /W4 /WX /permissive-)
+else ()
+    target_compile_options(working_status_presentation_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME working_status_presentation_tests
+        COMMAND working_status_presentation_tests)
 
 add_executable(project_workspace_presentation_tests
         project_workspace_presentation_tests.cpp
@@ -748,6 +763,29 @@ add_test(NAME tutorial_markdown_parser_tests
 set_tests_properties(tutorial_markdown_parser_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/..")
 
+add_executable(tutorial_table_layout_tests
+        tutorial_table_layout_tests.cpp
+        ../src/presentation/components/tutorial_table_layout.cpp
+)
+target_include_directories(tutorial_table_layout_tests PRIVATE ../src)
+target_compile_features(tutorial_table_layout_tests PRIVATE cxx_std_23)
+target_link_libraries(tutorial_table_layout_tests PRIVATE
+        HuxerUI::testing HuxerUI::huxerui)
+set_target_properties(tutorial_table_layout_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(tutorial_table_layout_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(tutorial_table_layout_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME tutorial_table_layout_tests
+        COMMAND tutorial_table_layout_tests)
+
 add_executable(mcp_execution_settings_tests
         mcp_execution_settings_tests.cpp
 )
@@ -882,6 +920,54 @@ else ()
 endif ()
 add_test(NAME memory_context_service_tests COMMAND memory_context_service_tests)
 
+add_executable(memory_conversation_snapshot_tests
+        memory_conversation_snapshot_tests.cpp
+        ../src/application/memory_conversation_snapshot.cpp
+        ../src/domain/memory.cpp
+)
+target_include_directories(memory_conversation_snapshot_tests PRIVATE ../src)
+target_compile_features(memory_conversation_snapshot_tests PRIVATE cxx_std_23)
+target_link_libraries(memory_conversation_snapshot_tests PRIVATE
+        GTest::gtest_main)
+set_target_properties(memory_conversation_snapshot_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(memory_conversation_snapshot_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(memory_conversation_snapshot_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+gtest_discover_tests(memory_conversation_snapshot_tests
+        TEST_PREFIX "memory_conversation_snapshot."
+)
+
+add_executable(chat_generation_state_tests
+        chat_generation_state_tests.cpp
+        ../src/presentation/components/chat_generation_state.cpp
+)
+target_include_directories(chat_generation_state_tests PRIVATE ../src)
+target_compile_features(chat_generation_state_tests PRIVATE cxx_std_23)
+target_link_libraries(chat_generation_state_tests PRIVATE GTest::gtest_main)
+set_target_properties(chat_generation_state_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(chat_generation_state_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(chat_generation_state_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+gtest_discover_tests(chat_generation_state_tests
+        TEST_PREFIX "chat_generation_state."
+)
+
 add_executable(extension_store_tests
         extension_store_tests.cpp
         ../src/domain/extension_config.cpp
@@ -944,6 +1030,32 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME mcp_protocol_codec_tests COMMAND mcp_protocol_codec_tests)
+
+add_executable(mcp_response_reader_tests
+        mcp_response_reader_tests.cpp
+        ../src/domain/extension_config.cpp
+        ../src/infrastructure/extension_config_codec.cpp
+        ../src/infrastructure/hux_mcp_tool_catalog.cpp
+        ../src/infrastructure/hux_mcp_tool_invoker.cpp
+        ../src/infrastructure/mcp_protocol_codec.cpp
+        ../src/infrastructure/mcp_response_reader.cpp
+        ../src/infrastructure/archive_json.cpp
+)
+target_include_directories(mcp_response_reader_tests PRIVATE ../src)
+target_compile_features(mcp_response_reader_tests PRIVATE cxx_std_23)
+target_link_libraries(mcp_response_reader_tests PRIVATE HuxerUI::huxerui)
+set_target_properties(mcp_response_reader_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(mcp_response_reader_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(mcp_response_reader_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME mcp_response_reader_tests COMMAND mcp_response_reader_tests)
 
 add_executable(mcp_extension_tool_registry_tests
         mcp_extension_tool_registry_tests.cpp
@@ -1225,6 +1337,7 @@ add_test(NAME slash_command_catalog_tests COMMAND slash_command_catalog_tests)
 add_executable(attachment_backend_tests
         attachment_backend_tests.cpp
         ../src/application/chat_session.cpp
+        ../src/application/composer_image_input.cpp
         ../src/application/legacy_attachment_policy.cpp
         ../src/application/legacy_attachment_prompt_renderer.cpp
         ../src/application/send_message.cpp
@@ -1296,6 +1409,9 @@ add_test(NAME sqlite_conversation_attachment_tests
 
 add_executable(chat_timeline_presentation_tests
         chat_timeline_presentation_tests.cpp
+        ../src/application/agent_result_registry.cpp
+        ../src/application/agent_run_progress_codec.cpp
+        ../src/application/tool_text_catalog.cpp
         ../src/application/tool_result_display_policy.cpp
         ../src/infrastructure/archive_json.cpp
         ../src/presentation/chat_timeline_presentation.cpp)
@@ -1406,6 +1522,59 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME user_agreement_tests COMMAND user_agreement_tests)
+
+add_executable(theme_settings_migration_tests
+        theme_settings_migration_tests.cpp
+        ../src/application/theme_settings_migration.cpp
+)
+target_include_directories(theme_settings_migration_tests PRIVATE ../src)
+target_compile_features(theme_settings_migration_tests PRIVATE cxx_std_23)
+target_link_libraries(theme_settings_migration_tests PRIVATE
+        HuxerUI::huxerui HuxerUI::testing)
+if (MSVC)
+    target_compile_options(theme_settings_migration_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(theme_settings_migration_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME theme_settings_migration_tests
+        COMMAND theme_settings_migration_tests)
+
+add_executable(legacy_upgrade_integration_tests
+        legacy_upgrade_integration_tests.cpp
+        ../src/application/theme_settings.cpp
+        ../src/application/theme_settings_migration.cpp
+        ../src/domain/model_config.cpp
+        ../src/domain/theme_palette.cpp
+        ../src/infrastructure/sqlite_model_store.cpp
+        ../src/infrastructure/sqlite_settings_store.cpp
+        ../src/infrastructure/theme_file_settings_store.cpp
+)
+target_include_directories(legacy_upgrade_integration_tests PRIVATE ../src)
+target_compile_features(legacy_upgrade_integration_tests PRIVATE cxx_std_23)
+huxerui_use_library(legacy_upgrade_integration_tests
+        TARGET HuxerUI::SQLite
+        URL "https://github.com/HuxerUI/Lib-SQLite.git"
+        COMMIT "0b316df41cbd88b212e6aeead326196e3db6c96a"
+)
+target_link_libraries(legacy_upgrade_integration_tests PRIVATE
+        HuxerUI::testing
+        SQLite3::SQLite3)
+set_target_properties(legacy_upgrade_integration_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(legacy_upgrade_integration_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(legacy_upgrade_integration_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME legacy_upgrade_integration_tests
+        COMMAND legacy_upgrade_integration_tests)
 
 add_executable(markdown_link_policy_tests
         markdown_link_policy_tests.cpp
@@ -1669,8 +1838,12 @@ add_test(NAME agent_pipeline_tests COMMAND agent_pipeline_tests)
 
 add_executable(sub_agent_runner_tests
         sub_agent_runner_tests.cpp
+        ../src/application/agent_result_registry.cpp
+        ../src/application/agent_run_progress_codec.cpp
+        ../src/application/sub_agent_environment.cpp
         ../src/application/tool_permission_service.cpp
         ../src/application/tool_review_broker.cpp
+        ../src/application/tool_text_catalog.cpp
         ../src/domain/agent_pipeline.cpp
         ../src/application/sub_agent_runner.cpp
         ../src/application/prompt_template_repository.cpp
@@ -1682,7 +1855,10 @@ add_executable(sub_agent_runner_tests
 )
 target_include_directories(sub_agent_runner_tests PRIVATE ../src)
 target_compile_features(sub_agent_runner_tests PRIVATE cxx_std_23)
-target_link_libraries(sub_agent_runner_tests PRIVATE HuxerUI::testing)
+target_link_libraries(sub_agent_runner_tests PRIVATE
+        HuxerUI::testing
+        GTest::gtest_main
+)
 set_target_properties(sub_agent_runner_tests PROPERTIES
         CXX_STANDARD 23
         CXX_STANDARD_REQUIRED ON
@@ -1694,11 +1870,14 @@ else ()
     target_compile_options(sub_agent_runner_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME sub_agent_runner_tests COMMAND sub_agent_runner_tests)
+gtest_discover_tests(sub_agent_runner_tests
+        TEST_PREFIX "sub_agent_runner."
+)
 
 add_executable(agent_tool_tests
         agent_tool_tests.cpp
         ../src/application/agent_result_registry.cpp
+        ../src/application/agent_run_progress_codec.cpp
         ../src/application/agent_tool_registry.cpp
         ../src/application/tool_text_catalog.cpp
         ../src/domain/agent_pipeline.cpp
@@ -1971,6 +2150,7 @@ add_test(NAME legacy_archive_writer_tests
 add_executable(tool_review_broker_tests
         tool_review_broker_tests.cpp
         ../src/application/tool_review_broker.cpp
+        ../src/application/tool_review_coordinator.cpp
 )
 target_include_directories(tool_review_broker_tests PRIVATE ../src)
 target_compile_features(tool_review_broker_tests PRIVATE cxx_std_23)

@@ -33,6 +33,18 @@ Modifiers apply from left to right. Property modifiers alter declaration data wi
 
 Verify exact fields in the active SDK header. Do not infer a generic modifier from a component-specific style field.
 
+## Corner radii
+
+`CornerRadius` is the View modifier. Construct it with one uniform radius, four radii in top-left, top-right, bottom-right, bottom-left order, or a `CornerRadii` geometry value:
+
+```cpp
+CornerRadius(12.0F)
+CornerRadius(16.0F, 4.0F, 16.0F, 4.0F)
+CornerRadius(CornerRadii::Top(16.0F))
+```
+
+`CornerRadii` is plain geometry used directly by component styles and other APIs that request radii; it is not itself a modifier. `CornerRadius` has constructors and is not an aggregate, so do not use designated initialization for it or invent a `RoundedCorners` alias.
+
 Leave `Shadow::offset` at its default zero value unless the visual design explicitly calls for a directional shadow. Omit an explicit zero `offset`, and do not introduce a directional offset merely to represent theme elevation.
 
 ## Extension choice

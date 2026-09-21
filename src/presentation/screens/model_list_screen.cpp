@@ -121,7 +121,7 @@ View SheetPanel(StringVariant title, std::vector<View> rows,
 
   View panel = Column(std::move(content))
       .With(Frame{.max_width = 560.0F}, Background(colors::elevated),
-            CornerRadius(CornerRadii::Top(16.0F)), ClipChildren(),
+            CornerRadius(CornerRadii{16.0F}), ClipChildren(),
             CrossAlign(CrossAxisAlignment::Stretch));
   // DialogBuilder.showBottomSheet used the inset dialog width and a 16dp
   // bottom window offset for model actions/deletion. Keep those insets outside
@@ -192,7 +192,7 @@ View ModelCard(const domain::ModelConfig &model, State<ModelListState> state,
             .With(Frame{.width = 22.0F, .height = 22.0F},
                   Align(HorizontalAlignment::Center, VerticalAlignment::Center),
                   Background(marked ? colors::accent : Color::Transparent()),
-                  Border{.color = marked ? colors::accent : colors::border,
+                  Border{.color = marked ? colors::accent : colors::tertiary,
                          .width = 1.0F},
                   CornerRadius(11.0F)));
   } else if (current) {
@@ -241,22 +241,28 @@ View ModelCard(const domain::ModelConfig &model, State<ModelListState> state,
     });
   };
 
-  return Row{
+  std::vector<View> card_content;
+  card_content.push_back(
       Text(provider_label)
           .Style(Label(11.0F, FontWeight::Bold, colors::text_on_color))
           .With(Padding(EdgeInsets::Symmetric(8.0F, 4.0F)),
                 Background(ModelProtocolPresentationFor(model.protocol)
                                .badge_color),
-                CornerRadius(8.0F)),
+                CornerRadius(8.0F)));
+  card_content.push_back(
       Column{
           Text(model.name).Style(Label(16.0F, FontWeight::Medium)),
           Text(model.model_id)
               .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
               .With(Padding(EdgeInsets{.top = 2.0F})),
       }
-          .With(Grow()),
-      Row(std::move(trailing)).With(CrossAlign(CrossAxisAlignment::Center)),
+          .With(Grow()));
+  if (!trailing.empty()) {
+    card_content.push_back(
+        Row(std::move(trailing)).With(CrossAlign(CrossAxisAlignment::Center)));
   }
+
+  return Row(std::move(card_content))
       .OnClick(std::move(activate))
       .With(LongPressGesture{})
       .On<LongPressEvents::Started>(std::move(show_actions))
@@ -273,8 +279,8 @@ View ModelCard(const domain::ModelConfig &model, State<ModelListState> state,
 } // namespace
 
 [[huxerui::composable]] View
-ModelListScreen(std::shared_ptr<application::ModelStore> store,
-                ModelListActions actions) {
+ModelListContent(std::shared_ptr<application::ModelStore> store,
+                 ModelListActions actions) {
   auto state = UseState(ModelListState{});
   const auto tasks = UseTaskScope();
   const auto sheets = UseBottomSheet();
@@ -349,7 +355,7 @@ ModelListScreen(std::shared_ptr<application::ModelStore> store,
       LegacyScreenHeaderLayout{
           Stack{Glyph(state->multi_select ? app::images::x
                                           : app::images::chevron_left,
-                      20.0F, colors::text)}
+                      state->multi_select ? 20.0F : 22.0F, colors::text)}
               .OnClick([state, callback = actions.on_back] {
                 if (state->multi_select) {
                   auto next = state.Get();
@@ -365,7 +371,8 @@ ModelListScreen(std::shared_ptr<application::ModelStore> store,
                   Focusable(), PointerCursor(PointerCursorKind::Hand)),
           Stack{Text(title).Style(Label(17.0F, FontWeight::Bold))}.With(
               Grow(),
-              Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
+              Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+              Offset(Point{0.0F, 0.76F})),
           Stack{Glyph(state->multi_select ? app::images::trash_2
                                           : app::images::plus,
                       20.0F,
@@ -382,7 +389,7 @@ ModelListScreen(std::shared_ptr<application::ModelStore> store,
           .With(Frame{.min_height = 60.0F},
                 Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
                 Background(colors::background)),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(Column(std::move(cards))
                      .With(Padding(EdgeInsets{.top = 16.0F,
                                               .right = 16.0F,
@@ -394,6 +401,18 @@ ModelListScreen(std::shared_ptr<application::ModelStore> store,
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::background), SafeAreaPadding{});
+}
+
+[[huxerui::composable]] View
+ModelListScreen(std::shared_ptr<application::ModelStore> store,
+                ModelListActions actions) {
+  ThemeDefinition overrides;
+  overrides.Set(LineDialogBottomSheetStyle(UseLineColors()));
+  return Theme(
+      std::move(overrides),
+      Scope([store = std::move(store), actions = std::move(actions)] {
+        return ModelListContent(store, actions);
+      }));
 }
 
 } // namespace linecode::presentation

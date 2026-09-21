@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "application/agent_result_registry.h"
+#include "application/agent_run_progress_codec.h"
 #include "application/sub_agent_runner.h"
 
 namespace linecode::application {
@@ -27,9 +28,10 @@ public:
     auto stored = CreateAgentResultRecord(
         record.agent_id, record.tool_call_id, std::string{"agent"},
         record.status, record.type, record.description,
-        ClampAgentPreview(record.preview), record.output, std::string{},
-        std::string{}, record.tool_call_count, record.error, record.async, 0,
-        AgentResultNowMillis());
+        ClampAgentPreview(record.preview), record.output,
+        AgentProgressThinking(record.progress),
+        SerializeAgentProgress(record.progress), record.tool_call_count,
+        record.error, record.async, 0, AgentResultNowMillis());
     results_->Put(stored);
   }
 
@@ -40,9 +42,10 @@ public:
     auto stored = CreateAgentResultRecord(
         record.agent_id, record.tool_call_id, std::string{"agent"},
         record.status, record.type, record.description,
-        ClampAgentPreview(record.preview), record.output, std::string{},
-        std::string{}, record.tool_call_count, record.error, record.async, 0,
-        AgentResultNowMillis());
+        ClampAgentPreview(record.preview), record.output,
+        AgentProgressThinking(record.progress),
+        SerializeAgentProgress(record.progress), record.tool_call_count,
+        record.error, record.async, 0, AgentResultNowMillis());
     return AgentResultRegistry::ToCompactJson(stored);
   }
 

@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <map>
 #include <memory>
 #include <optional>
@@ -135,7 +135,7 @@ public:
   huxerui::Task<std::expected<application::ToolInvocationResult,
                               application::ToolRegistryError>>
   Invoke(std::string name, std::string) override {
-    assert(name == "image_generation");
+    EXPECT_EXPRESSION(name == "image_generation");
     co_return application::ToolInvocationResult{
         .content = std::string{kImageResult}, .error = false};
   }
@@ -145,8 +145,7 @@ private:
       {.name = "image_generation",
        .description = "Generate an image",
        .parameters_json = R"({"type":"object"})",
-       .allowed_in_read_only = false,
-       .permanent_grant_supported = false}};
+       .allowed_in_read_only = false}};
 };
 
 class ImageCompletion final : public application::CompletionGateway {
@@ -278,7 +277,7 @@ huxerui::View Probe() {
       request.tools = {};
       request.stream = false;
       request.permission_scope = "/workspace";
-      assert(co_await scenario->permissions->SetMode(
+      EXPECT_EXPRESSION(co_await scenario->permissions->SetMode(
           domain::ToolPermissionMode::confirm));
       scenario->result = co_await scenario->loop->Complete(
           request,
@@ -296,15 +295,16 @@ huxerui::View Probe() {
               .attachment_history = {},
           },
           application::CompletionObserver{
-              .on_event = [scenario](const auto &event) {
-                scenario->events.push_back(event);
-              },
+              .on_event =
+                  [scenario](const auto &event) {
+                    scenario->events.push_back(event);
+                  },
               .on_tool_review = [scenario](auto review)
                   -> huxerui::Task<
                       application::CompletionObserver::ToolReviewDecision> {
                 ++scenario->review_count;
-                assert(review.call.name == "mcpx_42svxm_echo");
-                assert(!review.can_allow_always);
+                EXPECT_EXPRESSION(review.call.name == "mcpx_42svxm_echo");
+                EXPECT_EXPRESSION(!review.can_allow_always);
                 co_return application::CompletionObserver::ToolReviewDecision::
                     allow_once;
               },
@@ -312,8 +312,7 @@ huxerui::View Probe() {
 
       scenario->image_completion = std::make_shared<ImageCompletion>();
       auto image_loop = std::make_shared<application::McpCompletionLoop>(
-          scenario->image_completion,
-          std::make_shared<ImageToolRegistry>());
+          scenario->image_completion, std::make_shared<ImageToolRegistry>());
       application::CompletionRequest image_request;
       image_request.model.model_id = "image-fixture";
       image_request.model.tool_call_limit = 1;
@@ -324,12 +323,14 @@ huxerui::View Probe() {
       auto image_result = co_await image_loop->Complete(
           std::move(image_request),
           application::CompletionObserver{
-              .on_event = [scenario](const auto &event) {
-                scenario->image_events.push_back(event);
-              },
+              .on_event =
+                  [scenario](const auto &event) {
+                    scenario->image_events.push_back(event);
+                  },
               .on_tool_review = {},
           });
-      assert(image_result && image_result->text == "Image complete.");
+      EXPECT_EXPRESSION(image_result &&
+                        image_result->text == "Image complete.");
       scenario->done = true;
     });
     return [handle] { handle.Cancel(); };
@@ -339,7 +340,7 @@ huxerui::View Probe() {
 
 } // namespace
 
-int main() {
+TEST(mcp_completion_loop_tests, LegacySuite) {
   auto store = std::make_shared<LoopStore>();
   auto invoker = std::make_shared<LoopInvoker>();
   auto completion = std::make_shared<LoopCompletion>();
@@ -360,34 +361,37 @@ int main() {
   huxerui::testing::UiTest ui(application);
   ui.PumpUntil([] { return active->done; });
 
-  assert(active->result && active->result->has_value());
-  assert((*active->result)->text == "final answer");
-  assert(completion->requests.size() == 2U);
-  assert(completion->requests[0].tools.size() == 1U);
-  assert(completion->requests[0].tools[0].name == "mcpx_42svxm_echo");
-  assert(completion->requests[0].messages.front().role ==
-         application::CompletionRole::system);
-  assert(active->composer->observed_tool_count == 1U);
-  assert(active->composer->observed_work_directory == "/workspace");
-  assert(completion->requests[1].messages.size() == 4U);
-  assert(completion->requests[1].messages[2].tool_calls.size() == 1U);
-  assert(completion->requests[1].messages[3].tool_result);
-  assert(completion->requests[1].messages[3].tool_result->content ==
-         "fixed tool result");
-  assert(invoker->extension_names == std::vector<std::string>{"Parity MCP"});
-  assert(invoker->tool_names == std::vector<std::string>{"echo"});
-  assert(invoker->arguments_json ==
-         std::vector<std::string>{R"({"text":"hello"})"});
-  assert(active->review_count == 1U);
-  assert(active->events.size() == 6U);
+  EXPECT_EXPRESSION(active->result && active->result->has_value());
+  EXPECT_EXPRESSION((*active->result)->text == "final answer");
+  EXPECT_EXPRESSION(completion->requests.size() == 2U);
+  EXPECT_EXPRESSION(completion->requests[0].tools.size() == 1U);
+  EXPECT_EXPRESSION(completion->requests[0].tools[0].name ==
+                    "mcpx_42svxm_echo");
+  EXPECT_EXPRESSION(completion->requests[0].messages.front().role ==
+                    application::CompletionRole::system);
+  EXPECT_EXPRESSION(active->composer->observed_tool_count == 1U);
+  EXPECT_EXPRESSION(active->composer->observed_work_directory == "/workspace");
+  EXPECT_EXPRESSION(completion->requests[1].messages.size() == 4U);
+  EXPECT_EXPRESSION(completion->requests[1].messages[2].tool_calls.size() ==
+                    1U);
+  EXPECT_EXPRESSION(completion->requests[1].messages[3].tool_result);
+  EXPECT_EXPRESSION(completion->requests[1].messages[3].tool_result->content ==
+                    "fixed tool result");
+  EXPECT_EXPRESSION(invoker->extension_names ==
+                    std::vector<std::string>{"Parity MCP"});
+  EXPECT_EXPRESSION(invoker->tool_names == std::vector<std::string>{"echo"});
+  EXPECT_EXPRESSION(invoker->arguments_json ==
+                    std::vector<std::string>{R"({"text":"hello"})"});
+  EXPECT_EXPRESSION(active->review_count == 1U);
+  EXPECT_EXPRESSION(active->events.size() == 6U);
   const auto *reasoning =
       std::get_if<application::CompletionReasoningDelta>(&active->events[0]);
-  assert(reasoning && reasoning->turn_index == 0U &&
-         reasoning->text == "inspect");
+  EXPECT_EXPRESSION(reasoning && reasoning->turn_index == 0U &&
+                    reasoning->text == "inspect");
   const auto *final_text =
       std::get_if<application::CompletionTextDelta>(&active->events.back());
-  assert(final_text && final_text->turn_index == 1U &&
-         final_text->text == "final answer");
+  EXPECT_EXPRESSION(final_text && final_text->turn_index == 1U &&
+                    final_text->text == "final answer");
   const std::vector<application::CompletionToolCallStatus> expected_statuses{
       application::CompletionToolCallStatus::requested,
       application::CompletionToolCallStatus::awaiting_review,
@@ -396,35 +400,36 @@ int main() {
   for (std::size_t index = 0; index < expected_statuses.size(); ++index) {
     const auto *event = std::get_if<application::CompletionToolCallEvent>(
         &active->events[index + 1U]);
-    assert(event != nullptr);
-    assert(event->turn_index == 0U);
-    assert(event->status == expected_statuses[index]);
+    EXPECT_EXPRESSION(event != nullptr);
+    EXPECT_EXPRESSION(event->turn_index == 0U);
+    EXPECT_EXPRESSION(event->status == expected_statuses[index]);
   }
-  const auto *completed = std::get_if<application::CompletionToolCallEvent>(
-      &active->events[4]);
-  assert(completed && completed->result &&
-         completed->result->content == "fixed tool result");
-  assert(active->image_completion->requests.size() == 2U);
+  const auto *completed =
+      std::get_if<application::CompletionToolCallEvent>(&active->events[4]);
+  EXPECT_EXPRESSION(completed && completed->result &&
+                    completed->result->content == "fixed tool result");
+  EXPECT_EXPRESSION(active->image_completion->requests.size() == 2U);
   const auto &model_tool_message =
       active->image_completion->requests[1].messages.back();
-  assert(model_tool_message.tool_result);
-  assert(model_tool_message.tool_result->content ==
-         "Generated image for: fixture");
-  assert(!model_tool_message.tool_result->content.contains("data:image/"));
-  const auto image_completed = std::ranges::find_if(
-      active->image_events, [](const auto &event) {
+  EXPECT_EXPRESSION(model_tool_message.tool_result);
+  EXPECT_EXPRESSION(model_tool_message.tool_result->content ==
+                    "Generated image for: fixture");
+  EXPECT_EXPRESSION(
+      !model_tool_message.tool_result->content.contains("data:image/"));
+  const auto image_completed =
+      std::ranges::find_if(active->image_events, [](const auto &event) {
         const auto *tool =
             std::get_if<application::CompletionToolCallEvent>(&event);
         return tool != nullptr &&
-               tool->status ==
-                   application::CompletionToolCallStatus::completed;
+               tool->status == application::CompletionToolCallStatus::completed;
       });
-  assert(image_completed != active->image_events.end());
+  EXPECT_EXPRESSION(image_completed != active->image_events.end());
   const auto &image_event =
       std::get<application::CompletionToolCallEvent>(*image_completed);
-  assert(image_event.result && image_event.result->content == kImageResult);
-  assert(image_event.display.display_markdown ==
-         "![fixture](data:image/png;base64,AAAA)");
-  assert(image_event.display.hide_success_card);
+  EXPECT_EXPRESSION(image_event.result &&
+                    image_event.result->content == kImageResult);
+  EXPECT_EXPRESSION(image_event.display.display_markdown ==
+                    "![fixture](data:image/png;base64,AAAA)");
+  EXPECT_EXPRESSION(image_event.display.hide_success_card);
   active.reset();
 }

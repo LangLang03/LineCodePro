@@ -274,7 +274,7 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation,
 View EmptyRow(const ResolvedMemoryStrings &strings) {
   return Text(strings.empty)
       .Style(Label(13.0F, FontWeight::Regular, colors::tertiary))
-      .With(Padding(16.0F));
+      .With(Frame{.min_height = 50.67F}, Padding(16.0F));
 }
 
 View RowDivider() { return Divider(); }
@@ -292,7 +292,8 @@ View Section(std::string title, std::vector<View> rows) {
       LegacySettingsCardFrame{
           Column(std::move(rows))
               .With(CrossAlign(CrossAxisAlignment::Stretch),
-                    Background(colors::elevated), CornerRadius(12.0F)),
+                    Background(colors::elevated), CornerRadius(12.0F),
+                    ClipChildren()),
       },
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch));
@@ -490,6 +491,24 @@ Task<void> DeleteMemories(std::shared_ptr<application::MemoryStore> store,
   const auto toast = UseToast();
   const bool editing = !memory.id.empty();
 
+  // Android's platform RadioButton used by the legacy screen measures each
+  // horizontal option at 32dp high and keeps roughly 4dp of horizontal inset
+  // on both sides of the 20dp control/label content.  The flat HuxerUI radio
+  // defaults to a 20dp interactive box, so styling only the surrounding Row
+  // leaves a visually correct row with a too-small hit target and cumulative
+  // label drift across the three options.
+  auto scope_radio_style = UseEnvironment<RadioButtonStyle>();
+  scope_radio_style.minimum_interactive_size = 32.0F;
+  // The legacy platform RadioButton inherits the Line theme controls: the
+  // selected ring/dot uses ACCENT (#333B46 in the default palette), while an
+  // unselected ring uses the near-white window background.
+  scope_radio_style.selected_color = colors::accent;
+  scope_radio_style.unselected_color = colors::background;
+  scope_radio_style.disabled_selected_color = colors::accent;
+  scope_radio_style.disabled_unselected_color = colors::background;
+  ThemeDefinition scope_theme;
+  scope_theme.Set(std::move(scope_radio_style));
+
   std::vector<View> scopes;
   scopes.reserve(scope_presentation_catalog.size());
   for (const auto &spec : scope_presentation_catalog) {
@@ -500,7 +519,10 @@ Task<void> DeleteMemories(std::shared_ptr<application::MemoryStore> store,
                 state.Update(
                     [scope](MemoryEditorState &next) { next.scope = scope; });
             })
-            .With(Enabled(!state->saving))
+            .With(Frame{.height = 32.0F},
+                  Padding(EdgeInsets::Symmetric(4.0F, 0.0F)),
+                  Foreground(colors::secondary),
+                  Enabled(!state->saving))
             .Key(domain::MemoryScopeDefinition(spec.value).storage_name));
   }
 
@@ -559,9 +581,10 @@ Task<void> DeleteMemories(std::shared_ptr<application::MemoryStore> store,
 
   return DialogPanel(
       editing ? strings.editor_edit : strings.editor_add,
-      {Row(std::move(scopes))
-           .With(Frame{.min_height = 32.0F},
-                 CrossAlign(CrossAxisAlignment::Center)),
+      {Theme(scope_theme,
+             Row(std::move(scopes))
+                 .With(Frame{.height = 32.0F},
+                       CrossAlign(CrossAxisAlignment::Center))),
        Gap(12.0F), input,
        DialogActions(
            {DialogAction(strings.cancel, colors::secondary,
@@ -894,7 +917,7 @@ MemoryScreen(std::shared_ptr<application::MemoryStore> store,
   return Column{
       Header(navigation, state, strings, std::move(add),
              std::move(delete_selected)),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(Column(std::move(content))
                      .With(CrossAlign(CrossAxisAlignment::Stretch),
                            Background(colors::background)))

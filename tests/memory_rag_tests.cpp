@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <chrono>
 #include <ranges>
 #include <string>
@@ -18,9 +18,9 @@ constexpr std::int64_t kNow = 2'000'000'000'000;
 void TokenizerAndRankingMatchLegacySemantics() {
   const auto keywords =
       linecode::domain::ExtractMemoryKeywords("Android SQLite 数据迁移");
-  assert(!keywords.empty());
-  assert(std::ranges::find(keywords, "android") != keywords.end());
-  assert(std::ranges::find(keywords, "sqlite") != keywords.end());
+  EXPECT_EXPRESSION(!keywords.empty());
+  EXPECT_EXPRESSION(std::ranges::find(keywords, "android") != keywords.end());
+  EXPECT_EXPRESSION(std::ranges::find(keywords, "sqlite") != keywords.end());
 
   auto ranked = linecode::domain::RankMemoryCandidates(
       {
@@ -34,8 +34,8 @@ void TokenizerAndRankingMatchLegacySemantics() {
                           .updated_at = kNow - 86'400'000},
       },
       "SQLite migration", 2, true, 0.0, kNow);
-  assert(ranked.size() == 1);
-  assert(ranked.front().id == "match");
+  EXPECT_EXPRESSION(ranked.size() == 1);
+  EXPECT_EXPRESSION(ranked.front().id == "match");
 
   auto recent_fallback = linecode::domain::RankMemoryCandidates(
       {
@@ -49,10 +49,10 @@ void TokenizerAndRankingMatchLegacySemantics() {
                           .updated_at = kNow},
       },
       "unmatched", 1, true, 0.0, kNow);
-  assert(recent_fallback.size() == 1);
-  assert(recent_fallback.front().id == "new");
+  EXPECT_EXPRESSION(recent_fallback.size() == 1);
+  EXPECT_EXPRESSION(recent_fallback.front().id == "new");
 
-  assert(linecode::domain::RankMemoryCandidates(
+  EXPECT_EXPRESSION(linecode::domain::RankMemoryCandidates(
              {MemoryCandidate{.id = "ignored",
                               .search_text = "match",
                               .formatted = "ignored",
@@ -62,31 +62,31 @@ void TokenizerAndRankingMatchLegacySemantics() {
 
   const auto stop_words =
       linecode::domain::ExtractMemoryKeywords("需要进行使用");
-  assert(std::ranges::find(stop_words, "进行") == stop_words.end());
-  assert(std::ranges::find(stop_words, "使用") == stop_words.end());
+  EXPECT_EXPRESSION(std::ranges::find(stop_words, "进行") == stop_words.end());
+  EXPECT_EXPRESSION(std::ranges::find(stop_words, "使用") == stop_words.end());
 
   const auto hiragana = linecode::domain::ExtractMemoryKeywords("あいうえお");
-  assert(hiragana.empty());
+  EXPECT_EXPRESSION(hiragana.empty());
 }
 
 void ExplicitExtractionIsScopedAndSensitiveSafe() {
   const ExplicitMemoryExtractionPolicy policy;
   const auto user = policy.Extract("请记住：我偏好中文回答");
-  assert(user.has_value());
-  assert(user->scope == MemoryScope::user);
-  assert(user->content == "我偏好中文回答");
+  EXPECT_EXPRESSION(user.has_value());
+  EXPECT_EXPRESSION(user->scope == MemoryScope::user);
+  EXPECT_EXPRESSION(user->content == "我偏好中文回答");
 
   const auto project = policy.Extract("记住项目: 使用 C++23");
-  assert(project.has_value());
-  assert(project->scope == MemoryScope::project);
+  EXPECT_EXPRESSION(project.has_value());
+  EXPECT_EXPRESSION(project->scope == MemoryScope::project);
 
   const auto environment = policy.Extract("请记住环境：NDK r29");
-  assert(environment.has_value());
-  assert(environment->scope == MemoryScope::environment);
+  EXPECT_EXPRESSION(environment.has_value());
+  EXPECT_EXPRESSION(environment->scope == MemoryScope::environment);
 
-  assert(!policy.Extract("这只是普通对话，不应自动保存").has_value());
-  assert(!policy.Extract("记住：password = hunter2").has_value());
-  assert(!policy.Extract("remember: sk-secret-token").has_value());
+  EXPECT_EXPRESSION(!policy.Extract("这只是普通对话，不应自动保存").has_value());
+  EXPECT_EXPRESSION(!policy.Extract("记住：password = hunter2").has_value());
+  EXPECT_EXPRESSION(!policy.Extract("remember: sk-secret-token").has_value());
 }
 
 void ExtractedContentIsUnicodeBounded() {
@@ -95,17 +95,17 @@ void ExtractedContentIsUnicodeBounded() {
   for (int index = 0; index < 400; ++index)
     input += "好";
   const auto extracted = policy.Extract(input);
-  assert(extracted.has_value());
+  EXPECT_EXPRESSION(extracted.has_value());
   const auto keywords =
       linecode::domain::ExtractMemoryKeywords(extracted->content);
-  assert(!keywords.empty());
-  assert(extracted->content.ends_with("。"));
-  assert(extracted->content.size() <= 320U * 3U);
+  EXPECT_EXPRESSION(!keywords.empty());
+  EXPECT_EXPRESSION(extracted->content.ends_with("。"));
+  EXPECT_EXPRESSION(extracted->content.size() <= 320U * 3U);
 }
 
 void NormalizedKeySupportsLegacyDeduplication() {
-  assert(linecode::domain::NormalizedMemoryKey(" Use C++23! ") == "usec23");
-  assert(linecode::domain::NormalizedMemoryKey("偏好：中文") == "偏好中文");
+  EXPECT_EXPRESSION(linecode::domain::NormalizedMemoryKey(" Use C++23! ") == "usec23");
+  EXPECT_EXPRESSION(linecode::domain::NormalizedMemoryKey("偏好：中文") == "偏好中文");
 }
 
 void PromptRenderingKeepsModeBoundariesExplicit() {
@@ -117,9 +117,9 @@ void PromptRenderingKeepsModeBoundariesExplicit() {
                       .updated_at = kNow},
   };
   const auto manual = renderer.RenderManual(rows);
-  assert(manual.contains("Learning Mode is disabled"));
-  assert(manual.contains("手工保存"));
-  assert(!manual.contains("短期/工作记忆"));
+  EXPECT_EXPRESSION(manual.contains("Learning Mode is disabled"));
+  EXPECT_EXPRESSION(manual.contains("手工保存"));
+  EXPECT_EXPRESSION(!manual.contains("短期/工作记忆"));
 
   const std::vector skills{
       MemoryCandidate{.id = "",
@@ -128,19 +128,19 @@ void PromptRenderingKeepsModeBoundariesExplicit() {
                       .updated_at = kNow},
   };
   const auto learning = renderer.RenderLearning({}, rows, {}, skills);
-  assert(learning.contains("Learning Mode is enabled"));
-  assert(learning.contains("本地检索 Top-K"));
-  assert(learning.contains("可用 Skills（RAG Top-K）"));
-  assert(renderer.RenderLearning({}, {}, {}, {}).empty());
+  EXPECT_EXPRESSION(learning.contains("Learning Mode is enabled"));
+  EXPECT_EXPRESSION(learning.contains("本地检索 Top-K"));
+  EXPECT_EXPRESSION(learning.contains("可用 Skills（RAG Top-K）"));
+  EXPECT_EXPRESSION(renderer.RenderLearning({}, {}, {}, {}).empty());
 }
 
 } // namespace
 
-int main() {
+TEST(memory_rag_tests, LegacySuite) {
   TokenizerAndRankingMatchLegacySemantics();
   ExplicitExtractionIsScopedAndSensitiveSafe();
   ExtractedContentIsUnicodeBounded();
   NormalizedKeySupportsLegacyDeduplication();
   PromptRenderingKeepsModeBoundariesExplicit();
-  return 0;
+  return;
 }

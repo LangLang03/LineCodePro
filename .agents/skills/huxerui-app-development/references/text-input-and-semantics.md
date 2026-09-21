@@ -19,6 +19,8 @@ return TextField(value)
 
 `Secure()` configures secure entry. Avoid logging, retaining, or echoing secure editing values outside the necessary owner.
 
+`TrailingIcon(icon)` is decorative. Use `TrailingIcon(icon, semantic_label)` with `OnTrailingIconClick(...)` when the icon is an independent action such as revealing a password, and keep its accessible label synchronized with the current action. This does not change the complete controlled editing value or make ComboBox's decorative dropdown icon interactive.
+
 ## Input configuration
 
 Choose `TextInputType`, capitalization, action, multiline, secure, autocorrect, and read-only behavior through `TextInputConfiguration`. Handle `.OnSubmitted` for semantic completion, not every raw key.
@@ -33,7 +35,13 @@ For collections, expose stable collection/item metadata when building a custom v
 
 Custom `NodeExtension` semantics call `InvalidateSemantics()` after retained semantic state changes and handle only the local actions they declare.
 
-In `BuildSemantics`, use `SemanticBuilder::AddChild(local_id, local_bounds, semantics, enabled)` for virtual parts of a self-drawn control. IDs are stable, nonzero, and unique within the extension; bounds are owner-local DIPs. Add standard or custom actions with `AddAction` or `AddCustomAction`. Child availability is combined with the mounted owner's Enabled state: disabled children remain discoverable but expose no executable actions. Reuse the real input availability predicate and invalidate semantics when it changes; semantic declarations do not disable pointer or keyboard handlers themselves.
+In `BuildSemantics`, use `SemanticBuilder::AddChild(local_id, local_bounds, semantics, enabled, parent_local_id)` for virtual parts of a self-drawn control. IDs are stable, nonzero, and unique within the extension; bounds are owner-local DIPs. Zero selects the mounted owner as the parent, and a nonzero parent must already have been declared. Add standard or custom actions with `AddAction` or `AddCustomAction`.
+
+Use `SetActiveChild(local_id)` when one virtual child represents the focused part of the mounted owner; zero clears it. Use `AdoptChild(local_id, child_index)` when an already mounted direct child owns interactive semantics that belong beneath a virtual logical item. Do not duplicate that child's actions or invent hidden Views solely to create an accessible hierarchy.
+
+Child availability is combined with the mounted owner's Enabled state and every virtual ancestor. Disabled children remain discoverable but expose no executable actions. Reuse the real input availability predicate and invalidate semantics when it changes; semantic declarations do not disable pointer or keyboard handlers themselves.
+
+Windows, macOS, Android, and iOS map the shared semantic tree to their platform accessibility systems. Linux and Web do not provide mappings for HuxerUI-rendered content and those bridges are not planned. Native DOM PlatformViews on Web retain their browser-provided accessibility independently.
 
 ## Review checklist
 

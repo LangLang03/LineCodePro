@@ -1,9 +1,9 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <string_view>
 
 #include "application/output_settings.h"
 
-int main() {
+TEST(output_settings_tests, LegacySuite) {
   using namespace linecode::application;
 
   static_assert(ParseBrowserMode("external") == BrowserMode::external);
@@ -15,8 +15,8 @@ int main() {
   OutputSettingsState state;
   state = ApplyOutputSettingsChange(
       state, OutputBooleanChange{OutputBooleanSetting::code_wrap, true});
-  assert(state.code_wrap_enabled);
-  assert(!state.process_auto_expand_enabled);
+  EXPECT_EXPRESSION(state.code_wrap_enabled);
+  EXPECT_EXPRESSION(!state.process_auto_expand_enabled);
 
   state = ApplyOutputSettingsChange(
       state,
@@ -32,19 +32,19 @@ int main() {
   state = ApplyOutputSettingsChange(state,
                                     BrowserModeChange{BrowserMode::external});
 
-  assert(state.process_auto_expand_enabled);
-  assert(state.browser_javascript_enabled);
-  assert(state.allow_any_http);
-  assert(state.bypass_path_protection);
-  assert(state.browser_mode == BrowserMode::external);
+  EXPECT_EXPRESSION(state.process_auto_expand_enabled);
+  EXPECT_EXPRESSION(state.browser_javascript_enabled);
+  EXPECT_EXPRESSION(state.allow_any_http);
+  EXPECT_EXPRESSION(state.bypass_path_protection);
+  EXPECT_EXPRESSION(state.browser_mode == BrowserMode::external);
 
-  assert(output_setting_keys::code_wrap == "@lineai_code_wrap");
-  assert(output_setting_keys::browser_mode == "@lineai_browser_mode");
-  assert(output_setting_keys::browser_javascript ==
+  EXPECT_EXPRESSION(output_setting_keys::code_wrap == "@lineai_code_wrap");
+  EXPECT_EXPRESSION(output_setting_keys::browser_mode == "@lineai_browser_mode");
+  EXPECT_EXPRESSION(output_setting_keys::browser_javascript ==
          "@lineai_browser_javascript");
-  assert(output_setting_keys::allow_any_http == "@lineai_allow_any_http");
-  assert(output_setting_keys::bypass_path_protection ==
+  EXPECT_EXPRESSION(output_setting_keys::allow_any_http == "@lineai_allow_any_http");
+  EXPECT_EXPRESSION(output_setting_keys::bypass_path_protection ==
          "@lineai_bypass_path_protection");
-  assert(output_setting_keys::process_auto_expand ==
+  EXPECT_EXPRESSION(output_setting_keys::process_auto_expand ==
          "@lineai_process_auto_expand");
 }

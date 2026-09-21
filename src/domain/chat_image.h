@@ -7,17 +7,19 @@ namespace linecode::domain {
 
 // An image the user attached to an outgoing message.
 //
-// Legacy `handleImagePicked` (`MainChatView.java:887-915`) reads the picked
-// file, compresses it to JPEG and passes `imageBase64` / `imageMimeType` /
-// `imageName` down the send path, so the payload travels as base64 rather than
-// as a path — the model may be remote and the file may be a content URI the
-// app cannot hand out.
+// Legacy `handleImagePicked` (`MainChatView.java:887-915`) recompresses the
+// selected file to JPEG, then passes image bytes, MIME type and display name
+// down the send path. The payload travels as base64 rather than as a path —
+// the model may be remote and the file may be a content URI the app cannot
+// hand out. The HuxerUI picker preserves supported PNG/JPEG bytes because its
+// public image API decodes those formats but does not expose a raster
+// transcoder.
 struct ChatImage final {
   std::string name;
-  // Always "image/jpeg" in practice: the picker re-encodes to JPEG before
-  // encoding (`MainChatView.java:899-903`).
+  // MIME type verified from the encoded PNG/JPEG signature, not trusted from
+  // provider metadata or a filename extension.
   std::string mime_type;
-  // Base64 of the JPEG bytes, no line wrapping (`Base64.NO_WRAP`).
+  // Base64 of the encoded bytes, without line wrapping (`Base64.NO_WRAP`).
   std::string base64;
 
   [[nodiscard]] bool Empty() const noexcept {

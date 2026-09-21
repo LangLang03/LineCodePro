@@ -13,6 +13,7 @@
 #include "domain/error_log.h"
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/components/legacy_settings_card_frame.h"
+#include "presentation/legacy_text_presentation.h"
 #include "presentation/line_theme.h"
 
 namespace linecode::presentation {
@@ -46,8 +47,6 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation,
           .OnClick([navigation] { navigation.Pop(); })
           .With(Frame{.width = 36.0F, .height = 36.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                Semantics{.role = SemanticRole::Button,
-                          .label = app::strings::common_back},
                 Focusable(), PointerCursor(PointerCursorKind::Hand)),
       Stack{Text(app::strings::screen_error_logs_title)
                 .Style(Label(17.0F, FontWeight::Bold))}
@@ -58,8 +57,6 @@ View Header(const RouteNavigationController<domain::AppRoute> &navigation,
           .With(Frame{.width = 36.0F, .height = 36.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
                 Enabled(!clearing),
-                Semantics{.role = SemanticRole::Button,
-                          .label = app::strings::screen_error_logs_cleared},
                 Focusable(), PointerCursor(PointerCursorKind::Hand)),
   }
       .With(Frame{.min_height = 60.0F},
@@ -71,7 +68,7 @@ View EmptyMessage(StringResource message) {
   return Text(message)
       .Style(Label(16.0F, FontWeight::Regular, colors::tertiary))
       .Align(TextAlign::Center)
-      .With(Padding(EdgeInsets::Symmetric(16.0F, 24.0F)));
+      .With(Padding(EdgeInsets::Symmetric(16.0F, 32.0F)));
 }
 
 View ErrorState(std::function<void()> retry) {
@@ -113,6 +110,7 @@ View LogRow(const domain::ErrorLogEntry &entry,
 }
 
 View LogSection(const std::vector<domain::ErrorLogEntry> &entries,
+                std::string section_title,
                 std::function<void(const domain::ErrorLogEntry &)> on_open) {
   std::vector<View> rows;
   rows.reserve(entries.size() * 2U);
@@ -128,14 +126,15 @@ View LogSection(const std::vector<domain::ErrorLogEntry> &entries,
     }
   }
   return Column{
-      Text(app::strings::screen_error_logs_section_title)
+      Text(std::move(section_title))
           .Style(Label(11.0F, FontWeight::Medium, colors::tertiary))
           .With(Padding(EdgeInsets{
               .top = 20.0F, .right = 16.0F, .bottom = 12.0F, .left = 16.0F})),
       LegacySettingsCardFrame{
           Column(std::move(rows))
               .With(CrossAlign(CrossAxisAlignment::Stretch),
-                    Background(colors::elevated), CornerRadius(12.0F)),
+                    Background(colors::elevated), CornerRadius(12.0F),
+                    ClipChildren()),
       },
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch));
@@ -212,6 +211,8 @@ ErrorLogsScreen(std::shared_ptr<application::ErrorLogService> service) {
   } else {
     content = LogSection(
         state->entries,
+        LegacySectionTitle(
+            UseString(app::strings::screen_error_logs_section_title)),
         [tasks, service, chooser_title, toast](domain::ErrorLogEntry entry) {
           tasks.Launch([service, entry = std::move(entry), chooser_title,
                         toast]() mutable {
@@ -229,7 +230,7 @@ ErrorLogsScreen(std::shared_ptr<application::ErrorLogService> service) {
           return ClearLogs(service, state, toast);
         });
       }),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(Column{
                      std::move(content),
                      Stack{}.With(Frame{.width = 1.0F, .height = 100.0F}),

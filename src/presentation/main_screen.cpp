@@ -303,6 +303,7 @@ huxerui::View HomeScreen(
     std::shared_ptr<application::ProjectWorkspaceController> project_workspace,
     std::shared_ptr<application::ModelStore> model_store,
     std::shared_ptr<application::McpCompletionLoop> completion_loop,
+    std::shared_ptr<application::AgentResultReader> agent_results,
     std::shared_ptr<application::StoragePermissionService> storage_permission,
     std::shared_ptr<application::MemoryContextService> memory_context,
     std::shared_ptr<application::AiBehaviorSettingsRepository>
@@ -455,19 +456,48 @@ huxerui::View HomeScreen(
   View centered_chat =
       Stack{
           ChatScreen(
-              [drawer_open] { drawer_open = true; }, draft, session.Get(),
-              generation, model_store, completion_loop, storage_permission,
-              selected_model_available.Get(), active_generation, revision,
-              pending_messages, drawer_model, memory_context, behavior_settings,
-              todo_state, skills, execution_settings, compaction_service,
-              diff_store, diff_review, output_settings, tool_permissions,
-              tool_reviews, chat_modes, interaction_mode, input_settings,
-              project_id, std::move(prompt_context),
-              visible_drawer.project_label,
-              [workspace_coordinator] {
-                workspace_coordinator.ShowProjectPicker();
+              ChatScreenServices{
+                  .session = session.Get(),
+                  .generation = generation,
+                  .model_store = model_store,
+                  .completion_loop = completion_loop,
+                  .agent_results = agent_results,
+                  .storage_permission = storage_permission,
+                  .pending_messages = pending_messages,
+                  .memory_context = memory_context,
+                  .behavior_settings = behavior_settings,
+                  .todo_state = todo_state,
+                  .skills = skills,
+                  .execution_settings = execution_settings,
+                  .compaction_service = compaction_service,
+                  .diff_store = diff_store,
+                  .diff_review = diff_review,
+                  .output_settings = output_settings,
+                  .tool_permissions = tool_permissions,
+                  .tool_reviews = tool_reviews,
+                  .chat_modes = chat_modes,
               },
-              [workspace_coordinator] { workspace_coordinator.Refresh(); })
+              ChatScreenState{
+                  .draft = draft,
+                  .has_selected_model = selected_model_available.Get(),
+                  .active_generation = active_generation,
+                  .revision = revision,
+                  .workspace = drawer_model,
+                  .interaction_mode = interaction_mode,
+                  .input_settings = input_settings,
+                  .current_project_id = project_id,
+                  .prompt_context = std::move(prompt_context),
+                  .project_label = visible_drawer.project_label,
+              },
+              ChatScreenActions{
+                  .open_drawer = [drawer_open] { drawer_open = true; },
+                  .show_project_picker = [workspace_coordinator] {
+                    workspace_coordinator.ShowProjectPicker();
+                  },
+                  .refresh_workspace = [workspace_coordinator] {
+                    workspace_coordinator.Refresh();
+                  },
+              })
               .With(Frame{.max_width = 792.0F}),
       }
           .With(Align(HorizontalAlignment::Center, VerticalAlignment::Stretch),
@@ -494,6 +524,7 @@ huxerui::View MainScreen(
     std::shared_ptr<application::InputSettingsRepository> input_settings,
     std::shared_ptr<application::PromptTemplateRepository> prompt_templates,
     std::shared_ptr<application::McpCompletionLoop> completion_loop,
+    std::shared_ptr<application::AgentResultReader> agent_results,
     std::shared_ptr<application::OutputSettingsService> output_settings_service,
     std::shared_ptr<application::UserAgreement> user_agreement,
     std::shared_ptr<application::ThemeSettingsService> theme_service,
@@ -585,6 +616,7 @@ huxerui::View MainScreen(
   auto root =
       [initial_session, project_workspace = std::move(project_workspace),
        model_store, completion_loop = std::move(completion_loop),
+       agent_results = std::move(agent_results),
        storage_permission = std::move(storage_permission),
        memory_context = memory_context.Get(), ai_behavior_settings,
        todo_state = std::move(todo_state), skills = std::move(skills),
@@ -599,13 +631,14 @@ huxerui::View MainScreen(
        workspace_revision]() -> View {
     return HomeScreen(
         initial_session, project_workspace, model_store, completion_loop,
-        storage_permission, memory_context, ai_behavior_settings, todo_state,
-        skills, execution_settings, ssh_settings, compaction_service,
-        diff_store, diff_review, output_settings_service, tool_permissions,
-        tool_reviews, chat_modes, interaction_mode, active_input_settings.Get(),
-        linecode_root, workspace_state, termux_ssh_mode,
-        selected_model_available, generation, active_generation,
-        pending_messages, chat_revision, workspace_revision);
+        agent_results, storage_permission, memory_context,
+        ai_behavior_settings, todo_state, skills, execution_settings,
+        ssh_settings, compaction_service, diff_store, diff_review,
+        output_settings_service, tool_permissions, tool_reviews, chat_modes,
+        interaction_mode, active_input_settings.Get(), linecode_root,
+        workspace_state, termux_ssh_mode, selected_model_available, generation,
+        active_generation, pending_messages, chat_revision,
+        workspace_revision);
   };
 
   auto destination =

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -50,6 +51,9 @@ public:
   Begin(std::string text);
   [[nodiscard]] std::expected<GenerationWork, SendMessageError>
   Begin(std::string text, std::vector<domain::InputAttachment> attachments);
+  [[nodiscard]] std::expected<GenerationWork, SendMessageError>
+  Begin(std::string text, std::vector<domain::InputAttachment> attachments,
+        std::optional<domain::ChatImage> image);
   [[nodiscard]] bool Complete(std::uint64_t generation_id,
                               CompletionResponse response);
   [[nodiscard]] bool Observe(std::uint64_t generation_id,

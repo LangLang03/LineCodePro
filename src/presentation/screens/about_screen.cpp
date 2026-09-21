@@ -1,6 +1,7 @@
 #include "presentation/screens/about_screen.h"
 
 #include <functional>
+#include <optional>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -56,8 +57,6 @@ View Header(StringResource title,
           .OnClick([navigation] { navigation.Pop(); })
           .With(Frame{.width = 36.0F, .height = 36.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                Semantics{.role = SemanticRole::Button,
-                          .label = app::strings::common_back},
                 Focusable(), PointerCursor(PointerCursorKind::Hand)),
       Stack{Text(title).Style(Label(17.0F, FontWeight::Bold))}.With(
           Grow(),
@@ -78,18 +77,21 @@ View IconTile(ImageResource icon) {
             Background(colors::accent_muted), CornerRadius(8.0F));
 }
 
-View AboutRow(ImageResource icon, StringResource label, StringVariant value,
+View AboutRow(ImageResource icon, StringResource label,
+              std::optional<StringVariant> value,
               std::function<void()> action = {}) {
+  std::vector<View> labels;
+  labels.push_back(Text(label).Style(Label(16.0F, FontWeight::Medium)));
+  if (value.has_value()) {
+    labels.push_back(
+        Text(std::move(*value))
+            .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
+            .With(Padding(EdgeInsets{.top = 2.0F})));
+  }
   View row =
       Row{
           IconTile(std::move(icon)),
-          Column{
-              Text(label).Style(Label(16.0F, FontWeight::Medium)),
-              Text(std::move(value))
-                  .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
-                  .With(Padding(EdgeInsets{.top = 2.0F})),
-          }
-              .With(Grow()),
+          Column(std::move(labels)).With(Grow()),
           action ? Glyph(app::images::chevron_right, 17.0F, colors::tertiary)
                        .With(Frame{.width = 20.0F, .height = 20.0F})
                  : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F}),
@@ -199,7 +201,7 @@ void AppendRow(std::vector<View> &content, View row) {
   AppendGroupTitle(content, app::strings::screen_about_section_legal);
   AppendRow(content, AboutRow(app::images::file_text,
                               app::strings::screen_about_open_source_licenses,
-                              app::strings::screen_about_legal_value,
+                              std::nullopt,
                               [navigation, licenses_route] {
                                 navigation.Push(licenses_route);
                               }));
@@ -211,7 +213,7 @@ void AppendRow(std::vector<View> &content, View row) {
 
   return Column{
       Header(app::strings::screen_about_title, navigation),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(Column(std::move(content))
                      .With(Padding(EdgeInsets{.top = 16.0F,
                                               .right = 16.0F,

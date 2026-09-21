@@ -38,8 +38,6 @@ View SkillHubHeader(StringVariant title, std::function<void()> on_back) {
           .OnClick(std::move(on_back))
           .With(Frame{.width = 36.0F, .height = 36.0F},
                 Align(HorizontalAlignment::Center, VerticalAlignment::Center),
-                Semantics{.role = SemanticRole::Button,
-                          .label = app::strings::common_back},
                 Focusable(), PointerCursor(PointerCursorKind::Hand)),
       Stack{
           Text(std::move(title)).Style(SkillHubLabel(17.0F, FontWeight::Bold))}

@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <string>
 
 #include "application/error_log_policy.h"
@@ -9,30 +9,30 @@ namespace {
 void TestEntryIdentityPolicy() {
   using linecode::application::IsValidErrorLogEntryId;
   using linecode::application::SafeTemporaryErrorLogFileName;
-  assert(IsValidErrorLogEntryId("20260906-http-123.log"));
-  assert(IsValidErrorLogEntryId("a.log"));
-  assert(!IsValidErrorLogEntryId(".log"));
-  assert(!IsValidErrorLogEntryId("error.txt"));
-  assert(!IsValidErrorLogEntryId("../error.log"));
-  assert(!IsValidErrorLogEntryId("nested/error.log"));
-  assert(!IsValidErrorLogEntryId("nested\\error.log"));
-  assert(!IsValidErrorLogEntryId(std::string("bad\0.log", 8)));
-  assert(!IsValidErrorLogEntryId(std::string(256, 'a') + ".log"));
-  assert(SafeTemporaryErrorLogFileName("20260906-http.log") ==
+  EXPECT_EXPRESSION(IsValidErrorLogEntryId("20260906-http-123.log"));
+  EXPECT_EXPRESSION(IsValidErrorLogEntryId("a.log"));
+  EXPECT_EXPRESSION(!IsValidErrorLogEntryId(".log"));
+  EXPECT_EXPRESSION(!IsValidErrorLogEntryId("error.txt"));
+  EXPECT_EXPRESSION(!IsValidErrorLogEntryId("../error.log"));
+  EXPECT_EXPRESSION(!IsValidErrorLogEntryId("nested/error.log"));
+  EXPECT_EXPRESSION(!IsValidErrorLogEntryId("nested\\error.log"));
+  EXPECT_EXPRESSION(!IsValidErrorLogEntryId(std::string("bad\0.log", 8)));
+  EXPECT_EXPRESSION(!IsValidErrorLogEntryId(std::string(256, 'a') + ".log"));
+  EXPECT_EXPRESSION(SafeTemporaryErrorLogFileName("20260906-http.log") ==
          "20260906-http.log");
-  assert(SafeTemporaryErrorLogFileName("../../token: secret") ==
+  EXPECT_EXPRESSION(SafeTemporaryErrorLogFileName("../../token: secret") ==
          "_.._token__secret.log");
-  assert(SafeTemporaryErrorLogFileName("日志") == "______.log");
-  assert(SafeTemporaryErrorLogFileName("") == "linecode-error.log");
-  assert(SafeTemporaryErrorLogFileName(std::string(200, 'a')).size() == 100U);
+  EXPECT_EXPRESSION(SafeTemporaryErrorLogFileName("日志") == "______.log");
+  EXPECT_EXPRESSION(SafeTemporaryErrorLogFileName("") == "linecode-error.log");
+  EXPECT_EXPRESSION(SafeTemporaryErrorLogFileName(std::string(200, 'a')).size() == 100U);
   const std::string nul_title("line\0code", 9);
   for (const std::string &title :
        {std::string("../secret"), std::string("a/b"), std::string("a\\b"),
         std::string(".hidden"), nul_title}) {
     const std::string safe = SafeTemporaryErrorLogFileName(title);
-    assert(IsValidErrorLogEntryId(safe));
-    assert(safe.find('/') == std::string::npos);
-    assert(safe.find('\\') == std::string::npos);
+    EXPECT_EXPRESSION(IsValidErrorLogEntryId(safe));
+    EXPECT_EXPRESSION(safe.find('/') == std::string::npos);
+    EXPECT_EXPRESSION(safe.find('\\') == std::string::npos);
   }
 }
 
@@ -44,13 +44,13 @@ void TestSecretRedaction() {
       "api-key: second-key\n"
       R"({"password":"hello","access_token":"token","ok":"visible"})";
   const std::string redacted = RedactErrorLogText(input);
-  assert(redacted.find("secret-token") == std::string::npos);
-  assert(redacted.find("key-value") == std::string::npos);
-  assert(redacted.find("second-key") == std::string::npos);
-  assert(redacted.find("hello") == std::string::npos);
-  assert(redacted.find("\"access_token\":\"token\"") == std::string::npos);
-  assert(redacted.find("visible") != std::string::npos);
-  assert(redacted.find("Bearer [REDACTED]") != std::string::npos);
+  EXPECT_EXPRESSION(redacted.find("secret-token") == std::string::npos);
+  EXPECT_EXPRESSION(redacted.find("key-value") == std::string::npos);
+  EXPECT_EXPRESSION(redacted.find("second-key") == std::string::npos);
+  EXPECT_EXPRESSION(redacted.find("hello") == std::string::npos);
+  EXPECT_EXPRESSION(redacted.find("\"access_token\":\"token\"") == std::string::npos);
+  EXPECT_EXPRESSION(redacted.find("visible") != std::string::npos);
+  EXPECT_EXPRESSION(redacted.find("Bearer [REDACTED]") != std::string::npos);
 }
 
 void TestBase64AndSizeBounds() {
@@ -60,22 +60,22 @@ void TestBase64AndSizeBounds() {
   const std::string inline_image =
       "data:image/png;base64," + payload;
   const std::string json = "{\"b64_json\":\"" + payload + "\"}";
-  assert(RedactErrorLogText(inline_image).find("[BASE64_REDACTED]") !=
+  EXPECT_EXPRESSION(RedactErrorLogText(inline_image).find("[BASE64_REDACTED]") !=
          std::string::npos);
-  assert(RedactErrorLogText(json).find("[BASE64_REDACTED]") !=
+  EXPECT_EXPRESSION(RedactErrorLogText(json).find("[BASE64_REDACTED]") !=
          std::string::npos);
 
   const std::string oversized(kMaximumSafeErrorLogText + 16U, 'x');
   const std::string bounded = RedactErrorLogText(oversized);
-  assert(bounded.size() < oversized.size());
-  assert(bounded.ends_with("... [REDACTED_TRUNCATED]"));
+  EXPECT_EXPRESSION(bounded.size() < oversized.size());
+  EXPECT_EXPRESSION(bounded.ends_with("... [REDACTED_TRUNCATED]"));
 }
 
 } // namespace
 
-int main() {
+TEST(error_log_tests, LegacySuite) {
   TestEntryIdentityPolicy();
   TestSecretRedaction();
   TestBase64AndSizeBounds();
-  return 0;
+  return;
 }

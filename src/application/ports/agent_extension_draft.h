@@ -13,7 +13,8 @@ namespace linecode::application {
 struct AgentToolOption final {
   std::string name;
   std::string category;
-  std::string description;
+  std::string display_name;
+  std::string display_description;
   bool selected_by_default{};
 
   bool operator==(const AgentToolOption &) const = default;

@@ -1,5 +1,5 @@
+#include "gtest_support.h"
 #include <algorithm>
-#include <cassert>
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
@@ -154,10 +154,9 @@ application::ToolFileError Missing(const std::string &path) {
 std::string Lower(std::string_view value) {
   std::string lowered;
   lowered.reserve(value.size());
-  std::ranges::transform(value, std::back_inserter(lowered),
-                         [](unsigned char byte) {
-                           return static_cast<char>(std::tolower(byte));
-                         });
+  std::ranges::transform(
+      value, std::back_inserter(lowered),
+      [](unsigned char byte) { return static_cast<char>(std::tolower(byte)); });
   return lowered;
 }
 
@@ -464,8 +463,9 @@ private:
       const std::string name{rest.substr(0, slash)};
       if (name.empty())
         continue;
-      const bool is_directory = slash != std::string_view::npos ||
-                                entry.kind == application::ToolFileKind::directory;
+      const bool is_directory =
+          slash != std::string_view::npos ||
+          entry.kind == application::ToolFileKind::directory;
       if (std::ranges::any_of(children, [&name](const auto &child) {
             return child.name == name;
           })) {
@@ -525,9 +525,9 @@ struct Scenario final {
     std::error_code error;
     std::filesystem::remove_all(base, error);
     std::filesystem::create_directories(base, error);
-    assert(!error);
+    EXPECT_EXPRESSION(!error);
     root = std::filesystem::weakly_canonical(base, error).generic_string();
-    assert(!error);
+    EXPECT_EXPRESSION(!error);
 
     settings = std::make_shared<StubExecutionSettings>();
     workspace = std::make_shared<StubProjectWorkspace>();
@@ -537,8 +537,8 @@ struct Scenario final {
     files = std::make_shared<MemoryFileAccess>();
     files->root = root;
     SeedWorkspace(*files);
-    tools = std::make_shared<application::FileToolRegistry>(
-        settings, workspace, files);
+    tools = std::make_shared<application::FileToolRegistry>(settings, workspace,
+                                                            files);
     chinese_tools = std::make_shared<application::FileToolRegistry>(
         settings, workspace, files, application::ToolTextLanguage::chinese);
   }
@@ -588,10 +588,10 @@ std::shared_ptr<Scenario> active;
 
 domain::McpToolGroupState &
 FileOpsGroup(const std::shared_ptr<StubExecutionSettings> &settings) {
-  const auto found = std::ranges::find(settings->value.groups,
-                                       std::string{"file_ops"},
-                                       &domain::McpToolGroupState::id);
-  assert(found != settings->value.groups.end());
+  const auto found =
+      std::ranges::find(settings->value.groups, std::string{"file_ops"},
+                        &domain::McpToolGroupState::id);
+  EXPECT_EXPRESSION(found != settings->value.groups.end());
   return *found;
 }
 
@@ -609,34 +609,36 @@ void CheckDescriptor(const application::FileToolRegistry &registry,
                      std::string_view name, std::string_view description,
                      std::string_view schema,
                      std::initializer_list<std::string_view> required,
+                     application::AgentToolCategory agent_category,
                      bool selected_by_default = false) {
   const auto *tool = FindTool(registry, name);
-  assert(tool != nullptr);
-  assert(tool->description == description);
-  assert(tool->parameters_json == schema);
-  assert(tool->category == "file_ops");
-  assert(!tool->allowed_in_read_only);
-  assert(!tool->permanent_grant_supported);
-  assert(tool->agent_selectable);
-  assert(tool->agent_selected_by_default == selected_by_default);
+  EXPECT_EXPRESSION(tool != nullptr);
+  EXPECT_EXPRESSION(tool->description == description);
+  EXPECT_EXPRESSION(tool->parameters_json == schema);
+  EXPECT_EXPRESSION(tool->category == "file_ops");
+  EXPECT_EXPRESSION(!tool->allowed_in_read_only);
+  EXPECT_EXPRESSION(!tool->SupportsPermanentGrant());
+  EXPECT_EXPRESSION(tool->agent_category == agent_category);
+  EXPECT_EXPRESSION(tool->agent_selectable);
+  EXPECT_EXPRESSION(tool->agent_selected_by_default == selected_by_default);
 
   auto parsed = json::Parse(tool->parameters_json);
-  assert(parsed);
+  EXPECT_EXPRESSION(parsed);
   const auto *object = json::AsObject(&*parsed);
-  assert(object != nullptr);
-  assert(json::AsString(json::Find(*object, "type")) != nullptr);
-  assert(*json::AsString(json::Find(*object, "type")) == "object");
+  EXPECT_EXPRESSION(object != nullptr);
+  EXPECT_EXPRESSION(json::AsString(json::Find(*object, "type")) != nullptr);
+  EXPECT_EXPRESSION(*json::AsString(json::Find(*object, "type")) == "object");
   const auto *required_array = json::AsArray(json::Find(*object, "required"));
   if (required.size() == 0U) {
-    assert(required_array == nullptr);
+    EXPECT_EXPRESSION(required_array == nullptr);
     return;
   }
-  assert(required_array != nullptr);
-  assert(required_array->size() == required.size());
+  EXPECT_EXPRESSION(required_array != nullptr);
+  EXPECT_EXPRESSION(required_array->size() == required.size());
   std::size_t index = 0;
   for (const auto expected : required) {
     const auto *value = json::AsString(&required_array->at(index));
-    assert(value != nullptr && *value == expected);
+    EXPECT_EXPRESSION(value != nullptr && *value == expected);
     ++index;
   }
 }
@@ -659,35 +661,36 @@ void CheckCatalogMatchesProperties() {
       ReadFile(directory / std::string{kEnglishPropertiesFile});
   const auto chinese_text =
       ReadFile(directory / std::string{kChinesePropertiesFile});
-  assert(english_text.has_value());
-  assert(chinese_text.has_value());
+  EXPECT_EXPRESSION(english_text.has_value());
+  EXPECT_EXPRESSION(chinese_text.has_value());
   const auto english = ParseProperties(*english_text);
   const auto chinese = ParseProperties(*chinese_text);
 
   // The catalog also carries the agent / agent_pipeline / agent_output tool
   // strings, so the count covers every migrated tool_* resource.
-  assert(application::kToolTextKeyCount >= 42U);
+  EXPECT_EXPRESSION(application::kToolTextKeyCount >= 42U);
   std::size_t matched = 0;
   for (std::size_t index = 0; index < application::kToolTextKeyCount; ++index) {
     const auto key = static_cast<application::ToolTextKey>(index);
     const std::string name{application::ToolTextName(key)};
-    assert(application::IsToolTextKey(name));
-    assert(name.starts_with("tool_"));
+    EXPECT_EXPRESSION(application::IsToolTextKey(name));
+    EXPECT_EXPRESSION(name.starts_with("tool_"));
     const auto english_entry = english.find(name);
     const auto chinese_entry = chinese.find(name);
-    assert(english_entry != english.end());
-    assert(chinese_entry != chinese.end());
-    assert(application::ToolTextTemplate(key) == english_entry->second);
-    assert(application::ToolTextTemplate(
-               key, application::ToolTextLanguage::chinese) ==
-           chinese_entry->second);
+    EXPECT_EXPRESSION(english_entry != english.end());
+    EXPECT_EXPRESSION(chinese_entry != chinese.end());
+    EXPECT_EXPRESSION(application::ToolTextTemplate(key) ==
+                      english_entry->second);
+    EXPECT_EXPRESSION(application::ToolTextTemplate(
+                          key, application::ToolTextLanguage::chinese) ==
+                      chinese_entry->second);
     ++matched;
   }
-  assert(matched == application::kToolTextKeyCount);
+  EXPECT_EXPRESSION(matched == application::kToolTextKeyCount);
 
   // The built-in file tool keys the file tools actually produce.
-  assert(english.contains("tool_file_read_not_found"));
-  assert(english.contains("tool_call_action_match"));
+  EXPECT_EXPRESSION(english.contains("tool_file_read_not_found"));
+  EXPECT_EXPRESSION(english.contains("tool_call_action_match"));
 }
 
 void CheckCatalogFormatting() {
@@ -695,22 +698,25 @@ void CheckCatalogFormatting() {
   using application::ToolTextLanguage;
 
   // Literal braces survive formatting; placeholders are zero based.
-  assert(Text(ToolTextKey::tool_file_read_exceed_50kb,
-              {"big.txt", "60", "big.txt"}) ==
-         "File big.txt is 60KB, exceeding the 50KB single-read limit.\n"
-         "Use start_kb and end_kb to specify the range, e.g.: "
-         "{\"file_path\":\"big.txt\",\"start_kb\":0,\"end_kb\":50}");
-  assert(Text(ToolTextKey::tool_file_read_exceed_50kb,
-              {"big.txt", "60", "big.txt"}, ToolTextLanguage::chinese) ==
-         "文件 big.txt 大小为 60KB，单次读取超过 50KB。\n"
-         "请使用 start_kb 和 end_kb 指定读取范围，例如："
-         "{\"file_path\":\"big.txt\",\"start_kb\":0,\"end_kb\":50}");
+  EXPECT_EXPRESSION(
+      Text(ToolTextKey::tool_file_read_exceed_50kb,
+           {"big.txt", "60", "big.txt"}) ==
+      "File big.txt is 60KB, exceeding the 50KB single-read limit.\n"
+      "Use start_kb and end_kb to specify the range, e.g.: "
+      "{\"file_path\":\"big.txt\",\"start_kb\":0,\"end_kb\":50}");
+  EXPECT_EXPRESSION(Text(ToolTextKey::tool_file_read_exceed_50kb,
+                         {"big.txt", "60", "big.txt"},
+                         ToolTextLanguage::chinese) ==
+                    "文件 big.txt 大小为 60KB，单次读取超过 50KB。\n"
+                    "请使用 start_kb 和 end_kb 指定读取范围，例如："
+                    "{\"file_path\":\"big.txt\",\"start_kb\":0,\"end_kb\":50}");
   // A placeholder without a matching argument stays visible.
-  assert(Text(ToolTextKey::tool_file_write_created, {"a.txt"}) ==
-         "Successfully created file a.txt ({1} lines)");
+  EXPECT_EXPRESSION(Text(ToolTextKey::tool_file_write_created, {"a.txt"}) ==
+                    "Successfully created file a.txt ({1} lines)");
   // An unknown key echoes the key instead of silently rendering nothing.
-  assert(application::ToolText("tool_unknown_key", {}) == "tool_unknown_key");
-  assert(!application::IsToolTextKey("tool_unknown_key"));
+  EXPECT_EXPRESSION(application::ToolText("tool_unknown_key", {}) ==
+                    "tool_unknown_key");
+  EXPECT_EXPRESSION(!application::IsToolTextKey("tool_unknown_key"));
 }
 
 huxerui::Task<void> RunFileToolChecks(std::shared_ptr<Scenario> scenario) {
@@ -719,437 +725,462 @@ huxerui::Task<void> RunFileToolChecks(std::shared_ptr<Scenario> scenario) {
 
   // 1. Catalog descriptors: name, description and schema verbatim.
   auto refreshed = co_await scenario->tools->Refresh();
-  assert(refreshed);
-  assert(scenario->tools->Tools().size() == 6U);
+  EXPECT_EXPRESSION(refreshed);
+  EXPECT_EXPRESSION(scenario->tools->Tools().size() == 6U);
   CheckDescriptor(tools, "file_read", kFileReadDescription, kFileReadSchema,
-                  {"file_path"}, true);
+                  {"file_path"}, application::AgentToolCategory::read, true);
   CheckDescriptor(tools, "file_write", kFileWriteDescription, kFileWriteSchema,
-                  {"content", "file_path"});
+                  {"content", "file_path"},
+                  application::AgentToolCategory::write);
   CheckDescriptor(tools, "file_edit", kFileEditDescription, kFileEditSchema,
-                  {"file_path", "new_string", "old_string"});
+                  {"file_path", "new_string", "old_string"},
+                  application::AgentToolCategory::write);
   CheckDescriptor(tools, "file_delete", kFileDeleteDescription,
-                  kFileDeleteSchema, {"paths", "reason"});
+                  kFileDeleteSchema, {"paths", "reason"},
+                  application::AgentToolCategory::write);
   CheckDescriptor(tools, "glob", kGlobDescription, kGlobSchema, {"pattern"},
-                  true);
+                  application::AgentToolCategory::read, true);
   CheckDescriptor(tools, "list_dir", kListDirectoryDescription,
-                  kListDirectorySchema, {});
+                  kListDirectorySchema, {},
+                  application::AgentToolCategory::read);
 
   // 2. Localized templates: spot checks in both languages.
-  assert(Text(application::ToolTextKey::tool_file_read_failed, {"boom"}) ==
-         "Failed to read file: boom");
-  assert(Text(application::ToolTextKey::tool_file_read_failed, {"boom"},
-              application::ToolTextLanguage::chinese) == "读取文件失败: boom");
-  assert(Text(application::ToolTextKey::tool_file_delete_none, {}) ==
-         "No files were deleted");
-  assert(Text(application::ToolTextKey::tool_file_delete_none, {},
-              application::ToolTextLanguage::chinese) == "没有删除任何文件");
-  assert(Text(application::ToolTextKey::tool_list_dir_empty, {"pkg"}) ==
-         "Directory pkg:\n(empty directory)");
-  assert(Text(application::ToolTextKey::tool_list_dir_empty, {"pkg"},
-              application::ToolTextLanguage::chinese) == "目录 pkg:\n(空目录)");
-  assert(Text(application::ToolTextKey::tool_glob_found, {"2", "."}) ==
-         "Found 2 matching file(s) in .:\n");
-  assert(Text(application::ToolTextKey::tool_glob_found, {"2", "."},
-              application::ToolTextLanguage::chinese) ==
-         "在 . 目录下找到 2 个匹配文件:\n");
+  EXPECT_EXPRESSION(Text(application::ToolTextKey::tool_file_read_failed,
+                         {"boom"}) == "Failed to read file: boom");
+  EXPECT_EXPRESSION(Text(application::ToolTextKey::tool_file_read_failed,
+                         {"boom"}, application::ToolTextLanguage::chinese) ==
+                    "读取文件失败: boom");
+  EXPECT_EXPRESSION(Text(application::ToolTextKey::tool_file_delete_none, {}) ==
+                    "No files were deleted");
+  EXPECT_EXPRESSION(Text(application::ToolTextKey::tool_file_delete_none, {},
+                         application::ToolTextLanguage::chinese) ==
+                    "没有删除任何文件");
+  EXPECT_EXPRESSION(Text(application::ToolTextKey::tool_list_dir_empty,
+                         {"pkg"}) == "Directory pkg:\n(empty directory)");
+  EXPECT_EXPRESSION(Text(application::ToolTextKey::tool_list_dir_empty, {"pkg"},
+                         application::ToolTextLanguage::chinese) ==
+                    "目录 pkg:\n(空目录)");
+  EXPECT_EXPRESSION(Text(application::ToolTextKey::tool_glob_found,
+                         {"2", "."}) == "Found 2 matching file(s) in .:\n");
+  EXPECT_EXPRESSION(Text(application::ToolTextKey::tool_glob_found, {"2", "."},
+                         application::ToolTextLanguage::chinese) ==
+                    "在 . 目录下找到 2 个匹配文件:\n");
   // {1} is the "." display of the workspace root, so the template's own
   // sentence period follows it.
-  assert(Text(application::ToolTextKey::tool_glob_no_match, {"*.md", "."}) ==
-         "No files matching \"*.md\" found in ..");
-  assert(Text(application::ToolTextKey::tool_call_action_read, {}) == "Read");
+  EXPECT_EXPRESSION(
+      Text(application::ToolTextKey::tool_glob_no_match, {"*.md", "."}) ==
+      "No files matching \"*.md\" found in ..");
+  EXPECT_EXPRESSION(Text(application::ToolTextKey::tool_call_action_read, {}) ==
+                    "Read");
 
   // 3. file_read: numbered content, defaults and the 50KB single-read limit.
-  auto invoked = co_await scenario->tools->Invoke("file_read",
-                                                  R"({"file_path":"notes.txt"})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content == "1\talpha\n2\tbeta\n3\tgamma");
+  auto invoked = co_await scenario->tools->Invoke(
+      "file_read", R"({"file_path":"notes.txt"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "1\talpha\n2\tbeta\n3\tgamma");
 
   invoked = co_await scenario->tools->Invoke("file_read",
                                              R"({"file_path":"missing.txt"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content == "File not found: missing.txt");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "File not found: missing.txt");
 
   invoked = co_await scenario->tools->Invoke(
       "file_read", R"({"file_path":"../escape.txt"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content ==
-         "Failed to read file: Path is outside the current workspace: "
-         "../escape.txt");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content ==
+      "Failed to read file: Path is outside the current workspace: "
+      "../escape.txt");
 
   // A directory argument returns the depth-first tree plus the legacy hint.
   invoked =
       co_await scenario->tools->Invoke("file_read", R"({"file_path":"pkg"})");
-  assert(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked && !invoked->error);
   // The tree is depth-first: a directory's children follow it immediately.
-  assert(invoked->content ==
-         "Directory pkg:\n"
-         "[DIR]  sub/\n"
-         "[FILE] sub/deep.txt\n"
-         "[FILE] a.txt\n"
-         "[FILE] b.txt"
-         "\n\nTo read a file, specify the exact file path.");
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Directory pkg:\n"
+                    "[DIR]  sub/\n"
+                    "[FILE] sub/deep.txt\n"
+                    "[FILE] a.txt\n"
+                    "[FILE] b.txt"
+                    "\n\nTo read a file, specify the exact file path.");
 
   invoked =
       co_await scenario->tools->Invoke("file_read", R"({"file_path":"empty"})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content ==
-         "Directory empty:\n(empty directory)"
-         "\n\nTo read a file, specify the exact file path.");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Directory empty:\n(empty directory)"
+                    "\n\nTo read a file, specify the exact file path.");
 
   // 60 KB without a KB range is refused, not loaded.
   invoked = co_await scenario->tools->Invoke("file_read",
                                              R"({"file_path":"large.txt"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content ==
-         "File large.txt is 60KB, exceeding the 50KB single-read limit.\n"
-         "Use start_kb and end_kb to specify the range, e.g.: "
-         "{\"file_path\":\"large.txt\",\"start_kb\":0,\"end_kb\":50}");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content ==
+      "File large.txt is 60KB, exceeding the 50KB single-read limit.\n"
+      "Use start_kb and end_kb to specify the range, e.g.: "
+      "{\"file_path\":\"large.txt\",\"start_kb\":0,\"end_kb\":50}");
 
   // One KB page covers exactly one whole line and reports the range footer.
   invoked = co_await scenario->tools->Invoke(
       "file_read", R"({"file_path":"segment.txt","start_kb":0,"end_kb":1})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content ==
-         "1\t" + std::string(1023, 'a') +
-             "\n\n… (total 2 lines, showing KB 0-1 / total 2KB)");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "1\t" + std::string(1023, 'a') +
+                        "\n\n… (total 2 lines, showing KB 0-1 / total 2KB)");
 
   // The page is not truncated by the 50KB result limit, so a 60 KB range read
   // still returns the middle-truncation marker.
   invoked = co_await scenario->tools->Invoke(
       "file_read", R"({"file_path":"large.txt","start_kb":0,"end_kb":60})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content.contains("chars truncated"));
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content.contains("chars truncated"));
 
   invoked = co_await scenario->tools->Invoke(
       "file_read", R"({"file_path":"segment.txt","start_kb":10})");
-  assert(invoked && invoked->error);
-  assert(invoked->content ==
-         "start_kb=10 exceeds file size (file is 2KB)");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "start_kb=10 exceeds file size (file is 2KB)");
 
   // Read failures surface through the localized template.
   scenario->files->fail_read = application::ToolFileError{
       .code = application::ToolFileErrorCode::io, .message = "injected read"};
   invoked = co_await scenario->tools->Invoke("file_read",
                                              R"({"file_path":"notes.txt"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content == "Failed to read file: injected read");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "Failed to read file: injected read");
   scenario->files->fail_read.reset();
 
   // 4. file_write: create, update, parent creation and failures.
   invoked = co_await scenario->tools->Invoke(
       "file_write", R"({"file_path":"fresh.txt","content":"one\ntwo"})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content == "Successfully created file fresh.txt (2 lines)");
-  assert(scenario->files->Content("fresh.txt") == "one\ntwo");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Successfully created file fresh.txt (2 lines)");
+  EXPECT_EXPRESSION(scenario->files->Content("fresh.txt") == "one\ntwo");
 
   invoked = co_await scenario->tools->Invoke(
       "file_write", R"({"file_path":"fresh.txt","content":"one"})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content == "Successfully updated file fresh.txt (1 lines)");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Successfully updated file fresh.txt (1 lines)");
 
   invoked = co_await scenario->tools->Invoke(
       "file_write", R"({"file_path":"deep/nested/leaf.txt","content":"x"})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content ==
-         "Successfully created file deep/nested/leaf.txt (1 lines)");
-  assert(scenario->files->Content("deep/nested/leaf.txt") == "x");
-  assert(scenario->files->created_directories.size() == 1U);
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Successfully created file deep/nested/leaf.txt (1 lines)");
+  EXPECT_EXPRESSION(scenario->files->Content("deep/nested/leaf.txt") == "x");
+  EXPECT_EXPRESSION(scenario->files->created_directories.size() == 1U);
 
   invoked = co_await scenario->tools->Invoke(
       "file_write", R"({"file_path":"   ","content":"x"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content == "Failed to write file: file_path cannot be empty");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Failed to write file: file_path cannot be empty");
 
   invoked = co_await scenario->tools->Invoke(
       "file_write", R"({"file_path":"pkg","content":"x"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content ==
-         "Path is a directory, cannot write file: pkg\n"
-         "To create a file, specify the full file path.");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Path is a directory, cannot write file: pkg\n"
+                    "To create a file, specify the full file path.");
 
   scenario->files->fail_create_directories = application::ToolFileError{
       .code = application::ToolFileErrorCode::io, .message = "injected mkdir"};
   invoked = co_await scenario->tools->Invoke(
       "file_write", R"({"file_path":"other/leaf.txt","content":"x"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content.starts_with("Failed to create parent directory: "));
-  assert(invoked->content.ends_with("/other"));
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content.starts_with("Failed to create parent directory: "));
+  EXPECT_EXPRESSION(invoked->content.ends_with("/other"));
   scenario->files->fail_create_directories.reset();
 
   scenario->files->fail_write = application::ToolFileError{
       .code = application::ToolFileErrorCode::io, .message = "injected write"};
   invoked = co_await scenario->tools->Invoke(
       "file_write", R"({"file_path":"fresh.txt","content":"x"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content == "Failed to write file: injected write");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "Failed to write file: injected write");
   scenario->files->fail_write.reset();
 
   // 5. file_edit: unique match, no match, ambiguity and replace_all.
   invoked = co_await scenario->tools->Invoke(
       "file_edit",
       R"({"file_path":"edit.txt","old_string":"world","new_string":"there"})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content ==
-         "Successfully edited edit.txt (1 match(es) replaced)");
-  assert(scenario->files->Content("edit.txt") == "hello there");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Successfully edited edit.txt (1 match(es) replaced)");
+  EXPECT_EXPRESSION(scenario->files->Content("edit.txt") == "hello there");
 
   invoked = co_await scenario->tools->Invoke(
       "file_edit",
       R"({"file_path":"edit.txt","old_string":"absent","new_string":"x"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content == "No matching text found");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "No matching text found");
 
   invoked = co_await scenario->tools->Invoke(
       "file_edit",
       R"({"file_path":"multi.txt","old_string":"cat","new_string":"dog"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content ==
-         "old_string matched 3 places. Provide a more unique old_string, or "
-         "set replace_all=true to replace every occurrence.");
-  assert(scenario->files->Content("multi.txt") == "cat cat cat");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content ==
+      "old_string matched 3 places. Provide a more unique old_string, or "
+      "set replace_all=true to replace every occurrence.");
+  EXPECT_EXPRESSION(scenario->files->Content("multi.txt") == "cat cat cat");
 
   invoked = co_await scenario->tools->Invoke(
       "file_edit",
       R"({"file_path":"multi.txt","old_string":"cat","new_string":"dog","replace_all":true})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content ==
-         "Successfully edited multi.txt (3 match(es) replaced)");
-  assert(scenario->files->Content("multi.txt") == "dog dog dog");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Successfully edited multi.txt (3 match(es) replaced)");
+  EXPECT_EXPRESSION(scenario->files->Content("multi.txt") == "dog dog dog");
 
   invoked = co_await scenario->tools->Invoke(
       "file_edit",
       R"({"file_path":"multi.txt","old_string":"","new_string":"dog"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content == "old_string cannot be empty");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "old_string cannot be empty");
 
   invoked = co_await scenario->tools->Invoke(
       "file_edit",
       R"({"file_path":"missing.txt","old_string":"a","new_string":"b"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content == "File not found: missing.txt");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "File not found: missing.txt");
 
   invoked = co_await scenario->tools->Invoke(
       "file_edit", R"({"file_path":"pkg","old_string":"a","new_string":"b"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content ==
-         "Path is a directory, cannot edit: pkg\n"
-         "To edit a file, specify the exact file path.");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Path is a directory, cannot edit: pkg\n"
+                    "To edit a file, specify the exact file path.");
 
   // 6. file_delete: full success, partial failure and total failure.
   invoked = co_await scenario->tools->Invoke(
-      "file_delete", R"({"paths":["remove_a.txt","remove_b.txt"],"reason":"cleanup"})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content ==
-         "Successfully deleted 2 item(s):\n"
-         "- remove_a.txt\n"
-         "- remove_b.txt");
-  assert(!scenario->files->Has("remove_a.txt"));
-  assert(!scenario->files->Has("remove_b.txt"));
+      "file_delete",
+      R"({"paths":["remove_a.txt","remove_b.txt"],"reason":"cleanup"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "Successfully deleted 2 item(s):\n"
+                                        "- remove_a.txt\n"
+                                        "- remove_b.txt");
+  EXPECT_EXPRESSION(!scenario->files->Has("remove_a.txt"));
+  EXPECT_EXPRESSION(!scenario->files->Has("remove_b.txt"));
 
   invoked = co_await scenario->tools->Invoke(
-      "file_delete", R"({"paths":["fresh.txt","gone.txt"],"reason":"cleanup"})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content ==
-         "Successfully deleted 1 item(s):\n"
-         "- fresh.txt\n"
-         "\n"
-         "Failed 1 item(s):\n"
-         "- Path not found: gone.txt");
+      "file_delete",
+      R"({"paths":["fresh.txt","gone.txt"],"reason":"cleanup"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "Successfully deleted 1 item(s):\n"
+                                        "- fresh.txt\n"
+                                        "\n"
+                                        "Failed 1 item(s):\n"
+                                        "- Path not found: gone.txt");
 
   invoked = co_await scenario->tools->Invoke(
-      "file_delete", R"({"paths":["gone_a.txt","gone_b.txt"],"reason":"cleanup"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content ==
-         "Failed 2 item(s):\n"
-         "- Path not found: gone_a.txt\n"
-         "- Path not found: gone_b.txt");
+      "file_delete",
+      R"({"paths":["gone_a.txt","gone_b.txt"],"reason":"cleanup"})");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "Failed 2 item(s):\n"
+                                        "- Path not found: gone_a.txt\n"
+                                        "- Path not found: gone_b.txt");
 
   invoked = co_await scenario->tools->Invoke(
       "file_delete", R"({"paths":["../escape.txt"],"reason":"cleanup"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content ==
-         "Failed 1 item(s):\n"
-         "- Failed to delete ../escape.txt: Path is outside the current "
-         "workspace: ../escape.txt");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content ==
+      "Failed 1 item(s):\n"
+      "- Failed to delete ../escape.txt: Path is outside the current "
+      "workspace: ../escape.txt");
 
   invoked = co_await scenario->tools->Invoke(
       "file_delete", R"({"paths":["notes.txt"],"reason":"   "})");
-  assert(invoked && invoked->error);
-  assert(invoked->content == "Deletion reason cannot be empty");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "Deletion reason cannot be empty");
 
   invoked = co_await scenario->tools->Invoke(
       "file_delete", R"({"paths":[],"reason":"cleanup"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content == "paths cannot be empty");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "paths cannot be empty");
 
   // 7. glob: matches, no matches, unusable root, truncation and failure.
   invoked = co_await scenario->tools->Invoke(
       "glob", R"({"pattern":"*.txt","path":"pkg"})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content ==
-         "Found 3 matching file(s) in pkg:\n"
-         "a.txt\n"
-         "b.txt\n"
-         "sub/deep.txt");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "Found 3 matching file(s) in pkg:\n"
+                                        "a.txt\n"
+                                        "b.txt\n"
+                                        "sub/deep.txt");
 
   invoked = co_await scenario->tools->Invoke("glob", R"({"pattern":"*.md"})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content == "No files matching \"*.md\" found in ..");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "No files matching \"*.md\" found in ..");
 
   invoked = co_await scenario->tools->Invoke(
       "glob", R"({"pattern":"*.txt","path":"notes.txt"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content ==
-         "Search root directory does not exist or is not a directory: "
-         "notes.txt");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content ==
+      "Search root directory does not exist or is not a directory: "
+      "notes.txt");
 
   invoked = co_await scenario->tools->Invoke("glob", R"({"pattern":"  "})");
-  assert(invoked && invoked->error);
-  assert(invoked->content == "Search failed: pattern cannot be empty");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Search failed: pattern cannot be empty");
 
   scenario->files->glob_override = std::vector<std::string>(1000U, "hit.txt");
   invoked = co_await scenario->tools->Invoke("glob", R"({"pattern":"*.txt"})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content.starts_with("Found 1000 matching file(s) in .:\n"));
-  assert(invoked->content.ends_with("… (too many results, truncated)"));
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content.starts_with("Found 1000 matching file(s) in .:\n"));
+  EXPECT_EXPRESSION(
+      invoked->content.ends_with("… (too many results, truncated)"));
   scenario->files->glob_override.reset();
 
   scenario->files->fail_glob = application::ToolFileError{
       .code = application::ToolFileErrorCode::io, .message = "injected glob"};
   invoked = co_await scenario->tools->Invoke("glob", R"({"pattern":"*.txt"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content == "Search failed: injected glob");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "Search failed: injected glob");
   scenario->files->fail_glob.reset();
 
   // 8. list_dir: content, empty directory and failure paths.
   invoked = co_await scenario->tools->Invoke("list_dir", R"({"path":"pkg"})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content ==
-         "Directory pkg:\n"
-         "[DIR]  sub/\n"
-         "[FILE] a.txt\n"
-         "[FILE] b.txt");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "Directory pkg:\n"
+                                        "[DIR]  sub/\n"
+                                        "[FILE] a.txt\n"
+                                        "[FILE] b.txt");
 
-  invoked =
-      co_await scenario->tools->Invoke("list_dir", R"({"path":"empty"})");
-  assert(invoked && !invoked->error);
-  assert(invoked->content == "Directory empty:\n(empty directory)");
+  invoked = co_await scenario->tools->Invoke("list_dir", R"({"path":"empty"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "Directory empty:\n(empty directory)");
 
   invoked = co_await scenario->tools->Invoke("list_dir", "{}");
-  assert(invoked && !invoked->error);
-  assert(invoked->content.starts_with(
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content.starts_with(
       "Directory .:\n[DIR]  deep/\n[DIR]  empty/\n[DIR]  pkg/\n[FILE] "));
-  assert(invoked->content.contains("[FILE] notes.txt"));
+  EXPECT_EXPRESSION(invoked->content.contains("[FILE] notes.txt"));
 
-  invoked = co_await scenario->tools->Invoke("list_dir",
-                                             R"({"path":"notes.txt"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content == "Path is not a directory: notes.txt");
+  invoked =
+      co_await scenario->tools->Invoke("list_dir", R"({"path":"notes.txt"})");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "Path is not a directory: notes.txt");
 
   invoked = co_await scenario->tools->Invoke("list_dir", R"({"path":"nope"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content == "Directory not found: nope");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "Directory not found: nope");
 
   scenario->files->fail_list = application::ToolFileError{
       .code = application::ToolFileErrorCode::io, .message = "injected list"};
   invoked = co_await scenario->tools->Invoke("list_dir", R"({"path":"pkg"})");
-  assert(invoked && invoked->error);
-  assert(invoked->content == "Failed to list directory: injected list");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Failed to list directory: injected list");
   scenario->files->fail_list.reset();
 
   // 9. Argument and dispatch failures.
   invoked = co_await scenario->tools->Invoke("file_read", "{");
-  assert(!invoked);
-  assert(invoked.error().code == ToolRegistryErrorCode::invalid_arguments);
-  assert(invoked.error().message == "Parameters cannot be empty.");
+  EXPECT_EXPRESSION(!invoked);
+  EXPECT_EXPRESSION(invoked.error().code ==
+                    ToolRegistryErrorCode::invalid_arguments);
+  EXPECT_EXPRESSION(invoked.error().message == "Parameters cannot be empty.");
   invoked = co_await scenario->tools->Invoke("file_read", "[]");
-  assert(!invoked);
-  assert(invoked.error().code == ToolRegistryErrorCode::invalid_arguments);
+  EXPECT_EXPRESSION(!invoked);
+  EXPECT_EXPRESSION(invoked.error().code ==
+                    ToolRegistryErrorCode::invalid_arguments);
   invoked = co_await scenario->tools->Invoke("unknown_tool", "{}");
-  assert(!invoked);
-  assert(invoked.error().code == ToolRegistryErrorCode::unknown_tool);
-  assert(invoked.error().message == "Unknown file tool: unknown_tool");
+  EXPECT_EXPRESSION(!invoked);
+  EXPECT_EXPRESSION(invoked.error().code ==
+                    ToolRegistryErrorCode::unknown_tool);
+  EXPECT_EXPRESSION(invoked.error().message ==
+                    "Unknown file tool: unknown_tool");
 
   // 10. Chinese product language for the same tools.
   const auto &chinese = *scenario->chinese_tools;
   auto chinese_refreshed = co_await scenario->chinese_tools->Refresh();
-  assert(chinese_refreshed);
-  assert(scenario->chinese_tools->Tools().size() == 6U);
+  EXPECT_EXPRESSION(chinese_refreshed);
+  EXPECT_EXPRESSION(scenario->chinese_tools->Tools().size() == 6U);
   CheckDescriptor(chinese, "file_read", kFileReadDescription, kFileReadSchema,
-                  {"file_path"}, true);
-  auto chinese_invoked =
-      co_await scenario->chinese_tools->Invoke("file_read",
-                                               R"({"file_path":"missing.txt"})");
-  assert(chinese_invoked && chinese_invoked->error);
-  assert(chinese_invoked->content == "文件不存在: missing.txt");
+                  {"file_path"}, application::AgentToolCategory::read, true);
+  auto chinese_invoked = co_await scenario->chinese_tools->Invoke(
+      "file_read", R"({"file_path":"missing.txt"})");
+  EXPECT_EXPRESSION(chinese_invoked && chinese_invoked->error);
+  EXPECT_EXPRESSION(chinese_invoked->content == "文件不存在: missing.txt");
   chinese_invoked = co_await scenario->chinese_tools->Invoke(
       "file_write", R"({"file_path":"zh.txt","content":"one\ntwo"})");
-  assert(chinese_invoked && !chinese_invoked->error);
-  assert(chinese_invoked->content == "成功创建文件 zh.txt (2 行)");
-  chinese_invoked =
-      co_await scenario->chinese_tools->Invoke("list_dir", R"({"path":"empty"})");
-  assert(chinese_invoked && !chinese_invoked->error);
-  assert(chinese_invoked->content == "目录 empty:\n(空目录)");
+  EXPECT_EXPRESSION(chinese_invoked && !chinese_invoked->error);
+  EXPECT_EXPRESSION(chinese_invoked->content == "成功创建文件 zh.txt (2 行)");
+  chinese_invoked = co_await scenario->chinese_tools->Invoke(
+      "list_dir", R"({"path":"empty"})");
+  EXPECT_EXPRESSION(chinese_invoked && !chinese_invoked->error);
+  EXPECT_EXPRESSION(chinese_invoked->content == "目录 empty:\n(空目录)");
   chinese_invoked = co_await scenario->chinese_tools->Invoke(
       "file_delete", R"({"paths":[],"reason":""})");
-  assert(chinese_invoked && chinese_invoked->error);
-  assert(chinese_invoked->content == "删除原因 reason 不能为空");
-  chinese_invoked = co_await scenario->chinese_tools->Invoke(
-      "glob", R"({"pattern":"*.md"})");
-  assert(chinese_invoked && !chinese_invoked->error);
-  assert(chinese_invoked->content == "在 . 目录下未找到匹配 \"*.md\" 的文件。");
+  EXPECT_EXPRESSION(chinese_invoked && chinese_invoked->error);
+  EXPECT_EXPRESSION(chinese_invoked->content == "删除原因 reason 不能为空");
+  chinese_invoked =
+      co_await scenario->chinese_tools->Invoke("glob", R"({"pattern":"*.md"})");
+  EXPECT_EXPRESSION(chinese_invoked && !chinese_invoked->error);
+  EXPECT_EXPRESSION(chinese_invoked->content ==
+                    "在 . 目录下未找到匹配 \"*.md\" 的文件。");
 
   // 11. Enablement: disabled group and unsupported execution mode hide every
   // tool and reject invocation before touching the file capability.
   auto &group = FileOpsGroup(scenario->settings);
   group.enabled = false;
   refreshed = co_await scenario->tools->Refresh();
-  assert(refreshed);
-  assert(scenario->tools->Tools().empty());
+  EXPECT_EXPRESSION(refreshed);
+  EXPECT_EXPRESSION(scenario->tools->Tools().empty());
   const auto writes_before = scenario->files->written.size();
   invoked = co_await scenario->tools->Invoke("file_read",
                                              R"({"file_path":"notes.txt"})");
-  assert(!invoked);
-  assert(invoked.error().code == ToolRegistryErrorCode::unavailable);
-  assert(scenario->files->written.size() == writes_before);
+  EXPECT_EXPRESSION(!invoked);
+  EXPECT_EXPRESSION(invoked.error().code == ToolRegistryErrorCode::unavailable);
+  EXPECT_EXPRESSION(scenario->files->written.size() == writes_before);
 
   group.enabled = true;
   group.supported_modes = domain::McpExecutionModeMask::local;
   scenario->settings->value.mode = domain::McpExecutionMode::ssh;
   refreshed = co_await scenario->tools->Refresh();
-  assert(refreshed);
-  assert(scenario->tools->Tools().empty());
+  EXPECT_EXPRESSION(refreshed);
+  EXPECT_EXPRESSION(scenario->tools->Tools().empty());
   invoked = co_await scenario->tools->Invoke("list_dir", "{}");
-  assert(!invoked);
-  assert(invoked.error().code == ToolRegistryErrorCode::unavailable);
+  EXPECT_EXPRESSION(!invoked);
+  EXPECT_EXPRESSION(invoked.error().code == ToolRegistryErrorCode::unavailable);
 
   scenario->settings->value.mode = domain::McpExecutionMode::local;
   refreshed = co_await scenario->tools->Refresh();
-  assert(refreshed);
-  assert(scenario->tools->Tools().size() == 6U);
+  EXPECT_EXPRESSION(refreshed);
+  EXPECT_EXPRESSION(scenario->tools->Tools().size() == 6U);
 
   // 12. Workspace and settings failures.
   scenario->workspace->fail = true;
   invoked = co_await scenario->tools->Invoke("file_read",
                                              R"({"file_path":"notes.txt"})");
-  assert(!invoked);
-  assert(invoked.error().code == ToolRegistryErrorCode::unavailable);
-  assert(invoked.error().message == "injected workspace failure");
+  EXPECT_EXPRESSION(!invoked);
+  EXPECT_EXPRESSION(invoked.error().code == ToolRegistryErrorCode::unavailable);
+  EXPECT_EXPRESSION(invoked.error().message == "injected workspace failure");
   scenario->workspace->fail = false;
 
   scenario->workspace->record.path.clear();
   invoked = co_await scenario->tools->Invoke("list_dir", "{}");
-  assert(!invoked);
-  assert(invoked.error().code == ToolRegistryErrorCode::unavailable);
-  assert(invoked.error().message ==
-         "No project workspace is selected for the built-in file tools");
+  EXPECT_EXPRESSION(!invoked);
+  EXPECT_EXPRESSION(invoked.error().code == ToolRegistryErrorCode::unavailable);
+  EXPECT_EXPRESSION(
+      invoked.error().message ==
+      "No project workspace is selected for the built-in file tools");
   scenario->workspace->record.path = scenario->root;
 
   scenario->settings->fail_load = true;
   auto failed = co_await scenario->tools->Refresh();
-  assert(!failed);
-  assert(failed.error().code == ToolRegistryErrorCode::load_failed);
-  assert(failed.error().message.contains("injected"));
+  EXPECT_EXPRESSION(!failed);
+  EXPECT_EXPRESSION(failed.error().code == ToolRegistryErrorCode::load_failed);
+  EXPECT_EXPRESSION(failed.error().message.contains("injected"));
   scenario->settings->fail_load = false;
 
   scenario->done = true;
@@ -1159,10 +1190,9 @@ huxerui::View Probe() {
   const auto scenario = active;
   const auto tasks = huxerui::UseTaskScope();
   huxerui::Lifecycle([scenario, tasks] {
-    const auto handle = tasks.Launch(
-        [scenario]() -> huxerui::Task<void> {
-          return RunFileToolChecks(scenario);
-        });
+    const auto handle = tasks.Launch([scenario]() -> huxerui::Task<void> {
+      return RunFileToolChecks(scenario);
+    });
     return [handle] { handle.Cancel(); };
   });
   return huxerui::Text("file-tool-registry-probe");
@@ -1171,16 +1201,16 @@ huxerui::View Probe() {
 // The composition root resolves a locale probe because HuxerUI exposes no
 // "current locale" accessor; this is the mapping it feeds the catalog.
 void LocaleProbeSelectsTheCatalogLanguage() {
-  assert(application::ToolTextLanguageFor("zh") ==
-         application::ToolTextLanguage::chinese);
-  assert(application::ToolTextLanguageFor("en") ==
-         application::ToolTextLanguage::english);
+  EXPECT_EXPRESSION(application::ToolTextLanguageFor("zh") ==
+                    application::ToolTextLanguage::chinese);
+  EXPECT_EXPRESSION(application::ToolTextLanguageFor("en") ==
+                    application::ToolTextLanguage::english);
   // Anything else -- including an empty probe, which is what a failed
   // resolution returns -- falls back to English rather than to Chinese.
-  assert(application::ToolTextLanguageFor("") ==
-         application::ToolTextLanguage::english);
-  assert(application::ToolTextLanguageFor("ru") ==
-         application::ToolTextLanguage::english);
+  EXPECT_EXPRESSION(application::ToolTextLanguageFor("") ==
+                    application::ToolTextLanguage::english);
+  EXPECT_EXPRESSION(application::ToolTextLanguageFor("ru") ==
+                    application::ToolTextLanguage::english);
 
   // The two catalogs really do differ, so the mapping changes what a user
   // reads on a tool failure.
@@ -1189,12 +1219,12 @@ void LocaleProbeSelectsTheCatalogLanguage() {
   const auto chinese = application::ToolTextTemplate(
       application::ToolTextKey::tool_agent_invalid_type,
       application::ToolTextLanguage::chinese);
-  assert(!english.empty() && !chinese.empty() && english != chinese);
+  EXPECT_EXPRESSION(!english.empty() && !chinese.empty() && english != chinese);
 }
 
 } // namespace
 
-int main() {
+TEST(file_tool_tests, LegacySuite) {
   CheckCatalogMatchesProperties();
   LocaleProbeSelectsTheCatalogLanguage();
   CheckCatalogFormatting();
@@ -1209,7 +1239,7 @@ int main() {
   } catch (const std::invalid_argument &) {
     rejected_settings = true;
   }
-  assert(rejected_settings);
+  EXPECT_EXPRESSION(rejected_settings);
   bool rejected_workspace = false;
   try {
     application::FileToolRegistry invalid(active->settings, nullptr,
@@ -1217,7 +1247,7 @@ int main() {
   } catch (const std::invalid_argument &) {
     rejected_workspace = true;
   }
-  assert(rejected_workspace);
+  EXPECT_EXPRESSION(rejected_workspace);
   bool rejected_files = false;
   try {
     application::FileToolRegistry invalid(active->settings, active->workspace,
@@ -1225,7 +1255,7 @@ int main() {
   } catch (const std::invalid_argument &) {
     rejected_files = true;
   }
-  assert(rejected_files);
+  EXPECT_EXPRESSION(rejected_files);
 
   const huxerui::Application application(Probe, {.show_debug_overlay = false});
   huxerui::testing::UiTest ui(application);

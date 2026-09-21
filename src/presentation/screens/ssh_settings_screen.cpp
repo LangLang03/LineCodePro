@@ -17,6 +17,7 @@
 #include "domain/ssh_config.h"
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/line_theme.h"
+#include "presentation/ssh_settings_presentation.h"
 
 namespace linecode::presentation {
 namespace {
@@ -291,6 +292,7 @@ SshSettingsScreen(std::shared_ptr<application::SshSettingsService> service,
                   bool termux_available, SshSettingsPresentation presentation) {
   const auto navigation = UseNavigation<domain::AppRoute>();
   const auto tasks = UseTaskScope();
+  const auto toast = UseToast();
   auto state = UseState(SshPageState{});
   const ResolvedStatusStrings status_strings{
       .saved_title = UseString(presentation.saved_title),
@@ -319,14 +321,16 @@ SshSettingsScreen(std::shared_ptr<application::SshSettingsService> service,
       Text(presentation.server_description)
           .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
   };
-  if (termux_available) {
-    intro_content.push_back(Gap(12.0F));
-    intro_content.push_back(
-        ActionButton(app::images::smartphone, presentation.termux, false, true,
-                     [navigation] {
-                       navigation.Push(domain::AppRoute::termux_integration);
-                     }));
-  }
+  intro_content.push_back(Gap(12.0F));
+  intro_content.push_back(ActionButton(
+      app::images::smartphone, presentation.termux, false, true,
+      [navigation, toast, action = ResolveTermuxEntryAction(termux_available)] {
+        if (action == TermuxEntryAction::open_integration) {
+          navigation.Push(domain::AppRoute::termux_integration);
+          return;
+        }
+        toast.Show(app::strings::screen_ssh_termux_unavailable);
+      }));
   View intro =
       Card(Column(intro_content).With(CrossAlign(CrossAxisAlignment::Stretch)));
 
@@ -412,7 +416,7 @@ SshSettingsScreen(std::shared_ptr<application::SshSettingsService> service,
 
   return Column{
       Header(presentation.title, navigation),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(
           Column(content).With(
               Padding(EdgeInsets{

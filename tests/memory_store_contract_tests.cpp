@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -90,15 +90,15 @@ private:
 
 void DomainContract() {
   using namespace linecode::domain;
-  assert(ParseMemoryScope(" user ") == MemoryScope::user);
-  assert(ParseMemoryScope("PROJECT") == MemoryScope::project);
-  assert(ParseMemoryScope("environment") == MemoryScope::environment);
-  assert(ParseMemoryScope("unknown") == MemoryScope::user);
-  assert(MemoryScopeDefinition(MemoryScope::user).global);
-  assert(!MemoryScopeDefinition(MemoryScope::project).global);
-  assert(NormalizeMemoryContent(" \n keep this \t") == "keep this");
-  assert(PreviewMemoryText("a\n  b\r\n c", 80) == "a b c");
-  assert(PreviewMemoryText("一二三四五六", 5) == "一二...");
+  EXPECT_EXPRESSION(ParseMemoryScope(" user ") == MemoryScope::user);
+  EXPECT_EXPRESSION(ParseMemoryScope("PROJECT") == MemoryScope::project);
+  EXPECT_EXPRESSION(ParseMemoryScope("environment") == MemoryScope::environment);
+  EXPECT_EXPRESSION(ParseMemoryScope("unknown") == MemoryScope::user);
+  EXPECT_EXPRESSION(MemoryScopeDefinition(MemoryScope::user).global);
+  EXPECT_EXPRESSION(!MemoryScopeDefinition(MemoryScope::project).global);
+  EXPECT_EXPRESSION(NormalizeMemoryContent(" \n keep this \t") == "keep this");
+  EXPECT_EXPRESSION(PreviewMemoryText("a\n  b\r\n c", 80) == "a b c");
+  EXPECT_EXPRESSION(PreviewMemoryText("一二三四五六", 5) == "一二...");
 }
 
 void LegacyOverviewFilteringAndExpiry() {
@@ -109,13 +109,13 @@ void LegacyOverviewFilteringAndExpiry() {
       "('u','user',NULL,'user','manual',1,1,10,0,''),"
       "('p','project','/p','project','manual',1,1,20,0,''),"
       "('other','project','/other','other','manual',1,1,30,0,'')");
-  assert(database.Scalar("SELECT COUNT(*) FROM memories WHERE scope='user'") ==
+  EXPECT_EXPRESSION(database.Scalar("SELECT COUNT(*) FROM memories WHERE scope='user'") ==
          1);
-  assert(
+  EXPECT_EXPRESSION(
       database.Scalar("SELECT COUNT(*) FROM memories WHERE scope='project' AND "
                       "('/p'='' OR project_id='/p' OR project_id IS NULL OR "
                       "project_id='')") == 1);
-  assert(
+  EXPECT_EXPRESSION(
       database.Scalar("SELECT COUNT(*) FROM memories WHERE scope='project' AND "
                       "(''='' OR project_id='' OR project_id IS NULL OR "
                       "project_id='')") == 2);
@@ -125,7 +125,7 @@ void LegacyOverviewFilteringAndExpiry() {
                    "updated_at,raw_json) "
                    "VALUES ('active','/p','a','system',200,1,2,''),"
                    "('expired','/p','b','system',50,1,3,'')");
-  assert(database.Scalar(
+  EXPECT_EXPRESSION(database.Scalar(
              "SELECT COUNT(*) FROM working_memory WHERE project_id='/p' AND "
              "(expires_at IS NULL OR expires_at=0 OR expires_at>100)") == 1);
 }
@@ -144,16 +144,16 @@ void ManualUpsertPreservesLegacyMetadata() {
       "ON CONFLICT(id) DO UPDATE SET scope=excluded.scope,"
       "project_id=excluded.project_id,content=excluded.content,"
       "updated_at=excluded.updated_at,raw_json=''");
-  assert(database.ScalarText(
+  EXPECT_EXPRESSION(database.ScalarText(
              "SELECT scope || ':' || content || ':' || source FROM memories "
              "WHERE id='same'") == "user:new:auto");
-  assert(database.Scalar("SELECT created_at FROM memories WHERE id='same'") ==
+  EXPECT_EXPRESSION(database.Scalar("SELECT created_at FROM memories WHERE id='same'") ==
          10);
-  assert(database.Scalar("SELECT last_used_at FROM memories WHERE id='same'") ==
+  EXPECT_EXPRESSION(database.Scalar("SELECT last_used_at FROM memories WHERE id='same'") ==
          30);
-  assert(database.Scalar("SELECT use_count FROM memories WHERE id='same'") ==
+  EXPECT_EXPRESSION(database.Scalar("SELECT use_count FROM memories WHERE id='same'") ==
          4);
-  assert(database.Scalar(
+  EXPECT_EXPRESSION(database.Scalar(
              "SELECT project_id IS NULL FROM memories WHERE id='same'") == 1);
 }
 
@@ -168,8 +168,8 @@ void BatchDeleteIsAtomic() {
   database.Execute("DELETE FROM memories WHERE id='a'");
   database.Execute("DELETE FROM memories WHERE id='b'");
   database.Execute("COMMIT");
-  assert(database.Scalar("SELECT COUNT(*) FROM memories") == 1);
-  assert(database.ScalarText("SELECT id FROM memories") == "c");
+  EXPECT_EXPRESSION(database.Scalar("SELECT COUNT(*) FROM memories") == 1);
+  EXPECT_EXPRESSION(database.ScalarText("SELECT id FROM memories") == "c");
 }
 
 void SkillRetrievalUsesOnlyEnabledLegacyRows() {
@@ -179,18 +179,18 @@ void SkillRetrievalUsesOnlyEnabledLegacyRows() {
       "(id,name,scope,path,description,enabled,updated_at,raw_json) VALUES "
       "('on','Android','app','/skills/android','Android workflow',1,20,''),"
       "('off','Hidden','app','/skills/hidden','Disabled',0,30,'')");
-  assert(database.Scalar("SELECT COUNT(*) FROM skills WHERE enabled = 1") == 1);
-  assert(database.ScalarText("SELECT name FROM skills WHERE enabled = 1 "
+  EXPECT_EXPRESSION(database.Scalar("SELECT COUNT(*) FROM skills WHERE enabled = 1") == 1);
+  EXPECT_EXPRESSION(database.ScalarText("SELECT name FROM skills WHERE enabled = 1 "
                              "ORDER BY updated_at DESC LIMIT 1") == "Android");
 }
 
 } // namespace
 
-int main() {
+TEST(memory_store_contract_tests, LegacySuite) {
   DomainContract();
   LegacyOverviewFilteringAndExpiry();
   ManualUpsertPreservesLegacyMetadata();
   BatchDeleteIsAtomic();
   SkillRetrievalUsesOnlyEnabledLegacyRows();
-  return 0;
+  return;
 }

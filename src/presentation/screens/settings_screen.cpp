@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -11,6 +12,7 @@
 
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/components/legacy_settings_card_frame.h"
+#include "presentation/legacy_text_presentation.h"
 #include "presentation/line_theme.h"
 #include "presentation/platform_features.h"
 
@@ -41,7 +43,8 @@ struct SettingsRowMetrics final {
 constexpr std::array kSettingsRowMetrics{
     SettingsRowMetrics{
         // The legacy grouped rows measure to 170 px at 420 dpi. Keeping the
-        // logical minimum explicit avoids HuxerUI font metrics making them 68dp.
+        // logical minimum explicit avoids HuxerUI font metrics making them
+        // 68dp.
         .minimum_height = 64.75F,
         .icon_corner_radius = 18.0F,
         .chevron_size = 16.0F,
@@ -101,10 +104,9 @@ View ScreenHeader(
             Background(colors::background), Border(Color::Transparent(), 0.0F));
 }
 
-View SettingsRow(
-    SettingsItem item,
-    const RouteNavigationController<domain::AppRoute> &navigation,
-    SettingsRowKind kind = SettingsRowKind::grouped) {
+View SettingsRow(SettingsItem item,
+                 const RouteNavigationController<domain::AppRoute> &navigation,
+                 SettingsRowKind kind = SettingsRowKind::grouped) {
   const SettingsRowMetrics metrics = MetricsFor(kind);
   return Row{
       IconTile(item.icon, metrics.icon_corner_radius),
@@ -117,8 +119,9 @@ View SettingsRow(
       Stack{
           Glyph(app::images::chevron_right, metrics.chevron_size,
                 colors::tertiary),
-      }.With(Frame{.width = 20.0F, .height = 20.0F},
-             Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
+      }
+          .With(Frame{.width = 20.0F, .height = 20.0F},
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
   }
       .OnClick([navigation, next = item.route] { navigation.Push(next); })
       .With(Frame{.min_height = metrics.minimum_height}, Spacing(12.0F),
@@ -128,11 +131,11 @@ View SettingsRow(
 }
 
 void AppendSection(
-    std::vector<View> &content, StringResource title,
+    std::vector<View> &content, std::string title,
     std::vector<SettingsItem> items,
     const RouteNavigationController<domain::AppRoute> &navigation) {
   content.push_back(
-      Text(title)
+      Text(std::move(title))
           .Style(LabelStyle(11.0F, FontWeight::Medium, colors::tertiary))
           .With(Padding(EdgeInsets{
               .top = 20.0F, .right = 16.0F, .bottom = 12.0F, .left = 16.0F})));
@@ -209,8 +212,8 @@ StringResource RouteTitle(domain::AppRoute route) {
   const auto *page = route.PageValue();
   if (!page)
     return app::strings::screen_settings_title;
-  const auto found = std::ranges::find(presentations, *page,
-                                       &RouteTitlePresentation::page);
+  const auto found =
+      std::ranges::find(presentations, *page, &RouteTitlePresentation::page);
   if (found != presentations.end())
     return found->title;
   return app::strings::screen_settings_title;
@@ -233,7 +236,8 @@ StringResource RouteTitle(domain::AppRoute route) {
       },
       navigation, SettingsRowKind::tutorial));
   AppendSection(
-      content, app::strings::screen_settings_section_ai,
+      content,
+      LegacySectionTitle(UseString(app::strings::screen_settings_section_ai)),
       {
           {domain::AppRoute::models, app::strings::settings_row_models_title,
            app::strings::settings_row_models_desc, app::images::box},
@@ -242,7 +246,9 @@ StringResource RouteTitle(domain::AppRoute route) {
       },
       navigation);
   AppendSection(
-      content, app::strings::screen_settings_section_tools,
+      content,
+      LegacySectionTitle(
+          UseString(app::strings::screen_settings_section_tools)),
       {
           {domain::AppRoute::mcp, app::strings::settings_row_mcp_title,
            app::strings::settings_row_mcp_desc, app::images::mcp},
@@ -256,7 +262,8 @@ StringResource RouteTitle(domain::AppRoute route) {
       },
       navigation);
   AppendSection(
-      content, app::strings::screen_settings_section_ui,
+      content,
+      LegacySectionTitle(UseString(app::strings::screen_settings_section_ui)),
       {
           {domain::AppRoute::input, app::strings::settings_row_input_title,
            app::strings::settings_row_input_desc,
@@ -268,7 +275,9 @@ StringResource RouteTitle(domain::AppRoute route) {
       },
       navigation);
   AppendSection(
-      content, app::strings::screen_settings_section_security,
+      content,
+      LegacySectionTitle(
+          UseString(app::strings::screen_settings_section_security)),
       {
           {domain::AppRoute::security,
            app::strings::settings_row_security_title,
@@ -294,10 +303,13 @@ StringResource RouteTitle(domain::AppRoute route) {
         app::images::battery_charging,
     });
   });
-  AppendSection(content, app::strings::screen_settings_section_data,
-                std::move(data_items), navigation);
   AppendSection(
-      content, app::strings::screen_settings_section_info,
+      content,
+      LegacySectionTitle(UseString(app::strings::screen_settings_section_data)),
+      std::move(data_items), navigation);
+  AppendSection(
+      content,
+      LegacySectionTitle(UseString(app::strings::screen_settings_section_info)),
       {
           {domain::AppRoute::about, app::strings::settings_row_about_title,
            app::strings::settings_row_about_desc, app::images::cpu},
@@ -307,7 +319,7 @@ StringResource RouteTitle(domain::AppRoute route) {
 
   return Column{
       ScreenHeader(app::strings::screen_settings_title, navigation),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       ScrollView(Column(std::move(content))
                      .With(CrossAlign(CrossAxisAlignment::Stretch),
                            Background(colors::background)))
@@ -323,7 +335,7 @@ StringResource RouteTitle(domain::AppRoute route) {
   const auto navigation = UseNavigation<domain::AppRoute>();
   return Column{
       ScreenHeader(RouteTitle(current), navigation),
-      Divider(),
+      LegacyScreenHeaderDivider(),
       Column{
           Text(RouteTitle(current)).Style(LabelStyle(20.0F, FontWeight::Bold)),
           Text(app::strings::migration_pending)

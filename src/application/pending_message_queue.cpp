@@ -24,14 +24,18 @@ std::string Trim(std::string text) {
 } // namespace
 
 std::expected<void, SendMessageError> PendingMessageQueue::Enqueue(
-    std::string text, std::vector<domain::InputAttachment> attachments) {
+    std::string text, std::vector<domain::InputAttachment> attachments,
+    std::optional<domain::ChatImage> image) {
   text = Trim(std::move(text));
   attachments = DefaultAttachmentPolicy().Sanitize(attachments);
-  if (text.empty() && attachments.empty())
+  if (image.has_value() && image->Empty())
+    image.reset();
+  if (text.empty() && attachments.empty() && !image.has_value())
     return std::unexpected(SendMessageError::empty);
   items_.push_back(
       PendingMessage{.text = std::move(text),
-                     .attachments = std::move(attachments)});
+                     .attachments = std::move(attachments),
+                     .image = std::move(image)});
   return {};
 }
 

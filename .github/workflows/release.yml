@@ -1,0 +1,122 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android-release:
+    name: Signed Android release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build dependencies
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.22.1"
+
+      - name: Install HuxerUI SDK 0.3.0
+        run: curl -fsSL https://github.com/HuxerUI/HuxerUI/releases/latest/download/install.sh | sh -s -- --version 0.3.0 --yes
+
+      - name: Validate signing secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64"
+          test -n "$STORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          test -n "$KEY_PASSWORD"
+
+      - name: Configure release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/linecode-signing"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/linecode-signing/release.keystore"
+          {
+            printf 'storeFile=%s\n' "$RUNNER_TEMP/linecode-signing/release.keystore"
+            printf 'storePassword=%s\n' "$STORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > platform/android/signing.properties
+
+      - name: Read and validate version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_name="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)"/\1/p' platform/android/app/build.gradle | head -n1)"
+          version_code="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\)/\1/p' platform/android/app/build.gradle | head -n1)"
+          test -n "$version_name"
+          test -n "$version_code"
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "v$version_name" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match versionName $version_name (expected v$version_name)."
+            exit 1
+          fi
+          echo "name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "code=$version_code" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed release APK
+        env:
+          HUXERUI_HOME: /home/runner/.local/share/HuxerUI
+        run: |
+          chmod +x platform/android/gradlew
+          ./platform/android/gradlew -p platform/android :app:validateReleaseSigning :app:assembleRelease --max-workers=8 --console=plain
+
+      - name: Prepare release artifacts
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          cp platform/android/app/build/outputs/apk/release/app-release.apk "artifacts/LineCodePro-$VERSION_NAME.apk"
+          sha256sum "artifacts/LineCodePro-$VERSION_NAME.apk" > "artifacts/LineCodePro-$VERSION_NAME.apk.sha256"
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: LineCodePro-${{ steps.version.outputs.name }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.name }}
+          name: LineCode Pro v${{ steps.version.outputs.name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          files: artifacts/*
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          rm -f platform/android/signing.properties
+          rm -rf "$RUNNER_TEMP/linecode-signing"

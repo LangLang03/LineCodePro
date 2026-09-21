@@ -222,7 +222,7 @@ View ExecutionCard(domain::McpExecutionMode selected,
       Row(buttons).With(Frame{.height = 42.0F}, Padding(3.0F),
                         Background(colors::surface_light), CornerRadius(8.0F)),
       Text(ModeVisual(selected).description)
-          .Style(Label(10.5F, FontWeight::Regular, colors::tertiary)),
+          .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
   }
                   .With(Spacing(8.0F),
                         CrossAlign(CrossAxisAlignment::Stretch)));
@@ -264,7 +264,7 @@ View SshConnectionCard(std::function<void()> open_ssh,
           .Style(Label(16.0F, FontWeight::Bold)),
       Text(app::strings::screen_mcp_ssh_overview)
           .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
-      Stack{}.With(Frame{.height = 10.0F}),
+      Stack{}.With(Frame{.height = 8.0F}),
       Row(actions).With(Spacing(8.0F), CrossAlign(CrossAxisAlignment::Stretch)),
   }
                   .With(Spacing(2.0F),
@@ -435,15 +435,18 @@ View ToolCard(const domain::McpToolGroupState &group,
             })
             .Key(group.id));
   }
-  cards.push_back(Stack{}.With(Frame{.height = 88.0F}));
-
   return Column{
       Header(navigation),
-      Divider(),
-      ScrollView(Column(cards).With(Spacing(12.0F),
-                                    CrossAlign(CrossAxisAlignment::Stretch)))
+      LegacyScreenHeaderDivider(),
+      ScrollView(Column(cards).With(
+                     Spacing(12.0F),
+                     Padding(EdgeInsets{.top = 16.0F,
+                                        .right = 16.0F,
+                                        .bottom = 112.0F,
+                                        .left = 16.0F}),
+                     CrossAlign(CrossAxisAlignment::Stretch)))
           .ScrollAxis(Axis::Vertical)
-          .With(Grow(), Padding(16.0F)),
+          .With(Grow()),
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch),
             Background(colors::background), SafeAreaPadding{});

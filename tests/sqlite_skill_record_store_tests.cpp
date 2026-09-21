@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <chrono>
 #include <filesystem>
 #include <iostream>
@@ -95,8 +95,8 @@ void AdapterPreservesEnabledStateAcrossDiscovery() {
       ui.Pump(std::chrono::milliseconds{1});
       std::this_thread::sleep_for(std::chrono::milliseconds{1});
     }
-    assert(scenario->done);
-    assert(scenario->passed);
+    EXPECT_EXPRESSION(scenario->done);
+    EXPECT_EXPRESSION(scenario->passed);
   }
   scenario.reset();
   std::error_code ignored;
@@ -105,7 +105,7 @@ void AdapterPreservesEnabledStateAcrossDiscovery() {
 
 } // namespace
 
-int main() {
+TEST(sqlite_skill_record_store_tests, LegacySuite) {
   AdapterPreservesEnabledStateAcrossDiscovery();
   std::cout << "sqlite skill record store tests passed\n";
 }

@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include <huxerui/state.h>
 #include <huxerui/task.h>
@@ -19,6 +20,7 @@
 #include "presentation/components/drawer.h"
 
 namespace linecode::application {
+class AgentResultReader;
 class ChatSession;
 class AiBehaviorSettingsRepository;
 class ContextCompactionService;
@@ -38,39 +40,49 @@ class ToolPermissionService;
 
 namespace linecode::presentation {
 
-[[huxerui::composable]] huxerui::View ChatScreen(
-    std::function<void()> open_drawer,
-    huxerui::State<huxerui::TextEditingValue> draft,
-    const std::shared_ptr<application::ChatSession> &session,
-    const std::shared_ptr<application::GenerationController> &generation,
-    const std::shared_ptr<application::ModelStore> &model_store,
-    const std::shared_ptr<application::McpCompletionLoop> &completion_loop,
-    const std::shared_ptr<application::StoragePermissionService>
-        &storage_permission,
-    std::optional<bool> has_selected_model,
-    huxerui::State<huxerui::TaskHandle> active_generation,
-    huxerui::State<std::size_t> revision,
-    const std::shared_ptr<application::PendingMessageQueue> &pending_messages,
-    huxerui::State<DrawerModel> workspace,
-    const std::shared_ptr<application::MemoryContextService> &memory_context,
-    const std::shared_ptr<application::AiBehaviorSettingsRepository>
-        &behavior_settings,
-    const std::shared_ptr<application::TodoStateStore> &todo_state,
-    const std::shared_ptr<application::SkillRepository> &skills,
-    const std::shared_ptr<application::McpExecutionSettingsService>
-        &execution_settings,
-    const std::shared_ptr<application::ContextCompactionService>
-        &compaction_service,
-    const std::shared_ptr<application::DiffStore> &diff_store,
-    const std::shared_ptr<application::DiffReviewService> &diff_review,
-    const std::shared_ptr<application::OutputSettingsService> &output_settings,
-    const std::shared_ptr<application::ToolPermissionService> &tool_permissions,
-    const std::shared_ptr<application::ToolReviewBroker> &tool_reviews,
-    const std::shared_ptr<application::ChatModeService> &chat_modes,
-    huxerui::State<application::ChatInteractionModeState> interaction_mode,
-    domain::InputSettings input_settings, std::string current_project_id,
-    application::PromptAssemblyContext prompt_context,
-    std::string project_label, std::function<void()> show_project_picker,
-    std::function<void()> refresh_workspace);
+struct ChatScreenServices final {
+  std::shared_ptr<application::ChatSession> session;
+  std::shared_ptr<application::GenerationController> generation;
+  std::shared_ptr<application::ModelStore> model_store;
+  std::shared_ptr<application::McpCompletionLoop> completion_loop;
+  std::shared_ptr<application::AgentResultReader> agent_results;
+  std::shared_ptr<application::StoragePermissionService> storage_permission;
+  std::shared_ptr<application::PendingMessageQueue> pending_messages;
+  std::shared_ptr<application::MemoryContextService> memory_context;
+  std::shared_ptr<application::AiBehaviorSettingsRepository> behavior_settings;
+  std::shared_ptr<application::TodoStateStore> todo_state;
+  std::shared_ptr<application::SkillRepository> skills;
+  std::shared_ptr<application::McpExecutionSettingsService> execution_settings;
+  std::shared_ptr<application::ContextCompactionService> compaction_service;
+  std::shared_ptr<application::DiffStore> diff_store;
+  std::shared_ptr<application::DiffReviewService> diff_review;
+  std::shared_ptr<application::OutputSettingsService> output_settings;
+  std::shared_ptr<application::ToolPermissionService> tool_permissions;
+  std::shared_ptr<application::ToolReviewBroker> tool_reviews;
+  std::shared_ptr<application::ChatModeService> chat_modes;
+};
+
+struct ChatScreenState final {
+  huxerui::State<huxerui::TextEditingValue> draft;
+  std::optional<bool> has_selected_model;
+  huxerui::State<huxerui::TaskHandle> active_generation;
+  huxerui::State<std::size_t> revision;
+  huxerui::State<DrawerModel> workspace;
+  huxerui::State<application::ChatInteractionModeState> interaction_mode;
+  domain::InputSettings input_settings;
+  std::string current_project_id;
+  application::PromptAssemblyContext prompt_context;
+  std::string project_label;
+};
+
+struct ChatScreenActions final {
+  std::function<void()> open_drawer;
+  std::function<void()> show_project_picker;
+  std::function<void()> refresh_workspace;
+};
+
+[[huxerui::composable]] huxerui::View
+ChatScreen(ChatScreenServices services, ChatScreenState state,
+           ChatScreenActions actions);
 
 } // namespace linecode::presentation

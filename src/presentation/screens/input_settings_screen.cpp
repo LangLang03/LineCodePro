@@ -119,7 +119,8 @@ View PopupItem(PopupContext popup, StringResource label,
               .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
       }.With(Spacing(2.0F), Grow()),
       std::move(selector),
-  }.With(Spacing(12.0F), Padding(EdgeInsets::All(16.0F)),
+  }.With(Frame{.min_height = 72.38F}, Spacing(12.0F),
+         Padding(EdgeInsets::All(16.0F)),
          CrossAlign(CrossAxisAlignment::Center));
 
   auto section = Column{
@@ -132,7 +133,7 @@ View PopupItem(PopupContext popup, StringResource label,
   }.With(CrossAlign(CrossAxisAlignment::Stretch));
 
   return Column{
-      Header(navigation), Divider(),
+      Header(navigation), LegacyScreenHeaderDivider(),
       ScrollView(Column{std::move(section),
                         Stack{}.With(Frame{.width = 1.0F, .height = 100.0F})}
           .With(CrossAlign(CrossAxisAlignment::Stretch), Background(colors::background)))

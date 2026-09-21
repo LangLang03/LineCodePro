@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <array>
 #include <map>
 #include <memory>
@@ -115,28 +115,28 @@ huxerui::View Probe() {
       });
       auto composed = co_await scenario->composer->Compose(std::move(request),
                                                             std::move(context));
-      assert(composed);
-      assert(composed->messages.size() == 3U);
-      assert(composed->messages.front().role ==
+      EXPECT_EXPRESSION(composed);
+      EXPECT_EXPRESSION(composed->messages.size() == 3U);
+      EXPECT_EXPRESSION(composed->messages.front().role ==
              application::CompletionRole::system);
       const auto &prompt = composed->messages.front().content;
-      assert(prompt.starts_with("CUSTOM SYSTEM"));
-      assert(prompt.contains("CUSTOM CHAT TONE"));
-      assert(prompt.contains("Current mode: Plan"));
-      assert(prompt.contains("/workspace"));
-      assert(prompt.contains("test-model"));
-      assert(prompt.contains("Test Provider"));
-      assert(prompt.contains("Codex"));
-      assert(prompt.contains("Permission mode: confirmation"));
-      assert(prompt.contains("file_read: Read a file"));
-      assert(prompt.contains("LEARNING"));
-      assert(prompt.contains("1. [pending] verify"));
-      assert(composed->reasoning_effort == domain::ReasoningEffort::maximum);
-      assert(composed->preserve_reasoning);
-      assert(composed->messages.back().role ==
+      EXPECT_EXPRESSION(prompt.starts_with("CUSTOM SYSTEM"));
+      EXPECT_EXPRESSION(prompt.contains("CUSTOM CHAT TONE"));
+      EXPECT_EXPRESSION(prompt.contains("Current mode: Plan"));
+      EXPECT_EXPRESSION(prompt.contains("/workspace"));
+      EXPECT_EXPRESSION(prompt.contains("test-model"));
+      EXPECT_EXPRESSION(prompt.contains("Test Provider"));
+      EXPECT_EXPRESSION(prompt.contains("Codex"));
+      EXPECT_EXPRESSION(prompt.contains("Permission mode: confirmation"));
+      EXPECT_EXPRESSION(prompt.contains("file_read: Read a file"));
+      EXPECT_EXPRESSION(prompt.contains("LEARNING"));
+      EXPECT_EXPRESSION(prompt.contains("1. [pending] verify"));
+      EXPECT_EXPRESSION(composed->reasoning_effort == domain::ReasoningEffort::maximum);
+      EXPECT_EXPRESSION(composed->preserve_reasoning);
+      EXPECT_EXPRESSION(composed->messages.back().role ==
              application::CompletionRole::user);
-      assert(composed->messages.back().content.contains("## 附加文件位置"));
-      assert(composed->messages.back().content.contains(
+      EXPECT_EXPRESSION(composed->messages.back().content.contains("## 附加文件位置"));
+      EXPECT_EXPRESSION(composed->messages.back().content.contains(
           "source.cpp (local): content://picked/source.cpp"));
       scenario->done = true;
     });
@@ -147,14 +147,14 @@ huxerui::View Probe() {
 
 } // namespace
 
-int main() {
+TEST(prompt_request_composer_tests, LegacySuite) {
   const std::array variables{
       domain::PromptVariable{"VALUE", "{{NESTED}}"},
       domain::PromptVariable{"NESTED", "must-not-expand"},
   };
-  assert(domain::RenderPromptTemplate("  A {{VALUE}} B  ", variables) ==
+  EXPECT_EXPRESSION(domain::RenderPromptTemplate("  A {{VALUE}} B  ", variables) ==
          "A {{NESTED}} B");
-  assert(domain::RenderPromptTemplate("{{UNKNOWN}}", variables) ==
+  EXPECT_EXPRESSION(domain::RenderPromptTemplate("{{UNKNOWN}}", variables) ==
          "{{UNKNOWN}}");
 
   active = std::make_shared<Scenario>();

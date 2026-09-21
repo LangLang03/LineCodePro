@@ -1,4 +1,4 @@
-#include <cassert>
+#include "gtest_support.h"
 #include <stdexcept>
 #include <string>
 
@@ -29,7 +29,7 @@ long long Scalar(sqlite3 *database, const std::string &sql) {
   sqlite3_stmt *statement{};
   Check(sqlite3_prepare_v2(database, sql.c_str(), -1, &statement, nullptr),
         database);
-  assert(sqlite3_step(statement) == SQLITE_ROW);
+  EXPECT_EXPRESSION(sqlite3_step(statement) == SQLITE_ROW);
   const auto value = sqlite3_column_int64(statement, 0);
   sqlite3_finalize(statement);
   return value;
@@ -49,15 +49,15 @@ void VerifyLegacyCompatibleSchemaAndCrud() {
           "(id,enabled,provider_type,name,package_name,service_class,"
           "created_at,updated_at,raw_json) VALUES "
           "('ipc_a',1,'terminal','A','dev.a','.Service',1,2,'')");
-  assert(Scalar(database,
+  EXPECT_EXPRESSION(Scalar(database,
                 "SELECT COUNT(*) FROM ipc_providers WHERE provider_type='terminal'") ==
          1);
   Execute(database,
           "UPDATE ipc_providers SET enabled=0,updated_at=3 WHERE id='ipc_a'");
-  assert(Scalar(database,
+  EXPECT_EXPRESSION(Scalar(database,
                 "SELECT enabled FROM ipc_providers WHERE id='ipc_a'") == 0);
   Execute(database, "DELETE FROM ipc_providers WHERE id='ipc_a'");
-  assert(Scalar(database, "SELECT COUNT(*) FROM ipc_providers") == 0);
+  EXPECT_EXPRESSION(Scalar(database, "SELECT COUNT(*) FROM ipc_providers") == 0);
   sqlite3_close(database);
 }
 
@@ -71,9 +71,9 @@ void VerifyStrongDomainTypes() {
       .package_name = "dev.provider",
       .service_class = "dev.provider.TerminalService",
   };
-  assert(config.provider_type == "terminal");
-  assert(config.package_name == "dev.provider");
-  assert(ScannedTerminalProvider{.package_name = config.package_name,
+  EXPECT_EXPRESSION(config.provider_type == "terminal");
+  EXPECT_EXPRESSION(config.package_name == "dev.provider");
+  EXPECT_EXPRESSION(ScannedTerminalProvider{.package_name = config.package_name,
                                  .service_class = config.service_class,
                                  .label = config.name} ==
          ScannedTerminalProvider{.package_name = "dev.provider",
@@ -84,7 +84,7 @@ void VerifyStrongDomainTypes() {
 
 } // namespace
 
-int main() {
+TEST(terminal_provider_contract_tests, LegacySuite) {
   VerifyLegacyCompatibleSchemaAndCrud();
   VerifyStrongDomainTypes();
 }

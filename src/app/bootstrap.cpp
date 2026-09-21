@@ -23,11 +23,12 @@ ChatSessionBootstrap::Session() const noexcept {
   return session_;
 }
 
-huxerui::Task<void>
+huxerui::Task<std::expected<void, std::string>>
 ChatSessionBootstrap::InitializeAsync(huxerui::File database_file) {
-  const auto initialized =
-      co_await store_->InitializeAsync(std::move(database_file));
-  static_cast<void>(initialized);
+  auto initialized = co_await store_->InitializeAsync(std::move(database_file));
+  if (!initialized)
+    co_return std::unexpected(initialized.Error().Message());
+  co_return std::expected<void, std::string>{};
 }
 
 huxerui::Task<std::expected<void, std::string>>

@@ -56,9 +56,9 @@ struct MemoryToolContext final {
   ProjectWorkspaceController *projects{};
 };
 
-using MemoryToolExecutor = huxerui::Task<
-    std::expected<ToolInvocationResult, ToolRegistryError>> (*)(
-    MemoryToolContext context, std::string arguments_json);
+using MemoryToolExecutor =
+    huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>> (*)(
+        MemoryToolContext context, std::string arguments_json);
 
 // Declarative tool table: Invoke dispatches through this row and Refresh
 // projects it into the catalog, so adding a memory tool never edits dispatch
@@ -67,8 +67,9 @@ struct MemoryToolPlan final {
   std::string_view name;
   std::string_view description;
   std::string_view parameters_json;
+  ToolPresentation presentation;
   bool allowed_in_read_only;
-  bool permanent_grant_supported;
+  AgentToolCategory agent_category;
   MemoryToolExecutor execute;
 };
 
@@ -79,10 +80,9 @@ ToolRegistryError Error(ToolRegistryErrorCode code, std::string message) {
 std::string Lower(std::string_view value) {
   std::string lowered;
   lowered.reserve(value.size());
-  std::ranges::transform(value, std::back_inserter(lowered),
-                         [](unsigned char byte) {
-                           return static_cast<char>(std::tolower(byte));
-                         });
+  std::ranges::transform(
+      value, std::back_inserter(lowered),
+      [](unsigned char byte) { return static_cast<char>(std::tolower(byte)); });
   return lowered;
 }
 
@@ -111,9 +111,8 @@ std::size_t Utf8PrefixBytes(std::string_view value,
 // needles untouched, exactly like Locale.ROOT lowering does.
 bool LooksSensitive(std::string_view content) {
   constexpr std::array<std::string_view, 11> kNeedles{
-      "api key", "apikey", "password", "passwd", "secret",
-      "cookie",  "token",  "私钥",     "密码",   "密钥",
-      "sk-"};
+      "api key", "apikey", "password", "passwd", "secret", "cookie",
+      "token",   "私钥",   "密码",     "密钥",   "sk-"};
   const auto lowered = Lower(content);
   return std::ranges::any_of(kNeedles, [&lowered](std::string_view needle) {
     return lowered.find(needle) != std::string::npos;
@@ -146,9 +145,8 @@ ParseArguments(std::string_view text) {
                                  std::string{kContentEmptyMessage}));
   }
   if (Utf8CharacterCount(content) > kMaximumContentCharacters) {
-    content = domain::NormalizeMemoryContent(std::string{
-        content.substr(0U, Utf8PrefixBytes(content,
-                                           kMaximumContentCharacters - 1U))});
+    content = domain::NormalizeMemoryContent(std::string{content.substr(
+        0U, Utf8PrefixBytes(content, kMaximumContentCharacters - 1U))});
     content += "。";
   }
   const auto *scope = json::AsString(json::Find(*object, "scope"));
@@ -199,22 +197,29 @@ ExecuteMemoryUpdate(MemoryToolContext context, std::string arguments_json) {
   };
   auto saved = co_await context.store->SaveManual(std::move(memory));
   if (!saved) {
-    co_return std::unexpected(Error(ToolRegistryErrorCode::invocation_failed,
-                                    saved.error().message));
+    co_return std::unexpected(
+        Error(ToolRegistryErrorCode::invocation_failed, saved.error().message));
   }
   co_return ToolInvocationResult{.content = std::string{kUpdatedMessage},
                                  .error = false};
 }
 
-constexpr std::array kMemoryToolPlans{
+const std::array kMemoryToolPlans{
     MemoryToolPlan{
         .name = kMemoryUpdateToolName,
         .description = kMemoryUpdateDescription,
         .parameters_json = kMemoryUpdateParameters,
+        .presentation = {.english_name = "Save memory",
+                         .english_description =
+                             "Save a durable preference, project constraint, "
+                             "or environment fact.",
+                         .chinese_name = "保存记忆",
+                         .chinese_description =
+                             "保存长期偏好、项目约束或环境信息。"},
         // BaseTool.isAllowedInReadonlyMode() defaults to false and
         // MemoryUpdateTool does not override it.
         .allowed_in_read_only = false,
-        .permanent_grant_supported = false,
+        .agent_category = AgentToolCategory::system,
         .execute = &ExecuteMemoryUpdate,
     },
 };
@@ -226,11 +231,11 @@ const MemoryToolPlan *FindPlan(std::string_view name) noexcept {
 }
 
 bool MemoryGroupEnabled(const domain::McpExecutionSettings &settings) {
-  const auto found = std::ranges::find(
-      settings.groups, kMemoryToolGroupId,
-      [](const domain::McpToolGroupState &group) {
-        return std::string_view{group.id};
-      });
+  const auto found =
+      std::ranges::find(settings.groups, kMemoryToolGroupId,
+                        [](const domain::McpToolGroupState &group) {
+                          return std::string_view{group.id};
+                        });
   return found != settings.groups.end() && found->enabled &&
          domain::SupportsMcpExecutionMode(found->supported_modes,
                                           settings.mode);
@@ -255,8 +260,8 @@ huxerui::Task<std::expected<void, ToolRegistryError>>
 MemoryToolRegistry::Refresh() {
   auto settings = co_await settings_->Load();
   if (!settings) {
-    co_return std::unexpected(Error(ToolRegistryErrorCode::load_failed,
-                                    settings.error().message));
+    co_return std::unexpected(
+        Error(ToolRegistryErrorCode::load_failed, settings.error().message));
   }
   tools_.clear();
   if (MemoryGroupEnabled(*settings)) {
@@ -266,10 +271,11 @@ MemoryToolRegistry::Refresh() {
           .description = std::string{plan.description},
           .parameters_json = std::string{plan.parameters_json},
           .allowed_in_read_only = plan.allowed_in_read_only,
-          .permanent_grant_supported = plan.permanent_grant_supported,
+          .agent_category = plan.agent_category,
           .category = std::string{kMemoryToolGroupId},
           .agent_selectable = true,
           .agent_selected_by_default = false,
+          .presentation = plan.presentation,
       });
     }
   }
@@ -288,9 +294,9 @@ MemoryToolRegistry::Invoke(std::string name, std::string arguments_json) {
                                     "Unknown memory tool: " + name));
   }
   if (std::ranges::find(tools_, name, &RegisteredTool::name) == tools_.end()) {
-    co_return std::unexpected(Error(
-        ToolRegistryErrorCode::unavailable,
-        "Memory tools are disabled for the current execution mode"));
+    co_return std::unexpected(
+        Error(ToolRegistryErrorCode::unavailable,
+              "Memory tools are disabled for the current execution mode"));
   }
   co_return co_await plan->execute(
       MemoryToolContext{.store = store_.get(), .projects = projects_.get()},
