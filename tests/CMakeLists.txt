@@ -26,6 +26,16 @@ link_libraries(GTest::gtest_main)
 # of relying on each add_executable below to remember it.
 link_libraries(HuxerUI::huxerui)
 
+# GCC 13 and 14 mis-analyse the destructor of a `std::expected` held in a
+# coroutine frame reached through `std::function` and report
+# `-Wfree-nonheap-object` for a delete that never happens. The diagnostic was
+# corrected in later releases, so a newer host compiler is silent while the
+# hosted runner -- Ubuntu 24.04, GCC 13 -- turns it into an error under
+# `-Werror`. Suppress that one warning rather than restructure correct code.
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    add_compile_options(-Wno-free-nonheap-object)
+endif ()
+
 add_executable(linecodepro_tests
         application_tests.cpp
         ../src/application/chat_session.cpp
