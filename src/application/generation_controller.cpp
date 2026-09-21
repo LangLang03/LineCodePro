@@ -92,7 +92,8 @@ void AppendAssistantHistory(const domain::ChatMessage &message,
           } else if constexpr (std::same_as<
                                    Entry, domain::AssistantReasoningEvent>) {
             turn.reasoning += entry.text;
-          } else {
+          } else if constexpr (
+              std::same_as<Entry, domain::AssistantToolEvent>) {
             const auto existing = std::ranges::find(
                 turn.calls, std::string_view{entry.call.id},
                 [](const CompletionToolCall &call) {

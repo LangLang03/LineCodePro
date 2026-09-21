@@ -4,6 +4,7 @@
 
 #include "application/agent_result_registry.h"
 #include "application/tool_result_display_policy.h"
+#include "domain/compaction_progress.h"
 #include "presentation/chat_timeline_presentation.h"
 
 namespace {
@@ -330,6 +331,77 @@ void KeepsPlainAdjacentAssistantMessagesAsSeparateRows() {
   EXPECT_EXPRESSION(rows == messages);
 }
 
+void KeepsCompactionInsideTheActiveAssistantTurn() {
+  domain::ChatMessage user{};
+  user.id = 1;
+  user.role = domain::MessageRole::user;
+  user.content = "question";
+
+  domain::ChatMessage retry{};
+  retry.id = 2;
+  retry.role = domain::MessageRole::assistant;
+  retry.content = "Retrying 2/3";
+  retry.retry_notice = true;
+  retry.processing_started_at = 100;
+
+  domain::ChatMessage compact{};
+  compact.id = 3;
+  compact.role = domain::MessageRole::assistant;
+  compact.compact_status = domain::compact_status_done;
+  compact.exclude_from_context = true;
+  compact.processing_started_at = 100;
+  compact.processing_finished_at = 200;
+
+  domain::ChatMessage answer{};
+  answer.id = 4;
+  answer.role = domain::MessageRole::assistant;
+  answer.content = "final answer";
+  answer.processing_started_at = 100;
+  answer.processing_finished_at = 300;
+
+  const std::vector messages{user, retry, compact, answer};
+  const auto rows =
+      presentation::BuildConversationPresentationMessages(messages);
+  EXPECT_EXPRESSION(rows.size() == 2U);
+  const auto &turn = rows.back();
+  EXPECT_EXPRESSION(turn.id == answer.id);
+  EXPECT_EXPRESSION(turn.content == answer.content);
+  EXPECT_EXPRESSION(turn.timeline.size() == 2U);
+  EXPECT_EXPRESSION(std::holds_alternative<domain::AssistantTextEvent>(
+      turn.timeline.front()));
+  const auto *compact_event =
+      std::get_if<domain::AssistantCompactEvent>(&turn.timeline.back());
+  EXPECT_EXPRESSION(compact_event != nullptr);
+  EXPECT_EXPRESSION(compact_event->status == domain::compact_status_done);
+}
+
+void StartsANewTurnWhenCompactionFollowsACompletedAnswer() {
+  domain::ChatMessage answer{};
+  answer.id = 1;
+  answer.role = domain::MessageRole::assistant;
+  answer.content = "already complete";
+  answer.processing_started_at = 100;
+  answer.processing_finished_at = 200;
+
+  domain::ChatMessage compact{};
+  compact.id = 2;
+  compact.role = domain::MessageRole::assistant;
+  compact.compact_status = domain::compact_status_running;
+  compact.streaming = true;
+  compact.exclude_from_context = true;
+  compact.processing_started_at = 300;
+
+  const std::vector messages{answer, compact};
+  const auto rows =
+      presentation::BuildConversationPresentationMessages(messages);
+  EXPECT_EXPRESSION(rows.size() == 2U);
+  EXPECT_EXPRESSION(rows.front() == answer);
+  EXPECT_EXPRESSION(rows.back().id == compact.id);
+  EXPECT_EXPRESSION(rows.back().timeline.size() == 1U);
+  EXPECT_EXPRESSION(std::holds_alternative<domain::AssistantCompactEvent>(
+      rows.back().timeline.front()));
+}
+
 void ResolvesPersistedAgentSnapshotsIntoNestedTimelineCards() {
   FixtureAgentResultReader reader;
   reader.result.agent_id = "agent-7";
@@ -479,6 +551,8 @@ TEST(chat_timeline_presentation_tests, LegacySuite) {
   PresentsLiveCompletedAndFailedProcessStates();
   GroupsRetriesAndTheFinalAnswerIntoOneAssistantTurn();
   KeepsPlainAdjacentAssistantMessagesAsSeparateRows();
+  KeepsCompactionInsideTheActiveAssistantTurn();
+  StartsANewTurnWhenCompactionFollowsACompletedAnswer();
   ResolvesPersistedAgentSnapshotsIntoNestedTimelineCards();
   ResolvesPersistedPipelineAgentsWithDependencies();
   ProjectsImageGenerationForDisplayAndModelSeparately();

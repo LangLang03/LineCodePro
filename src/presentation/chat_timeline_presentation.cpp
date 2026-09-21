@@ -649,7 +649,8 @@ namespace {
 }
 
 [[nodiscard]] bool StartsAssistantProcess(const domain::ChatMessage &message) {
-  return HasToolEvent(message) || message.retry_notice || message.error;
+  return HasToolEvent(message) || message.retry_notice || message.error ||
+         !message.compact_status.empty();
 }
 
 [[nodiscard]] bool IsCompletedAnswer(const domain::ChatMessage &message) {
@@ -705,6 +706,11 @@ namespace {
 
     merged.timeline.insert(merged.timeline.end(), message.timeline.begin(),
                            message.timeline.end());
+    if (!message.compact_status.empty()) {
+      merged.timeline.push_back(domain::AssistantCompactEvent{
+          .turn_index = index, .status = message.compact_status});
+      continue;
+    }
     if (!message.reasoning_content.empty() &&
         !TimelineContainsReasoning(message, message.reasoning_content)) {
       merged.timeline.push_back(domain::AssistantReasoningEvent{
@@ -749,11 +755,14 @@ std::vector<domain::ChatMessage> BuildConversationPresentationMessages(
   for (const auto &message : messages) {
     if (message.hidden || message.role == domain::MessageRole::tool)
       continue;
-    if (message.role != domain::MessageRole::assistant ||
-        !message.compact_status.empty()) {
+    if (message.role != domain::MessageRole::assistant) {
       PublishAssistantTurn(output, assistant_turn);
       output.push_back(message);
       continue;
+    }
+    if (!message.compact_status.empty() && !assistant_turn.empty() &&
+        IsCompletedAnswer(assistant_turn.back())) {
+      PublishAssistantTurn(output, assistant_turn);
     }
     assistant_turn.push_back(message);
   }

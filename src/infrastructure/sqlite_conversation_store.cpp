@@ -1480,7 +1480,8 @@ SqliteConversationStore::ProcessNextAsync(std::shared_ptr<State> state) {
                         message_id, block_order, entry.text, turn);
                     if (!inserted)
                       persistence_error = inserted.Error();
-                  } else {
+                  } else if constexpr (
+                      std::same_as<Entry, domain::AssistantToolEvent>) {
                     auto call = transaction.Execute(
                         "INSERT INTO tool_calls "
                         "(id, message_id, name, arguments, created_at, "

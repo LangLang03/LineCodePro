@@ -394,7 +394,7 @@ View MessageBubble(const domain::ChatMessage &message,
   if (assistant_turn) {
     process_or_reasoning =
         AssistantTimeline(message, live, timeline_settings, toggled_timeline,
-                          on_link, on_copy, context);
+                          on_link, on_copy, context, compact_label);
   } else if (!message.reasoning_content.empty()) {
     process_or_reasoning =
         ReasoningTimelineBlock(

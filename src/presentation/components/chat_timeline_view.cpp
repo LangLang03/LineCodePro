@@ -1348,7 +1348,8 @@ View AssistantTimeline(const domain::ChatMessage &message, bool live,
                        State<std::vector<std::string>> toggled,
                        const TutorialMarkdownLinkHandler &on_link,
                        const TutorialMarkdownCopyHandler &on_copy,
-                       const ToolRendererContext &context) {
+                       const ToolRendererContext &context,
+                       const std::string_view compact_label) {
   const auto presentation =
       PresentAssistantProcess(message, live, settings.process_auto_expand);
   if (!presentation.visible)
@@ -1428,6 +1429,11 @@ View AssistantTimeline(const domain::ChatMessage &message, bool live,
                              text.text, settings.code_wrap_enabled, on_link,
                              on_copy));
                      },
+                     [&](const domain::AssistantCompactEvent &compact) {
+                       process_rows.push_back(CompactProgressBlock(
+                           domain::CompactProgressMessage(0U, compact.status),
+                           std::string{compact_label}));
+                     },
                      [&](const domain::AssistantToolEvent &tool) {
                        process_rows.push_back(ToolTimelineCard(
                            tool, key, toggled, on_link, on_copy, context));
@@ -1471,7 +1477,8 @@ bool HasAssistantTurnProcess(const domain::ChatMessage &message) {
   if (message.error || message.retry_notice || !message.compact_status.empty())
     return true;
   return std::ranges::any_of(message.timeline, [](const auto &event) {
-    return std::holds_alternative<domain::AssistantToolEvent>(event);
+    return std::holds_alternative<domain::AssistantToolEvent>(event) ||
+           std::holds_alternative<domain::AssistantCompactEvent>(event);
   });
 }
 

@@ -543,6 +543,15 @@ View Conversation(
   streaming_message.timeline = generation_state.timeline;
   streaming_message.streaming = true;
   streaming_message.processing_started_at = generation_state.started_at_millis;
+  // A live automatic compaction is one step in the active assistant turn,
+  // matching the persisted timeline after write-back instead of creating an
+  // unrelated top-level message between the history and streaming response.
+  if (auto_compaction &&
+      auto_compaction->RunningFor(generation_state.generation_id)) {
+    streaming_message.timeline.push_back(domain::AssistantCompactEvent{
+        .turn_index = streaming_message.timeline.size(),
+        .status = auto_compaction->status});
+  }
   View streaming =
       generation_state.phase == application::GenerationPhase::running
           ? MessageBubble(streaming_message, action_message, false,
@@ -550,18 +559,6 @@ View Conversation(
                           toggled_timeline, on_link, on_copy, context,
                           compact_label, true)
           : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
-  // While an automatic compaction runs, its progress block sits at the end of
-  // the transcript as a block of its own; after the write-back the persisted
-  // block carries the final status, exactly like the legacy controller that
-  // re-rendered between `running` and `done`/`error`.
-  View compaction = Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
-  if (auto_compaction &&
-      auto_compaction->RunningFor(generation_state.generation_id)) {
-    compaction = MessageBubble(
-        domain::CompactProgressMessage(0U, auto_compaction->status),
-        action_message, false, selected_messages, {}, timeline_settings,
-        toggled_timeline, on_link, on_copy, context, compact_label);
-  }
   const ScrollMetrics metrics = conversation_scroll.Metrics();
   const bool at_bottom = metrics.maximum_offset <= metrics.offset + 2.0F;
   View list =
@@ -578,7 +575,6 @@ View Conversation(
                                              context, compact_label)
                             .Key(message.id);
                       }),
-              std::move(compaction),
               std::move(streaming),
           }
               .With(CrossAlign(CrossAxisAlignment::Stretch),

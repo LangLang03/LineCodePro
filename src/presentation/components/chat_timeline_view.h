@@ -74,7 +74,8 @@ AssistantTimeline(const domain::ChatMessage &message, bool live,
                   huxerui::State<std::vector<std::string>> toggled,
                   const TutorialMarkdownLinkHandler &on_link,
                   const TutorialMarkdownCopyHandler &on_copy,
-                  const ToolRendererContext &context);
+                  const ToolRendererContext &context,
+                  std::string_view compact_label);
 
 [[nodiscard]] huxerui::View
 ChangedFilesBlock(const domain::ChatMessage &message,

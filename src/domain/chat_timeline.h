@@ -62,6 +62,16 @@ struct AssistantTextEvent final {
   bool operator==(const AssistantTextEvent &) const = default;
 };
 
+// A context-compaction progress row belongs to the assistant processing turn
+// that triggered it. Keeping it in the ordered timeline prevents a running or
+// completed compaction from being rendered as an unrelated assistant message.
+struct AssistantCompactEvent final {
+  std::size_t turn_index{};
+  std::string status;
+
+  bool operator==(const AssistantCompactEvent &) const = default;
+};
+
 struct AssistantToolEvent final {
   std::size_t turn_index{};
   ChatToolCall call;
@@ -72,6 +82,6 @@ struct AssistantToolEvent final {
 
 using AssistantTimelineEvent =
     std::variant<AssistantReasoningEvent, AssistantTextEvent,
-                 AssistantToolEvent>;
+                 AssistantCompactEvent, AssistantToolEvent>;
 
 } // namespace linecode::domain
