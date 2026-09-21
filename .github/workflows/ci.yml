@@ -35,7 +35,17 @@ jobs:
       # compiler's bugs.
       - name: Install GCC 16
         run: |
-          sudo add-apt-repository --yes ppa:ubuntu-toolchain-r/test
+          set -euo pipefail
+          # `add-apt-repository` resolves the PPA through the Launchpad REST
+          # API, which answered HTTP 504 and failed the job. Register the PPA
+          # from its published signing key instead, which is a plain download.
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors \
+            "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xC8EC952E2A0E1FBDC5090F6A2C277A0A352154E5" \
+            | gpg --dearmor \
+            | sudo tee /etc/apt/keyrings/ubuntu-toolchain-r-test.gpg >/dev/null
+          echo "deb [signed-by=/etc/apt/keyrings/ubuntu-toolchain-r-test.gpg] https://ppa.launchpadcontent.net/ubuntu-toolchain-r/test/ubuntu noble main" \
+            | sudo tee /etc/apt/sources.list.d/ubuntu-toolchain-r-test.list >/dev/null
           sudo apt-get update
           sudo apt-get install --yes gcc-16 g++-16
           g++-16 --version | head -1

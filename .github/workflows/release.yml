@@ -1,9 +1,6 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -12,7 +9,9 @@ permissions:
 jobs:
   android-release:
     name: Signed Android release
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,11 +28,25 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      # The SDK manager sometimes stalls on one download; bound the step so a
+      # slow mirror fails on its own instead of consuming the job's budget.
       - name: Install Android build dependencies
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.22.1"
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          sdkmanager --install \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;29.0.14206865" \
+            "cmake;3.22.1"
 
       - name: Install HuxerUI SDK 0.3.0
-        run: curl -fsSL https://github.com/HuxerUI/HuxerUI/releases/latest/download/install.sh | sh -s -- --version 0.3.0 --yes
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors \
+            https://github.com/HuxerUI/HuxerUI/releases/latest/download/install.sh \
+            | sh -s -- --version 0.3.0 --yes
 
       - name: Validate signing secrets
         env:
@@ -65,7 +78,7 @@ jobs:
             printf 'keyPassword=%s\n' "$KEY_PASSWORD"
           } > platform/android/signing.properties
 
-      - name: Read and validate version
+      - name: Read version
         id: version
         shell: bash
         run: |
@@ -74,19 +87,20 @@ jobs:
           version_code="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\)/\1/p' platform/android/app/build.gradle | head -n1)"
           test -n "$version_name"
           test -n "$version_code"
-          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "v$version_name" ]]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match versionName $version_name (expected v$version_name)."
-            exit 1
-          fi
           echo "name=$version_name" >> "$GITHUB_OUTPUT"
           echo "code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "Releasing $version_name (code $version_code)"
 
       - name: Build signed release APK
+        timeout-minutes: 60
         env:
           HUXERUI_HOME: /home/runner/.local/share/HuxerUI
         run: |
+          set -euo pipefail
           chmod +x platform/android/gradlew
-          ./platform/android/gradlew -p platform/android :app:validateReleaseSigning :app:assembleRelease --max-workers=8 --console=plain
+          ./platform/android/gradlew -p platform/android \
+            :app:validateReleaseSigning :app:assembleRelease \
+            --max-workers=8 --console=plain
 
       - name: Prepare release artifacts
         env:
@@ -96,6 +110,51 @@ jobs:
           mkdir -p artifacts
           cp platform/android/app/build/outputs/apk/release/app-release.apk "artifacts/LineCodePro-$VERSION_NAME.apk"
           sha256sum "artifacts/LineCodePro-$VERSION_NAME.apk" > "artifacts/LineCodePro-$VERSION_NAME.apk.sha256"
+          cat "artifacts/LineCodePro-$VERSION_NAME.apk.sha256"
+
+      # Release notes come from `update.md`: take the block for the version
+      # being released, the way the Java repository's workflow did, and fall
+      # back to recent commits when the file carries no such block.
+      - name: Generate release notes
+        id: notes
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          set -euo pipefail
+          notes=version_notes.md
+          if [ -f update.md ]; then
+            awk -v target="## v${VERSION_NAME}" '
+              /^## v/ {
+                if ($0 == target) { in_block = 1 }
+                else if (in_block) { in_block = 0 }
+              }
+              in_block { print }
+            ' update.md > "$notes"
+          else
+            : > "$notes"
+          fi
+
+          {
+            echo "## LineCode Pro v${VERSION_NAME}"
+            echo
+            echo "### 版本信息"
+            echo "- 版本名称: v${VERSION_NAME}"
+            echo "- 版本号: ${{ steps.version.outputs.code }}"
+            echo
+            if [ -s "$notes" ]; then
+              cat "$notes"
+            else
+              echo "### 最近更新"
+              git log --oneline -n 20 || true
+            fi
+            echo
+            echo "---"
+            echo
+            echo "### 下载说明"
+            echo "- 下载 \`LineCodePro-${VERSION_NAME}.apk\` 直接安装"
+            echo "- 校验文件: \`LineCodePro-${VERSION_NAME}.apk.sha256\`"
+          } > release_notes.md
+          cat release_notes.md
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
@@ -110,7 +169,7 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.name }}
           name: LineCode Pro v${{ steps.version.outputs.name }}
-          generate_release_notes: true
+          body_path: release_notes.md
           draft: false
           prerelease: false
           files: artifacts/*
@@ -118,5 +177,5 @@ jobs:
       - name: Remove signing material
         if: always()
         run: |
-          rm -f platform/android/signing.properties
+          rm -f platform/android/signing.properties release_notes.md version_notes.md
           rm -rf "$RUNNER_TEMP/linecode-signing"
