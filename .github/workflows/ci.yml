@@ -27,13 +27,30 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes ninja-build libgtest-dev libsqlite3-dev libssl-dev zlib1g-dev libcurl4-openssl-dev
 
+      # Ubuntu 24.04 ships GCC 13, whose C++ front end cannot compile this
+      # codebase: it reports a spurious -Wfree-nonheap-object for a coroutine
+      # frame and then hits an internal compiler error
+      # (build_special_member_call, cp/call.cc:11096) in a test that GCC 16
+      # accepts. Pin the toolchain rather than shape the sources around an old
+      # compiler's bugs.
+      - name: Install GCC 16
+        run: |
+          sudo add-apt-repository --yes ppa:ubuntu-toolchain-r/test
+          sudo apt-get update
+          sudo apt-get install --yes gcc-16 g++-16
+          g++-16 --version | head -1
+
       - name: Install HuxerUI SDK 0.3.0
         run: curl -fsSL https://github.com/HuxerUI/HuxerUI/releases/latest/download/install.sh | sh -s -- --version 0.3.0 --yes
 
       - name: Configure tests
         env:
           HUXERUI_HOME: /home/runner/.local/share/HuxerUI
-        run: cmake -S tests -B build/tests-ninja -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: |
+          cmake -S tests -B build/tests-ninja -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc-16 \
+            -DCMAKE_CXX_COMPILER=g++-16
 
       - name: Build tests
         run: cmake --build build/tests-ninja --parallel 8

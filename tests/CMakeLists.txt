@@ -28,10 +28,11 @@ link_libraries(HuxerUI::huxerui)
 
 # GCC 13 and 14 mis-analyse the destructor of a `std::expected` held in a
 # coroutine frame reached through `std::function` and report
-# `-Wfree-nonheap-object` for a delete that never happens. The diagnostic was
-# corrected in later releases, so a newer host compiler is silent while the
-# hosted runner -- Ubuntu 24.04, GCC 13 -- turns it into an error under
-# `-Werror`. Suppress that one warning rather than restructure correct code.
+# `-Wfree-nonheap-object` for a delete that never happens; later releases
+# corrected the diagnostic. CI pins GCC 16, so this is not needed there, but
+# Ubuntu's default compiler is still 13 and a contributor building with it
+# would otherwise hit an error for correct code. Suppressing that one warning
+# is cheaper than asking everyone to match CI's toolchain.
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     add_compile_options(-Wno-free-nonheap-object)
 endif ()
