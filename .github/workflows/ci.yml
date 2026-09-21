@@ -18,54 +18,59 @@ jobs:
   native-tests:
     name: C++23 / GoogleTest
     runs-on: ubuntu-latest
+    # Ubuntu 24.04 ships GCC 13 and the toolchain PPA only offers a March 2026
+    # GCC 16 snapshot; both mis-compile this codebase (a spurious
+    # -Wfree-nonheap-object, then an internal compiler error in gimplify). The
+    # released GCC 16.2 that compiles it cleanly is what the official image
+    # carries, so the job runs in that image rather than assembling a
+    # toolchain on the runner.
+    container: gcc:16.2
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install native build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes ninja-build libgtest-dev libsqlite3-dev libssl-dev zlib1g-dev libcurl4-openssl-dev
-
-      # Ubuntu 24.04 ships GCC 13, whose C++ front end cannot compile this
-      # codebase: it reports a spurious -Wfree-nonheap-object for a coroutine
-      # frame and then hits an internal compiler error
-      # (build_special_member_call, cp/call.cc:11096) in a test that GCC 16
-      # accepts. Pin the toolchain rather than shape the sources around an old
-      # compiler's bugs.
-      - name: Install GCC 16
+        timeout-minutes: 15
         run: |
           set -euo pipefail
-          # `add-apt-repository` resolves the PPA through the Launchpad REST
-          # API, which answered HTTP 504 and failed the job. Register the PPA
-          # from its published signing key instead, which is a plain download.
-          sudo mkdir -p /etc/apt/keyrings
-          curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors \
-            "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xC8EC952E2A0E1FBDC5090F6A2C277A0A352154E5" \
-            | gpg --dearmor \
-            | sudo tee /etc/apt/keyrings/ubuntu-toolchain-r-test.gpg >/dev/null
-          echo "deb [signed-by=/etc/apt/keyrings/ubuntu-toolchain-r-test.gpg] https://ppa.launchpadcontent.net/ubuntu-toolchain-r/test/ubuntu noble main" \
-            | sudo tee /etc/apt/sources.list.d/ubuntu-toolchain-r-test.list >/dev/null
-          sudo apt-get update
-          sudo apt-get install --yes gcc-16 g++-16
-          g++-16 --version | head -1
+          apt-get update
+          apt-get install --yes --no-install-recommends \
+            ninja-build libgtest-dev libsqlite3-dev libssl-dev zlib1g-dev \
+            libcurl4-openssl-dev cmake curl git ca-certificates
+          g++ --version | head -1
+          cmake --version | head -1
 
       - name: Install HuxerUI SDK 0.3.0
-        run: curl -fsSL https://github.com/HuxerUI/HuxerUI/releases/latest/download/install.sh | sh -s -- --version 0.3.0 --yes
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors \
+            https://github.com/HuxerUI/HuxerUI/releases/latest/download/install.sh \
+            | sh -s -- --version 0.3.0 --yes
 
       - name: Configure tests
         env:
-          HUXERUI_HOME: /home/runner/.local/share/HuxerUI
+          HUXERUI_HOME: ${{ github.workspace }}/.huxerui-sdk
         run: |
+          set -euo pipefail
+          # The installer writes under $HOME; keep the SDK where later steps
+          # look for it rather than depending on the image's HOME.
+          if [ ! -d "$HUXERUI_HOME" ]; then
+            mkdir -p "$(dirname "$HUXERUI_HOME")"
+            cp -a "$HOME/.local/share/HuxerUI" "$HUXERUI_HOME"
+          fi
           cmake -S tests -B build/tests-ninja -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER=gcc-16 \
-            -DCMAKE_CXX_COMPILER=g++-16
+            -DCMAKE_BUILD_TYPE=Release
 
       - name: Build tests
+        timeout-minutes: 30
+        env:
+          HUXERUI_HOME: ${{ github.workspace }}/.huxerui-sdk
         run: cmake --build build/tests-ninja --parallel 8
 
       - name: Run GoogleTest suite
+        timeout-minutes: 15
         run: ctest --test-dir build/tests-ninja --output-on-failure -j8
 
       - name: Run fake AI server tests
