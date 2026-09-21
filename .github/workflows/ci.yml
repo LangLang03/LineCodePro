@@ -39,7 +39,12 @@ jobs:
           apt-get update
           apt-get install --yes --no-install-recommends \
             ninja-build libgtest-dev libsqlite3-dev libssl-dev zlib1g-dev \
-            libcurl4-openssl-dev cmake curl git ca-certificates
+            libcurl4-openssl-dev cmake curl git ca-certificates \
+            libgtk-4-1 libgraphene-1.0-0 libepoxy0 libsoup-3.0-0 \
+            libgstreamer-plugins-base1.0-0
+          # The SDK's GUI library is what those packages are for: eight test
+          # targets link it, and without its GTK/GStreamer stack every one of
+          # them fails at link time with undefined gtk_/gdk_/epoxy_ symbols.
           g++ --version | head -1
           cmake --version | head -1
 
