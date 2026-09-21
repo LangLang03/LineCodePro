@@ -186,6 +186,9 @@ endif ()
 add_test(NAME presentation_theme_tests COMMAND presentation_theme_tests)
 
 find_package(SQLite3 REQUIRED)
+if (TARGET SQLite::SQLite3 AND NOT TARGET SQLite3::SQLite3)
+    add_library(SQLite3::SQLite3 ALIAS SQLite::SQLite3)
+endif ()
 
 add_executable(legacy_conversation_schema_tests
         legacy_conversation_schema_tests.cpp
