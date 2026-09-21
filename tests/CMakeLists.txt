@@ -20,11 +20,30 @@ include(GoogleTest)
 link_libraries(GTest::gtest_main)
 # Every target here is built on HuxerUI types, so they all need the SDK's
 # include directories. Working from an installed SDK on a machine that also has
-# a system-wide copy of the headers hides a missing link -- the compiler finds
-# huxerui/*.h through /usr/local/include and the omission only shows up on a
-# clean runner. Linking at directory scope states the dependency once instead
-# of relying on each add_executable below to remember it.
-link_libraries(HuxerUI::huxerui)
+# a system-wide copy of the headers hides a missing dependency -- the compiler
+# finds huxerui/*.h through /usr/local/include and the omission only shows up
+# on a clean runner.
+#
+# Only the headers are added, not the library. The SDK's GUI library links
+# GTK4, graphene, epoxy and libsoup, none of which a unit test needs and none
+# of which a build container has; linking it here made every target fail at
+# link time. Targets that do use the library link it explicitly.
+set(_huxerui_include_dirs "")
+foreach (_huxerui_target HuxerUI::testing HuxerUI::huxerui)
+    if (TARGET ${_huxerui_target})
+        get_target_property(_huxerui_candidate ${_huxerui_target}
+                INTERFACE_INCLUDE_DIRECTORIES)
+        if (_huxerui_candidate)
+            list(APPEND _huxerui_include_dirs ${_huxerui_candidate})
+        endif ()
+    endif ()
+endforeach ()
+if (_huxerui_include_dirs)
+    list(REMOVE_DUPLICATES _huxerui_include_dirs)
+    include_directories(${_huxerui_include_dirs})
+endif ()
+unset(_huxerui_candidate)
+unset(_huxerui_target)
 
 # GCC 13 and 14 mis-analyse the destructor of a `std::expected` held in a
 # coroutine frame reached through `std::function` and report
