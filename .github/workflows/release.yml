@@ -1,6 +1,15 @@
 name: Release
 
+# Automatic releases hang off the version file, the way the Java repository's
+# workflow did with its own build file: merging a version bump to master is
+# what starts a release. An earlier revision triggered only on `v*` tags, and
+# because the migration never pushed one, the release had not run since
+# 2026-09-05. Manual dispatch stays available for re-releasing.
 on:
+  push:
+    branches: [master]
+    paths:
+      - 'platform/android/app/build.gradle'
   workflow_dispatch:
 
 permissions:
