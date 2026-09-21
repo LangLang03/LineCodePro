@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, hui-cpp]
+    branches: [master, hui-cpp]
   pull_request:
-    branches: [main, hui-cpp]
+    branches: [master, hui-cpp]
   workflow_dispatch:
 
 permissions:

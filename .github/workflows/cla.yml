@@ -19,7 +19,7 @@ jobs:
           set -euo pipefail
           body="$(jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH")"
           author="@$(jq -r '.pull_request.user.login' "$GITHUB_EVENT_PATH")"
-          acceptance='- [x] I have read and agree to the [Contributor License Agreement](https://github.com/LangLang03/LineCodePro/blob/main/CLA.md).'
+          acceptance='- [x] I have read and agree to the [Contributor License Agreement](https://github.com/LangLang03/LineCodePro/blob/master/CLA.md).'
 
           if ! grep -Fqx -- "$acceptance" <<<"$body"; then
             echo "::error::CLA acceptance is missing. Check the CLA box in the pull request template without changing its text."

@@ -29,7 +29,7 @@ Release builds require a local `platform/android/signing.properties`; never comm
 Use the pull request template, describe observable behavior, list the checks you ran, and include screenshots for UI changes. Every pull request must accept [CLA.md](CLA.md) and contain a matching electronic signature:
 
 ```text
-- [x] I have read and agree to the [Contributor License Agreement](https://github.com/LangLang03/LineCodePro/blob/main/CLA.md).
+- [x] I have read and agree to the [Contributor License Agreement](https://github.com/LangLang03/LineCodePro/blob/master/CLA.md).
 CLA Signature: @your-github-username
 ```
 

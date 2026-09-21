@@ -37,8 +37,8 @@ Commands and environment used:
 
 ## CLA — required
 
-Checking the following box and typing the pull request author's exact GitHub username constitutes an electronic signature of the [Contributor License Agreement](https://github.com/LangLang03/LineCodePro/blob/main/CLA.md). Both lines are validated by the required `CLA / verify` CI check.
+Checking the following box and typing the pull request author's exact GitHub username constitutes an electronic signature of the [Contributor License Agreement](https://github.com/LangLang03/LineCodePro/blob/master/CLA.md). Both lines are validated by the required `CLA / verify` CI check.
 
-- [ ] I have read and agree to the [Contributor License Agreement](https://github.com/LangLang03/LineCodePro/blob/main/CLA.md).
+- [ ] I have read and agree to the [Contributor License Agreement](https://github.com/LangLang03/LineCodePro/blob/master/CLA.md).
 
 CLA Signature: @your-github-username
