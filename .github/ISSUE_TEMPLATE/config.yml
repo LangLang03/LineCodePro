@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and design discussions
+    url: https://github.com/LangLang03/LineCodePro/discussions
+    about: "Use Discussions for support, ideas that still need scoping, and general project conversation. QQ discussion group: 1023548832."
+  - name: Security reports
+    url: https://github.com/LangLang03/LineCodePro/security/advisories/new
+    about: Privately report vulnerabilities. Do not publish credentials or exploit details in a public issue.

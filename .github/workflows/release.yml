@@ -1,204 +1,181 @@
-name: Release APK
+name: Release
 
 on:
-  push:
-    branches: [main, master]
-    paths:
-      - 'app/build.gradle.kts'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  check-version-change:
-    name: Check version change
+  android-release:
+    name: Signed Android release
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    outputs:
-      version_changed: ${{ steps.check.outputs.version_changed }}
-      old_version_code: ${{ steps.check.outputs.old_version_code }}
-      old_version_name: ${{ steps.check.outputs.old_version_name }}
-      new_version_code: ${{ steps.check.outputs.new_version_code }}
-      new_version_name: ${{ steps.check.outputs.new_version_name }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Check if versionCode changed
-        id: check
-        run: |
-          # 获取当前版本号和版本名
-          CURRENT_VERSION_CODE=$(grep -E 'versionCode = ' app/build.gradle.kts | sed 's/.*versionCode = \([0-9]*\).*/\1/')
-          CURRENT_VERSION_NAME=$(grep -E '^val releaseVersionName = "' app/build.gradle.kts | sed 's/.*"\([^"]*\)".*/\1/')
-          echo "new_version_code=$CURRENT_VERSION_CODE" >> $GITHUB_OUTPUT
-          echo "new_version_name=$CURRENT_VERSION_NAME" >> $GITHUB_OUTPUT
-          echo "Current version: $CURRENT_VERSION_NAME (code: $CURRENT_VERSION_CODE)"
-
-          # 检查是否有足够的提交历史
-          if git rev-parse HEAD~1 >/dev/null 2>&1; then
-            # 获取上一个提交的版本号
-            PREV_VERSION_CODE=$(git show HEAD~1:app/build.gradle.kts 2>/dev/null | grep -E 'versionCode = ' | sed 's/.*versionCode = \([0-9]*\).*/\1/' || echo "")
-            PREV_VERSION_NAME=$(git show HEAD~1:app/build.gradle.kts 2>/dev/null | grep -E '^val releaseVersionName = "' | sed 's/.*"\([^"]*\)".*/\1/' || echo "")
-            echo "old_version_code=$PREV_VERSION_CODE" >> $GITHUB_OUTPUT
-            echo "old_version_name=$PREV_VERSION_NAME" >> $GITHUB_OUTPUT
-            echo "Previous version: $PREV_VERSION_NAME (code: $PREV_VERSION_CODE)"
-
-            # 检查版本号是否增加
-            if [ -n "$PREV_VERSION_CODE" ] && [ "$CURRENT_VERSION_CODE" -gt "$PREV_VERSION_CODE" ]; then
-              echo "version_changed=true" >> $GITHUB_OUTPUT
-              echo "Version code increased from $PREV_VERSION_CODE to $CURRENT_VERSION_CODE"
-            else
-              echo "version_changed=false" >> $GITHUB_OUTPUT
-              echo "No version code increase detected"
-            fi
-          else
-            echo "old_version_code=" >> $GITHUB_OUTPUT
-            echo "old_version_name=" >> $GITHUB_OUTPUT
-            echo "version_changed=false" >> $GITHUB_OUTPUT
-            echo "First commit, skipping release"
-          fi
-
-  build-release:
-    name: Build Release APK
-    runs-on: ubuntu-latest
-    needs: check-version-change
-    if: needs.check-version-change.outputs.version_changed == 'true'
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
 
-      - name: Setup Gradle
+      - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Decode release keystore
+      # The SDK manager sometimes stalls on one download; bound the step so a
+      # slow mirror fails on its own instead of consuming the job's budget.
+      - name: Install Android build dependencies
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          sdkmanager --install \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;29.0.14206865" \
+            "cmake;3.22.1"
+
+      - name: Install HuxerUI SDK 0.3.0
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors \
+            https://github.com/HuxerUI/HuxerUI/releases/latest/download/install.sh \
+            | sh -s -- --version 0.3.0 --yes
+
+      - name: Validate signing secrets
         env:
           KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
-        run: |
-          mkdir -p signing
-          echo "$KEYSTORE_BASE64" | base64 -d > signing/linecode-release.keystore
-          ls -la signing
-
-      - name: Write signing.properties
-        env:
           STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64"
+          test -n "$STORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          test -n "$KEY_PASSWORD"
+
+      - name: Configure release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/linecode-signing"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/linecode-signing/release.keystore"
           {
-            printf 'storeFile=%s/signing/linecode-release.keystore\n' "$GITHUB_WORKSPACE"
+            printf 'storeFile=%s\n' "$RUNNER_TEMP/linecode-signing/release.keystore"
             printf 'storePassword=%s\n' "$STORE_PASSWORD"
             printf 'keyAlias=%s\n' "$KEY_ALIAS"
             printf 'keyPassword=%s\n' "$KEY_PASSWORD"
-          } > signing.properties
-          cat signing.properties
+          } > platform/android/signing.properties
 
-      - name: Validate signing config
-        run: ./gradlew :app:validateReleaseSigning
-
-      - name: Run unit tests
-        run: ./gradlew :app:testDebugUnitTest
-
-      - name: Run lint
-        run: ./gradlew :app:lintDebug
-
-      - name: Build release APK
-        run: ./gradlew :app:assembleRelease
-
-      - name: Get version info
+      - name: Read version
         id: version
+        shell: bash
         run: |
-          VERSION_NAME=$(grep -E '^val releaseVersionName = "' app/build.gradle.kts | sed 's/.*"\([^"]*\)".*/\1/')
-          VERSION_CODE=$(grep -E 'versionCode = ' app/build.gradle.kts | sed 's/.*versionCode = \([0-9]*\).*/\1/')
-          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
-          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION_NAME ($VERSION_CODE)"
+          set -euo pipefail
+          version_name="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)"/\1/p' platform/android/app/build.gradle | head -n1)"
+          version_code="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\)/\1/p' platform/android/app/build.gradle | head -n1)"
+          test -n "$version_name"
+          test -n "$version_code"
+          echo "name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "Releasing $version_name (code $version_code)"
 
-      - name: Upload release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: LineCode-Pro-v${{ steps.version.outputs.version_name }}
-          path: app/release/*.APK
-          if-no-files-found: error
-          retention-days: 90
+      - name: Build signed release APK
+        timeout-minutes: 60
+        env:
+          HUXERUI_HOME: /home/runner/.local/share/HuxerUI
+        run: |
+          set -euo pipefail
+          chmod +x platform/android/gradlew
+          ./platform/android/gradlew -p platform/android \
+            :app:validateReleaseSigning :app:assembleRelease \
+            --max-workers=8 --console=plain
 
-      - name: Upload release APK signature
-        uses: actions/upload-artifact@v4
-        with:
-          name: LineCode-Pro-v${{ steps.version.outputs.version_name }}-idsig
-          path: app/release/*.idsig
-          if-no-files-found: warn
-          retention-days: 90
+      - name: Prepare release artifacts
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          cp platform/android/app/build/outputs/apk/release/app-release.apk "artifacts/LineCodePro-$VERSION_NAME.apk"
+          sha256sum "artifacts/LineCodePro-$VERSION_NAME.apk" > "artifacts/LineCodePro-$VERSION_NAME.apk.sha256"
+          cat "artifacts/LineCodePro-$VERSION_NAME.apk.sha256"
 
+      # Release notes come from `update.md`: take the block for the version
+      # being released, the way the Java repository's workflow did, and fall
+      # back to recent commits when the file carries no such block.
       - name: Generate release notes
         id: notes
         env:
-          NEW_VERSION_NAME: ${{ needs.check-version-change.outputs.new_version_name }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
         run: |
-          # 从 update.md 提取当前版本的更新内容（仅保留当前版本块，不包含历史）
+          set -euo pipefail
+          notes=version_notes.md
           if [ -f update.md ]; then
-            awk -v target="## v${NEW_VERSION_NAME}" '
+            awk -v target="## v${VERSION_NAME}" '
               /^## v/ {
                 if ($0 == target) { in_block = 1 }
                 else if (in_block) { in_block = 0 }
               }
               in_block { print }
-            ' update.md > version_notes.md || echo "" > version_notes.md
+            ' update.md > "$notes"
           else
-            echo "" > version_notes.md
+            : > "$notes"
           fi
 
-          # 生成发布说明
           {
-            echo "## LineCode Pro v${NEW_VERSION_NAME}"
-            echo ""
+            echo "## LineCode Pro v${VERSION_NAME}"
+            echo
             echo "### 版本信息"
-            echo "- 版本名称: v${NEW_VERSION_NAME}"
-            echo "- 版本号: ${{ steps.version.outputs.version_code }}"
-            echo ""
-            if [ -s version_notes.md ]; then
-              cat version_notes.md
+            echo "- 版本名称: v${VERSION_NAME}"
+            echo "- 版本号: ${{ steps.version.outputs.code }}"
+            echo
+            if [ -s "$notes" ]; then
+              cat "$notes"
             else
               echo "### 最近更新"
-              git log --oneline HEAD~5..HEAD || echo "No recent commits"
+              git log --oneline -n 20 || true
             fi
-            echo ""
+            echo
             echo "---"
-            echo ""
+            echo
             echo "### 下载说明"
-            echo "- \`LineCode Pro ${NEW_VERSION_NAME}.APK\` - Release APK"
-            echo "- \`LineCode Pro ${NEW_VERSION_NAME}.APK.idsig\` - APK 签名文件"
+            echo "- 下载 \`LineCodePro-${VERSION_NAME}.apk\` 直接安装"
+            echo "- 校验文件: \`LineCodePro-${VERSION_NAME}.apk.sha256\`"
           } > release_notes.md
+          cat release_notes.md
 
-          echo "release_notes_file=release_notes.md" >> $GITHUB_OUTPUT
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: LineCodePro-${{ steps.version.outputs.name }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 90
 
-      - name: Create GitHub Release
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version_name }}
-          name: LineCode Pro v${{ steps.version.outputs.version_name }}
+          tag_name: v${{ steps.version.outputs.name }}
+          name: LineCode Pro v${{ steps.version.outputs.name }}
           body_path: release_notes.md
           draft: false
           prerelease: false
-          files: |
-            app/release/*.APK
-            app/release/*.idsig
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: artifacts/*
 
-      - name: Cleanup signing files
+      - name: Remove signing material
         if: always()
         run: |
-          rm -rf signing
-          rm -f signing.properties
+          rm -f platform/android/signing.properties release_notes.md version_notes.md
+          rm -rf "$RUNNER_TEMP/linecode-signing"

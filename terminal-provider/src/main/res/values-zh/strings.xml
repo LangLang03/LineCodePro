@@ -1,8 +1,0 @@
-<resources>
-    <string name="bind_service">连接本地服务</string>
-    <string name="test_identity">运行 whoami</string>
-    <string name="test_files">运行 ls /</string>
-    <string name="provider_info">提供者信息</string>
-    <string name="logs">运行输出</string>
-    <string name="clear_logs">清空</string>
-</resources>

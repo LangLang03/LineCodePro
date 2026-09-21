@@ -1,40 +1,44 @@
 ## Summary
 
-<!-- What does this PR do and why? Link the issue if any. -->
+<!-- What changed, why it is needed, and which issue it resolves. -->
 
-## Type of change
+Closes #
 
-- [ ] Bug fix (non-breaking change that fixes an issue)
-- [ ] New feature (non-breaking change that adds functionality)
-- [ ] Breaking change (fix or feature that changes existing behavior)
-- [ ] Refactor / code quality (no behavior change)
-- [ ] Docs / changelog only
+## User-visible behavior
 
-## Scope
+<!-- Describe the behavior before and after this pull request. -->
 
-<!-- Which areas are affected? e.g. chat UI, tool-call loop, agent, model protocol, settings, SSH/terminal provider. -->
+## Screenshots or recordings
 
-## Changes
+<!-- Required for UI changes. Include comparable before/after states. -->
 
-<!-- Bullet the concrete changes. Reference classes/methods where helpful. -->
+## Validation
 
--
+- [ ] GoogleTest suite passes with Ninja and `-j8`
+- [ ] Fake AI server tests pass
+- [ ] Android lint passes
+- [ ] Android debug build succeeds
+- [ ] Verified on a device or emulator, or explained why this is not applicable
 
-## Testing
+Commands and environment used:
 
-- [ ] `./gradlew :app:testDebugUnitTest` passes
-- [ ] `./gradlew :app:lintDebug` passes
-- [ ] `./gradlew :app:assembleDebug` builds
-- [ ] Manual verification on device/emulator (describe what was checked)
+```text
 
-## Compliance checklist
+```
 
-- [ ] Java only in `app/src/main/java` (no Kotlin sources added)
-- [ ] UI built in Java code, not inflated from XML layouts
-- [ ] New secrets/redaction fields covered by `ErrorLogRedactor` / `ArchiveSecretRedactor`
-- [ ] State threaded through `ChatUiStateAssembler` → `ChatUiState` → `MainContract.View.render(...)` (no direct view reach-in)
-- [ ] `update.md` updated for user-facing changes
+## Design and safety checklist
 
-## Risk / rollback
+- [ ] The change keeps domain, application, infrastructure, platform, and presentation responsibilities separated.
+- [ ] New behavior is behind an abstraction or data-driven descriptor where extension is expected; it does not grow a UI `if` chain.
+- [ ] New or changed behavior has GoogleTest coverage.
+- [ ] No credential, signing key, personal data, generated build output, or incompatible third-party code is included.
+- [ ] User-facing text is available in both English and Chinese where applicable.
+- [ ] UI changes preserve the intended LineCode behavior and have been visually checked.
 
-<!-- What could break, and how to revert? -->
+## CLA — required
+
+Checking the following box and typing the pull request author's exact GitHub username constitutes an electronic signature of the [Contributor License Agreement](https://github.com/LangLang03/LineCodePro/blob/master/CLA.md). Both lines are validated by the required `CLA / verify` CI check.
+
+- [ ] I have read and agree to the [Contributor License Agreement](https://github.com/LangLang03/LineCodePro/blob/master/CLA.md).
+
+CLA Signature: @your-github-username

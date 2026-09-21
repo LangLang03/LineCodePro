@@ -1,0 +1,55 @@
+name: Feature request
+description: Propose a scoped capability or behavior improvement
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem cannot be solved well today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe observable behavior, not only an implementation choice.
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Area
+      options:
+        - Conversation and timeline
+        - Tools and permissions
+        - Agent or Agent Pipeline
+        - Models and protocols
+        - Workspaces, SSH, Termux, or terminal provider
+        - MCP, Skills, or extensions
+        - Settings, storage, or import/export
+        - Android platform integration
+        - Windows platform integration
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: ui
+    attributes:
+      label: UI reference or interaction notes
+      description: Add sketches, screenshots, or legacy LineCode references if the request changes UI.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I searched existing issues and discussions for this request.
+          required: true
+        - label: This request does not depend on Android Accessibility Service device control.
+          required: true

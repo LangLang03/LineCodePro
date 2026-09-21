@@ -1,0 +1,350 @@
+#include "presentation/screens/settings_screen.h"
+
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <app_resources.h>
+#include <huxerui/huxerui.h>
+
+#include "presentation/components/legacy_screen_header_layout.h"
+#include "presentation/components/legacy_settings_card_frame.h"
+#include "presentation/legacy_text_presentation.h"
+#include "presentation/line_theme.h"
+#include "presentation/platform_features.h"
+
+namespace linecode::presentation {
+namespace {
+
+using namespace huxerui;
+
+struct SettingsItem final {
+  domain::AppRoute route;
+  StringResource title;
+  StringResource description;
+  ImageResource icon;
+};
+
+enum class SettingsRowKind : std::uint8_t {
+  grouped,
+  tutorial,
+  count,
+};
+
+struct SettingsRowMetrics final {
+  float minimum_height;
+  float icon_corner_radius;
+  float chevron_size;
+};
+
+constexpr std::array kSettingsRowMetrics{
+    SettingsRowMetrics{
+        // The legacy grouped rows measure to 170 px at 420 dpi. Keeping the
+        // logical minimum explicit avoids HuxerUI font metrics making them
+        // 68dp.
+        .minimum_height = 64.75F,
+        .icon_corner_radius = 18.0F,
+        .chevron_size = 16.0F,
+    },
+    SettingsRowMetrics{
+        .minimum_height = 68.0F,
+        .icon_corner_radius = 8.0F,
+        .chevron_size = 17.0F,
+    },
+};
+
+constexpr SettingsRowMetrics MetricsFor(SettingsRowKind kind) noexcept {
+  return kSettingsRowMetrics[std::to_underlying(kind)];
+}
+
+static_assert(kSettingsRowMetrics.size() ==
+              std::to_underlying(SettingsRowKind::count));
+
+TextStyle LabelStyle(float size, FontWeight weight = FontWeight::Regular,
+                     Color color = colors::text) {
+  return TextStyle{Font::System(size).WithWeight(weight), color};
+}
+
+View Glyph(ImageResource icon, float size, Color tint) {
+  return Image(std::move(icon))
+      .Tint(tint)
+      .With(Frame{.width = size, .height = size});
+}
+
+View IconTile(ImageResource icon, float corner_radius) {
+  return Stack{
+      Glyph(std::move(icon), 20.0F, colors::accent),
+  }
+      .With(Frame{.width = 36.0F, .height = 36.0F},
+            Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+            Background(colors::accent_muted), CornerRadius(corner_radius));
+}
+
+View ScreenHeader(
+    StringResource title,
+    const RouteNavigationController<domain::AppRoute> &navigation) {
+  return LegacyScreenHeaderLayout{
+      Stack{
+          Glyph(app::images::chevron_left, 22.0F, colors::text),
+      }
+          .OnClick([navigation] { navigation.Pop(); })
+          .With(Frame{.width = 36.0F, .height = 36.0F},
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+                Focusable(), PointerCursor(PointerCursorKind::Hand)),
+      Stack{Text(title).Style(LabelStyle(17.0F, FontWeight::Bold))}.With(
+          Grow(),
+          Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
+      Stack{}.With(Frame{.width = 36.0F, .height = 36.0F}),
+  }
+      .With(Frame{.min_height = 60.0F},
+            Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
+            Background(colors::background), Border(Color::Transparent(), 0.0F));
+}
+
+View SettingsRow(SettingsItem item,
+                 const RouteNavigationController<domain::AppRoute> &navigation,
+                 SettingsRowKind kind = SettingsRowKind::grouped) {
+  const SettingsRowMetrics metrics = MetricsFor(kind);
+  return Row{
+      IconTile(item.icon, metrics.icon_corner_radius),
+      Column{
+          Text(item.title).Style(LabelStyle(16.0F, FontWeight::Medium)),
+          Text(item.description)
+              .Style(LabelStyle(11.0F, FontWeight::Regular, colors::tertiary)),
+      }
+          .With(Spacing(2.0F), Grow()),
+      Stack{
+          Glyph(app::images::chevron_right, metrics.chevron_size,
+                colors::tertiary),
+      }
+          .With(Frame{.width = 20.0F, .height = 20.0F},
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center)),
+  }
+      .OnClick([navigation, next = item.route] { navigation.Push(next); })
+      .With(Frame{.min_height = metrics.minimum_height}, Spacing(12.0F),
+            Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
+            CrossAlign(CrossAxisAlignment::Center), Focusable(),
+            PointerCursor(PointerCursorKind::Hand));
+}
+
+void AppendSection(
+    std::vector<View> &content, std::string title,
+    std::vector<SettingsItem> items,
+    const RouteNavigationController<domain::AppRoute> &navigation) {
+  content.push_back(
+      Text(std::move(title))
+          .Style(LabelStyle(11.0F, FontWeight::Medium, colors::tertiary))
+          .With(Padding(EdgeInsets{
+              .top = 20.0F, .right = 16.0F, .bottom = 12.0F, .left = 16.0F})));
+
+  std::vector<View> rows;
+  rows.reserve(items.size() * 2);
+  std::size_t index = 0;
+  for (const auto &item : items) {
+    rows.push_back(
+        SettingsRow(item, navigation)
+            .Key(static_cast<std::uint64_t>(*item.route.PageValue())));
+    if (++index < items.size()) {
+      rows.push_back(Divider().With(Padding(EdgeInsets{.left = 68.0F})));
+    }
+  }
+  content.push_back(LegacySettingsCardFrame{
+      Column(std::move(rows))
+          .With(CornerRadius(12.0F), Background(colors::elevated),
+                CrossAlign(CrossAxisAlignment::Stretch)),
+  });
+}
+
+StringResource RouteTitle(domain::AppRoute route) {
+  struct RouteTitlePresentation final {
+    domain::AppRoute::Page page;
+    StringResource title;
+  };
+  const std::array presentations{
+      RouteTitlePresentation{domain::AppRoute::tutorial,
+                             app::strings::settings_row_tutorial_title},
+      RouteTitlePresentation{domain::AppRoute::models,
+                             app::strings::settings_row_models_title},
+      RouteTitlePresentation{domain::AppRoute::llm,
+                             app::strings::settings_row_llm_title},
+      RouteTitlePresentation{domain::AppRoute::prompt_templates,
+                             app::strings::screen_prompt_templates_title},
+      RouteTitlePresentation{domain::AppRoute::mcp,
+                             app::strings::settings_row_mcp_title},
+      RouteTitlePresentation{domain::AppRoute::ssh_settings,
+                             app::strings::screen_ssh_title},
+      RouteTitlePresentation{domain::AppRoute::termux_integration,
+                             app::strings::screen_termux_title},
+      RouteTitlePresentation{domain::AppRoute::tool_settings,
+                             app::strings::settings_row_tool_settings_title},
+      RouteTitlePresentation{domain::AppRoute::extensions,
+                             app::strings::settings_row_extensions_title},
+      RouteTitlePresentation{domain::AppRoute::input,
+                             app::strings::settings_row_input_title},
+      RouteTitlePresentation{domain::AppRoute::theme,
+                             app::strings::settings_row_theme_title},
+      RouteTitlePresentation{domain::AppRoute::output,
+                             app::strings::settings_row_output_title},
+      RouteTitlePresentation{domain::AppRoute::tool_call_preview,
+                             app::strings::screen_toolcall_preview_title},
+      RouteTitlePresentation{domain::AppRoute::security,
+                             app::strings::settings_row_security_title},
+      RouteTitlePresentation{domain::AppRoute::storage,
+                             app::strings::settings_row_storage_title},
+      RouteTitlePresentation{domain::AppRoute::memory,
+                             app::strings::settings_row_memory_title},
+      RouteTitlePresentation{domain::AppRoute::data,
+                             app::strings::settings_row_data_title},
+      RouteTitlePresentation{domain::AppRoute::error_logs,
+                             app::strings::settings_row_error_logs_title},
+      RouteTitlePresentation{domain::AppRoute::keep_alive,
+                             app::strings::settings_row_keep_alive_title},
+      RouteTitlePresentation{domain::AppRoute::about,
+                             app::strings::settings_row_about_title},
+      RouteTitlePresentation{domain::AppRoute::licenses,
+                             app::strings::screen_licenses_title},
+      RouteTitlePresentation{domain::AppRoute::settings,
+                             app::strings::screen_settings_title},
+  };
+  const auto *page = route.PageValue();
+  if (!page)
+    return app::strings::screen_settings_title;
+  const auto found =
+      std::ranges::find(presentations, *page, &RouteTitlePresentation::page);
+  if (found != presentations.end())
+    return found->title;
+  return app::strings::screen_settings_title;
+}
+
+} // namespace
+
+[[huxerui::composable]] View SettingsScreen() {
+  using namespace huxerui;
+  const auto navigation = UseNavigation<domain::AppRoute>();
+  std::vector<View> content;
+  content.reserve(24);
+
+  content.push_back(SettingsRow(
+      {
+          domain::AppRoute::tutorial,
+          app::strings::settings_row_tutorial_title,
+          app::strings::settings_row_tutorial_desc,
+          app::images::sparkles,
+      },
+      navigation, SettingsRowKind::tutorial));
+  AppendSection(
+      content,
+      LegacySectionTitle(UseString(app::strings::screen_settings_section_ai)),
+      {
+          {domain::AppRoute::models, app::strings::settings_row_models_title,
+           app::strings::settings_row_models_desc, app::images::box},
+          {domain::AppRoute::llm, app::strings::settings_row_llm_title,
+           app::strings::settings_row_llm_desc, app::images::brain},
+      },
+      navigation);
+  AppendSection(
+      content,
+      LegacySectionTitle(
+          UseString(app::strings::screen_settings_section_tools)),
+      {
+          {domain::AppRoute::mcp, app::strings::settings_row_mcp_title,
+           app::strings::settings_row_mcp_desc, app::images::mcp},
+          {domain::AppRoute::tool_settings,
+           app::strings::settings_row_tool_settings_title,
+           app::strings::settings_row_tool_settings_desc,
+           app::images::sliders_horizontal},
+          {domain::AppRoute::extensions,
+           app::strings::settings_row_extensions_title,
+           app::strings::settings_row_extensions_desc, app::images::package},
+      },
+      navigation);
+  AppendSection(
+      content,
+      LegacySectionTitle(UseString(app::strings::screen_settings_section_ui)),
+      {
+          {domain::AppRoute::input, app::strings::settings_row_input_title,
+           app::strings::settings_row_input_desc,
+           app::images::message_square_text},
+          {domain::AppRoute::theme, app::strings::settings_row_theme_title,
+           app::strings::settings_row_theme_desc, app::images::palette},
+          {domain::AppRoute::output, app::strings::settings_row_output_title,
+           app::strings::settings_row_output_desc, app::images::monitor},
+      },
+      navigation);
+  AppendSection(
+      content,
+      LegacySectionTitle(
+          UseString(app::strings::screen_settings_section_security)),
+      {
+          {domain::AppRoute::security,
+           app::strings::settings_row_security_title,
+           app::strings::settings_row_security_desc, app::images::shield_check},
+      },
+      navigation);
+  std::vector<SettingsItem> data_items{
+      {domain::AppRoute::storage, app::strings::settings_row_storage_title,
+       app::strings::settings_row_storage_desc, app::images::database},
+      {domain::AppRoute::memory, app::strings::settings_row_memory_title,
+       app::strings::settings_row_memory_desc, app::images::book_open},
+      {domain::AppRoute::data, app::strings::settings_row_data_title,
+       app::strings::settings_row_data_desc, app::images::archive},
+      {domain::AppRoute::error_logs,
+       app::strings::settings_row_error_logs_title,
+       app::strings::settings_row_error_logs_desc, app::images::bug},
+  };
+  IfFeatureAvailable<PlatformFeature::keep_alive>([&] {
+    data_items.push_back({
+        domain::AppRoute::keep_alive,
+        app::strings::settings_row_keep_alive_title,
+        app::strings::settings_row_keep_alive_desc,
+        app::images::battery_charging,
+    });
+  });
+  AppendSection(
+      content,
+      LegacySectionTitle(UseString(app::strings::screen_settings_section_data)),
+      std::move(data_items), navigation);
+  AppendSection(
+      content,
+      LegacySectionTitle(UseString(app::strings::screen_settings_section_info)),
+      {
+          {domain::AppRoute::about, app::strings::settings_row_about_title,
+           app::strings::settings_row_about_desc, app::images::cpu},
+      },
+      navigation);
+  content.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 100.0F}));
+
+  return Column{
+      ScreenHeader(app::strings::screen_settings_title, navigation),
+      LegacyScreenHeaderDivider(),
+      ScrollView(Column(std::move(content))
+                     .With(CrossAlign(CrossAxisAlignment::Stretch),
+                           Background(colors::background)))
+          .ScrollAxis(Axis::Vertical)
+          .With(Grow()),
+  }
+      .With(CrossAlign(CrossAxisAlignment::Stretch),
+            Background(colors::background), SafeAreaPadding{});
+}
+
+[[huxerui::composable]] View PendingScreen(domain::AppRoute current) {
+  using namespace huxerui;
+  const auto navigation = UseNavigation<domain::AppRoute>();
+  return Column{
+      ScreenHeader(RouteTitle(current), navigation),
+      LegacyScreenHeaderDivider(),
+      Column{
+          Text(RouteTitle(current)).Style(LabelStyle(20.0F, FontWeight::Bold)),
+          Text(app::strings::migration_pending)
+              .Style(LabelStyle(13.0F, FontWeight::Regular, colors::tertiary)),
+      }
+          .With(Spacing(8.0F), Padding(20.0F), Grow()),
+  }
+      .With(CrossAlign(CrossAxisAlignment::Stretch),
+            Background(colors::background), SafeAreaPadding{});
+}
+
+} // namespace linecode::presentation

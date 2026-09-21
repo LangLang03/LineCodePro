@@ -1,0 +1,44 @@
+name: UI or behavior parity report
+description: Report a specific mismatch with the reference LineCode application
+title: "[Parity]: "
+labels:
+  - bug
+  - ui-parity
+body:
+  - type: input
+    id: location
+    attributes:
+      label: Screen, dialog, or control
+      placeholder: Settings > Tools > Command execution
+    validations:
+      required: true
+  - type: textarea
+    id: difference
+    attributes:
+      label: Observed difference
+      description: Include position, spacing, size, typography, state, interaction, or functional differences.
+    validations:
+      required: true
+  - type: textarea
+    id: reference
+    attributes:
+      label: Reference and current screenshots
+      description: Attach the same state at the same display size when possible.
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and display configuration
+      placeholder: Android 16 emulator, 1080 × 2400, font/display size default
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmation
+      options:
+        - label: I reproduced this difference on the latest available build.
+          required: true
+        - label: I removed credentials and private content from the screenshots.
+          required: true

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LineCode Pro</string>
+    <string name="permission_ipc_terminal_provider_desc">Allows an app to act as a terminal provider for LineCode</string>
+    <string name="notification_keep_alive_title">LineCode</string>
+    <string name="keep_alive_notification_title">Coding task keep-alive</string>
+    <string name="notification_keep_alive_text">Coding in progress</string>
+    <string name="notification_keep_alive_ticker">LineCode</string>
+    <string name="workspace_provider_open_title">LineCode workspace</string>
+    <string name="workspace_provider_open_failed">Unable to open workspace folder</string>
+</resources>

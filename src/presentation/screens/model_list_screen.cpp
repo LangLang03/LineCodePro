@@ -1,0 +1,418 @@
+#include "presentation/screens/model_list_screen.h"
+
+#include <algorithm>
+#include <array>
+#include <functional>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include <app_resources.h>
+#include <huxerui/huxerui.h>
+
+#include "presentation/components/legacy_screen_header_layout.h"
+#include "presentation/line_theme.h"
+#include "presentation/model_protocol_presentation.h"
+
+namespace linecode::presentation {
+namespace {
+
+using namespace huxerui;
+
+struct ModelListState final {
+  std::vector<domain::ModelConfig> models;
+  std::vector<std::string> marked;
+  std::string selected_id;
+  std::string error;
+  bool loading{true};
+  bool multi_select{};
+};
+
+TextStyle Label(float size, FontWeight weight = FontWeight::Regular,
+                Color color = colors::text) {
+  return TextStyle{Font::System(size).WithWeight(weight), color};
+}
+
+View Glyph(ImageResource icon, float size, Color tint) {
+  return Image(std::move(icon))
+      .Tint(tint)
+      .With(Frame{.width = size, .height = size});
+}
+
+bool Marked(const ModelListState &state, std::string_view id) {
+  return std::ranges::find(state.marked, id) != state.marked.end();
+}
+
+Task<void> Reload(std::shared_ptr<application::ModelStore> store,
+                  State<ModelListState> state,
+                  std::function<void(bool)> selection_changed) {
+  auto loaded = co_await store->List();
+  auto selected = co_await store->SelectedId();
+  ModelListState next = state.Get();
+  next.loading = false;
+  if (!loaded) {
+    next.error = loaded.error().message;
+  } else {
+    next.models = std::move(*loaded);
+    next.error.clear();
+  }
+  if (selected) {
+    next.selected_id = std::move(*selected);
+    if (selection_changed)
+      std::invoke(selection_changed, !next.selected_id.empty());
+  }
+  state = std::move(next);
+}
+
+Task<void> SelectModel(std::shared_ptr<application::ModelStore> store,
+                       State<ModelListState> state, std::string id,
+                       std::function<void(bool)> selection_changed) {
+  auto result = co_await store->Select(id);
+  if (!result) {
+    auto next = state.Get();
+    next.error = result.error().message;
+    state = std::move(next);
+    co_return;
+  }
+  co_await Reload(store, state, std::move(selection_changed));
+}
+
+Task<void> DeleteMarked(std::shared_ptr<application::ModelStore> store,
+                        State<ModelListState> state,
+                        std::function<void(bool)> selection_changed) {
+  auto ids = state->marked;
+  auto result = co_await store->Delete(std::move(ids));
+  if (!result) {
+    auto next = state.Get();
+    next.error = result.error().message;
+    state = std::move(next);
+    co_return;
+  }
+  auto next = state.Get();
+  next.marked.clear();
+  next.multi_select = false;
+  state = std::move(next);
+  co_await Reload(store, state, std::move(selection_changed));
+}
+
+View SheetPanel(StringVariant title, std::vector<View> rows,
+                std::optional<View> description = std::nullopt) {
+  rows.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 12.0F}));
+  std::vector<View> content;
+  content.reserve(description.has_value() ? 5U : 4U);
+  content.push_back(
+      Row{Spacer(),
+          Stack{}.With(Frame{.width = 36.0F, .height = 4.0F},
+                       Background(colors::tertiary), CornerRadius(2.0F)),
+          Spacer()}
+          .With(Padding(EdgeInsets{.top = 8.0F, .bottom = 4.0F})));
+  content.push_back(
+      Text(std::move(title))
+          .Style(Label(17.0F, FontWeight::Bold))
+          .With(Padding(EdgeInsets{
+              .right = 16.0F, .bottom = 12.0F, .left = 16.0F})));
+  if (description.has_value())
+    content.push_back(std::move(*description));
+  content.push_back(Divider());
+  content.push_back(
+      Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch)));
+
+  View panel = Column(std::move(content))
+      .With(Frame{.max_width = 560.0F}, Background(colors::elevated),
+            CornerRadius(CornerRadii{16.0F}), ClipChildren(),
+            CrossAlign(CrossAxisAlignment::Stretch));
+  // DialogBuilder.showBottomSheet used the inset dialog width and a 16dp
+  // bottom window offset for model actions/deletion. Keep those insets outside
+  // the painted panel while the presentation host itself remains transparent.
+  return Row{std::move(panel).With(Grow())}.With(
+      Padding(EdgeInsets{.top = 0.0F,
+                         .right = 16.0F,
+                         .bottom = 16.0F,
+                         .left = 16.0F}),
+      MainAlign(MainAxisAlignment::Center));
+}
+
+View SheetRow(StringVariant text, std::optional<StringVariant> description,
+              Color tint,
+              std::function<void()> action) {
+  std::vector<View> labels;
+  labels.push_back(Text(std::move(text)).Style(Label(16.0F, FontWeight::Regular,
+                                                       tint)));
+  if (description.has_value()) {
+    labels.push_back(Text(std::move(*description))
+                         .Style(Label(11.0F, FontWeight::Regular,
+                                      colors::tertiary)));
+  }
+  return Column(std::move(labels))
+      .OnClick([action = std::move(action)] {
+        if (action)
+          std::invoke(action);
+      })
+      .With(Frame{.min_height = 52.0F}, Spacing(2.0F),
+            Padding(EdgeInsets::Symmetric(16.0F, 14.0F)), Focusable(),
+            PointerCursor(PointerCursorKind::Hand));
+}
+
+void ToggleMarked(State<ModelListState> state, std::string id) {
+  auto next = state.Get();
+  const auto found = std::ranges::find(next.marked, id);
+  if (found == next.marked.end())
+    next.marked.push_back(std::move(id));
+  else {
+    next.marked.erase(found);
+    if (next.marked.empty())
+      next.multi_select = false;
+  }
+  state = std::move(next);
+}
+
+View ModelCard(const domain::ModelConfig &model, State<ModelListState> state,
+               const std::shared_ptr<application::ModelStore> &store,
+               const TaskScope &tasks, const BottomSheetHandle &sheets,
+               const ModelListActions &actions) {
+  constexpr std::array custom_provider_labels{std::string_view{"Custom"},
+                                               std::string_view{"自定义"}};
+  const StringVariant provider_label =
+      model.provider_label.empty() ||
+              std::ranges::contains(custom_provider_labels,
+                                    std::string_view{model.provider_label})
+          ? StringVariant{ModelProtocolPresentationFor(model.protocol).name}
+          : StringVariant{model.provider_label};
+  const bool current = state->selected_id == model.id;
+  const bool marked = Marked(state.Get(), model.id);
+  std::vector<View> trailing;
+  if (state->multi_select) {
+    trailing.push_back(
+        Stack{
+            marked ? Glyph(app::images::check, 14.0F, colors::text_on_color)
+                   : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F}),
+        }
+            .With(Frame{.width = 22.0F, .height = 22.0F},
+                  Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+                  Background(marked ? colors::accent : Color::Transparent()),
+                  Border{.color = marked ? colors::accent : colors::tertiary,
+                         .width = 1.0F},
+                  CornerRadius(11.0F)));
+  } else if (current) {
+    trailing.push_back(Stack{}.With(Frame{.width = 8.0F, .height = 8.0F},
+                                    Background(colors::accent),
+                                    CornerRadius(4.0F)));
+  }
+
+  auto activate = [state, store, tasks, id = model.id,
+                   selection_changed =
+                       actions.on_selection_availability_changed] {
+    if (state->multi_select) {
+      ToggleMarked(state, id);
+    } else {
+      tasks.Launch([store, state, id,
+                    selection_changed = std::move(selection_changed)]() mutable
+                       -> Task<void> {
+        co_await SelectModel(store, state, id, std::move(selection_changed));
+      });
+    }
+  };
+  auto show_actions = [sheets, state, model, actions](const LongPressEvent &) {
+    sheets.Show([state, model, actions](BottomSheetContext sheet) {
+      std::vector<View> rows;
+      rows.push_back(SheetRow(app::strings::model_list_modify,
+                              StringVariant{
+                                  app::strings::model_list_modify_desc},
+                              colors::text,
+                              [sheet, callback = actions.on_edit, model] {
+                                sheet.Dismiss();
+                                if (callback)
+                                  std::invoke(callback, model);
+                              }));
+      rows.push_back(SheetRow(app::strings::model_list_multiselect,
+                              StringVariant{
+                                  app::strings::model_list_multiselect_desc},
+                              colors::text, [sheet, state, id = model.id] {
+                                auto next = state.Get();
+                                next.multi_select = true;
+                                if (!Marked(next, id))
+                                  next.marked.push_back(id);
+                                state = std::move(next);
+                                sheet.Dismiss();
+                              }));
+      return SheetPanel(model.name, std::move(rows));
+    });
+  };
+
+  std::vector<View> card_content;
+  card_content.push_back(
+      Text(provider_label)
+          .Style(Label(11.0F, FontWeight::Bold, colors::text_on_color))
+          .With(Padding(EdgeInsets::Symmetric(8.0F, 4.0F)),
+                Background(ModelProtocolPresentationFor(model.protocol)
+                               .badge_color),
+                CornerRadius(8.0F)));
+  card_content.push_back(
+      Column{
+          Text(model.name).Style(Label(16.0F, FontWeight::Medium)),
+          Text(model.model_id)
+              .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))
+              .With(Padding(EdgeInsets{.top = 2.0F})),
+      }
+          .With(Grow()));
+  if (!trailing.empty()) {
+    card_content.push_back(
+        Row(std::move(trailing)).With(CrossAlign(CrossAxisAlignment::Center)));
+  }
+
+  return Row(std::move(card_content))
+      .OnClick(std::move(activate))
+      .With(LongPressGesture{})
+      .On<LongPressEvents::Started>(std::move(show_actions))
+      .With(Spacing(12.0F), Padding(EdgeInsets::All(12.0F)),
+            CrossAlign(CrossAxisAlignment::Center),
+            Background(marked ? colors::accent_muted : colors::background),
+            Border{.color = current || marked ? colors::accent
+                                              : Color::Transparent(),
+                   .width = 1.0F},
+            CornerRadius(12.0F),
+            Focusable(), PointerCursor(PointerCursorKind::Hand));
+}
+
+} // namespace
+
+[[huxerui::composable]] View
+ModelListContent(std::shared_ptr<application::ModelStore> store,
+                 ModelListActions actions) {
+  auto state = UseState(ModelListState{});
+  const auto tasks = UseTaskScope();
+  const auto sheets = UseBottomSheet();
+  Lifecycle([tasks, store, state, actions] {
+    tasks.Launch(
+        [store, state, actions]() -> Task<void> {
+          co_await Reload(store, state,
+                          actions.on_selection_availability_changed);
+        });
+  });
+
+  auto header_action = [state, actions, sheets, tasks, store] {
+    if (!state->multi_select) {
+      if (actions.on_add)
+        std::invoke(actions.on_add);
+      return;
+    }
+    if (state->marked.empty())
+      return;
+    sheets.Show([state, tasks, store, actions](BottomSheetContext sheet) {
+      std::vector<View> rows;
+      rows.push_back(SheetRow(app::strings::common_cancel, std::nullopt,
+                              colors::text,
+                              [sheet] { sheet.Dismiss(); }));
+      rows.push_back(SheetRow(app::strings::model_list_delete,
+                              StringVariant{
+                                  app::strings::model_list_delete_warning},
+                              colors::danger,
+                              [sheet, state, tasks, store, actions] {
+                                sheet.Dismiss();
+                                tasks.Launch([store, state, actions]() -> Task<void> {
+                                  co_await DeleteMarked(
+                                      store, state,
+                                  actions.on_selection_availability_changed);
+                                });
+                              }));
+      View description =
+          Text::Format(app::strings::model_list_delete_message,
+                       state->marked.size())
+              .Style(Label(13.0F, FontWeight::Regular, colors::tertiary))
+              .With(Padding(EdgeInsets{.right = 16.0F,
+                                       .bottom = 12.0F,
+                                       .left = 16.0F}));
+      return SheetPanel(app::strings::model_list_delete_title,
+                        std::move(rows), std::move(description));
+    });
+  };
+
+  std::vector<View> cards;
+  cards.reserve(state->models.size() * 2 + 2);
+  if (!state->error.empty()) {
+    cards.push_back(
+        Text(state->error)
+            .Style(Label(12.0F, FontWeight::Regular, colors::danger)));
+  } else if (!state->loading && state->models.empty()) {
+    cards.push_back(
+        Text(app::strings::model_list_empty)
+            .Style(Label(13.0F, FontWeight::Regular, colors::tertiary)));
+  }
+  for (const auto &model : state->models) {
+    cards.push_back(
+        ModelCard(model, state, store, tasks, sheets, actions).Key(model.id));
+    cards.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 8.0F}));
+  }
+
+  StringVariant title = app::strings::model_list_title;
+  if (state->multi_select) {
+    title = StringVariant::Format(app::strings::model_list_selected_count,
+                                  state->marked.size());
+  }
+  return Column{
+      LegacyScreenHeaderLayout{
+          Stack{Glyph(state->multi_select ? app::images::x
+                                          : app::images::chevron_left,
+                      state->multi_select ? 20.0F : 22.0F, colors::text)}
+              .OnClick([state, callback = actions.on_back] {
+                if (state->multi_select) {
+                  auto next = state.Get();
+                  next.multi_select = false;
+                  next.marked.clear();
+                  state = std::move(next);
+                } else if (callback)
+                  std::invoke(callback);
+              })
+              .With(
+                  Frame{.width = 36.0F, .height = 36.0F},
+                  Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+                  Focusable(), PointerCursor(PointerCursorKind::Hand)),
+          Stack{Text(title).Style(Label(17.0F, FontWeight::Bold))}.With(
+              Grow(),
+              Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+              Offset(Point{0.0F, 0.76F})),
+          Stack{Glyph(state->multi_select ? app::images::trash_2
+                                          : app::images::plus,
+                      20.0F,
+                      state->multi_select && state->marked.empty()
+                          ? colors::tertiary
+                          : state->multi_select ? colors::danger
+                                                : colors::text)}
+              .OnClick(std::move(header_action))
+              .With(
+                  Frame{.width = 36.0F, .height = 36.0F},
+                  Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+                  Focusable(), PointerCursor(PointerCursorKind::Hand)),
+      }
+          .With(Frame{.min_height = 60.0F},
+                Padding(EdgeInsets::Symmetric(16.0F, 12.0F)),
+                Background(colors::background)),
+      LegacyScreenHeaderDivider(),
+      ScrollView(Column(std::move(cards))
+                     .With(Padding(EdgeInsets{.top = 16.0F,
+                                              .right = 16.0F,
+                                              .bottom = 100.0F,
+                                              .left = 16.0F}),
+                           CrossAlign(CrossAxisAlignment::Stretch)))
+          .ScrollAxis(Axis::Vertical)
+          .With(Grow()),
+  }
+      .With(CrossAlign(CrossAxisAlignment::Stretch),
+            Background(colors::background), SafeAreaPadding{});
+}
+
+[[huxerui::composable]] View
+ModelListScreen(std::shared_ptr<application::ModelStore> store,
+                ModelListActions actions) {
+  ThemeDefinition overrides;
+  overrides.Set(LineDialogBottomSheetStyle(UseLineColors()));
+  return Theme(
+      std::move(overrides),
+      Scope([store = std::move(store), actions = std::move(actions)] {
+        return ModelListContent(store, actions);
+      }));
+}
+
+} // namespace linecode::presentation
