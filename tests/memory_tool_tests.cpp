@@ -50,8 +50,10 @@ constexpr std::string_view kExpectedDescription =
     "temporary progress, logs, secrets, or ordinary conversation content. "
     "scope: user (cross-project preference), project (this workspace only), "
     "environment (device/build setup).";
+// LineCodePro adds the required `title`; the content/scope entries stay
+// verbatim from MemoryUpdateTool.getParameters().
 constexpr std::string_view kExpectedParameters =
-    R"({"properties":{"content":{"description":"Independent durable memory statement, max 320 chars","type":"string"},"scope":{"description":"user | project | environment; default user","enum":["user","project","environment"],"type":"string"}},"required":["content"],"type":"object"})";
+    R"({"properties":{"title":{"description":"Short label for this memory, at most 40 chars, written in the user's language","type":"string"},"content":{"description":"Independent durable memory statement, max 320 chars","type":"string"},"scope":{"description":"user | project | environment; default user","enum":["user","project","environment"],"type":"string"}},"required":["title","content"],"type":"object"})";
 
 class StubExecutionSettings final : public McpExecutionSettingsService {
 public:
@@ -275,7 +277,17 @@ void CatalogContract(const Scenario &scenario) {
   const auto *type = json::AsString(json::Find(*object, "type"));
   EXPECT_EXPRESSION(type != nullptr && *type == "object");
   const auto *properties = json::AsObject(json::Find(*object, "properties"));
-  EXPECT_EXPRESSION(properties != nullptr && properties->size() == 2U);
+  EXPECT_EXPRESSION(properties != nullptr && properties->size() == 3U);
+  const auto *title = json::AsObject(json::Find(*properties, "title"));
+  EXPECT_EXPRESSION(title != nullptr);
+  const auto *title_type = json::AsString(json::Find(*title, "type"));
+  EXPECT_EXPRESSION(title_type != nullptr && *title_type == "string");
+  const auto *title_description =
+      json::AsString(json::Find(*title, "description"));
+  EXPECT_EXPRESSION(title_description != nullptr &&
+                    *title_description ==
+                        "Short label for this memory, at most 40 chars, "
+                        "written in the user's language");
   const auto *content = json::AsObject(json::Find(*properties, "content"));
   EXPECT_EXPRESSION(content != nullptr);
   const auto *content_type = json::AsString(json::Find(*content, "type"));
@@ -301,9 +313,11 @@ void CatalogContract(const Scenario &scenario) {
   EXPECT_EXPRESSION(json::AsString(&scopes->at(2)) != nullptr &&
                     *json::AsString(&scopes->at(2)) == "environment");
   const auto *required = json::AsArray(json::Find(*object, "required"));
-  EXPECT_EXPRESSION(required != nullptr && required->size() == 1U);
-  EXPECT_EXPRESSION(json::AsString(&required->front()) != nullptr &&
-                    *json::AsString(&required->front()) == "content");
+  EXPECT_EXPRESSION(required != nullptr && required->size() == 2U);
+  EXPECT_EXPRESSION(json::AsString(&required->at(0)) != nullptr &&
+                    *json::AsString(&required->at(0)) == "title");
+  EXPECT_EXPRESSION(json::AsString(&required->at(1)) != nullptr &&
+                    *json::AsString(&required->at(1)) == "content");
 }
 
 } // namespace
@@ -322,12 +336,13 @@ huxerui::View Probe() {
       // Success: the descriptor's scope and the selected project are stored.
       auto invoked = co_await scenario->tools->Invoke(
           "memory_update",
-          R"({"content":"Prefer C++23 for new code.","scope":"project"})");
+          R"({"title":"C++23 preference","content":"Prefer C++23 for new code.","scope":"project"})");
       EXPECT_EXPRESSION(invoked);
       EXPECT_EXPRESSION(!invoked->error);
       EXPECT_EXPRESSION(invoked->content == "Memory updated.");
       EXPECT_EXPRESSION(scenario->store->save_count == 1);
       const auto &saved = scenario->store->saved.front();
+      EXPECT_EXPRESSION(saved.title == "C++23 preference");
       EXPECT_EXPRESSION(saved.content == "Prefer C++23 for new code.");
       EXPECT_EXPRESSION(saved.scope == MemoryScope::project);
       EXPECT_EXPRESSION(saved.project_id == "project-7");
@@ -337,18 +352,20 @@ huxerui::View Probe() {
 
       // An unknown or missing scope falls back to the user scope.
       invoked = co_await scenario->tools->Invoke(
-          "memory_update", R"({"content":"Cross project preference."})");
+          "memory_update",
+          R"({"title":"Cross project preference","content":"Cross project preference."})");
       EXPECT_EXPRESSION(invoked);
       EXPECT_EXPRESSION(scenario->store->saved.back().scope ==
                         MemoryScope::user);
       invoked = co_await scenario->tools->Invoke(
           "memory_update",
-          R"({"content":"Mixed case scope.","scope":"PROJECT"})");
+          R"({"title":"Mixed case scope","content":"Mixed case scope.","scope":"PROJECT"})");
       EXPECT_EXPRESSION(invoked);
       EXPECT_EXPRESSION(scenario->store->saved.back().scope ==
                         MemoryScope::project);
       invoked = co_await scenario->tools->Invoke(
-          "memory_update", R"({"content":"Unknown scope.","scope":"planet"})");
+          "memory_update",
+          R"({"title":"Unknown scope","content":"Unknown scope.","scope":"planet"})");
       EXPECT_EXPRESSION(invoked);
       EXPECT_EXPRESSION(scenario->store->saved.back().scope ==
                         MemoryScope::user);
@@ -359,7 +376,8 @@ huxerui::View Probe() {
       const std::string long_content(400U, 'a');
       invoked = co_await scenario->tools->Invoke(
           "memory_update",
-          json::Serialize(json::Object{{"content", long_content}}));
+          json::Serialize(json::Object{{"title", "Long memory"},
+                                       {"content", long_content}}));
       EXPECT_EXPRESSION(invoked);
       const auto &truncated = scenario->store->saved.back().content;
       EXPECT_EXPRESSION(truncated.size() ==
@@ -370,32 +388,51 @@ huxerui::View Probe() {
       // Sensitive content is refused before touching the store.
       const auto saves_before = scenario->store->save_count;
       auto rejected = co_await scenario->tools->Invoke(
-          "memory_update", R"({"content":"The API key is sk-1234567890"})");
+          "memory_update",
+          R"({"title":"Api key","content":"The API key is sk-1234567890"})");
       ExpectRegistryError(rejected,
                           application::ToolRegistryErrorCode::invalid_arguments,
                           "Refused to store sensitive content as memory.");
       rejected = co_await scenario->tools->Invoke(
-          "memory_update", R"({"content":"记住我的密码是 123456"})");
+          "memory_update",
+          R"({"title":"密码","content":"记住我的密码是 123456"})");
       ExpectRegistryError(rejected,
                           application::ToolRegistryErrorCode::invalid_arguments,
                           "Refused to store sensitive content as memory.");
       EXPECT_EXPRESSION(scenario->store->save_count == saves_before);
 
       // Argument parsing branches.
+      // A missing or blank title is refused before the content is looked at.
       rejected = co_await scenario->tools->Invoke("memory_update", "{}");
       ExpectRegistryError(rejected,
                           application::ToolRegistryErrorCode::invalid_arguments,
-                          "Memory content cannot be empty.");
-      rejected = co_await scenario->tools->Invoke("memory_update",
-                                                  R"({"content":"   "})");
+                          "Memory title cannot be empty.");
+      rejected = co_await scenario->tools->Invoke(
+          "memory_update", R"({"title":"   ","content":"Has content."})");
       ExpectRegistryError(rejected,
                           application::ToolRegistryErrorCode::invalid_arguments,
-                          "Memory content cannot be empty.");
+                          "Memory title cannot be empty.");
       rejected = co_await scenario->tools->Invoke("memory_update",
                                                   R"({"content":42})");
       ExpectRegistryError(rejected,
                           application::ToolRegistryErrorCode::invalid_arguments,
+                          "Memory title cannot be empty.");
+      // With a title present the content checks run as before.
+      rejected = co_await scenario->tools->Invoke(
+          "memory_update", R"({"title":"Blank content"})");
+      ExpectRegistryError(rejected,
+                          application::ToolRegistryErrorCode::invalid_arguments,
                           "Memory content cannot be empty.");
+      rejected = co_await scenario->tools->Invoke(
+          "memory_update", R"({"title":"Blank content","content":"   "})");
+      ExpectRegistryError(rejected,
+                          application::ToolRegistryErrorCode::invalid_arguments,
+                          "Memory content cannot be empty.");
+      rejected = co_await scenario->tools->Invoke(
+          "memory_update", R"({"title":42,"content":"Numeric title."})");
+      ExpectRegistryError(rejected,
+                          application::ToolRegistryErrorCode::invalid_arguments,
+                          "Memory title cannot be empty.");
       rejected = co_await scenario->tools->Invoke("memory_update", "not json");
       ExpectRegistryError(rejected,
                           application::ToolRegistryErrorCode::invalid_arguments,
@@ -404,6 +441,26 @@ huxerui::View Probe() {
       ExpectRegistryError(rejected,
                           application::ToolRegistryErrorCode::invalid_arguments,
                           "Parameters cannot be empty.");
+
+      // A chatty title is truncated to the label budget instead of rejected.
+      const std::string long_title(60U, 't');
+      invoked = co_await scenario->tools->Invoke(
+          "memory_update",
+          json::Serialize(json::Object{{"title", long_title},
+                                       {"content", "Title budget."}}));
+      EXPECT_EXPRESSION(invoked);
+      const auto &clipped = scenario->store->saved.back().title;
+      EXPECT_EXPRESSION(clipped.size() ==
+                        39U + std::string_view{"…"}.size());
+      EXPECT_EXPRESSION(clipped.ends_with("…"));
+
+      // Saving the same id again replaces the title instead of keeping a stale
+      // one (the manual path upserts on id).
+      invoked = co_await scenario->tools->Invoke(
+          "memory_update",
+          R"({"title":"Rewritten","content":"Rewritten content."})");
+      EXPECT_EXPRESSION(invoked);
+      EXPECT_EXPRESSION(scenario->store->saved.back().title == "Rewritten");
 
       // Unknown tools are rejected before any storage work.
       rejected = co_await scenario->tools->Invoke("memory_delete", "{}");
@@ -414,7 +471,8 @@ huxerui::View Probe() {
       // Store failures surface as invocation_failed.
       scenario->store->fail_save = true;
       auto failed = co_await scenario->tools->Invoke(
-          "memory_update", R"({"content":"Store failure."})");
+          "memory_update",
+          R"({"title":"Store failure","content":"Store failure."})");
       ExpectRegistryError(failed,
                           application::ToolRegistryErrorCode::invocation_failed,
                           "memory write failed");
@@ -423,7 +481,8 @@ huxerui::View Probe() {
       // An unreadable project catalog falls back to the default project id.
       scenario->projects->selected = std::nullopt;
       invoked = co_await scenario->tools->Invoke(
-          "memory_update", R"({"content":"Default project memory."})");
+          "memory_update",
+          R"({"title":"Default project","content":"Default project memory."})");
       EXPECT_EXPRESSION(invoked);
       EXPECT_EXPRESSION(scenario->store->saved.back().project_id ==
                         std::string{domain::default_project_id});
@@ -440,8 +499,8 @@ huxerui::View Probe() {
       refreshed = co_await scenario->tools->Refresh();
       EXPECT_EXPRESSION(refreshed);
       EXPECT_EXPRESSION(scenario->tools->Tools().empty());
-      rejected = co_await scenario->tools->Invoke("memory_update",
-                                                  R"({"content":"Disabled."})");
+      rejected = co_await scenario->tools->Invoke(
+          "memory_update", R"({"title":"Disabled","content":"Disabled."})");
       EXPECT_EXPRESSION(!rejected);
       EXPECT_EXPRESSION(rejected.error().code ==
                         application::ToolRegistryErrorCode::unavailable);
@@ -458,7 +517,8 @@ huxerui::View Probe() {
       EXPECT_EXPRESSION(refreshed);
       EXPECT_EXPRESSION(scenario->tools->Tools().empty());
       rejected = co_await scenario->tools->Invoke(
-          "memory_update", R"({"content":"Unsupported mode."})");
+          "memory_update",
+          R"({"title":"Unsupported","content":"Unsupported mode."})");
       EXPECT_EXPRESSION(!rejected);
       EXPECT_EXPRESSION(rejected.error().code ==
                         application::ToolRegistryErrorCode::unavailable);

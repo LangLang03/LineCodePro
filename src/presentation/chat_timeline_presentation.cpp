@@ -447,7 +447,7 @@ const ToolTimelineRendererRegistry &DefaultToolTimelineRendererRegistry() {
        ToolTimelineIconKind::paintbrush},
       {"agent_output", ToolNameMatch::exact, ToolTimelineVisualKind::read,
        ToolTimelineIconKind::bot},
-      {"memory_update", ToolNameMatch::exact, ToolTimelineVisualKind::read,
+      {"memory_update", ToolNameMatch::exact, ToolTimelineVisualKind::memory,
        ToolTimelineIconKind::book_open},
       {"file_write", ToolNameMatch::exact, ToolTimelineVisualKind::write},
       {"write_file", ToolNameMatch::exact, ToolTimelineVisualKind::write},
@@ -481,9 +481,94 @@ std::string ToolCallTargetPath(const std::string_view arguments_json,
   return std::string{fallback};
 }
 
+namespace {
+
+// --- tool card memo ---------------------------------------------------------
+// The timeline asks for one card per tool event on every frame. Deriving a card
+// is not free: an agent or pipeline card copies every stored run output and
+// decodes its progress, and a read card re-projects a large result. A card is a
+// pure function of its event plus the referenced agent run, so results are
+// memoized on a fingerprint of exactly those inputs. Composition is confined to
+// the UI thread, so the cache needs no locking.
+constexpr std::size_t kToolCardCacheSize = 32U;
+constexpr std::uint64_t kFnvOffset = 1469598103934665603ULL;
+constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
+
+[[nodiscard]] std::uint64_t HashAppend(std::uint64_t hash,
+                                       const std::uint64_t value) noexcept {
+  for (unsigned shift = 0U; shift < 64U; shift += 8U) {
+    hash ^= (value >> shift) & 0xffULL;
+    hash *= kFnvPrime;
+  }
+  return hash;
+}
+
+[[nodiscard]] std::uint64_t HashAppend(std::uint64_t hash,
+                                       const std::string_view value) noexcept {
+  for (const char byte : value) {
+    hash ^= static_cast<unsigned char>(byte);
+    hash *= kFnvPrime;
+  }
+  return hash;
+}
+
+struct ToolCardCacheEntry final {
+  std::uint64_t key{};
+  ToolTimelinePresentation card{};
+  bool valid{};
+};
+
+[[nodiscard]] std::array<ToolCardCacheEntry, kToolCardCacheSize> &
+ToolCardCache() {
+  static std::array<ToolCardCacheEntry, kToolCardCacheSize> cache{};
+  return cache;
+}
+
+[[nodiscard]] std::size_t &ToolCardCacheCursor() {
+  static std::size_t cursor{};
+  return cursor;
+}
+
+[[nodiscard]] std::uint64_t ToolCardFingerprint(
+    const domain::AssistantToolEvent &event,
+    const std::optional<application::AgentResultVersion> &version) {
+  std::uint64_t hash = kFnvOffset;
+  hash = HashAppend(hash, event.call.id);
+  hash = HashAppend(hash, event.call.name);
+  hash = HashAppend(hash, event.call.arguments_json);
+  hash = HashAppend(hash, static_cast<std::uint64_t>(event.call.status));
+  hash = HashAppend(hash,
+                    static_cast<std::uint64_t>(event.call.created_at_millis));
+  hash = HashAppend(hash,
+                    static_cast<std::uint64_t>(event.call.duration_millis));
+  hash = HashAppend(hash, event.call.error_message);
+  if (event.result) {
+    hash = HashAppend(hash, 1ULL);
+    hash = HashAppend(hash, event.result->content);
+    hash = HashAppend(hash, event.result->error ? 1ULL : 0ULL);
+    hash = HashAppend(hash, event.result->diff_id);
+    hash = HashAppend(hash, event.result->review_state);
+    hash = HashAppend(hash, event.result->review_message);
+  } else {
+    hash = HashAppend(hash, 2ULL);
+  }
+  if (version) {
+    hash = HashAppend(hash, static_cast<std::uint64_t>(version->updated_at_ms));
+    hash = HashAppend(hash, static_cast<std::uint64_t>(version->output_bytes));
+    hash = HashAppend(hash, static_cast<std::uint64_t>(version->thinking_bytes));
+    hash = HashAppend(hash,
+                      static_cast<std::uint64_t>(version->tool_call_count));
+    hash = HashAppend(hash, version->error ? 1ULL : 0ULL);
+    hash = HashAppend(hash, version->status_fingerprint);
+  }
+  return hash;
+}
+
+} // namespace
+
 ToolTimelinePresentation
-PresentToolTimeline(const domain::AssistantToolEvent &event,
-                    const application::AgentResultReader *agent_results) {
+DeriveToolTimeline(const domain::AssistantToolEvent &event,
+                   const application::AgentResultReader *agent_results) {
   const auto display = event.result
                            ? application::DefaultToolResultDisplayProjector()
                                  ->Project(event.call.name, event.result->content,
@@ -533,6 +618,20 @@ PresentToolTimeline(const domain::AssistantToolEvent &event,
     result.initially_expanded = false;
     result.detail = result.failed && event.result ? event.result->content : "";
     break;
+  case ToolTimelineVisualKind::memory: {
+    // The saved memory is labelled by the title it was stored with, so the card
+    // reads "Saved memory  <title>" instead of repeating the tool name.
+    result.title = StringAt(input, "title");
+    if (result.title.empty())
+      result.title = StringAt(input, "content");
+    if (result.title.empty())
+      result.title = event.call.name;
+    result.auxiliary = StringAt(input, "scope");
+    result.detail = StringAt(input, "content");
+    result.expandable = !result.detail.empty();
+    result.initially_expanded = false;
+    break;
+  }
   case ToolTimelineVisualKind::write: {
     const auto path = FirstLabel(input, {});
     result.title = BaseName(path);
@@ -768,6 +867,39 @@ std::vector<domain::ChatMessage> BuildConversationPresentationMessages(
   }
   PublishAssistantTurn(output, assistant_turn);
   return output;
+}
+
+
+ToolTimelinePresentation
+PresentToolTimeline(const domain::AssistantToolEvent &event,
+                    const application::AgentResultReader *agent_results) {
+  std::optional<application::AgentResultVersion> version;
+  bool cacheable = true;
+  if (agent_results != nullptr && event.result) {
+    if (const auto reference = application::AgentResultRegistry::ParseCompact(
+            event.result->content)) {
+      version = agent_results->ReadVersion(reference->agent_id);
+      // A reader that cannot report a version may return a different card for
+      // the same event, so nothing derived from it is remembered. This is what
+      // keeps a running sub-agent refreshing every frame while a settled card
+      // is served from the cache.
+      cacheable = version.has_value();
+    }
+  }
+  const auto key = ToolCardFingerprint(event, version);
+  auto &cache = ToolCardCache();
+  if (cacheable) {
+    for (const auto &entry : cache) {
+      if (entry.valid && entry.key == key)
+        return entry.card;
+    }
+  }
+  auto card = DeriveToolTimeline(event, agent_results);
+  if (cacheable) {
+    cache[ToolCardCacheCursor()++ % cache.size()] =
+        ToolCardCacheEntry{.key = key, .card = card, .valid = true};
+  }
+  return card;
 }
 
 } // namespace linecode::presentation

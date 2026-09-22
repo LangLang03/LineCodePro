@@ -20,6 +20,7 @@ enum class ToolTimelineVisualKind : std::uint8_t {
   read,
   write,
   remove,
+  memory,
   todo,
   agent,
   agent_pipeline,
@@ -156,6 +157,10 @@ ToolTimelineMetrics(ToolTimelineVisualKind visual) noexcept {
     return {48, 28, 28, 28, 14, 14, 8, 400, 8, 14, 16, 8};
   case ToolTimelineVisualKind::agent_pipeline:
     return {48, 30, 30, 30, 15, 14, 8, 280, 8, 14, 8, 8};
+  case ToolTimelineVisualKind::memory:
+    // The memory icon is square, so it uses a square box instead of the wide
+    // box the file-shaped read/write icons need.
+    return {48, 24, 32, 20, 20, 14, 6, 240, 12, 13, 14, 12};
   case ToolTimelineVisualKind::todo:
     return {44, 14, 14, 14, 14, 14, 8, 0, 0, 14, 0, 4};
   case ToolTimelineVisualKind::shell:

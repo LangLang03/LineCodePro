@@ -37,6 +37,11 @@ struct MemoryRecord final {
   std::string id;
   MemoryScope scope{MemoryScope::user};
   std::string project_id;
+  // Short human label captured from the `memory_update` tool call. The memory
+  // list and the tool card are titled by it, so a memory statement never has to
+  // be read in full to know what it is about. Auto-extracted memories leave it
+  // empty and keep falling back to a content preview.
+  std::string title;
   std::string content;
   std::string source;
   double confidence{1.0};

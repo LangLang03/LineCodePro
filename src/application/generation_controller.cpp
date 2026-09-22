@@ -48,6 +48,28 @@ struct CompletionTurn final {
   std::vector<CompletionToolResult> results;
 };
 
+// Moves the text the active turn has streamed so far into the timeline as a
+// process block. The answer bubble renders `streamed_text`, so a second copy in
+// the timeline used to appear above it while streaming and then disappear when
+// the turn completed. Flushing on the turn boundary (and before a tool call, the
+// point where the turn is known to continue) keeps exactly one copy all along.
+void FlushStreamedText(GenerationState &state) {
+  if (state.streamed_text.empty())
+    return;
+  if (!state.timeline.empty()) {
+    if (auto *previous =
+            std::get_if<domain::AssistantTextEvent>(&state.timeline.back());
+        previous != nullptr && previous->turn_index == state.active_turn_index) {
+      previous->text += state.streamed_text;
+      state.streamed_text.clear();
+      return;
+    }
+  }
+  state.timeline.push_back(domain::AssistantTextEvent{
+      .turn_index = state.active_turn_index,
+      .text = std::exchange(state.streamed_text, {})});
+}
+
 void AppendParagraph(std::string &content, std::string_view paragraph) {
   if (paragraph.empty() || content.contains(paragraph))
     return;
@@ -280,24 +302,16 @@ bool GenerationController::Observe(const std::uint64_t generation_id,
       [this](const auto &entry) {
         using Entry = std::decay_t<decltype(entry)>;
         if (entry.turn_index != state_.active_turn_index) {
+          FlushStreamedText(state_);
           state_.active_turn_index = entry.turn_index;
-          state_.streamed_text.clear();
           state_.streamed_reasoning.clear();
         }
         if constexpr (std::same_as<Entry, CompletionTextDelta>) {
           if (entry.text.empty())
             return;
+          // The answer bubble already renders this text; the timeline only gets
+          // a copy once the turn moves on.
           state_.streamed_text += entry.text;
-          if (!state_.timeline.empty()) {
-            if (auto *previous =
-                    std::get_if<domain::AssistantTextEvent>(&state_.timeline.back());
-                previous && previous->turn_index == entry.turn_index) {
-              previous->text += entry.text;
-              return;
-            }
-          }
-          state_.timeline.push_back(domain::AssistantTextEvent{
-              .turn_index = entry.turn_index, .text = entry.text});
         } else if constexpr (std::same_as<Entry, CompletionReasoningDelta>) {
           if (entry.text.empty())
             return;
@@ -318,6 +332,9 @@ bool GenerationController::Observe(const std::uint64_t generation_id,
               .starts_new_segment = entry.starts_new_segment,
           });
         } else {
+          // A tool call is the point where the turn is known to continue, so the
+          // text streamed before it becomes a process block from here on.
+          FlushStreamedText(state_);
           domain::AssistantToolEvent tool{};
           tool.turn_index = entry.turn_index;
           tool.call = domain::ChatToolCall{

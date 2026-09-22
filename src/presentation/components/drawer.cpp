@@ -587,9 +587,17 @@ View RenderDrawerWithInsets(State<bool> drawer_open,
                             const DrawerActions& actions,
                             EdgeInsets insets) {
   const auto& presentation = DrawerTabPresentationFor(selection.active);
+  // The drawer spans the full window height, so its scrolling body pads the
+  // navigation-bar inset itself: without it the last row ends up under the
+  // three-button bar.
+  View body = std::invoke(presentation.body, drawer_open, model, actions);
+  if (insets.bottom > 0.0F) {
+    body = Column{std::move(body)}.With(
+        Grow(), Padding(EdgeInsets{.bottom = insets.bottom}));
+  }
   return LegacyDrawerViewport{Column{
       Header(presentation, actions), DrawerTabs(selection, actions),
-      std::invoke(presentation.body, drawer_open, model, actions),
+      std::move(body),
   }.With(Frame{.min_width = 240.0F, .max_width = kDrawerWidth},
          CrossAlign(CrossAxisAlignment::Stretch),
          Background(colors::background))

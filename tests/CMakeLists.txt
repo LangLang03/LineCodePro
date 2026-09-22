@@ -512,6 +512,7 @@ add_executable(completion_pipeline_tests
         ../src/application/tool_result_display_policy.cpp
         ../src/domain/input_attachment.cpp
         ../src/infrastructure/archive_json.cpp
+        ../src/infrastructure/completion_end_marker.cpp
         ../src/infrastructure/in_memory_conversation_store.cpp
         ../src/infrastructure/model_url_policy.cpp
         ../src/infrastructure/openai_chat_codec.cpp

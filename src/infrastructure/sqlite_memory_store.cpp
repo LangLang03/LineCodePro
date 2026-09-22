@@ -41,6 +41,19 @@ using huxerui::sqlite::Transaction;
 constexpr std::int64_t kOverviewLimit = 200;
 constexpr std::int64_t kScanLimit = 120;
 
+// Column list every `domain::MemoryRecord` projection shares, so `DecodeMemory`
+// can keep positional indices. `title` stays last: it was added after the
+// legacy columns and existing indices must not shift.
+constexpr std::string_view kMemoryColumns =
+    "id, scope, project_id, content, source, confidence, created_at, "
+    "updated_at, last_used_at, use_count, title";
+
+// `memories` predates the memory title, so an existing database needs the
+// column added on open. New databases run the legacy DDL first and then the
+// same migration, which keeps one code path for both.
+constexpr std::string_view kAddMemoryTitleColumn =
+    "ALTER TABLE memories ADD COLUMN title TEXT NOT NULL DEFAULT ''";
+
 MemoryStoreError StoreError(const huxerui::sqlite::Error &error) {
   return {.message = error.Message()};
 }
@@ -121,10 +134,14 @@ Result<domain::MemoryRecord> DecodeMemory(const RowView &row) {
   auto use_count = ReadRequired<std::int64_t>(row, 9);
   if (!use_count)
     return use_count.Error();
+  auto title = ReadRequired<std::string>(row, 10);
+  if (!title)
+    return title.Error();
   return domain::MemoryRecord{
       .id = std::move(*id),
       .scope = domain::ParseMemoryScope(*scope),
       .project_id = project->value_or(""),
+      .title = std::move(*title),
       .content = std::move(*content),
       .source = std::move(*source),
       .confidence = *confidence,
@@ -256,6 +273,18 @@ Open(const std::shared_ptr<SqliteMemoryStoreState> &state) {
           if (!result)
             return result.Error();
         }
+        // `memories.title` postdates the legacy schema, so a database created
+        // before it needs the column added once.
+        auto columns = transaction.Query<std::string>(
+            "PRAGMA table_info(memories)",
+            [](const RowView &row) { return row.Get<std::string>(1); });
+        if (!columns)
+          return columns.Error();
+        if (!std::ranges::contains(*columns, std::string_view{"title"})) {
+          auto altered = transaction.Execute(std::string{kAddMemoryTitleColumn});
+          if (!altered)
+            return altered.Error();
+        }
         return {};
       });
   if (!schema)
@@ -267,9 +296,7 @@ Open(const std::shared_ptr<SqliteMemoryStoreState> &state) {
 Task<MemoryStoreResult<std::vector<domain::MemoryRecord>>>
 ReadMemories(const Database &database, domain::MemoryScope scope,
              const std::string &project_id) {
-  constexpr std::string_view columns =
-      "id, scope, project_id, content, source, confidence, created_at, "
-      "updated_at, last_used_at, use_count";
+  constexpr std::string_view columns = kMemoryColumns;
   const auto &definition = domain::MemoryScopeDefinition(scope);
   if (definition.global) {
     auto rows = co_await database.QueryAsync<domain::MemoryRecord>(
@@ -352,6 +379,7 @@ SqliteMemoryStore::SaveManual(domain::MemoryRecord memory) {
   memory.content = domain::NormalizeMemoryContent(memory.content);
   if (memory.content.empty())
     co_return std::unexpected(MemoryStoreError{"memory content is empty"});
+  memory.title = domain::NormalizeMemoryContent(memory.title);
   if (memory.id.empty())
     memory.id = NewMemoryId();
   memory.source = "manual";
@@ -368,19 +396,21 @@ SqliteMemoryStore::SaveManual(domain::MemoryRecord memory) {
   auto saved = co_await database->ExecuteAsync(
       "INSERT INTO memories "
       "(id, scope, project_id, content, source, confidence, created_at, "
-      "updated_at, last_used_at, use_count, raw_json) "
-      "VALUES (?, ?, ?, ?, 'manual', 1, ?, ?, NULL, 0, '') "
+      "updated_at, last_used_at, use_count, raw_json, title) "
+      "VALUES (?, ?, ?, ?, 'manual', 1, ?, ?, NULL, 0, '', ?) "
       "ON CONFLICT(id) DO UPDATE SET scope = excluded.scope, "
       "project_id = excluded.project_id, content = excluded.content, "
-      "updated_at = excluded.updated_at, raw_json = ''",
+      "updated_at = excluded.updated_at, raw_json = '', "
+      "title = CASE WHEN excluded.title = '' THEN memories.title "
+      "ELSE excluded.title END",
       memory.id, std::string{scope.storage_name}, project, memory.content, now,
-      now);
+      now, memory.title);
   if (!saved)
     co_return std::unexpected(StoreError(saved.Error()));
 
   auto rows = co_await database->QueryAsync<domain::MemoryRecord>(
-      "SELECT id, scope, project_id, content, source, confidence, created_at, "
-      "updated_at, last_used_at, use_count FROM memories WHERE id = ? LIMIT 1",
+      "SELECT " + std::string{kMemoryColumns} +
+          " FROM memories WHERE id = ? LIMIT 1",
       DecodeMemory, memory.id);
   if (!rows)
     co_return std::unexpected(StoreError(rows.Error()));
@@ -439,7 +469,7 @@ SqliteMemoryStore::LoadRetrievalCorpus(std::string project_id,
 
   auto memories = co_await database->QueryAsync<domain::MemoryRecord>(
       "SELECT id, scope, project_id, content, source, confidence, created_at, "
-      "updated_at, last_used_at, use_count FROM memories WHERE "
+      "updated_at, last_used_at, use_count, title FROM memories WHERE "
       "(? = '' OR project_id = ? OR project_id IS NULL OR project_id = '' "
       "OR scope = 'user') ORDER BY updated_at DESC LIMIT ?",
       DecodeMemory, project_id, project_id, kScanLimit);
@@ -522,7 +552,7 @@ SqliteMemoryStore::LoadManualMemories(std::string project_id) {
     co_return std::unexpected(database.error());
   auto rows = co_await database->QueryAsync<domain::MemoryRecord>(
       "SELECT id, scope, project_id, content, source, confidence, created_at, "
-      "updated_at, last_used_at, use_count FROM memories WHERE "
+      "updated_at, last_used_at, use_count, title FROM memories WHERE "
       "source = 'manual' AND "
       "(? = '' OR project_id = ? OR project_id IS NULL OR project_id = '' "
       "OR scope = 'user') ORDER BY updated_at DESC LIMIT ?",
@@ -575,7 +605,7 @@ SqliteMemoryStore::SaveExtracted(domain::MemoryRecord memory) {
 
   auto candidates = co_await database->QueryAsync<domain::MemoryRecord>(
       "SELECT id, scope, project_id, content, source, confidence, created_at, "
-      "updated_at, last_used_at, use_count FROM memories WHERE scope = ? AND "
+      "updated_at, last_used_at, use_count, title FROM memories WHERE scope = ? AND "
       "(? = 'user' OR ? = '' OR project_id = ? OR project_id IS NULL OR "
       "project_id = '') ORDER BY updated_at DESC LIMIT ?",
       DecodeMemory, std::string{scope.storage_name},
@@ -602,20 +632,22 @@ SqliteMemoryStore::SaveExtracted(domain::MemoryRecord memory) {
   auto saved = co_await database->ExecuteAsync(
       "INSERT INTO memories "
       "(id, scope, project_id, content, source, confidence, created_at, "
-      "updated_at, last_used_at, use_count, raw_json) "
-      "VALUES (?, ?, ?, ?, 'auto', ?, ?, ?, NULL, 0, '') "
+      "updated_at, last_used_at, use_count, raw_json, title) "
+      "VALUES (?, ?, ?, ?, 'auto', ?, ?, ?, NULL, 0, '', ?) "
       "ON CONFLICT(id) DO UPDATE SET scope = excluded.scope, "
       "project_id = excluded.project_id, content = excluded.content, "
       "confidence = MAX(memories.confidence, excluded.confidence), "
-      "updated_at = excluded.updated_at, raw_json = ''",
+      "updated_at = excluded.updated_at, raw_json = '', "
+      "title = CASE WHEN excluded.title = '' THEN memories.title "
+      "ELSE excluded.title END",
       memory.id, std::string{scope.storage_name}, project, memory.content,
-      memory.confidence, now, now);
+      memory.confidence, now, now, memory.title);
   if (!saved)
     co_return std::unexpected(StoreError(saved.Error()));
 
   auto rows = co_await database->QueryAsync<domain::MemoryRecord>(
-      "SELECT id, scope, project_id, content, source, confidence, created_at, "
-      "updated_at, last_used_at, use_count FROM memories WHERE id = ? LIMIT 1",
+      "SELECT " + std::string{kMemoryColumns} +
+          " FROM memories WHERE id = ? LIMIT 1",
       DecodeMemory, memory.id);
   if (!rows)
     co_return std::unexpected(StoreError(rows.Error()));

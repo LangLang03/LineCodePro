@@ -79,8 +79,8 @@ android {
         applicationId = "cn.lineai"
         minSdk = huxeruiMinSdk
         targetSdk = huxeruiTargetSdk
-        versionCode = 33
-        versionName = "1.2.9-max"
+        versionCode = 34
+        versionName = "1.3.0"
 
         externalNativeBuild {
             cmake {

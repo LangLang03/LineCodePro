@@ -20,6 +20,7 @@
 #include "application/slash_command_catalog.h"
 #include "application/token_usage_tracker.h"
 #include "application/tool_review_coordinator.h"
+#include "application/utf8_text.h"
 #include "presentation/components/chat_generation_runner.h"
 #include "presentation/line_theme.h"
 
@@ -287,6 +288,73 @@ std::string SlashModelDetail(const domain::ModelConfig &model) {
   return model.provider_label;
 }
 
+// The composer's pill has room for one short line, while a model is often
+// stored under a provider-qualified identifier such as
+// "deepseek/deepseek-chat". Showing only the identifier's own last segment
+// keeps the pill readable; the picker sheet and the slash popup still show the
+// complete value through SlashModelName().
+std::string PillModelName(std::string_view name) {
+  const auto separator = name.rfind('/');
+  const std::string_view segment =
+      separator == std::string_view::npos || separator + 1U >= name.size()
+          ? name
+          : name.substr(separator + 1U);
+  // A single-line pill has no use for line breaks, and text measurement rejects
+  // them outright; an imported model name may still carry one.
+  std::string label{segment};
+  std::ranges::replace_if(
+      label,
+      [](char character) { return character == '\r' || character == '\n'; },
+      ' ');
+  return label;
+}
+
+constexpr float kModelPillTextMaxWidth = 128.0F;
+
+TextStyle ModelPillTextStyle() {
+  return ChatTextStyle(12.0F, FontWeight::Medium, colors::secondary);
+}
+
+// The pill renders a single clipped line, and HuxerUI's Text has no no-wrap
+// switch: an over-long label wraps at the next break opportunity, and the
+// clipped height then hides everything after the break. Shorten the label to
+// the longest prefix that still measures as one line with an ellipsis, using
+// the same paragraph measurement that layout and painting use.
+std::string FitModelPillLabel(std::string_view label, TextMeasurer &measurer) {
+  if (label.empty())
+    return {};
+  const TextStyle style = ModelPillTextStyle();
+  const auto fits_one_line = [&measurer, &style](std::string_view text) {
+    return measurer.MeasureText(text, style, kModelPillTextMaxWidth)
+               .line_count <= 1U;
+  };
+  if (fits_one_line(label))
+    return std::string{label};
+
+  constexpr std::string_view kEllipsis{"…"};
+  // Binary search the largest UTF-16 prefix that still fits; the byte helper
+  // keeps every candidate on a code-point boundary so a multi-byte character is
+  // never split. The composer recomposes on every keystroke, so the search
+  // stays logarithmic instead of trimming one code point at a time.
+  std::size_t fitting_units = 0U;
+  std::size_t failing_units = application::utf8::Utf16CodeUnitLength(label);
+  while (fitting_units < failing_units) {
+    const std::size_t middle =
+        fitting_units + ((failing_units - fitting_units + 1U) / 2U);
+    std::string candidate{label.substr(
+        0U, application::utf8::PrefixBytesForUtf16Units(label, middle))};
+    candidate += kEllipsis;
+    if (fits_one_line(candidate))
+      fitting_units = middle;
+    else
+      failing_units = middle - 1U;
+  }
+  std::string result{label.substr(
+      0U, application::utf8::PrefixBytesForUtf16Units(label, fitting_units))};
+  result += kEllipsis;
+  return result;
+}
+
 struct SlashPopupRow final {
   std::string label;
   StringVariant description;
@@ -401,6 +469,45 @@ SlashSuggestionsPopup(PopupContext context,
             CornerRadius(14.0F), ClipChildren());
 }
 
+// Reasoning depth labels shown by the composer's control row.
+StringVariant ReasoningLevelLabel(domain::ReasoningEffort effort) {
+  switch (effort) {
+  case domain::ReasoningEffort::off:
+    return app::strings::screen_llm_thinking_off_label;
+  case domain::ReasoningEffort::automatic:
+    return app::strings::screen_llm_thinking_auto_label;
+  case domain::ReasoningEffort::low:
+    return app::strings::screen_llm_thinking_low_label;
+  case domain::ReasoningEffort::medium:
+    return app::strings::screen_llm_thinking_medium_label;
+  case domain::ReasoningEffort::high:
+    return app::strings::screen_llm_thinking_high_label;
+  case domain::ReasoningEffort::maximum:
+    return app::strings::screen_llm_thinking_max_label;
+  }
+  return app::strings::screen_llm_thinking_medium_label;
+}
+
+// A small pill for the composer's control row (DSH / ChatGPT style). The row
+// keeps the icons the app already ships and has no voice input.
+View ComposerPillIcon(ImageResource icon, float size) {
+  return Stack{Image(std::move(icon))
+                   .Fit(ImageFit::Contain)
+                   .Align(HorizontalAlignment::Center, VerticalAlignment::Center)
+                   .Tint(colors::tertiary)
+                   .With(Frame{.width = size, .height = size})}
+      .With(Frame{.width = size, .height = size},
+            Align(HorizontalAlignment::Center, VerticalAlignment::Center));
+}
+
+View ComposerPill(std::vector<View> content) {
+  return Row(std::move(content))
+      .With(Frame{.height = 32.0F},
+            Padding(EdgeInsets{.right = 8.0F, .left = 10.0F}), Spacing(5.0F),
+            CrossAlign(CrossAxisAlignment::Center),
+            Background(colors::surface_light), CornerRadius(16.0F));
+}
+
 } // namespace
 
 using namespace huxerui;
@@ -429,6 +536,7 @@ using namespace huxerui;
   const auto chat_mode = state.chat_mode;
   auto slash_models = std::move(state.slash_models);
   auto slash_selected_model_id = std::move(state.selected_model_id);
+  auto reasoning_effort = std::move(state.reasoning_effort);
   const auto input_settings = state.input_settings;
   auto current_project_id = std::move(state.current_project_id);
   auto prompt_context = std::move(state.prompt_context);
@@ -438,6 +546,8 @@ using namespace huxerui;
   auto retry_labels = std::move(state.retry_labels);
   auto show_attachment_picker = std::move(actions.show_attachment_picker);
   auto show_image_picker = std::move(actions.show_image_picker);
+  auto show_model_picker = std::move(actions.show_model_picker);
+  auto show_reasoning_picker = std::move(actions.show_reasoning_picker);
   auto handle_slash_command = std::move(actions.handle_slash_command);
   // Composition-scoped so the token count survives the runner being rebuilt on
   // every recomposition.
@@ -619,32 +729,59 @@ using namespace huxerui;
             .With(Frame{.height = 42.0F}, Padding(EdgeInsets{.bottom = 8.0F}));
   }
 
+  const auto *selected_model =
+      FindSlashModel(slash_models.Get(), slash_selected_model_id.Get());
+  // The pill is one clipped line, so it shows the model's own name segment and
+  // elides anything that still would not fit; the picker keeps the full name.
+  std::string model_label;
+  if (selected_model != nullptr) {
+    model_label = FitModelPillLabel(PillModelName(SlashModelName(*selected_model)),
+                                    UseTextMeasurer());
+  } else {
+    model_label = UseString(app::strings::slash_command_model_title);
+  }
+
+  View model_pill =
+      ComposerPill({Text(model_label)
+                        .Style(ModelPillTextStyle())
+                        .With(Frame{.max_width = kModelPillTextMaxWidth,
+                                    .max_height = 16.0F},
+                              ClipChildren()),
+                    ComposerPillIcon(app::images::chevron_down, 12.0F)})
+          .OnClick([show_model_picker] {
+            if (show_model_picker)
+              show_model_picker();
+          })
+          .With(Focusable(), PointerCursor(PointerCursorKind::Hand));
+  const auto current_effort = reasoning_effort.Get().value_or(
+      domain::ReasoningEffort::medium);
+  View reasoning_pill =
+      ComposerPill({ComposerPillIcon(app::images::brain, 14.0F),
+                    Text(ReasoningLevelLabel(current_effort))
+                        .Style(ChatTextStyle(12.0F, FontWeight::Medium,
+                                             colors::secondary)),
+                    ComposerPillIcon(app::images::chevron_down, 12.0F)})
+          .OnClick([show_reasoning_picker] {
+            if (show_reasoning_picker)
+              show_reasoning_picker();
+          })
+          .With(Focusable(), PointerCursor(PointerCursorKind::Hand));
+
   return Column{
       QuotePreview(quote_text),
       std::move(attachment_row),
       ComposerImagePreview(selected_image),
       Column{
           PendingMessages(pending_messages, revision),
-          Row{
-              ComposerAction(
-                  ComposerActionVisual{
-                      .icon = app::images::plus,
-                      .tint = colors::secondary,
-                      .background = Color::Transparent(),
-                      .icon_size = 20.0F,
-                      .opacity = generating ? 0.62F : 1.0F,
-                  },
-                  !generating, std::move(show_attachment_picker))
-                  .On<LongPressEvents::Started>(
-                      [show_image_picker = std::move(show_image_picker)](
-                          const LongPressEvent &) { show_image_picker(); })
-                  .With(LongPressGesture{}),
+          // DSH / ChatGPT body: the editor owns the top half, and one control
+          // row holds attach · model · reasoning depth · send.
+          Column{
               TextField(draft)
                   .Placeholder(has_selected_model.value_or(true)
                                    ? app::strings::composer_hint_default
                                    : app::strings::composer_hint_no_model)
                   .Variant(TextFieldVariant::Standard)
-                  .LineLimits(TextFieldLineLimits::MultiLine(1, 3))
+                  .LineLimits(TextFieldLineLimits::MultiLine(1, 6))
                   .InputConfiguration(TextInputConfiguration{
                       .action = input_settings.enter_key ==
                                         domain::EnterKeyBehavior::send
@@ -652,37 +789,60 @@ using namespace huxerui;
                                     : TextInputAction::Newline,
                       .multiline = true,
                   })
-                  .VerticalAlign(TextVerticalAlign::Center)
+                  .VerticalAlign(TextVerticalAlign::Top)
                   .OnChanged(
                       [draft, slash_presenter](const TextEditingValue &value) {
                         draft = value;
                         (*slash_presenter)(value.text);
                       })
                   .OnSubmitted(send)
-                  .With(Frame{.min_height = 44.0F}, Grow()),
-              ComposerAction(
-                  ComposerActionVisual{
-                      .icon = primary_action.icon,
-                      .tint =
-                          can_send ? colors::text_on_color : colors::secondary,
-                      .background =
-                          can_send ? colors::accent : Color::Transparent(),
-                      .icon_size = primary_action.icon_size,
-                  },
-                  can_send, send),
-          } // Match the legacy 148px composer body at the 420dpi reference
-            // density. A 56dp minimum rasterizes two pixels short here and
-            // makes both the editor text and circular actions look low.
-              .With(Frame{.min_height = 56.76F},
-                    Padding(EdgeInsets::Symmetric(8.0F, 6.0F)),
-                    CrossAlign(CrossAxisAlignment::End)),
+                  // Inside a Column `Grow()` would expand vertically; the
+                  // editor is bounded instead so the composer keeps hugging
+                  // its content the way the ChatGPT/DSH composer does.
+                  .With(Frame{.min_height = 40.0F, .max_height = 132.0F},
+                        ClipChildren()),
+              Row{
+                  ComposerAction(
+                      ComposerActionVisual{
+                          .icon = app::images::plus,
+                          .tint = colors::secondary,
+                          .background = Color::Transparent(),
+                          .icon_size = 20.0F,
+                          .opacity = generating ? 0.62F : 1.0F,
+                      },
+                      !generating, std::move(show_attachment_picker))
+                      .On<LongPressEvents::Started>(
+                          [show_image_picker = std::move(show_image_picker)](
+                              const LongPressEvent &) { show_image_picker(); })
+                      .With(LongPressGesture{}),
+                  Spacer(),
+                  std::move(model_pill),
+                  std::move(reasoning_pill),
+                  ComposerAction(
+                      ComposerActionVisual{
+                          .icon = primary_action.icon,
+                          .tint = can_send ? colors::text_on_color
+                                           : colors::secondary,
+                          .background = can_send ? colors::accent
+                                                 : Color::Transparent(),
+                          .icon_size = primary_action.icon_size,
+                      },
+                      can_send, send),
+              }
+                  .With(Spacing(6.0F), CrossAlign(CrossAxisAlignment::Center)),
+          }
+              .With(Spacing(2.0F), CrossAlign(CrossAxisAlignment::Stretch)),
       }
-          .With(Frame{.min_height = 56.76F},
-                CrossAlign(CrossAxisAlignment::Stretch),
-                Background(colors::input), CornerRadius(20.0F)),
+          .With(Padding(EdgeInsets{
+                    .top = 10.0F,
+                    .right = 10.0F,
+                    .bottom = 8.0F,
+                    .left = 10.0F}),
+                Background(colors::input), Border(colors::border, 1.0F),
+                CornerRadius(24.0F)),
   }
       .With(Padding(EdgeInsets{
-                .top = 14.0F, .right = 20.0F, .bottom = 20.0F, .left = 20.0F}),
+                .top = 14.0F, .right = 16.0F, .bottom = 16.0F, .left = 16.0F}),
             Background(colors::background), slash_popup.Anchor());
 }
 

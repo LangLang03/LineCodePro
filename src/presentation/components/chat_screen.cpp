@@ -736,6 +736,10 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
   auto compaction_confirm_layer = UseState(std::optional<LayerId>{});
   auto permission_layer = UseState(std::optional<LayerId>{});
   auto permission_state = UseState(application::ToolPermissionState{});
+  // Reasoning depth for the composer's control row; owned here so the picker
+  // sheet and the pill always agree.
+  auto reasoning_effort =
+      UseState(std::optional<domain::ReasoningEffort>{});
   auto external_storage_granted = UseState(false);
   auto selected_attachments = UseState(std::vector<domain::InputAttachment>{});
   auto selected_image = UseState(std::optional<ComposerImageSelection>{});
@@ -854,8 +858,9 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
     });
   });
   Lifecycle([tasks, behavior_settings, output_settings, timeline_settings,
-             toast] {
-    tasks.Launch([behavior_settings, timeline_settings, toast]() -> Task<void> {
+             toast, reasoning_effort] {
+    tasks.Launch([behavior_settings, timeline_settings, toast,
+                  reasoning_effort]() -> Task<void> {
       auto loaded = co_await behavior_settings->Load();
       if (!loaded) {
         toast.Show(loaded.error().message);
@@ -866,6 +871,7 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
         settings.thinking_scroll = loaded->thinking_scroll;
         settings.preserve_reasoning = loaded->preserve_reasoning;
       });
+      reasoning_effort = loaded->reasoning;
     });
     tasks.Launch([output_settings, timeline_settings, toast]() -> Task<void> {
       auto loaded = co_await output_settings->Load();
@@ -913,6 +919,16 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
       bottom_sheets, context_usage_visible, context_usage_layer);
   const ControlledBottomSheet permission_sheet(
       bottom_sheets, permission_visible, permission_layer);
+  // Composer pickers: the model and the reasoning depth are chosen in place,
+  // from the composer's control row, instead of a settings screen detour.
+  auto model_picker_visible = UseState(false);
+  auto model_picker_layer = UseState(std::optional<LayerId>{});
+  auto reasoning_picker_visible = UseState(false);
+  auto reasoning_picker_layer = UseState(std::optional<LayerId>{});
+  const ControlledBottomSheet model_picker_sheet(
+      bottom_sheets, model_picker_visible, model_picker_layer);
+  const ControlledBottomSheet reasoning_picker_sheet(
+      bottom_sheets, reasoning_picker_visible, reasoning_picker_layer);
 
   const auto storage_permission_description =
       UseString(app::strings::permission_mode_storage_required);
@@ -1400,6 +1416,80 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
           },
   };
 
+  auto show_model_picker = [model_picker_sheet, slash_models,
+                            slash_selected_model_id, model_store, tasks,
+                            toast] {
+    model_picker_sheet.Show([slash_models, slash_selected_model_id, model_store,
+                             tasks, toast](bool visible,
+                                           std::function<void()> dismiss) {
+      // A choice closes the sheet, so the dismiss callback is copied before the
+      // close button takes ownership of it.
+      auto close_after_choice = dismiss;
+      return ChatModelPickerSheet(
+          ChatModelPickerState{
+              .visible = visible,
+              .selected_model_id = slash_selected_model_id.Get(),
+              .models = slash_models.Get(),
+          },
+          ChatModelPickerCallbacks{
+              .on_dismiss_request = std::move(dismiss),
+              .on_model_selected =
+                  [slash_selected_model_id, model_store, tasks, toast,
+                   close_after_choice](std::string id) {
+                    slash_selected_model_id = id;
+                    if (close_after_choice)
+                      close_after_choice();
+                    tasks.Launch([model_store, id, toast]() -> Task<void> {
+                      auto selected = co_await model_store->Select(id);
+                      if (!selected)
+                        toast.Show(selected.error().message);
+                    });
+                  },
+          });
+    });
+  };
+  auto show_reasoning_picker = [reasoning_picker_sheet, slash_models,
+                                 slash_selected_model_id, reasoning_effort,
+                                 behavior_settings, tasks, toast] {
+    const auto &models = slash_models.Get();
+    const auto found = std::ranges::find(
+        models, slash_selected_model_id.Get(), &domain::ModelConfig::id);
+    const std::string model_name =
+        found == models.end()
+            ? std::string{}
+            : (found->name.empty() ? found->model_id : found->name);
+    reasoning_picker_sheet.Show([model_name, reasoning_effort,
+                                 behavior_settings, tasks,
+                                 toast](bool visible,
+                                        std::function<void()> dismiss) {
+      auto close_after_choice = dismiss;
+      return ChatReasoningPickerSheet(
+          ChatReasoningPickerState{
+              .visible = visible,
+              .model_name = model_name,
+              .selected = reasoning_effort.Get().value_or(
+                  domain::ReasoningEffort::medium),
+          },
+          ChatReasoningPickerCallbacks{
+              .on_dismiss_request = std::move(dismiss),
+              .on_reasoning_selected =
+                  [reasoning_effort, behavior_settings, tasks, toast,
+                   close_after_choice](domain::ReasoningEffort effort) {
+                    reasoning_effort = effort;
+                    if (close_after_choice)
+                      close_after_choice();
+                    tasks.Launch([behavior_settings, effort,
+                                  toast]() -> Task<void> {
+                      auto saved =
+                          co_await behavior_settings->SetReasoning(effort);
+                      if (!saved)
+                        toast.Show(saved.error().message);
+                    });
+                  },
+          });
+    });
+  };
+
   View composer_or_review;
   const auto pending_review = review_coordinator.Get()->Current();
   if (pending_review) {
@@ -1464,10 +1554,13 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
             .toast = toast,
             .auto_compaction = auto_compaction.Get(),
             .retry_labels = retry_labels,
+            .reasoning_effort = reasoning_effort,
         },
         chat_composer::Actions{
             .show_attachment_picker = show_attachments,
             .show_image_picker = show_image_picker,
+            .show_model_picker = show_model_picker,
+            .show_reasoning_picker = show_reasoning_picker,
             .handle_slash_command = handle_slash_command,
         });
   }

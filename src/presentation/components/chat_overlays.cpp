@@ -8,6 +8,10 @@
 #include <vector>
 
 #include <app_resources.h>
+
+#if defined(__ANDROID__)
+#include "application/ports/window_insets.h"
+#endif
 #include <huxerui/huxerui.h>
 
 #include "domain/input_attachment.h"
@@ -19,6 +23,22 @@ namespace {
 
 using namespace huxerui;
 
+// Sheets keep their panel flush with the screen so the system bar looks like
+// part of them, and pad their *content* by the real navigation-bar inset: a
+// fixed allowance left the last row glued to the bar on three-button devices.
+#if defined(__ANDROID__)
+// A trailing spacer sized to the real navigation-bar inset plus a little air.
+[[huxerui::composable]] View SheetBottomSpacer() {
+  return Stack{}.With(Frame{
+      .height = UseService<application::WindowInsetsProvider>()->Current().bottom +
+                16.0F});
+}
+#else
+[[nodiscard]] View SheetBottomSpacer() {
+  return Stack{}.With(Frame{.height = 16.0F});
+}
+#endif
+
 constexpr float kSheetRadius = 24.0F;
 constexpr float kSheetMaximumWidth = 560.0F;
 constexpr float kSheetHorizontalInset = 16.0F;
@@ -27,6 +47,10 @@ constexpr float kSheetHostMaximumWidth =
     kSheetMaximumWidth + (kSheetHorizontalInset * 2.0F);
 constexpr float kMinimumRowHeight = 52.0F;
 constexpr float kDescribedRowMinimumHeight = 68.5714F;
+// Model and reasoning pickers are utility drawers, not full-screen surfaces:
+// cap the panel at roughly half of a typical phone viewport and let the list
+// scroll inside it instead of stretching to the whole screen.
+constexpr float kPickerPanelMaximumHeight = 400.0F;
 constexpr float kAttachmentPanelHeight = 640.0F;
 constexpr float kAttachmentTreeIndent = 18.0F;
 constexpr std::size_t kMaximumAttachmentTreeDepth = 24;
@@ -173,12 +197,9 @@ View EmptyOverlay() {
   return Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
 }
 
-View InsetSheet(View panel) {
+[[huxerui::composable]] View InsetSheet(View panel) {
   return InsetSheetFrame{std::move(panel)}.With(
-      Frame{.max_width = kSheetHostMaximumWidth},
-      Offset(Point{0.0F, CurrentHostPlatform() == HostPlatform::android
-                             ? 32.0F
-                             : 0.0F}));
+      Frame{.max_width = kSheetHostMaximumWidth});
 }
 
 View StandardSheet(StringVariant title, std::vector<View> rows,
@@ -255,8 +276,13 @@ View AttachmentStatus(StringVariant message) {
 }
 
 View AttachmentFileSelection(bool selected) {
+  // Both glyphs are pinned to the same 14dp box with an explicit content
+  // alignment: the two vector assets declare different intrinsic sizes, so the
+  // default fit rendered the check and the plus at different scales.
   return Stack{
       Image(selected ? app::images::check : app::images::plus)
+          .Fit(ImageFit::Contain)
+          .Align(HorizontalAlignment::Center, VerticalAlignment::Center)
           .Tint(selected ? colors::text_on_color : colors::secondary)
           .With(Frame{.width = 14.0F, .height = 14.0F}),
   }
@@ -310,8 +336,11 @@ void AppendAttachmentRows(std::vector<View> &rows,
   content.emplace_back(Stack{}.With(Frame{.width = 8.0F, .height = 1.0F}));
   content.emplace_back(Column(std::move(labels)).With(Grow()));
   if (!node.directory) {
-    content.emplace_back(AttachmentFileSelection(selected).With(
-        Padding(EdgeInsets{.left = 8.0F})));
+    // The 8dp gap belongs between the label and the circle. Applying it as the
+    // circle's own padding inset the glyph's content box (26dp - 8dp) and left
+    // the plus visibly off centre inside its 26dp background circle.
+    content.emplace_back(Stack{}.With(Frame{.width = 8.0F, .height = 1.0F}));
+    content.emplace_back(AttachmentFileSelection(selected));
   }
 
   auto row =
@@ -362,6 +391,195 @@ void AppendAttachmentRows(std::vector<View> &rows,
     AppendAttachmentRows(rows, child, depth + 1, false, state, callbacks);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Composer pickers (model + reasoning depth).
+//
+// Both reuse the attachment sheet's framing so the composer stays a single
+// surface: tapping the model or reasoning pill opens a list, and the choice is
+// persisted by the integration layer.
+// ---------------------------------------------------------------------------
+
+StringVariant ReasoningPickerLabel(domain::ReasoningEffort effort) {
+  switch (effort) {
+  case domain::ReasoningEffort::off:
+    return app::strings::screen_llm_thinking_off_label;
+  case domain::ReasoningEffort::automatic:
+    return app::strings::screen_llm_thinking_auto_label;
+  case domain::ReasoningEffort::low:
+    return app::strings::screen_llm_thinking_low_label;
+  case domain::ReasoningEffort::medium:
+    return app::strings::screen_llm_thinking_medium_label;
+  case domain::ReasoningEffort::high:
+    return app::strings::screen_llm_thinking_high_label;
+  case domain::ReasoningEffort::maximum:
+    return app::strings::screen_llm_thinking_max_label;
+  }
+  return app::strings::screen_llm_thinking_medium_label;
+}
+
+View PickerSheetRow(std::string_view key, StringVariant title,
+                    StringVariant detail, bool selected,
+                    std::function<void()> activate) {
+  return Row{
+      Column{
+          Text(std::move(title))
+              .Style(TextStyle{Font::System(15.0F).WithWeight(FontWeight::Medium),
+                               colors::text})
+              .With(ClipChildren()),
+          Text(std::move(detail))
+              .Style(TextStyle{Font::System(11.0F), colors::tertiary})
+              .With(Padding(EdgeInsets{.top = 2.0F}), ClipChildren()),
+      }
+          .With(Grow(), Spacing(1.0F)),
+      selected ? Stack{Image(app::images::check)
+                           .Tint(colors::accent)
+                           .With(Frame{.width = 16.0F, .height = 16.0F})}
+                     .With(Frame{.width = 20.0F, .height = 20.0F},
+                           Align(HorizontalAlignment::Center,
+                                 VerticalAlignment::Center))
+               : Stack{}.With(Frame{.width = 20.0F, .height = 20.0F}),
+  }
+      .OnClick(std::move(activate))
+      .With(Frame{.min_height = 56.0F},
+            Padding(EdgeInsets::Symmetric(20.0F, 12.0F)),
+            CrossAlign(CrossAxisAlignment::Center), Focusable(),
+            PointerCursor(PointerCursorKind::Hand))
+      .Key(std::string{key});
+}
+
+View PickerSheetPanel(StringVariant title, StringVariant subtitle,
+                      std::vector<View> rows,
+                      std::function<void()> on_dismiss_request) {
+  View close =
+      Stack{Image(app::images::x)
+                .Tint(colors::secondary)
+                .With(Frame{.width = 18.0F, .height = 18.0F})}
+          .OnClick(std::move(on_dismiss_request))
+          .With(Frame{.width = 48.0F, .height = 48.0F},
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+                Focusable(), PointerCursor(PointerCursorKind::Hand));
+  return Column{
+      Row{
+          Column{
+              Text(std::move(title))
+                  .Style(TextStyle{Font::System(17.0F).WithWeight(FontWeight::Bold),
+                                   colors::text}),
+              Text(std::move(subtitle))
+                  .Style(TextStyle{Font::System(11.0F), colors::tertiary})
+                  .With(Padding(EdgeInsets{.top = 3.0F}), ClipChildren()),
+          }
+              .With(Grow()),
+          Stack{}.With(Frame{.width = 12.0F}),
+          std::move(close),
+      }
+          .With(Padding(EdgeInsets{
+                    .top = 14.0F, .right = 20.0F, .bottom = 10.0F, .left = 20.0F}),
+                CrossAlign(CrossAxisAlignment::Center)),
+      Stack{}.With(Frame{.height = kPhysicalDividerHeight},
+                   Background(colors::border_light)),
+      ScrollView(Column(std::move(rows))
+                     .With(CrossAlign(CrossAxisAlignment::Stretch),
+                           Padding(EdgeInsets{.top = 4.0F,
+                                              .right = 8.0F,
+                                              .bottom = 16.0F,
+                                              .left = 8.0F})))
+          .ScrollAxis(Axis::Vertical)
+          .With(Grow(), ScrollBar()),
+  }
+      .With(Frame{.max_width = kSheetMaximumWidth,
+                  .min_height = 240.0F,
+                  .max_height = kPickerPanelMaximumHeight},
+            CrossAlign(CrossAxisAlignment::Stretch),
+            Background(colors::background),
+            Border{.color = colors::border_light, .width = 1.0F},
+            CornerRadius(kSheetRadius), ClipChildren());
+}
+
+} // namespace
+
+using namespace huxerui;
+
+[[huxerui::composable]] View ChatModelPickerSheet(
+    const ChatModelPickerState &state, ChatModelPickerCallbacks callbacks) {
+  if (!state.visible) {
+    return EmptyOverlay();
+  }
+  std::vector<View> rows;
+  rows.reserve(state.models.size() + 1U);
+  for (const auto &model : state.models) {
+    const bool selected = model.id == state.selected_model_id;
+    const auto detail = model.provider_label.empty()
+                            ? model.model_id
+                            : model.provider_label + " · " + model.model_id;
+    rows.emplace_back(PickerSheetRow(
+        model.id, model.name.empty() ? model.model_id : model.name, detail,
+        selected, [callback = callbacks.on_model_selected, id = model.id] {
+          if (callback) {
+            std::invoke(callback, id);
+          }
+        }));
+  }
+  if (rows.empty()) {
+    rows.emplace_back(
+        Text(app::strings::composer_model_picker_empty)
+            .Style(TextStyle{Font::System(13.0F), colors::tertiary})
+            .With(Padding(EdgeInsets::Symmetric(20.0F, 24.0F))));
+  }
+  rows.emplace_back(SheetBottomSpacer());
+  return InsetSheet(PickerSheetPanel(
+      app::strings::slash_command_model_title,
+      app::strings::composer_model_picker_subtitle, std::move(rows),
+      callbacks.on_dismiss_request));
+}
+
+[[huxerui::composable]] View ChatReasoningPickerSheet(
+    const ChatReasoningPickerState &state,
+    ChatReasoningPickerCallbacks callbacks) {
+  if (!state.visible) {
+    return EmptyOverlay();
+  }
+  constexpr std::array kLevels{
+      domain::ReasoningEffort::off, domain::ReasoningEffort::automatic,
+      domain::ReasoningEffort::low, domain::ReasoningEffort::medium,
+      domain::ReasoningEffort::high, domain::ReasoningEffort::maximum};
+  std::vector<View> rows;
+  rows.reserve(kLevels.size());
+  for (const auto effort : kLevels) {
+    const StringVariant detail = [effort] {
+      switch (effort) {
+      case domain::ReasoningEffort::off:
+        return StringVariant{app::strings::screen_llm_thinking_off_desc};
+      case domain::ReasoningEffort::automatic:
+        return StringVariant{app::strings::screen_llm_thinking_auto};
+      case domain::ReasoningEffort::low:
+        return StringVariant{app::strings::screen_llm_thinking_low};
+      case domain::ReasoningEffort::medium:
+        return StringVariant{app::strings::screen_llm_thinking_medium};
+      case domain::ReasoningEffort::high:
+        return StringVariant{app::strings::screen_llm_thinking_high};
+      case domain::ReasoningEffort::maximum:
+        return StringVariant{app::strings::screen_llm_thinking_max};
+      }
+      return StringVariant{app::strings::screen_llm_thinking_medium};
+    }();
+    rows.emplace_back(PickerSheetRow(
+        std::string{domain::SerializeReasoningEffort(effort)},
+        ReasoningPickerLabel(effort), detail, effort == state.selected,
+        [callback = callbacks.on_reasoning_selected, effort] {
+          if (callback) {
+            std::invoke(callback, effort);
+          }
+        }));
+  }
+  rows.emplace_back(SheetBottomSpacer());
+  return InsetSheet(PickerSheetPanel(
+      UseString(app::strings::slash_command_reasoning_title, state.model_name),
+      app::strings::composer_reasoning_picker_subtitle, std::move(rows),
+      callbacks.on_dismiss_request));
+}
+
+namespace {
 
 } // namespace
 
@@ -457,7 +675,9 @@ View ChatMoreMenu(const ChatMoreMenuState &state,
 
   auto rows =
       BuildAvailableRows(items, callbacks, DescribedMenuRow<ChatMoreAction>);
-  return StandardSheet(app::strings::common_more, std::move(rows));
+  // Clear the system navigation bar so the last row is never glued to it.
+  rows.emplace_back(SheetBottomSpacer());
+  return StandardSheet(app::strings::common_more, std::move(rows), 0.0F);
 }
 
 View ChatCompactionMenu(bool visible,
@@ -476,7 +696,8 @@ View ChatCompactionMenu(bool visible,
   };
   auto rows = BuildAvailableRows(items, callbacks,
                                  DescribedMenuRow<ChatCompactionAction>);
-  return StandardSheet(app::strings::sheet_more_compact, std::move(rows));
+  rows.emplace_back(SheetBottomSpacer());
+  return StandardSheet(app::strings::sheet_more_compact, std::move(rows), 0.0F);
 }
 
 View ChatPermissionMenu(const ChatPermissionMenuState &state,
@@ -517,7 +738,8 @@ View ChatPermissionMenu(const ChatPermissionMenuState &state,
 
   auto rows = BuildAvailableRows(items, callbacks,
                                  DescribedMenuRow<ChatPermissionAction>);
-  return StandardSheet(app::strings::sheet_title_permissions, std::move(rows));
+  rows.emplace_back(SheetBottomSpacer());
+  return StandardSheet(app::strings::sheet_title_permissions, std::move(rows), 0.0F);
 }
 
 View ChatAttachmentPicker(const ChatAttachmentPickerState &state,

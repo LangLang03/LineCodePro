@@ -23,6 +23,10 @@ namespace json = infrastructure::archive_json;
 // cn.lineai.tool.builtin.MemoryUpdateTool.MAX_CONTENT_CHARS (line 19).
 constexpr std::size_t kMaximumContentCharacters = 320;
 
+// Title shown in the memory list and on the tool card. Kept short because it is
+// a label, and truncated rather than rejected so a chatty model still saves.
+constexpr std::size_t kMaximumTitleCharacters = 40;
+
 // MemoryUpdateTool.getDescription() (lines 27-33), verbatim.
 constexpr std::string_view kMemoryUpdateDescription =
     "Save a durable long-term memory for future sessions. "
@@ -34,17 +38,20 @@ constexpr std::string_view kMemoryUpdateDescription =
     "scope: user (cross-project preference), project (this workspace only), "
     "environment (device/build setup).";
 
-// MemoryUpdateTool.getParameters() (lines 66-81): properties content/scope with
-// the legacy descriptions and the user|project|environment scope enum, required
-// content only.
+// MemoryUpdateTool.getParameters() (lines 66-81) plus the LineCodePro title:
+// properties title/content/scope with the user|project|environment scope enum.
+// `title` is required so the memory list and the tool card can label the memory
+// without replaying the statement.
 constexpr std::string_view kMemoryUpdateParameters =
-    R"({"properties":{"content":{"description":"Independent durable memory statement, max 320 chars","type":"string"},"scope":{"description":"user | project | environment; default user","enum":["user","project","environment"],"type":"string"}},"required":["content"],"type":"object"})";
+    R"({"properties":{"title":{"description":"Short label for this memory, at most 40 chars, written in the user's language","type":"string"},"content":{"description":"Independent durable memory statement, max 320 chars","type":"string"},"scope":{"description":"user | project | environment; default user","enum":["user","project","environment"],"type":"string"}},"required":["title","content"],"type":"object"})";
 
 // feature-tool/src/main/res/values/strings.xml lines 84-88.
 constexpr std::string_view kParametersEmptyMessage =
     "Parameters cannot be empty.";
 constexpr std::string_view kContentEmptyMessage =
     "Memory content cannot be empty.";
+constexpr std::string_view kTitleEmptyMessage =
+    "Memory title cannot be empty.";
 constexpr std::string_view kStoreMissingMessage =
     "Memory store not initialized.";
 constexpr std::string_view kSensitiveMessage =
@@ -121,6 +128,7 @@ bool LooksSensitive(std::string_view content) {
 
 struct MemoryArguments final {
   domain::MemoryScope scope{domain::MemoryScope::user};
+  std::string title;
   std::string content;
 };
 
@@ -133,6 +141,21 @@ ParseArguments(std::string_view text) {
   if (object == nullptr) {
     return std::unexpected(Error(ToolRegistryErrorCode::invalid_arguments,
                                  std::string{kParametersEmptyMessage}));
+  }
+  const auto *raw_title = json::AsString(json::Find(*object, "title"));
+  if (raw_title == nullptr) {
+    return std::unexpected(Error(ToolRegistryErrorCode::invalid_arguments,
+                                 std::string{kTitleEmptyMessage}));
+  }
+  auto title = domain::NormalizeMemoryContent(*raw_title);
+  if (title.empty()) {
+    return std::unexpected(Error(ToolRegistryErrorCode::invalid_arguments,
+                                 std::string{kTitleEmptyMessage}));
+  }
+  if (Utf8CharacterCount(title) > kMaximumTitleCharacters) {
+    title = domain::NormalizeMemoryContent(std::string{
+        title.substr(0U, Utf8PrefixBytes(title, kMaximumTitleCharacters - 1U))});
+    title += "…";
   }
   const auto *raw = json::AsString(json::Find(*object, "content"));
   if (raw == nullptr) {
@@ -153,6 +176,7 @@ ParseArguments(std::string_view text) {
   return MemoryArguments{
       .scope = domain::ParseMemoryScope(
           scope == nullptr ? std::string_view{} : std::string_view{*scope}),
+      .title = std::move(title),
       .content = std::move(content),
   };
 }
@@ -187,6 +211,7 @@ ExecuteMemoryUpdate(MemoryToolContext context, std::string arguments_json) {
       .id = {},
       .scope = arguments->scope,
       .project_id = std::move(project_id),
+      .title = std::move(arguments->title),
       .content = std::move(arguments->content),
       .source = "manual",
       .confidence = 1.0,

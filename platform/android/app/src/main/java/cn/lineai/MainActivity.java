@@ -55,11 +55,16 @@ public final class MainActivity extends HuxerUIActivity {
     @SuppressWarnings("deprecation")
     private void configureWindowChrome() {
         Window window = getWindow();
-        window.setStatusBarColor(DEFAULT_BACKGROUND);
-        // HuxerUI renders edge-to-edge. Keeping the navigation bar opaque
-        // prevents in-window drawers and dialogs from painting their scrim
-        // beneath it, unlike the legacy edge-to-edge Activity/Dialog pair.
-        window.setNavigationBarColor(DEFAULT_BACKGROUND);
+        // Immersive: HuxerUI already renders edge-to-edge, so the bars stay
+        // transparent and the app draws the background behind them. Every
+        // interactive surface pads the insets the activity reports through
+        // lineCodeWindowInsetsDp(), which is why content is never covered.
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.TRANSPARENT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.setNavigationBarContrastEnforced(false);
+            window.setStatusBarContrastEnforced(false);
+        }
         View decor = window.getDecorView();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             decor.setForceDarkAllowed(false);

@@ -176,6 +176,15 @@ std::string Preview(std::string_view value, std::size_t size,
   return preview.empty() ? strings.empty_value : preview;
 }
 
+// Rows are labelled by the title captured from the `memory_update` tool call.
+// Memories without one (the auto-extracted kind) keep the legacy behaviour of
+// previewing the statement itself.
+std::string MemoryTitle(const domain::MemoryRecord &memory,
+                        const ResolvedMemoryStrings &strings) {
+  return memory.title.empty() ? Preview(memory.content, 80, strings)
+                              : memory.title;
+}
+
 std::string MemoryDescription(const domain::MemoryRecord &memory,
                               const ResolvedMemoryStrings &strings) {
   return strings.source + memory.source + " · " + strings.used_prefix +
@@ -187,7 +196,9 @@ std::string MemoryDetail(const domain::MemoryRecord &memory,
                          const ResolvedMemoryStrings &strings) {
   std::ostringstream confidence;
   confidence << std::fixed << std::setprecision(2) << memory.confidence;
-  return memory.content + "\n\n" + strings.scope +
+  const std::string heading =
+      memory.title.empty() ? std::string{} : memory.title + "\n\n";
+  return heading + memory.content + "\n\n" + strings.scope +
          std::string{domain::MemoryScopeDefinition(memory.scope).storage_name} +
          "\n" + strings.source + memory.source + "\n" + strings.project_field +
          (memory.project_id.empty() ? strings.global : memory.project_id) +
@@ -310,7 +321,7 @@ View MemoryRow(const domain::MemoryRecord &memory, ImageResource icon,
           Align(HorizontalAlignment::Center, VerticalAlignment::Center),
           Background(colors::accent_muted), CornerRadius(8.0F)),
       Column{
-          Text(Preview(memory.content, 80, strings))
+          Text(MemoryTitle(memory, strings))
               .Style(Label(16.0F, FontWeight::Medium)),
           Text(MemoryDescription(memory, strings))
               .Style(Label(11.0F, FontWeight::Regular, colors::tertiary))

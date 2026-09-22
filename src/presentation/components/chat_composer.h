@@ -67,6 +67,9 @@ struct ViewState final {
   domain::ChatMode chat_mode{domain::ChatMode::chat};
   huxerui::State<std::vector<domain::ModelConfig>> slash_models;
   huxerui::State<std::string> selected_model_id;
+  // Reasoning depth shown by the composer's control row; owned by the screen so
+  // the picker sheet and the pill never disagree.
+  huxerui::State<std::optional<domain::ReasoningEffort>> reasoning_effort;
   domain::InputSettings input_settings;
   std::string current_project_id;
   application::PromptAssemblyContext prompt_context;
@@ -80,6 +83,8 @@ struct ViewState final {
 struct Actions final {
   std::function<void()> show_attachment_picker;
   std::function<void()> show_image_picker;
+  std::function<void()> show_model_picker;
+  std::function<void()> show_reasoning_picker;
   std::function<bool(std::string_view)> handle_slash_command;
 };
 

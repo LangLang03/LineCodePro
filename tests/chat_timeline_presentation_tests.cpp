@@ -52,6 +52,36 @@ void PresentsToolPoliciesWithoutRendererConditionals() {
   EXPECT_EXPRESSION(!failed_file.expandable);
   EXPECT_EXPRESSION(!failed_file.initially_expanded);
 
+  // `memory_update` is its own card: the saved memory's title labels it, and
+  // the saved statement is the expandable body. Mapping it to the read card
+  // used to render "Read  <title>" next to the book icon.
+  domain::AssistantToolEvent memory{};
+  memory.call.name = "memory_update";
+  memory.call.arguments_json =
+      R"({"title":"C++23 preference","content":"Prefer C++23 for new code.","scope":"project"})";
+  memory.call.status = domain::ToolCallStatus::completed;
+  const auto memory_card = presentation::PresentToolTimeline(memory);
+  EXPECT_EXPRESSION(memory_card.visual ==
+         presentation::ToolTimelineVisualKind::memory);
+  EXPECT_EXPRESSION(memory_card.icon ==
+         presentation::ToolTimelineIconKind::book_open);
+  EXPECT_EXPRESSION(memory_card.title == "C++23 preference");
+  EXPECT_EXPRESSION(memory_card.detail == "Prefer C++23 for new code.");
+  EXPECT_EXPRESSION(memory_card.auxiliary == "project");
+  EXPECT_EXPRESSION(memory_card.expandable);
+  EXPECT_EXPRESSION(!memory_card.initially_expanded);
+
+  // Older transcripts and models that omit the title still render a card.
+  domain::AssistantToolEvent untitled{};
+  untitled.call.name = "memory_update";
+  untitled.call.arguments_json = R"({"content":"Remember the workspace."})";
+  untitled.call.status = domain::ToolCallStatus::running;
+  const auto untitled_card = presentation::PresentToolTimeline(untitled);
+  EXPECT_EXPRESSION(untitled_card.visual ==
+         presentation::ToolTimelineVisualKind::memory);
+  EXPECT_EXPRESSION(untitled_card.title == "Remember the workspace.");
+  EXPECT_EXPRESSION(untitled_card.running);
+
   domain::AssistantToolEvent extension{};
   extension.call.name = "mcpx_dynamic_tool";
   extension.call.status = domain::ToolCallStatus::failed;

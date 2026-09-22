@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "infrastructure/bounded_text_accumulator.h"
+#include "infrastructure/completion_end_marker.h"
 #include "infrastructure/completion_protocol_codec.h"
 #include "infrastructure/model_url_policy.h"
 #include "infrastructure/sse_decoder.h"
@@ -132,6 +133,8 @@ CompleteBuffered(const std::shared_ptr<huxerui::HttpClient> &http,
   if (!decoded.has_value()) {
     co_return std::unexpected(DecodeError(decoded.error()));
   }
+  decoded->text = StripCompletionEndMarkers(decoded->text);
+  decoded->reasoning_content = StripCompletionEndMarkers(decoded->reasoning_content);
   co_return std::move(*decoded);
 }
 
@@ -158,7 +161,14 @@ CompleteStreaming(const std::shared_ptr<huxerui::HttpClient> &http,
   std::vector<application::CompletionToolCall> streamed_tool_calls;
   BoundedTextAccumulator text{kMaximumStreamedText};
   BoundedTextAccumulator reasoning{kMaximumStreamedReasoning};
-  auto append_text =
+  // A leaked end-of-turn marker ("<end_of_turn>", "<｜end▁of▁sentence｜>", ...) is
+  // dropped together with everything the model emits after it, so a finished
+  // turn stops growing instead of showing the marker in the answer.
+  CompletionEndMarkerFilter text_marker;
+  CompletionEndMarkerFilter reasoning_marker;
+  application::CompletionReasoningKind reasoning_kind{
+      application::CompletionReasoningKind::thinking};
+  auto append_text_raw =
       [&](std::string_view delta) -> std::expected<void, CompletionError> {
     if (delta.empty()) {
       return {};
@@ -179,7 +189,11 @@ CompleteStreaming(const std::shared_ptr<huxerui::HttpClient> &http,
     }
     return {};
   };
-  auto append_reasoning = [&](application::CompletionReasoningDelta delta)
+  auto append_text =
+      [&](std::string_view delta) -> std::expected<void, CompletionError> {
+    return append_text_raw(text_marker.Push(delta));
+  };
+  auto append_reasoning_raw = [&](application::CompletionReasoningDelta delta)
       -> std::expected<void, CompletionError> {
     if (delta.starts_new_segment && !reasoning.Value().empty()) {
       constexpr std::string_view separator{" | "};
@@ -218,8 +232,42 @@ CompleteStreaming(const std::shared_ptr<huxerui::HttpClient> &http,
     }
     return {};
   };
+  auto append_reasoning = [&](application::CompletionReasoningDelta delta)
+      -> std::expected<void, CompletionError> {
+    if (delta.text.empty())
+      return {};
+    delta.text = reasoning_marker.Push(delta.text);
+    reasoning_kind = delta.kind;
+    if (delta.text.empty())
+      return {};
+    return append_reasoning_raw(std::move(delta));
+  };
+  // Whatever the marker filter held back at the end of the stream is ordinary
+  // text that simply ended in '<'.
+  auto flush_marker_filters = [&]() -> std::expected<void, CompletionError> {
+    if (const auto tail = text_marker.Flush(); !tail.empty()) {
+      if (auto appended = append_text_raw(tail); !appended.has_value()) {
+        return std::unexpected(std::move(appended.error()));
+      }
+    }
+    if (const auto tail = reasoning_marker.Flush(); !tail.empty()) {
+      if (auto appended = append_reasoning_raw(application::CompletionReasoningDelta{
+              .turn_index = 0,
+              .text = tail,
+              .kind = reasoning_kind,
+              .starts_new_segment = false});
+          !appended.has_value()) {
+        return std::unexpected(std::move(appended.error()));
+      }
+    }
+    return {};
+  };
   auto consume = [&](std::vector<SseEvent> events)
       -> std::expected<bool, CompletionError> {
+    // The whole batch is consumed before reporting the end of the stream:
+    // providers send their usage-only chunk right after the finishing one, and
+    // returning early dropped that accounting.
+    bool done = false;
     for (const auto &event : events) {
       auto chunk = codec.decode_stream_event(event.data);
       if (!chunk.has_value()) {
@@ -281,10 +329,10 @@ CompleteStreaming(const std::shared_ptr<huxerui::HttpClient> &http,
       response.output_tokens =
           std::max(response.output_tokens, chunk->output_tokens);
       if (chunk->done) {
-        return true;
+        done = true;
       }
     }
-    return false;
+    return done;
   };
 
   while (true) {
@@ -301,6 +349,9 @@ CompleteStreaming(const std::shared_ptr<huxerui::HttpClient> &http,
       auto consumed = consume(std::move(*finished));
       if (!consumed.has_value()) {
         co_return std::unexpected(consumed.error());
+      }
+      if (auto flushed = flush_marker_filters(); !flushed.has_value()) {
+        co_return std::unexpected(std::move(flushed.error()));
       }
       response.text = std::move(text).Take();
       response.reasoning_content = std::move(reasoning).Take();
@@ -323,6 +374,9 @@ CompleteStreaming(const std::shared_ptr<huxerui::HttpClient> &http,
       co_return std::unexpected(consumed.error());
     }
     if (*consumed) {
+      if (auto flushed = flush_marker_filters(); !flushed.has_value()) {
+        co_return std::unexpected(std::move(flushed.error()));
+      }
       response.text = std::move(text).Take();
       response.reasoning_content = std::move(reasoning).Take();
       std::erase_if(streamed_tool_calls, [](const auto &call) {

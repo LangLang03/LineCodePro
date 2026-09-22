@@ -196,6 +196,9 @@ MemoryContextService::CommitTurn(bool learning_enabled,
       .id = {},
       .scope = extracted->scope,
       .project_id = std::move(turn.project_id),
+      // Auto-extracted memories carry no label; the list falls back to the
+      // statement preview for them.
+      .title = {},
       .content = extracted->content,
       .source = "auto",
       .confidence = extracted->confidence,
