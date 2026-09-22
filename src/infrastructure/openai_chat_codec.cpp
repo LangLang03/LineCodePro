@@ -916,16 +916,20 @@ DecodeOpenAiChatStreamEvent(const std::string_view data) {
   if (choice == nullptr) {
     return usage_only;
   }
-  if (const auto *finish_reason = StringValue(Member(*choice, "finish_reason"));
-      finish_reason != nullptr && *finish_reason == "content_filter") {
+  const auto *finish_reason = StringValue(Member(*choice, "finish_reason"));
+  if (finish_reason != nullptr && *finish_reason == "content_filter") {
     return std::unexpected(OpenAiCodecError{
         .message = "OpenAI blocked the response with its content filter"});
   }
   const auto *delta = Member(*choice, "delta");
   const auto *content =
       delta == nullptr ? nullptr : StringValue(Member(*delta, "content"));
+  // A non-null `finish_reason` is the model's end-of-turn signal ("stop",
+  // "tool_calls", "length", ...). Treating it as the end of the stream keeps a
+  // proxy that omits `data: [DONE]` and holds the connection open from leaving
+  // the turn "processing" forever; `[DONE]` and EOF still terminate as before.
   OpenAiStreamChunk chunk{
-      .done = false,
+      .done = finish_reason != nullptr,
       .text_delta = content == nullptr ? std::nullopt
                                        : std::optional<std::string>{*content},
       .reasoning_delta =

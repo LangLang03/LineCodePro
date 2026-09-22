@@ -6,6 +6,7 @@
 
 #include "application/generation_controller.h"
 #include "infrastructure/bounded_text_accumulator.h"
+#include "infrastructure/completion_end_marker.h"
 #include "infrastructure/in_memory_conversation_store.h"
 #include "infrastructure/model_url_policy.h"
 #include "infrastructure/openai_chat_codec.h"
@@ -102,11 +103,24 @@ void DecodesOpenAiSsePayloadsAndDoneSentinel() {
   EXPECT_EXPRESSION(delta->text_delta == "固定回复");
   EXPECT_EXPRESSION(delta->reasoning_delta == "思考");
 
+  // `finish_reason` is the model's end-of-turn signal, so it terminates the
+  // stream even when a proxy never sends `data: [DONE]`.
   const auto stopped = DecodeOpenAiChatStreamEvent(
       R"json({"choices":[{"delta":{},"finish_reason":"stop"}]})json");
   EXPECT_EXPRESSION(stopped.has_value());
-  EXPECT_EXPRESSION(!stopped->done);
+  EXPECT_EXPRESSION(stopped->done);
   EXPECT_EXPRESSION(!stopped->text_delta.has_value());
+
+  const auto tool_finished = DecodeOpenAiChatStreamEvent(
+      R"json({"choices":[{"delta":{},"finish_reason":"tool_calls"}]})json");
+  EXPECT_EXPRESSION(tool_finished.has_value());
+  EXPECT_EXPRESSION(tool_finished->done);
+
+  const auto still_streaming = DecodeOpenAiChatStreamEvent(
+      R"json({"choices":[{"delta":{"content":"partial"},"finish_reason":null}]})json");
+  EXPECT_EXPRESSION(still_streaming.has_value());
+  EXPECT_EXPRESSION(!still_streaming->done);
+  EXPECT_EXPRESSION(still_streaming->text_delta == "partial");
 
   const auto done = DecodeOpenAiChatStreamEvent(" \t[DONE]\r\n");
   EXPECT_EXPRESSION(done.has_value());
@@ -392,6 +406,114 @@ void GenerationControllerRejectsStaleResultsAndPersistsAssistant() {
              linecode::domain::ToolCallStatus::rejected);
 }
 
+// The answer bubble renders `streamed_text`, so the timeline used to hold a
+// second copy of the same text while it streamed: it showed up twice and then
+// vanished when the turn completed. Text now only enters the timeline once the
+// turn is known to continue (a tool call) or has moved on.
+void StreamedTextBecomesAProcessBlockWhenTheTurnMovesOn() {
+  auto store = std::make_unique<InMemoryConversationStore>();
+  linecode::application::ChatSession session(std::move(store));
+  GenerationController controller(session);
+
+  auto work = controller.Begin("hello");
+  EXPECT_EXPRESSION(work.has_value());
+  const auto id = work->generation_id;
+
+  EXPECT_EXPRESSION(controller.Observe(
+      id, linecode::application::CompletionTextDelta{
+              .turn_index = 0, .text = "我先看看目录。"}));
+  EXPECT_EXPRESSION(controller.State().streamed_text == "我先看看目录。");
+  // Nothing is written into the process block while the text is still the
+  // answer of the turn in progress.
+  EXPECT_EXPRESSION(controller.State().timeline.empty());
+
+  // The tool call proves the turn continues, so the text becomes a process
+  // block and the answer bubble stops showing it.
+  EXPECT_EXPRESSION(controller.Observe(
+      id, linecode::application::CompletionToolCallEvent{
+              .turn_index = 0,
+              .call = {.id = "call-1", .name = "list_dir",
+                       .arguments_json = "{}"},
+              .status = linecode::application::CompletionToolCallStatus::running,
+              .result = std::nullopt,
+              .display = {},
+              .created_at_millis = 1,
+              .duration_millis = 0}));
+  EXPECT_EXPRESSION(controller.State().streamed_text.empty());
+  EXPECT_EXPRESSION(controller.State().timeline.size() == 2U);
+  const auto *flushed =
+      std::get_if<linecode::domain::AssistantTextEvent>(
+          &controller.State().timeline.front());
+  EXPECT_EXPRESSION(flushed != nullptr && flushed->text == "我先看看目录。");
+  EXPECT_EXPRESSION(flushed->turn_index == 0U);
+  EXPECT_EXPRESSION(std::holds_alternative<linecode::domain::AssistantToolEvent>(
+      controller.State().timeline.back()));
+
+  // The next turn streams its own answer; it stays out of the timeline too.
+  EXPECT_EXPRESSION(controller.Observe(
+      id, linecode::application::CompletionTextDelta{
+              .turn_index = 1, .text = "目录里有这些文件。"}));
+  EXPECT_EXPRESSION(controller.State().streamed_text == "目录里有这些文件。");
+  EXPECT_EXPRESSION(controller.State().timeline.size() == 2U);
+
+  CompletionResponse response;
+  response.text = "目录里有这些文件。";
+  response.tool_calls = {};
+  EXPECT_EXPRESSION(controller.Complete(id, std::move(response)));
+  const auto &persisted = session.Messages().back();
+  EXPECT_EXPRESSION(persisted.content == "目录里有这些文件。");
+  // Exactly one copy of the earlier sentence, inside the process block.
+  EXPECT_EXPRESSION(persisted.timeline.size() == 2U);
+}
+
+// Models leak their end-of-turn control token into the visible text; the tag
+// must not be rendered, and nothing after it belongs to the answer.
+void StripsLeakedCompletionEndMarkers() {
+  using linecode::infrastructure::CompletionEndMarkerFilter;
+  using linecode::infrastructure::IsCompletionEndMarkerName;
+  using linecode::infrastructure::StripCompletionEndMarkers;
+
+  EXPECT_EXPRESSION(StripCompletionEndMarkers("答案到这里<end_of_turn>") ==
+                    "答案到这里");
+  EXPECT_EXPRESSION(StripCompletionEndMarkers("答案<end>") == "答案");
+  EXPECT_EXPRESSION(StripCompletionEndMarkers("答案<｜end▁of▁sentence｜>") ==
+                    "答案");
+  EXPECT_EXPRESSION(StripCompletionEndMarkers("答案<|end_of_text|>") == "答案");
+  EXPECT_EXPRESSION(StripCompletionEndMarkers("答案<|im_end|>") == "答案");
+  EXPECT_EXPRESSION(StripCompletionEndMarkers("答案<end_of_turn>tail") == "答案");
+
+  // Ordinary markup and code are left alone: `<endpoint>` is not a marker.
+  EXPECT_EXPRESSION(StripCompletionEndMarkers("<endpoint> 是接口") ==
+                    "<endpoint> 是接口");
+  EXPECT_EXPRESSION(StripCompletionEndMarkers("<b>粗体</b>") == "<b>粗体</b>");
+  EXPECT_EXPRESSION(!IsCompletionEndMarkerName("endpoint"));
+  EXPECT_EXPRESSION(!IsCompletionEndMarkerName(""));
+  EXPECT_EXPRESSION(IsCompletionEndMarkerName("end"));
+  EXPECT_EXPRESSION(IsCompletionEndMarkerName("end_of_turn"));
+  EXPECT_EXPRESSION(IsCompletionEndMarkerName("endoftext"));
+
+  // Streaming: the marker is split across deltas, so the tail is held back
+  // until it is known not to be one.
+  CompletionEndMarkerFilter filter;
+  EXPECT_EXPRESSION(filter.Push("先解释一下") == "先解释一下");
+  EXPECT_EXPRESSION(filter.Push("<end") == "");
+  EXPECT_EXPRESSION(!filter.Terminated());
+  EXPECT_EXPRESSION(filter.Push("_of_turn>") == "");
+  EXPECT_EXPRESSION(filter.Terminated());
+  EXPECT_EXPRESSION(filter.Push("标记之后的内容") == "");
+  EXPECT_EXPRESSION(filter.Flush() == "");
+
+  // A '<' whose name cannot grow into a marker is emitted straight away ...
+  CompletionEndMarkerFilter plain;
+  EXPECT_EXPRESSION(plain.Push("a < b") == "a < b");
+  EXPECT_EXPRESSION(!plain.Terminated());
+  EXPECT_EXPRESSION(plain.Flush().empty());
+  // ... while a tail that still could ("<e") waits for the next delta.
+  CompletionEndMarkerFilter pending;
+  EXPECT_EXPRESSION(pending.Push("结尾 <e") == "结尾 ");
+  EXPECT_EXPRESSION(pending.Flush() == "<e");
+}
+
 } // namespace
 
 TEST(completion_pipeline_tests, LegacySuite) {
@@ -402,4 +524,6 @@ TEST(completion_pipeline_tests, LegacySuite) {
   JoinsEndpointExactlyOnce();
   EnforcesHttpsOrLiteralPrivateCleartextHosts();
   GenerationControllerRejectsStaleResultsAndPersistsAssistant();
+  StreamedTextBecomesAProcessBlockWhenTheTurnMovesOn();
+  StripsLeakedCompletionEndMarkers();
 }

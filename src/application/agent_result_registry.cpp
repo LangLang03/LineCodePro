@@ -293,6 +293,25 @@ AgentResultRegistry::Read(const std::string_view agent_id) const {
   };
 }
 
+std::optional<AgentResultVersion>
+AgentResultRegistry::ReadVersion(const std::string_view agent_id) const {
+  if (agent_id.empty())
+    return std::nullopt;
+  const std::scoped_lock guard{lock_};
+  const auto found =
+      std::ranges::find(records_, agent_id, &AgentResultRecord::agent_id);
+  if (found == records_.end())
+    return std::nullopt;
+  return AgentResultVersion{
+      .updated_at_ms = found->updated_at_ms,
+      .output_bytes = found->full_output.size(),
+      .thinking_bytes = found->thinking.size(),
+      .tool_call_count = found->tool_call_count,
+      .error = found->error,
+      .status_fingerprint = std::hash<std::string_view>{}(found->status),
+  };
+}
+
 bool AgentResultRegistry::Contains(std::string_view agent_id) const {
   return GetRecord(agent_id).has_value();
 }

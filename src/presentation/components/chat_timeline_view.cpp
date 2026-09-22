@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <iterator>
 #include <ranges>
 #include <span>
@@ -116,6 +117,31 @@ StringResource ReadStatusSummary(domain::ToolCallStatus status) {
              : found->summary;
 }
 
+// `memory_update` gets its own wording: it writes a memory, so "Read" was both
+// wrong and confusing next to the book icon.
+const std::array kMemoryStatusPresentations{
+    ReadStatusPresentation{domain::ToolCallStatus::requested,
+                           app::strings::chat_tool_memory_running},
+    ReadStatusPresentation{domain::ToolCallStatus::awaiting_review,
+                           app::strings::chat_tool_memory_running},
+    ReadStatusPresentation{domain::ToolCallStatus::running,
+                           app::strings::chat_tool_memory_running},
+    ReadStatusPresentation{domain::ToolCallStatus::completed,
+                           app::strings::chat_tool_memory_completed},
+    ReadStatusPresentation{domain::ToolCallStatus::failed,
+                           app::strings::chat_tool_memory_failed},
+    ReadStatusPresentation{domain::ToolCallStatus::rejected,
+                           app::strings::chat_tool_memory_failed},
+};
+
+StringResource MemoryStatusSummary(domain::ToolCallStatus status) {
+  const auto found = std::ranges::find(kMemoryStatusPresentations, status,
+                                       &ReadStatusPresentation::status);
+  return found == kMemoryStatusPresentations.end()
+             ? app::strings::chat_tool_memory_failed
+             : found->summary;
+}
+
 View LegacyReadHeader(const ToolTimelinePresentation &presentation) {
   const auto metrics = ToolTimelineMetrics(presentation.visual);
   const auto color = presentation.failed ? colors::danger : colors::secondary;
@@ -134,6 +160,51 @@ View LegacyReadHeader(const ToolTimelinePresentation &presentation) {
       .With(Frame{.min_height = metrics.header_height},
             Spacing(metrics.title_leading_margin),
             CrossAlign(CrossAxisAlignment::Center));
+}
+
+// `memory_update` header: square book icon centred in the icon slot, and the
+// status label plus the memory title on one vertically centred line, so the
+// Chinese and English labels share the same baseline as the icon.
+View LegacyMemoryHeader(const ToolTimelinePresentation &presentation,
+                        bool expanded, std::function<void()> toggle) {
+  const auto metrics = ToolTimelineMetrics(presentation.visual);
+  const auto color = presentation.failed ? colors::danger : colors::secondary;
+  std::vector<View> children;
+  children.reserve(presentation.expandable ? 3U : 2U);
+  children.push_back(
+      Stack{Image(TimelineIcon(presentation.icon))
+                .Fit(ImageFit::Contain)
+                .Align(HorizontalAlignment::Center, VerticalAlignment::Center)
+                .Tint(color)
+                .With(Frame{.width = metrics.icon_width,
+                            .height = metrics.icon_height})}
+          .With(Frame{.width = metrics.icon_slot_width,
+                      .height = metrics.icon_slot_height},
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center)));
+  children.push_back(
+      Text::Format(MemoryStatusSummary(presentation.status), presentation.title)
+          .Style(ChatTextStyle(metrics.title_size, FontWeight::Regular, color))
+          .With(Grow()));
+  if (presentation.expandable) {
+    children.push_back(Stack{
+        Image(expanded ? app::images::chevron_down : app::images::chevron_right)
+            .Tint(colors::secondary)
+            .With(Frame{.width = 24.0F, .height = metrics.icon_height})}
+                           .With(Frame{.width = 24.0F,
+                                       .height = metrics.icon_slot_height},
+                                 Align(HorizontalAlignment::Center,
+                                       VerticalAlignment::Center)));
+  }
+  View header = Row(std::move(children))
+                    .With(Frame{.min_height = metrics.header_height},
+                          Spacing(metrics.title_leading_margin),
+                          CrossAlign(CrossAxisAlignment::Center));
+  if (presentation.expandable) {
+    header = std::move(header)
+                 .OnClick(std::move(toggle))
+                 .With(Focusable(), PointerCursor(PointerCursorKind::Hand));
+  }
+  return header;
 }
 
 View LegacyToolHeader(const ToolTimelinePresentation &presentation,
@@ -263,6 +334,18 @@ View ShellToolRenderer(const ToolTimelinePresentation &presentation,
                                   std::move(toggle)));
   if (expanded && !presentation.detail.empty())
     rows.push_back(ToolCodeCard(presentation.detail, presentation, 240.0F));
+  return Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch));
+}
+
+View MemoryToolRenderer(const ToolTimelinePresentation &presentation,
+                        bool expanded, std::function<void()> toggle,
+                        const TutorialMarkdownLinkHandler &,
+                        const TutorialMarkdownCopyHandler &,
+                        const ToolRendererContext &context) {
+  std::vector<View> rows;
+  rows.push_back(LegacyMemoryHeader(presentation, expanded, std::move(toggle)));
+  if (expanded && !presentation.detail.empty())
+    rows.push_back(ToolCodeCard(presentation.detail, presentation, 200.0F));
   return Column(std::move(rows)).With(CrossAlign(CrossAxisAlignment::Stretch));
 }
 
@@ -1108,6 +1191,7 @@ const std::array kToolRendererPolicies{
     ToolRendererPolicy{ToolTimelineVisualKind::read, &ReadToolRenderer},
     ToolRendererPolicy{ToolTimelineVisualKind::write, &WriteToolRenderer},
     ToolRendererPolicy{ToolTimelineVisualKind::remove, &DeleteToolRenderer},
+    ToolRendererPolicy{ToolTimelineVisualKind::memory, &MemoryToolRenderer},
     ToolRendererPolicy{ToolTimelineVisualKind::todo, &TodoToolRenderer},
     ToolRendererPolicy{ToolTimelineVisualKind::agent, &AgentToolRenderer},
     ToolRendererPolicy{ToolTimelineVisualKind::agent_pipeline,
@@ -1122,11 +1206,54 @@ ToolRenderer RendererFor(ToolTimelineVisualKind visual) {
                                               : found->renderer;
 }
 
+// Parsing markdown is not cheap (headings, fences, tables, inline emphasis),
+// and the timeline re-renders this view on every frame, so a transcript full of
+// lists and tables used to re-parse all of it 60 times a second. The parser is a
+// pure function of its input, so the parsed document is memoized on a
+// fingerprint of the text. Documents share their nested blocks, so a copy is
+// only a handle copy. Composition runs on the UI thread; no locking is needed.
+namespace {
+
+constexpr std::size_t kMarkdownCacheSize = 48U;
+constexpr std::uint64_t kMarkdownFnvOffset = 1469598103934665603ULL;
+constexpr std::uint64_t kMarkdownFnvPrime = 1099511628211ULL;
+
+struct MarkdownCacheEntry final {
+  std::uint64_t key{};
+  domain::TutorialDocument document{};
+  bool valid{};
+};
+
+std::uint64_t MarkdownFingerprint(const std::string_view markdown) noexcept {
+  std::uint64_t hash = kMarkdownFnvOffset;
+  for (const char byte : markdown) {
+    hash ^= static_cast<unsigned char>(byte);
+    hash *= kMarkdownFnvPrime;
+  }
+  return hash;
+}
+
+domain::TutorialDocument ParseMarkdownMemoized(const std::string_view markdown) {
+  static std::array<MarkdownCacheEntry, kMarkdownCacheSize> cache{};
+  static std::size_t cursor{};
+  const auto key = MarkdownFingerprint(markdown);
+  for (const auto &entry : cache) {
+    if (entry.valid && entry.key == key)
+      return entry.document;
+  }
+  infrastructure::TutorialMarkdownParser parser;
+  auto document = parser.Parse(markdown);
+  cache[cursor++ % cache.size()] =
+      MarkdownCacheEntry{.key = key, .document = document, .valid = true};
+  return document;
+}
+
+} // namespace
+
 View AssistantMarkdown(std::string_view markdown, bool code_wrap,
                        const TutorialMarkdownLinkHandler &on_link,
                        const TutorialMarkdownCopyHandler &on_copy) {
-  infrastructure::TutorialMarkdownParser parser;
-  const auto document = parser.Parse(markdown);
+  const auto document = ParseMarkdownMemoized(markdown);
   // Legacy MarkdownView is MATCH_PARENT inside the assistant bubble. A fixed
   // desktop-oriented cap here makes short Android replies wrap one line early.
   return TutorialMarkdownDocumentView(document, code_wrap, 1.0F, on_link,

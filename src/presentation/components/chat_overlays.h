@@ -8,6 +8,9 @@
 
 #include <huxerui/view.h>
 
+#include "domain/behavior_settings.h"
+#include "domain/model_config.h"
+
 namespace linecode::presentation {
 
 enum class ChatContextAction : std::uint8_t {
@@ -130,6 +133,32 @@ struct ChatAttachmentPickerCallbacks final {
   std::function<void(ChatAttachmentFile)> on_file_toggled;
 };
 
+// The composer's model and reasoning-depth pickers. Both are bottom sheets so
+// they reuse the pattern the attachment picker already proves out; the
+// integration layer owns the authoritative visible state, exactly like the
+// attachment sheet above.
+struct ChatModelPickerState final {
+  bool visible = false;
+  std::string selected_model_id;
+  std::vector<domain::ModelConfig> models;
+};
+
+struct ChatModelPickerCallbacks final {
+  std::function<void()> on_dismiss_request;
+  std::function<void(std::string)> on_model_selected;
+};
+
+struct ChatReasoningPickerState final {
+  bool visible = false;
+  std::string model_name;
+  domain::ReasoningEffort selected = domain::ReasoningEffort::medium;
+};
+
+struct ChatReasoningPickerCallbacks final {
+  std::function<void()> on_dismiss_request;
+  std::function<void(domain::ReasoningEffort)> on_reasoning_selected;
+};
+
 template <typename Action> struct ChatOverlayCallbacks final {
   std::function<void()> on_dismiss_request;
   std::function<void(Action)> on_action;
@@ -156,6 +185,14 @@ ChatPermissionMenu(const ChatPermissionMenuState &state,
 [[nodiscard]] huxerui::View
 ChatAttachmentPicker(const ChatAttachmentPickerState &state,
                      ChatAttachmentPickerCallbacks callbacks);
+
+[[nodiscard]] huxerui::View
+ChatModelPickerSheet(const ChatModelPickerState &state,
+                     ChatModelPickerCallbacks callbacks);
+
+[[nodiscard]] huxerui::View
+ChatReasoningPickerSheet(const ChatReasoningPickerState &state,
+                         ChatReasoningPickerCallbacks callbacks);
 
 // Wraps arbitrary bottom-sheet content in the shared legacy framing: a 560dp
 // panel inside 16dp side insets, offset to clear the Android navigation bar.

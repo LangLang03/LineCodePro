@@ -125,12 +125,38 @@ struct AgentResultView final {
   bool operator==(const AgentResultView &) const = default;
 };
 
+// Cheap change token for one stored run.
+//
+// `Read()` copies the whole record (full output, thinking, decoded progress), so
+// a renderer that asks for a card on every frame pays for it 60 times a second.
+// The presentation layer memoizes on this token instead: it is a handful of
+// scalars, it changes whenever the run is written, and a reader that cannot
+// produce one simply opts out of memoization.
+struct AgentResultVersion final {
+  std::int64_t updated_at_ms{};
+  std::size_t output_bytes{};
+  std::size_t thinking_bytes{};
+  int tool_call_count{};
+  bool error{};
+  std::uint64_t status_fingerprint{};
+
+  bool operator==(const AgentResultVersion &) const = default;
+};
+
 class AgentResultReader {
 public:
   virtual ~AgentResultReader() = default;
 
   [[nodiscard]] virtual std::optional<AgentResultView>
   Read(std::string_view agent_id) const = 0;
+
+  // Optional: absent means "this reader cannot prove freshness", and callers
+  // must not cache anything derived from it.
+  [[nodiscard]] virtual std::optional<AgentResultVersion>
+  ReadVersion(std::string_view agent_id) const {
+    static_cast<void>(agent_id);
+    return std::nullopt;
+  }
 };
 
 // Legacy `AgentOutputTool` `include` option: "meta" selects the status-only
@@ -170,6 +196,8 @@ public:
   GetRecord(std::string_view agent_id) const;
   [[nodiscard]] std::optional<AgentResultView>
   Read(std::string_view agent_id) const override;
+  [[nodiscard]] std::optional<AgentResultVersion>
+  ReadVersion(std::string_view agent_id) const override;
   [[nodiscard]] bool Contains(std::string_view agent_id) const;
   // Insertion order, matching the legacy LinkedHashMap iteration.
   [[nodiscard]] std::vector<std::string> AgentIds() const;
