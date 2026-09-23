@@ -1,12 +1,10 @@
 name: CI
 
-# Push only. A push to a branch that has an open pull request raises both the
-# `push` and the `pull_request` event, so listening to both ran every check
-# twice for one commit. Fork pull requests are not tested by this workflow;
-# their commits are not pushed here.
+# Pull requests to protected master are already checked on dev. The merge
+# commit starts Release when the version changes, so it does not need CI again.
 on:
   push:
-    branches: [master, dev]
+    branches: [dev]
   workflow_dispatch:
 
 permissions:
@@ -20,6 +18,10 @@ jobs:
   native-tests:
     name: C++23 / GoogleTest
     runs-on: ubuntu-latest
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_MAXSIZE: 500M
     # Ubuntu 24.04 ships GCC 13 and the toolchain PPA only offers a March 2026
     # GCC 16 snapshot; both mis-compile this codebase (a spurious
     # -Wfree-nonheap-object, then an internal compiler error in gimplify). The
@@ -38,7 +40,7 @@ jobs:
           set -euo pipefail
           apt-get update
           apt-get install --yes --no-install-recommends \
-            ninja-build libgtest-dev libsqlite3-dev libssl-dev zlib1g-dev \
+            ninja-build ccache libgtest-dev libsqlite3-dev libssl-dev zlib1g-dev \
             libcurl4-openssl-dev cmake curl git ca-certificates \
             libgtk-4-1 libgraphene-1.0-0 libepoxy0 libsoup-3.0-0 \
             libgstreamer-plugins-base1.0-0
@@ -47,6 +49,17 @@ jobs:
           # them fails at link time with undefined gtk_/gdk_/epoxy_ symbols.
           g++ --version | head -1
           cmake --version | head -1
+
+      - name: Restore C++ compilation cache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-gcc16.2-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-gcc16.2-${{ runner.os }}-
+
+      - name: Reset C++ cache statistics
+        run: ccache --zero-stats
 
       - name: Install HuxerUI SDK 0.3.0
         timeout-minutes: 10
@@ -68,13 +81,18 @@ jobs:
             cp -a "$HOME/.local/share/HuxerUI" "$HUXERUI_HOME"
           fi
           cmake -S tests -B build/tests-ninja -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build tests
         timeout-minutes: 30
         env:
           HUXERUI_HOME: ${{ github.workspace }}/.huxerui-sdk
         run: cmake --build build/tests-ninja --parallel 8
+
+      - name: Report C++ cache statistics
+        run: ccache --show-stats
 
       - name: Run GoogleTest suite
         timeout-minutes: 15
@@ -99,6 +117,10 @@ jobs:
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
+        with:
+          # dev is not the default branch, so setup-gradle otherwise reads
+          # caches without writing the updated dependency/build cache back.
+          cache-read-only: false
 
       - name: Install Android build dependencies
         run: |
@@ -115,12 +137,7 @@ jobs:
       - name: Generate HuxerUI Android library graph
         env:
           HUXERUI_HOME: /home/runner/.local/share/HuxerUI
-          CMAKE_BUILD_PARALLEL_LEVEL: 8
-        # `--source` names a HuxerUI *source checkout*, not this project, so
-        # passing the repository root made the CLI reject it as an invalid
-        # checkout. Run from the project root and let it default to the
-        # working directory.
-        run: /home/runner/.local/share/HuxerUI/bin/huxerui build android --profile debug
+        run: bash tools/generate_android_library_graph.sh
 
       - name: Make Gradle wrapper executable
         run: chmod +x platform/android/gradlew
@@ -128,7 +145,7 @@ jobs:
       - name: Lint and build debug APK
         env:
           HUXERUI_HOME: /home/runner/.local/share/HuxerUI
-        run: ./platform/android/gradlew -p platform/android :app:lintDebug :app:assembleDebug --max-workers=8 --console=plain
+        run: ./platform/android/gradlew -p platform/android :app:lintDebug :app:assembleDebug --build-cache --max-workers=8 --console=plain
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
