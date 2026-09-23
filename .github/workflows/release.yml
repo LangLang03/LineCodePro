@@ -33,6 +33,8 @@ jobs:
 
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
 
       # The SDK manager sometimes stalls on one download; bound the step so a
       # slow mirror fails on its own instead of consuming the job's budget.
@@ -61,8 +63,7 @@ jobs:
         timeout-minutes: 30
         env:
           HUXERUI_HOME: /home/runner/.local/share/HuxerUI
-          CMAKE_BUILD_PARALLEL_LEVEL: 8
-        run: /home/runner/.local/share/HuxerUI/bin/huxerui build android --profile debug
+        run: bash tools/generate_android_library_graph.sh
 
       - name: Validate signing secrets
         env:
@@ -116,7 +117,7 @@ jobs:
           chmod +x platform/android/gradlew
           ./platform/android/gradlew -p platform/android \
             :app:validateReleaseSigning :app:assembleRelease \
-            --max-workers=8 --console=plain
+            --build-cache --max-workers=8 --console=plain
 
       - name: Prepare release artifacts
         env:
