@@ -4,6 +4,7 @@
 #include <optional>
 #include <ranges>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "application/auto_compaction_service.h"
@@ -71,6 +72,8 @@ public:
     if (!work)
       return false;
 
+    last_stream_update_ = {};
+    stream_update_scheduled_ = false;
     revision_ += 1;
     const std::string conversation_id{
         dependencies_.session->CurrentConversationId()};
@@ -403,11 +406,10 @@ private:
           request, prompt_context,
           application::CompletionObserver{
               .on_event =
-                  [generation = dependencies_.generation,
-                   generation_id = work.generation_id, revision = revision_](
+                  [this, generation_id = work.generation_id](
                       const application::CompletionEvent &event) {
-                    if (generation->Observe(generation_id, event))
-                      revision += 1;
+                    if (dependencies_.generation->Observe(generation_id, event))
+                      PublishStreamUpdate(event, generation_id);
                   },
               .on_tool_review = ToolReviewer(),
           });
@@ -469,7 +471,40 @@ private:
       toast_.Show(committed.error().message);
   }
 
+  void PublishStreamUpdate(const application::CompletionEvent &event,
+                           std::uint64_t generation_id) {
+    const auto now = std::chrono::steady_clock::now();
+    constexpr auto kMinimumInterval = std::chrono::milliseconds{50};
+    const bool tool_event =
+        std::holds_alternative<application::CompletionToolCallEvent>(event);
+    if (tool_event || last_stream_update_ ==
+                          std::chrono::steady_clock::time_point{} ||
+        now - last_stream_update_ >= kMinimumInterval) {
+      last_stream_update_ = now;
+      revision_ += 1;
+      return;
+    }
+    if (stream_update_scheduled_)
+      return;
+    stream_update_scheduled_ = true;
+    tasks_.Launch([self = shared_from_this(), generation_id,
+                   remaining = kMinimumInterval - (now - last_stream_update_)]()
+                      -> Task<void> {
+      co_await Delay(remaining);
+      if (self->dependencies_.generation->State().generation_id != generation_id)
+        co_return;
+      self->stream_update_scheduled_ = false;
+      if (self->dependencies_.generation->State().phase !=
+          application::GenerationPhase::running)
+        co_return;
+      self->last_stream_update_ = std::chrono::steady_clock::now();
+      self->revision_ += 1;
+    });
+  }
+
   ChatGenerationDependencies dependencies_;
+  std::chrono::steady_clock::time_point last_stream_update_{};
+  bool stream_update_scheduled_{};
   RetryLabels retry_labels_;
   std::shared_ptr<application::ToolReviewCoordinator> tool_reviews_;
   std::shared_ptr<application::PendingMessageQueue> pending_messages_;

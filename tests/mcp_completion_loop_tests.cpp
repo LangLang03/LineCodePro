@@ -140,6 +140,16 @@ public:
         .content = std::string{kImageResult}, .error = false};
   }
 
+  huxerui::Task<std::expected<application::ToolInvocationResult,
+                              application::ToolRegistryError>>
+  InvokeWithContext(std::string name, std::string arguments,
+                    application::ToolInvocationContext context) override {
+    EXPECT_EXPRESSION(context.call_id == "image-1");
+    if (context.on_progress_json)
+      context.on_progress_json("display-only progress");
+    co_return co_await Invoke(std::move(name), std::move(arguments));
+  }
+
 private:
   const std::vector<application::RegisteredTool> tools{
       {.name = "image_generation",
@@ -428,6 +438,18 @@ TEST(mcp_completion_loop_tests, LegacySuite) {
       std::get<application::CompletionToolCallEvent>(*image_completed);
   EXPECT_EXPRESSION(image_event.result &&
                     image_event.result->content == kImageResult);
+  const auto image_progress =
+      std::ranges::find_if(active->image_events, [](const auto &event) {
+        const auto *tool =
+            std::get_if<application::CompletionToolCallEvent>(&event);
+        return tool != nullptr && tool->result &&
+               tool->status == application::CompletionToolCallStatus::running;
+      });
+  EXPECT_EXPRESSION(image_progress != active->image_events.end());
+  EXPECT_EXPRESSION(std::get<application::CompletionToolCallEvent>(*image_progress)
+                        .result->content == "display-only progress");
+  EXPECT_EXPRESSION(model_tool_message.tool_result->content !=
+                    "display-only progress");
   EXPECT_EXPRESSION(image_event.display.display_markdown ==
                     "![fixture](data:image/png;base64,AAAA)");
   EXPECT_EXPRESSION(image_event.display.hide_success_card);

@@ -63,6 +63,14 @@ CompositeToolRegistry::Tools() const noexcept {
 huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>>
 CompositeToolRegistry::Invoke(std::string name,
                               std::string arguments_json) {
+  co_return co_await InvokeWithContext(std::move(name),
+                                       std::move(arguments_json), {});
+}
+
+huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>>
+CompositeToolRegistry::InvokeWithContext(std::string name,
+                                         std::string arguments_json,
+                                         ToolInvocationContext context) {
   const auto *binding = Find(name);
   if (!binding) {
     co_return std::unexpected(ToolRegistryError{
@@ -70,8 +78,8 @@ CompositeToolRegistry::Invoke(std::string name,
         .message = "Unknown runtime tool: " + name,
     });
   }
-  co_return co_await binding->source->Invoke(std::move(name),
-                                             std::move(arguments_json));
+  co_return co_await binding->source->InvokeWithContext(
+      std::move(name), std::move(arguments_json), std::move(context));
 }
 
 const CompositeToolRegistry::Binding *

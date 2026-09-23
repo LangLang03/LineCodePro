@@ -37,6 +37,10 @@ public:
   [[nodiscard]] huxerui::Task<
       std::expected<ToolInvocationResult, ToolRegistryError>>
   Invoke(std::string name, std::string arguments_json) override;
+  [[nodiscard]] huxerui::Task<
+      std::expected<ToolInvocationResult, ToolRegistryError>>
+  InvokeWithContext(std::string name, std::string arguments_json,
+                    ToolInvocationContext context) override;
 
   [[nodiscard]] bool Contains(std::string_view name) const noexcept;
   void SetRunner(std::shared_ptr<AgentRunner> runner);

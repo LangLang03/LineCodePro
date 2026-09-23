@@ -6,6 +6,8 @@
 #include <map>
 #include <utility>
 
+#include "application/agent_run_progress_codec.h"
+
 namespace linecode::application {
 namespace {
 
@@ -128,7 +130,11 @@ void AppendAssistantHistory(const domain::ChatMessage &message,
               turn.calls.push_back(std::move(call));
             else
               *existing = std::move(call);
-            if (entry.result) {
+            // Live Agent snapshots are UI updates, not tool results for the
+            // next model request. The terminal invocation replaces them with
+            // its compact reference before a successful turn is committed.
+            if (entry.result &&
+                !ParseAgentProgress(entry.result->content)) {
               const auto projected = result_display.Project(
                   entry.call.name, entry.result->content,
                   entry.result->error);

@@ -1,5 +1,7 @@
 #include "application/agent_tool_registry.h"
 
+#include "application/agent_run_progress_codec.h"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -160,6 +162,7 @@ struct AgentToolContext final {
   AgentResultRegistry *results{};
   AgentRunner *runner{};
   ToolTextLanguage language{ToolTextLanguage::english};
+  ToolInvocationContext invocation{};
 };
 
 using AgentToolExecutor =
@@ -357,7 +360,12 @@ ExecuteAgent(AgentToolContext context, std::string arguments_json) {
       .write_scope =
           ScopeList(json::AsArray(json::Find(*input, "write_scope"))),
       .async = async_requested,
-      .tool_call_id = {},
+      .tool_call_id = context.invocation.call_id,
+      .on_progress = [publish = context.invocation.on_progress_json](
+                         const domain::AgentExecutionSnapshot &progress) {
+        if (publish)
+          publish(SerializeAgentProgress(progress));
+      },
   });
   co_return ToolFinished(std::move(result.output), result.error);
 }
@@ -473,7 +481,14 @@ ExecuteAgentPipeline(AgentToolContext context, std::string arguments_json) {
   }
   auto result =
       co_await context.runner->RunAgentPipeline(AgentPipelineRunRequest{
-          .agents = ParsePipelineAgentArray(*agents), .tool_call_id = {}});
+          .agents = ParsePipelineAgentArray(*agents),
+          .tool_call_id = context.invocation.call_id,
+          .on_progress = [publish = context.invocation.on_progress_json](
+                             const domain::AgentPipelineSnapshot &progress) {
+            if (publish)
+              publish(SerializeAgentProgress(progress));
+          },
+      });
   co_return ToolFinished(std::move(result.output), result.error);
 }
 
@@ -598,6 +613,14 @@ std::span<const RegisteredTool> AgentToolRegistry::Tools() const noexcept {
 
 huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>>
 AgentToolRegistry::Invoke(std::string name, std::string arguments_json) {
+  co_return co_await InvokeWithContext(std::move(name),
+                                       std::move(arguments_json), {});
+}
+
+huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>>
+AgentToolRegistry::InvokeWithContext(std::string name,
+                                     std::string arguments_json,
+                                     ToolInvocationContext context) {
   const auto *descriptor = FindDescriptor(name);
   if (descriptor == nullptr) {
     co_return std::unexpected(Error(ToolRegistryErrorCode::unknown_tool,
@@ -611,7 +634,8 @@ AgentToolRegistry::Invoke(std::string name, std::string arguments_json) {
   co_return co_await descriptor->execute(
       AgentToolContext{.results = results_.get(),
                        .runner = runner_.get(),
-                       .language = language_},
+                       .language = language_,
+                       .invocation = std::move(context)},
       std::move(arguments_json));
 }
 

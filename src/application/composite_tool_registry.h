@@ -22,6 +22,10 @@ public:
   [[nodiscard]] huxerui::Task<
       std::expected<ToolInvocationResult, ToolRegistryError>>
   Invoke(std::string name, std::string arguments_json) override;
+  [[nodiscard]] huxerui::Task<
+      std::expected<ToolInvocationResult, ToolRegistryError>>
+  InvokeWithContext(std::string name, std::string arguments_json,
+                    ToolInvocationContext context) override;
 
 private:
   struct Binding final {

@@ -505,4 +505,56 @@ View MessageBubble(const domain::ChatMessage &message,
             CornerRadius(selected ? 12.0F : 0.0F));
 }
 
+View StreamingMessageHeader(
+    const domain::ChatMessage &message,
+    const chat_timeline::Settings &timeline_settings,
+    State<std::vector<std::string>> toggled_timeline,
+    const TutorialMarkdownLinkHandler &on_link,
+    const TutorialMarkdownCopyHandler &on_copy,
+    const chat_timeline::ToolRendererContext &context,
+    std::string_view compact_label) {
+  const bool assistant_turn = HasAssistantTurnProcess(message);
+  const auto stable_turn_id = message.processing_started_at > 0
+                                  ? message.processing_started_at
+                                  : static_cast<std::int64_t>(message.id);
+  View process = assistant_turn
+                     ? AssistantTimeline(message, true, timeline_settings,
+                                         toggled_timeline, on_link, on_copy,
+                                         context, compact_label)
+                 : !message.reasoning_content.empty()
+                     ? ReasoningTimelineBlock(
+                           domain::AssistantReasoningEvent{
+                               .turn_index = 0,
+                               .text = message.reasoning_content},
+                           std::to_string(stable_turn_id) + ":plain-reasoning",
+                           true, timeline_settings.thinking_auto_expand,
+                           timeline_settings.thinking_scroll, toggled_timeline)
+                           .With(Padding(EdgeInsets{.bottom = 14.0F}))
+                     : Stack{}.With(Frame{.height = 0.0F});
+  return Column{std::move(process)}.With(
+      Padding(EdgeInsets{.right = 16.0F, .left = 16.0F}),
+      CrossAlign(CrossAxisAlignment::Stretch));
+}
+
+View StreamingMessageChangedFiles(
+    const domain::ChatMessage &message,
+    State<std::vector<std::string>> toggled_timeline,
+    const TutorialMarkdownLinkHandler &on_link,
+    const TutorialMarkdownCopyHandler &on_copy,
+    const chat_timeline::ToolRendererContext &context) {
+  const auto stable_turn_id = message.processing_started_at > 0
+                                  ? message.processing_started_at
+                                  : static_cast<std::int64_t>(message.id);
+  return ChangedFilesBlock(message, stable_turn_id, toggled_timeline, on_link,
+                           on_copy, context)
+      .With(Padding(EdgeInsets{.right = 16.0F,
+                               .bottom = 32.0F,
+                               .left = 16.0F}));
+}
+
+[[huxerui::composable]] View StreamingMessageStatus(bool thinking) {
+  return WorkingStatus(thinking).With(
+      Padding(EdgeInsets{.right = 16.0F, .bottom = 28.0F, .left = 16.0F}));
+}
+
 } // namespace linecode::presentation::chat_message

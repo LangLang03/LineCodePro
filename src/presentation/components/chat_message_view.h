@@ -37,4 +37,22 @@ MessageBubble(const domain::ChatMessage &message,
               const chat_timeline::ToolRendererContext &context,
               std::string_view compact_label, bool live = false);
 
+[[nodiscard]] huxerui::View StreamingMessageHeader(
+    const domain::ChatMessage &message,
+    const chat_timeline::Settings &timeline_settings,
+    huxerui::State<std::vector<std::string>> toggled_timeline,
+    const TutorialMarkdownLinkHandler &on_link,
+    const TutorialMarkdownCopyHandler &on_copy,
+    const chat_timeline::ToolRendererContext &context,
+    std::string_view compact_label);
+
+[[nodiscard]] huxerui::View StreamingMessageChangedFiles(
+    const domain::ChatMessage &message,
+    huxerui::State<std::vector<std::string>> toggled_timeline,
+    const TutorialMarkdownLinkHandler &on_link,
+    const TutorialMarkdownCopyHandler &on_copy,
+    const chat_timeline::ToolRendererContext &context);
+
+[[huxerui::composable]] huxerui::View StreamingMessageStatus(bool thinking);
+
 } // namespace linecode::presentation::chat_message

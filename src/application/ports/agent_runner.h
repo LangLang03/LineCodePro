@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -42,15 +43,14 @@ struct AgentRunRequest final {
   std::vector<std::string> custom_tool_names{};
   std::vector<std::string> custom_mcp_ids{};
   // Tool call that requested this run, used to tie progress to the card.
-  // The current ToolRegistry::Invoke boundary carries no invocation context,
-  // so registry-dispatched runs leave this empty. Do not synthesize it; a
-  // future invocation-context port must provide the real parent id.
   std::string tool_call_id;
+  std::function<void(const domain::AgentExecutionSnapshot &)> on_progress{};
 };
 
 struct AgentPipelineRunRequest final {
   std::vector<domain::PipelineAgent> agents;
   std::string tool_call_id;
+  std::function<void(const domain::AgentPipelineSnapshot &)> on_progress{};
 };
 
 // Dispatches sub-agents. Implementations own the model loop; the tool registry

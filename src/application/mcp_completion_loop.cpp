@@ -277,7 +277,29 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
                          .display = {},
                          .created_at_millis = started_at,
                      });
-      auto invoked = co_await tools_->Invoke(call.name, call.arguments_json);
+      auto invoked = co_await tools_->InvokeWithContext(
+          call.name, call.arguments_json,
+          ToolInvocationContext{
+              .call_id = call.id,
+              .on_progress_json =
+                  [emit_progress = observer.on_event, call, turn_index,
+                   started_at](std::string progress_json) {
+                    if (!emit_progress)
+                      return;
+                    emit_progress(CompletionEvent{CompletionToolCallEvent{
+                        .turn_index = turn_index,
+                        .call = call,
+                        .status = CompletionToolCallStatus::running,
+                        .result = CompletionToolResult{
+                            .call_id = call.id,
+                            .name = call.name,
+                            .content = std::move(progress_json)},
+                        .display = {},
+                        .created_at_millis = started_at,
+                        .duration_millis = NowMillis() - started_at,
+                    }});
+                  },
+          });
       CompletionToolResult result{
           .call_id = call.id, .name = call.name, .content = {}, .error = false};
       if (invoked) {

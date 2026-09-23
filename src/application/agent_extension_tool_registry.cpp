@@ -1,5 +1,7 @@
 #include "application/agent_extension_tool_registry.h"
 
+#include "application/agent_run_progress_codec.h"
+
 #include <algorithm>
 #include <optional>
 #include <ranges>
@@ -135,6 +137,14 @@ AgentExtensionToolRegistry::Find(const std::string_view name) const noexcept {
 huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>>
 AgentExtensionToolRegistry::Invoke(std::string name,
                                    std::string arguments_json) {
+  co_return co_await InvokeWithContext(std::move(name),
+                                       std::move(arguments_json), {});
+}
+
+huxerui::Task<std::expected<ToolInvocationResult, ToolRegistryError>>
+AgentExtensionToolRegistry::InvokeWithContext(std::string name,
+                                              std::string arguments_json,
+                                              ToolInvocationContext context) {
   const auto *binding = Find(name);
   if (binding == nullptr) {
     co_return std::unexpected(
@@ -177,6 +187,12 @@ AgentExtensionToolRegistry::Invoke(std::string name,
   request.write_scope = StringArray(json::Find(*input, "write_scope"));
   request.custom_tool_names = binding->agent.tool_names;
   request.custom_mcp_ids = binding->agent.mcp_ids;
+  request.tool_call_id = context.call_id;
+  request.on_progress = [publish = std::move(context.on_progress_json)](
+                            const domain::AgentExecutionSnapshot &progress) {
+    if (publish)
+      publish(SerializeAgentProgress(progress));
+  };
 
   auto result = co_await runner_->RunAgent(std::move(request));
   if (result.error && result.output.empty()) {

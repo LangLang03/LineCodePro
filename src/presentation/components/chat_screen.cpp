@@ -65,6 +65,7 @@
 #include "presentation/components/tutorial_markdown.h"
 #include "presentation/line_theme.h"
 #include "presentation/platform_features.h"
+#include "presentation/streaming_markdown_chunks.h"
 #include "presentation/working_status_presentation.h"
 
 namespace linecode::presentation {
@@ -505,6 +506,50 @@ View ExportFormatDialog(DialogContext dialog, StringVariant title,
             Background(colors::elevated), CornerRadius(16.0F), ClipChildren());
 }
 
+[[huxerui::composable]] View HistoryMessageRow(
+    std::shared_ptr<const std::vector<domain::ChatMessage>> messages,
+    std::size_t index, State<std::optional<std::uint64_t>> action_message,
+    bool multi_select, State<std::vector<std::uint64_t>> selected_messages,
+    MessageActionCallbacks callbacks, ChatTimelineSettings timeline_settings,
+    State<std::vector<std::string>> toggled_timeline,
+    TutorialMarkdownLinkHandler on_link, TutorialMarkdownCopyHandler on_copy,
+    ToolRendererContext context, std::string compact_label) {
+  return MessageBubble((*messages)[index], action_message, multi_select,
+                       selected_messages, callbacks, timeline_settings,
+                       toggled_timeline, on_link, on_copy, context,
+                       compact_label);
+}
+
+[[huxerui::composable]] View LiveMarkdownRow(
+    std::shared_ptr<const domain::ChatMessage> message,
+    StreamingMarkdownChunk chunk, bool code_wrap,
+    TutorialMarkdownLinkHandler on_link, TutorialMarkdownCopyHandler on_copy) {
+  const auto text = std::string_view{message->content}.substr(chunk.start,
+                                                              chunk.length);
+  return AssistantMarkdown(text, code_wrap, on_link, on_copy)
+      .With(Padding(EdgeInsets{.right = 16.0F, .left = 16.0F}));
+}
+
+[[huxerui::composable]] View LiveHeaderRow(
+    std::shared_ptr<const domain::ChatMessage> message,
+    ChatTimelineSettings timeline_settings,
+    State<std::vector<std::string>> toggled_timeline,
+    TutorialMarkdownLinkHandler on_link, TutorialMarkdownCopyHandler on_copy,
+    ToolRendererContext context, std::string compact_label) {
+  return chat_message::StreamingMessageHeader(
+      *message, timeline_settings, toggled_timeline, on_link, on_copy, context,
+      compact_label);
+}
+
+[[huxerui::composable]] View LiveChangedFilesRow(
+    std::shared_ptr<const domain::ChatMessage> message,
+    State<std::vector<std::string>> toggled_timeline,
+    TutorialMarkdownLinkHandler on_link, TutorialMarkdownCopyHandler on_copy,
+    ToolRendererContext context) {
+  return chat_message::StreamingMessageChangedFiles(
+      *message, toggled_timeline, on_link, on_copy, context);
+}
+
 View Conversation(
     const std::shared_ptr<application::ChatSession> &session,
     const std::shared_ptr<application::GenerationController> &generation,
@@ -526,8 +571,9 @@ View Conversation(
   if (messages.empty()) {
     return EmptyConversation(navigation, !has_selected_model.value_or(true));
   }
-  const auto presentation_messages =
-      BuildConversationPresentationMessages(messages);
+  auto presentation_messages =
+      std::make_shared<const std::vector<domain::ChatMessage>>(
+          BuildConversationPresentationMessages(messages));
 
   const auto &generation_state = generation->State();
   domain::ChatMessage streaming_message{};
@@ -552,35 +598,78 @@ View Conversation(
         .turn_index = streaming_message.timeline.size(),
         .status = auto_compaction->status});
   }
-  View streaming =
-      generation_state.phase == application::GenerationPhase::running
-          ? MessageBubble(streaming_message, action_message, false,
-                          selected_messages, {}, timeline_settings,
-                          toggled_timeline, on_link, on_copy, context,
-                          compact_label, true)
-          : Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});
+  const bool running =
+      generation_state.phase == application::GenerationPhase::running;
+  auto live_message =
+      std::make_shared<const domain::ChatMessage>(std::move(streaming_message));
+  const bool has_process = running && HasAssistantTurnProcess(*live_message);
+  const bool has_header =
+      running && (has_process || !live_message->reasoning_content.empty());
+  const bool show_status = running && !has_process;
+  const auto chunks = running ? SplitStreamingMarkdown(live_message->content)
+                              : std::vector<StreamingMarkdownChunk>{};
   const ScrollMetrics metrics = conversation_scroll.Metrics();
   const bool at_bottom = metrics.maximum_offset <= metrics.offset + 2.0F;
+  const auto history_count = presentation_messages->size();
+  const auto item_count = 2U + history_count +
+                          (has_header ? 1U : 0U) + chunks.size() +
+                          (show_status ? 1U : 0U) +
+                          (has_process ? 1U : 0U);
   View list =
-      ScrollView(
-          Column{
-              ForEach(presentation_messages,
-                      [action_message, multi_select, selected_messages,
-                       callbacks, timeline_settings, toggled_timeline, on_link,
-                       on_copy, context, compact_label](const auto &message) {
-                        return MessageBubble(message, action_message,
-                                             multi_select, selected_messages,
-                                             callbacks, timeline_settings,
-                                             toggled_timeline, on_link, on_copy,
-                                             context, compact_label)
-                            .Key(message.id);
-                      }),
-              std::move(streaming),
-          }
-              .With(CrossAlign(CrossAxisAlignment::Stretch),
-                    Padding(EdgeInsets{.top = 8.0F,
-                                       .bottom = multi_select ? 72.0F : 8.0F})))
-          .ScrollAxis(Axis::Vertical)
+      VirtualList(
+          item_count,
+          [presentation_messages, live_message, chunks, history_count,
+           has_header, has_process, show_status, multi_select, action_message,
+           selected_messages, callbacks, timeline_settings, toggled_timeline,
+           on_link, on_copy, context, compact_label](std::size_t index) -> View {
+            if (index == 0U)
+              return Stack{}.With(Frame{.height = 8.0F}).Key("top");
+            std::size_t cursor = index - 1U;
+            if (cursor < history_count) {
+              return HistoryMessageRow(
+                         presentation_messages, cursor, action_message,
+                         multi_select, selected_messages, callbacks,
+                         timeline_settings, toggled_timeline, on_link, on_copy,
+                         context, compact_label)
+                  .Key((*presentation_messages)[cursor].id);
+            }
+            cursor -= history_count;
+            if (has_header) {
+              if (cursor == 0U) {
+                return LiveHeaderRow(live_message, timeline_settings,
+                                     toggled_timeline, on_link, on_copy, context,
+                                     compact_label)
+                    .Key("stream-header");
+              }
+              --cursor;
+            }
+            if (cursor < chunks.size()) {
+              const auto chunk = chunks[cursor];
+              return LiveMarkdownRow(live_message, chunk,
+                                     timeline_settings.code_wrap_enabled,
+                                     on_link, on_copy)
+                  .Key("stream:" + std::to_string(chunk.start));
+            }
+            cursor -= chunks.size();
+            if (show_status && cursor == 0U) {
+              return chat_message::StreamingMessageStatus(
+                         !live_message->reasoning_content.empty() &&
+                         live_message->content.empty())
+                  .Key("stream-status");
+            }
+            if (show_status)
+              --cursor;
+            if (has_process && cursor == 0U) {
+              return LiveChangedFilesRow(live_message, toggled_timeline,
+                                         on_link, on_copy, context)
+                  .Key("stream-files");
+            }
+            return Stack{}
+                .With(Frame{.height = multi_select ? 72.0F : 8.0F})
+                .Key("tail");
+          })
+          .EstimatedItemExtent(180.0F)
+          .CacheExtent(480.0F)
           .Controller(conversation_scroll)
           .With(Grow(), ScrollBar(),
                 ChatTailScroll{
@@ -709,6 +798,7 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
   const auto has_selected_model = state.has_selected_model;
   auto active_generation = state.active_generation;
   auto revision = state.revision;
+  const auto model_revision = state.model_revision;
   auto workspace = state.workspace;
   auto interaction_mode = state.interaction_mode;
   auto input_settings = state.input_settings;
@@ -905,7 +995,7 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
       }
       slash_selected_model_id = std::move(*selected);
     });
-  });
+  }, model_revision);
 
   const ControlledBottomSheet attachment_sheet(
       bottom_sheets, attachment_visible, attachment_layer);
@@ -1547,6 +1637,7 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
             .chat_mode = interaction_mode->chat_mode,
             .slash_models = slash_models,
             .selected_model_id = slash_selected_model_id,
+            .reasoning_effort = reasoning_effort,
             .input_settings = input_settings,
             .current_project_id = current_project_id,
             .prompt_context = std::move(prompt_context),
@@ -1554,7 +1645,6 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
             .toast = toast,
             .auto_compaction = auto_compaction.Get(),
             .retry_labels = retry_labels,
-            .reasoning_effort = reasoning_effort,
         },
         chat_composer::Actions{
             .show_attachment_picker = show_attachments,

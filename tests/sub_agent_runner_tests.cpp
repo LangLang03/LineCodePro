@@ -286,13 +286,17 @@ class FakeCompletionGateway final : public application::CompletionGateway {
 public:
   huxerui::Task<Response>
   Complete(Request request,
-           application::CompletionObserver /*observer*/) override {
+           application::CompletionObserver observer) override {
     // Index-based access: a concurrently running child may append while this
     // turn is suspended, which invalidates a held reference.
     const auto index = requests.size();
     requests.push_back(std::move(request));
     if (before_response)
       co_await before_response(requests[index], index);
+    if (observer.on_event && index < streamed_events.size()) {
+      for (const auto &event : streamed_events[index])
+        observer.on_event(event);
+    }
     if (responder)
       co_return responder(requests[index], index);
     if (script.empty()) {
@@ -313,6 +317,7 @@ public:
       before_response;
   std::function<Response(const Request &, std::size_t)> responder;
   std::vector<Response> script;
+  std::vector<std::vector<application::CompletionEvent>> streamed_events;
   std::vector<Request> requests;
 };
 
@@ -930,6 +935,34 @@ TEST(SubAgentRunnerTest, SelectedCustomMcpScopeIsAdvertisedAndInvoked) {
 // Model loop
 // ---------------------------------------------------------------------------
 
+TEST(SubAgentRunnerTest, PublishesAgentTextBeforeModelTurnCompletes) {
+  auto harness = std::make_shared<Harness>();
+  harness->gateway->script = {TextResponse("finished answer")};
+  harness->gateway->streamed_events = {{application::CompletionTextDelta{
+      .turn_index = 0, .text = "partial answer"}}};
+  auto updates =
+      std::make_shared<std::vector<domain::AgentExecutionSnapshot>>();
+
+  RunScenario([harness, updates](huxerui::TaskScope) -> huxerui::Task<void> {
+    auto request =
+        harness->AgentRequest("explore", "TASK", "Stream answer", false);
+    request.on_progress = [updates](const auto &progress) {
+      updates->push_back(progress);
+    };
+    auto result = co_await harness->runner->RunAgent(std::move(request));
+    EXPECT_EXPRESSION(!result.error);
+    co_return;
+  });
+
+  EXPECT_EXPRESSION(harness->gateway->requests.front().stream);
+  EXPECT_EXPRESSION(std::ranges::any_of(*updates, [](const auto &progress) {
+    return progress.status == domain::AgentExecutionStatus::running &&
+           progress.output == "partial answer";
+  }));
+  EXPECT_EXPRESSION(updates->back().status == domain::AgentExecutionStatus::done);
+  EXPECT_EXPRESSION(updates->back().output == "finished answer");
+}
+
 TEST(SubAgentRunnerTest, ToolLoopFeedsResultsBackAndCountsCalls) {
   auto harness = std::make_shared<Harness>();
   harness->gateway->script = {
@@ -1248,6 +1281,46 @@ TEST(SubAgentRunnerTest, AsyncSubCodingIsRejected) {
 // ---------------------------------------------------------------------------
 // Pipeline
 // ---------------------------------------------------------------------------
+
+TEST(SubAgentRunnerTest, PublishesPipelineStagesAndNestedCallsDuringRun) {
+  auto harness = std::make_shared<Harness>();
+  harness->gateway->script = {
+      ToolCallResponse("nested-read", "file_read",
+                       R"({"file_path":"src/main.cpp"})"),
+      TextResponse("finished stage"),
+  };
+  harness->gateway->streamed_events = {{application::CompletionTextDelta{
+      .turn_index = 0, .text = "partial stage"}}};
+  auto updates =
+      std::make_shared<std::vector<domain::AgentPipelineSnapshot>>();
+
+  RunScenario([harness, updates](huxerui::TaskScope) -> huxerui::Task<void> {
+    application::AgentPipelineRunRequest request;
+    request.agents = {MakeAgent("research", "TASK")};
+    request.on_progress = [updates](const auto &progress) {
+      updates->push_back(progress);
+    };
+    auto result = co_await harness->runner->RunAgentPipeline(std::move(request));
+    EXPECT_EXPRESSION(!result.error);
+    co_return;
+  });
+
+  EXPECT_EXPRESSION(harness->gateway->requests.front().stream);
+  EXPECT_EXPRESSION(updates->front().agents.front().status ==
+                    domain::AgentExecutionStatus::waiting);
+  EXPECT_EXPRESSION(std::ranges::any_of(*updates, [](const auto &progress) {
+    return progress.agents.front().status ==
+               domain::AgentExecutionStatus::running &&
+           progress.agents.front().output == "partial stage";
+  }));
+  EXPECT_EXPRESSION(std::ranges::any_of(*updates, [](const auto &progress) {
+    return !progress.agents.front().tool_calls.empty() &&
+           progress.agents.front().tool_calls.front().status ==
+               domain::AgentToolCallStatus::running;
+  }));
+  EXPECT_EXPRESSION(updates->back().status == domain::AgentExecutionStatus::done);
+  EXPECT_EXPRESSION(updates->back().agents.front().output == "finished stage");
+}
 
 TEST(SubAgentRunnerTest, PipelineFeedsUpstreamOutputIntoDownstreamPrompts) {
   auto harness = std::make_shared<Harness>();
