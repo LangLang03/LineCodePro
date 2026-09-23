@@ -34,16 +34,16 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       # The SDK manager sometimes stalls on one download; bound the step so a
       # slow mirror fails on its own instead of consuming the job's budget.
       - name: Install Android build dependencies
         timeout-minutes: 20
         run: |
           set -euo pipefail
-          sdkmanager --install \
+          # The runner already has the Android SDK. setup-android@v3 tries to
+          # install the removed `tools` package and fails before this step.
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
             "platforms;android-36" \
             "build-tools;36.0.0" \
             "ndk;29.0.14206865" \
@@ -56,6 +56,13 @@ jobs:
           curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors \
             https://github.com/HuxerUI/HuxerUI/releases/latest/download/install.sh \
             | sh -s -- --version 0.3.0 --yes
+
+      - name: Generate HuxerUI Android library graph
+        timeout-minutes: 30
+        env:
+          HUXERUI_HOME: /home/runner/.local/share/HuxerUI
+          CMAKE_BUILD_PARALLEL_LEVEL: 8
+        run: /home/runner/.local/share/HuxerUI/bin/huxerui build android --profile debug
 
       - name: Validate signing secrets
         env:

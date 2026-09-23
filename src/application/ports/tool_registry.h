@@ -2,9 +2,11 @@
 
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <huxerui/task.h>
@@ -124,6 +126,13 @@ struct ToolInvocationResult final {
   bool operator==(const ToolInvocationResult &) const = default;
 };
 
+// A tool may report display-only progress while its invocation is still
+// running. The completion loop keeps these updates out of model messages.
+struct ToolInvocationContext final {
+  std::string call_id;
+  std::function<void(std::string)> on_progress_json;
+};
+
 // A runtime tool source. Implementations own discovery, enablement policy and
 // invocation; the completion loop only sees this DIP boundary.
 class ToolRegistry {
@@ -137,6 +146,14 @@ public:
   [[nodiscard]] virtual huxerui::Task<
       std::expected<ToolInvocationResult, ToolRegistryError>>
   Invoke(std::string name, std::string arguments_json) = 0;
+
+  [[nodiscard]] virtual huxerui::Task<
+      std::expected<ToolInvocationResult, ToolRegistryError>>
+  InvokeWithContext(std::string name, std::string arguments_json,
+                    ToolInvocationContext context) {
+    static_cast<void>(context);
+    co_return co_await Invoke(std::move(name), std::move(arguments_json));
+  }
 };
 
 } // namespace linecode::application

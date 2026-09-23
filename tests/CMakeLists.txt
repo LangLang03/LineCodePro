@@ -505,6 +505,7 @@ add_test(NAME model_store_selection_tests
 
 add_executable(completion_pipeline_tests
         completion_pipeline_tests.cpp
+        ../src/application/agent_run_progress_codec.cpp
         ../src/application/chat_session.cpp
         ../src/application/generation_controller.cpp
         ../src/application/legacy_attachment_policy.cpp
@@ -801,6 +802,22 @@ endif ()
 
 add_test(NAME tutorial_markdown_parser_tests
         COMMAND tutorial_markdown_parser_tests)
+
+add_executable(streaming_markdown_chunks_tests
+        streaming_markdown_chunks_tests.cpp
+        ../src/presentation/streaming_markdown_chunks.cpp
+        ../src/infrastructure/tutorial_markdown_parser.cpp
+)
+target_include_directories(streaming_markdown_chunks_tests PRIVATE ../src)
+target_compile_features(streaming_markdown_chunks_tests PRIVATE cxx_std_23)
+if (MSVC)
+    target_compile_options(streaming_markdown_chunks_tests PRIVATE /W4 /WX /permissive-)
+else ()
+    target_compile_options(streaming_markdown_chunks_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME streaming_markdown_chunks_tests
+        COMMAND streaming_markdown_chunks_tests)
 set_tests_properties(tutorial_markdown_parser_tests PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/..")
 
@@ -2071,6 +2088,7 @@ add_test(NAME tutorial_nested_blocks_tests
 
 add_executable(generation_retry_tests
         generation_retry_tests.cpp
+        ../src/application/agent_run_progress_codec.cpp
         ../src/application/chat_session.cpp
         ../src/application/generation_controller.cpp
         ../src/application/legacy_attachment_policy.cpp
@@ -2141,6 +2159,7 @@ add_test(NAME token_usage_tracker_tests COMMAND token_usage_tracker_tests)
 add_executable(custom_agent_tool_tests
         custom_agent_tool_tests.cpp
         ../src/application/agent_extension_tool_registry.cpp
+        ../src/application/agent_run_progress_codec.cpp
         ../src/application/custom_agent_tool.cpp
         ../src/application/tool_text_catalog.cpp
         ../src/infrastructure/archive_json.cpp

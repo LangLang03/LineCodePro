@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "application/agent_result_registry.h"
+#include "application/agent_run_progress_codec.h"
 #include "application/tool_result_display_policy.h"
 #include "domain/compaction_progress.h"
 #include "presentation/chat_timeline_presentation.h"
@@ -211,7 +212,7 @@ void PresentsLegacyDeleteTodoAgentAndGenericContent() {
 
   agent.call.status = domain::ToolCallStatus::running;
   agent.result.reset();
-  EXPECT_EXPRESSION(!presentation::PresentToolTimeline(agent).visible);
+  EXPECT_EXPRESSION(presentation::PresentToolTimeline(agent).visible);
   agent.call.status = domain::ToolCallStatus::completed;
   agent.result = domain::ChatToolResult{};
 
@@ -220,7 +221,8 @@ void PresentsLegacyDeleteTodoAgentAndGenericContent() {
   pipeline.call.status = domain::ToolCallStatus::running;
   const auto running_pipeline = presentation::PresentToolTimeline(pipeline);
   EXPECT_EXPRESSION(running_pipeline.visual == Visual::agent_pipeline);
-  EXPECT_EXPRESSION(!running_pipeline.visible);
+  EXPECT_EXPRESSION(running_pipeline.visible);
+  EXPECT_EXPRESSION(running_pipeline.initially_expanded);
 
   agent.result->content =
       R"({"linecode_agent_ref":true,"agent_id":"agent-7","status":"done","type":"explore","description":"Inspect UI","preview":"compact preview","tool_call_count":3,"error":false})";
@@ -245,6 +247,51 @@ void PresentsLegacyDeleteTodoAgentAndGenericContent() {
   const auto generic_card = presentation::PresentToolTimeline(generic);
   EXPECT_EXPRESSION(generic_card.input_detail == "{\n  \"a\": \"two\",\n  \"z\": 1\n}");
   EXPECT_EXPRESSION(generic_card.output_detail == "ok");
+}
+
+void ShowsStreamingPipelineStagesBeforeToolCompletion() {
+  domain::AgentPipelineSnapshot progress;
+  progress.agents.push_back(domain::AgentExecutionSnapshot{
+      .id = "research",
+      .type = "explore",
+      .description = "Inspect sources",
+      .dependencies = {},
+      .status = domain::AgentExecutionStatus::running,
+      .thinking = "checking",
+      .output = "first token",
+      .tool_calls = {},
+      .error = false,
+  });
+  domain::AssistantToolEvent event{};
+  event.call.id = "pipeline-live";
+  event.call.name = "agent_pipeline";
+  event.call.status = domain::ToolCallStatus::running;
+  event.result = domain::ChatToolResult{
+      .call_id = event.call.id,
+      .name = event.call.name,
+      .content = application::SerializeAgentProgress(progress),
+      .error = false,
+      .diff_id = {},
+      .review_state = {},
+      .review_message = {},
+  };
+  const auto card = presentation::PresentToolTimeline(event);
+  EXPECT_EXPRESSION(card.visible);
+  EXPECT_EXPRESSION(card.running_count == 1);
+  EXPECT_EXPRESSION(card.agent_runs.size() == 1U);
+  EXPECT_EXPRESSION(card.agent_runs.front().output == "first token");
+  EXPECT_EXPRESSION(card.agent_runs.front().thinking == "checking");
+
+  progress.agents.front().output = "first token and more";
+  event.result->content = application::SerializeAgentProgress(progress);
+  const auto updated = presentation::PresentToolTimeline(event);
+  EXPECT_EXPRESSION(updated.agent_runs.front().output ==
+                    "first token and more");
+
+  domain::ChatMessage message{};
+  message.timeline.push_back(event);
+  const auto process = presentation::PresentAssistantProcess(message, true, false);
+  EXPECT_EXPRESSION(process.initially_expanded);
 }
 
 void PresentsLiveCompletedAndFailedProcessStates() {
@@ -578,6 +625,7 @@ TEST(chat_timeline_presentation_tests, LegacySuite) {
   PresentsToolPoliciesWithoutRendererConditionals();
   ReproducesLegacyToolFactoriesAndShellContract();
   PresentsLegacyDeleteTodoAgentAndGenericContent();
+  ShowsStreamingPipelineStagesBeforeToolCompletion();
   PresentsLiveCompletedAndFailedProcessStates();
   GroupsRetriesAndTheFinalAnswerIntoOneAssistantTurn();
   KeepsPlainAdjacentAssistantMessagesAsSeparateRows();

@@ -329,7 +329,8 @@ huxerui::View HomeScreen(
     huxerui::State<huxerui::TaskHandle> active_generation,
     std::shared_ptr<application::PendingMessageQueue> pending_messages,
     huxerui::State<std::size_t> revision,
-    huxerui::State<std::size_t> workspace_revision) {
+    huxerui::State<std::size_t> workspace_revision,
+    huxerui::State<std::size_t> model_revision) {
   using namespace huxerui;
 
   auto drawer_open = UseState(false);
@@ -482,6 +483,7 @@ huxerui::View HomeScreen(
                   .has_selected_model = selected_model_available.Get(),
                   .active_generation = active_generation,
                   .revision = revision,
+                  .model_revision = model_revision.Get(),
                   .workspace = drawer_model,
                   .interaction_mode = interaction_mode,
                   .input_settings = input_settings,
@@ -572,6 +574,7 @@ huxerui::View MainScreen(
       UseState(std::make_shared<application::PendingMessageQueue>());
   auto chat_revision = UseState(std::size_t{0});
   auto workspace_revision = UseState(std::size_t{0});
+  auto model_revision = UseState(std::size_t{0});
   auto tool_settings_revision = UseState(std::size_t{0});
   auto extension_revision = UseState(std::size_t{0});
   auto active_input_settings = UseState(domain::InputSettings{});
@@ -628,7 +631,7 @@ huxerui::View MainScreen(
        termux_ssh_mode, selected_model_available, generation = generation.Get(),
        active_generation, chat_revision,
        pending_messages = pending_messages.Get(),
-       workspace_revision]() -> View {
+       workspace_revision, model_revision]() -> View {
     return HomeScreen(
         initial_session, project_workspace, model_store, completion_loop,
         agent_results, storage_permission, memory_context,
@@ -638,7 +641,7 @@ huxerui::View MainScreen(
         interaction_mode, active_input_settings.Get(), linecode_root,
         workspace_state, termux_ssh_mode, selected_model_available, generation,
         active_generation, pending_messages, chat_revision,
-        workspace_revision);
+        workspace_revision, model_revision);
   };
 
   auto destination =
@@ -667,8 +670,8 @@ huxerui::View MainScreen(
        data_archive = std::move(data_archive),
        data_callbacks = std::move(data_callbacks), selected_model_available,
        generation = generation.Get(), active_generation, chat_revision,
-       workspace_revision, tool_settings_revision, extension_revision,
-       linecode_root](domain::AppRoute route) mutable -> View {
+       workspace_revision, model_revision, tool_settings_revision,
+       extension_revision, linecode_root](domain::AppRoute route) mutable -> View {
     auto current_skill_hub_services = skill_hub_services;
     current_skill_hub_services.roots.project =
         workspace_state->selected &&
@@ -760,8 +763,10 @@ huxerui::View MainScreen(
     }
     if (route == domain::AppRoute::models) {
       return ModelManagementScreen(model_store, model_catalog,
-                                   [selected_model_available](bool available) {
+                                   [selected_model_available,
+                                    model_revision](bool available) {
                                      selected_model_available = available;
+                                     model_revision += 1;
                                    });
     }
     if (route == domain::AppRoute::llm) {
@@ -845,8 +850,8 @@ huxerui::View MainScreen(
       const auto after_import = callbacks.after_import;
       callbacks.after_import =
           [after_import, model_store, selected_model_available, generation,
-           chat_revision,
-           workspace_revision]() -> Task<DataSettingsCallbackResult> {
+           chat_revision, workspace_revision,
+           model_revision]() -> Task<DataSettingsCallbackResult> {
         if (after_import) {
           auto reloaded = co_await after_import();
           if (!reloaded) {
@@ -861,6 +866,7 @@ huxerui::View MainScreen(
         generation->Reset();
         chat_revision += 1;
         workspace_revision += 1;
+        model_revision += 1;
         co_return DataSettingsCallbackResult{};
       };
       return DataSettingsScreen(data_archive, std::move(callbacks));

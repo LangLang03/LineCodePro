@@ -654,15 +654,9 @@ DeriveToolTimeline(const domain::AssistantToolEvent &event,
     break;
   case ToolTimelineVisualKind::agent:
     PresentAgent(input, event, result);
-    // Legacy ConversationTimeline does not materialize Agent operations into
-    // the process block until the tool has produced its result. Showing the
-    // card while the call is still running exposes an extra "Running task…"
-    // state that the original UI never renders.
-    result.visible = result.visible && !result.running;
     break;
   case ToolTimelineVisualKind::agent_pipeline:
     PresentPipeline(input, event, result);
-    result.visible = result.visible && !result.running;
     break;
   case ToolTimelineVisualKind::generic:
     if (input != nullptr && !input->empty())
@@ -674,6 +668,16 @@ DeriveToolTimeline(const domain::AssistantToolEvent &event,
       result.output_detail = result.output_detail.substr(0, 65'536U) + "…";
     result.detail = result.output_detail;
     break;
+  }
+  if (event.result &&
+      (result.visual == ToolTimelineVisualKind::agent ||
+       result.visual == ToolTimelineVisualKind::agent_pipeline)) {
+    if (const auto progress =
+            application::ParseAgentProgress(event.result->content)) {
+      application::AgentResultView live{};
+      live.progress = *progress;
+      ApplyAgentResult(live, result);
+    }
   }
   if (agent_results != nullptr && event.result) {
     if (const auto resolved = application::ResolveAgentResultReference(
@@ -691,6 +695,16 @@ AssistantProcessPresentation PresentAssistantProcess(
       message.timeline, [](const auto &event) {
         const auto *tool = std::get_if<domain::AssistantToolEvent>(&event);
         return tool != nullptr && IsRunning(tool->call.status);
+      });
+  const bool running_agent = std::ranges::any_of(
+      message.timeline, [](const auto &event) {
+        const auto *tool = std::get_if<domain::AssistantToolEvent>(&event);
+        if (tool == nullptr || !IsRunning(tool->call.status))
+          return false;
+        const auto visual =
+            DefaultToolTimelineRendererRegistry().Resolve(tool->call.name);
+        return visual == ToolTimelineVisualKind::agent ||
+               visual == ToolTimelineVisualKind::agent_pipeline;
       });
   const bool failed_tool = std::ranges::any_of(
       message.timeline, [](const auto &event) {
@@ -721,7 +735,7 @@ AssistantProcessPresentation PresentAssistantProcess(
       .running = live || running_tool,
       .pending_review = pending_review,
       .failed = message.error || failed_tool,
-      .initially_expanded = process_auto_expand,
+      .initially_expanded = process_auto_expand || (live && running_agent),
       .duration_millis = duration,
   };
 }

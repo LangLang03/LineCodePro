@@ -263,6 +263,90 @@ private:
   std::shared_ptr<AgentRunContext> context_;
 };
 
+// Parallel stage tasks can finish after a timed-out pipeline. Keep their
+// progress state alive independently and ignore late updates after completion.
+class PipelineLiveProgress final {
+public:
+  PipelineLiveProgress(
+      domain::AgentPipelineSnapshot snapshot,
+      std::function<void(const domain::AgentPipelineSnapshot &)> publish)
+      : snapshot_(std::move(snapshot)), publish_(std::move(publish)) {}
+
+  void Publish() const {
+    const std::scoped_lock publish_guard{publish_lock_};
+    if (publish_)
+      publish_(Snapshot());
+  }
+
+  void Update(const domain::AgentExecutionSnapshot &agent) {
+    const std::scoped_lock publish_guard{publish_lock_};
+    domain::AgentPipelineSnapshot current;
+    {
+      const std::scoped_lock guard{lock_};
+      if (closed_)
+        return;
+      const auto found = std::ranges::find(snapshot_.agents, agent.id,
+                                           &domain::AgentExecutionSnapshot::id);
+      if (found == snapshot_.agents.end())
+        return;
+      *found = agent;
+      if (!publish_)
+        return;
+      current = snapshot_;
+    }
+    publish_(current);
+  }
+
+  [[nodiscard]] domain::AgentPipelineSnapshot Snapshot() const {
+    const std::scoped_lock guard{lock_};
+    return snapshot_;
+  }
+
+  [[nodiscard]] domain::AgentPipelineSnapshot Finish(std::string summary,
+                                                       bool error) {
+    const std::scoped_lock publish_guard{publish_lock_};
+    domain::AgentPipelineSnapshot current;
+    {
+      const std::scoped_lock guard{lock_};
+      closed_ = true;
+      snapshot_.status = error ? domain::AgentExecutionStatus::error
+                               : domain::AgentExecutionStatus::done;
+      snapshot_.summary = std::move(summary);
+      snapshot_.error = error;
+      current = snapshot_;
+    }
+    if (publish_)
+      publish_(current);
+    return current;
+  }
+
+  void Close() {
+    const std::scoped_lock publish_guard{publish_lock_};
+    const std::scoped_lock guard{lock_};
+    closed_ = true;
+  }
+
+private:
+  mutable std::mutex publish_lock_;
+  mutable std::mutex lock_;
+  domain::AgentPipelineSnapshot snapshot_;
+  std::function<void(const domain::AgentPipelineSnapshot &)> publish_;
+  bool closed_{};
+};
+
+class PipelineProgressGuard final {
+public:
+  explicit PipelineProgressGuard(std::shared_ptr<PipelineLiveProgress> progress)
+      : progress_(std::move(progress)) {}
+  ~PipelineProgressGuard() { progress_->Close(); }
+
+  PipelineProgressGuard(const PipelineProgressGuard &) = delete;
+  PipelineProgressGuard &operator=(const PipelineProgressGuard &) = delete;
+
+private:
+  std::shared_ptr<PipelineLiveProgress> progress_;
+};
+
 std::string_view
 TemplateText(const std::unordered_map<std::string, std::string> &templates,
              std::string_view id, const PromptTemplateRepository &repository) {
@@ -815,13 +899,38 @@ huxerui::Task<AgentRunResult> SubAgentRunner::RunLoop(
       request.tools = advertised_tools;
       request.reasoning_effort = domain::ReasoningEffort::medium;
       request.preserve_reasoning = false;
-      // The sub-agent loop owns no progress observer: streaming deltas only
-      // fed the legacy `AgentProgressSession`, which the result registry now
-      // covers.
-      request.stream = false;
+      request.stream = true;
       request.permission_scope = inputs.environment.permission_scope;
-      auto response = co_await completion_->Complete(std::move(request),
-                                                     CompletionObserver{});
+      std::string streamed_output;
+      std::string streamed_thinking;
+      auto last_stream_publish = std::chrono::steady_clock::time_point{};
+      const auto publish_stream = [&] {
+        const auto now = std::chrono::steady_clock::now();
+        if (last_stream_publish != std::chrono::steady_clock::time_point{} &&
+            now - last_stream_publish < std::chrono::milliseconds{50})
+          return;
+        progress.output = streamed_output;
+        if (!streamed_thinking.empty())
+          progress.thinking = streamed_thinking;
+        publish_progress();
+        last_stream_publish = now;
+      };
+      auto response = co_await completion_->Complete(
+          std::move(request),
+          CompletionObserver{
+              .on_event = [&](const CompletionEvent &event) {
+                if (const auto *text =
+                        std::get_if<CompletionTextDelta>(&event)) {
+                  streamed_output += text->text;
+                  publish_stream();
+                } else if (const auto *reasoning =
+                               std::get_if<CompletionReasoningDelta>(&event)) {
+                  streamed_thinking += reasoning->text;
+                  publish_stream();
+                }
+              },
+              .on_tool_review = {},
+          });
       if (!response) {
         // Legacy lines 780-786.
         co_return finish("Agent 模型通信失败：\n" + response.error().message,
@@ -830,10 +939,15 @@ huxerui::Task<AgentRunResult> SubAgentRunner::RunLoop(
       if (inputs.context->stop_requested()) {
         co_return finish(std::string{kAgentTerminatedMessage}, true);
       }
-      const auto output = response->text;
+      const auto output = response->text.empty() ? streamed_output
+                                                 : response->text;
       progress.output = output;
-      if (!Trim(response->reasoning_content).empty())
-        progress.thinking = response->reasoning_content;
+      const auto &thinking = response->reasoning_content.empty()
+                                 ? streamed_thinking
+                                 : response->reasoning_content;
+      if (!Trim(thinking).empty())
+        progress.thinking = thinking;
+      publish_progress();
       // Legacy lines 738-744: only non-empty text becomes the final answer.
       if (!Trim(output).empty())
         last_output = output;
@@ -1020,9 +1134,13 @@ SubAgentRunner::RunAgent(AgentRunRequest request) {
                              .error = false,
                              .progress = {}};
   }
-  auto result =
-      co_await RunLoop(std::move(inputs), [this, record](const auto &progress) {
+  auto result = co_await RunLoop(
+      std::move(inputs),
+      [this, record, publish = std::move(request.on_progress)](
+          const auto &progress) {
         RecordProgress(record, progress);
+        if (publish)
+          publish(progress);
       });
   co_return FinishRecord(record, std::move(result));
 }
@@ -1030,7 +1148,8 @@ SubAgentRunner::RunAgent(AgentRunRequest request) {
 huxerui::Task<AgentRunResult> SubAgentRunner::RunPipelineAgent(
     const domain::PipelineAgent &agent, const AgentRunResults &completed,
     const domain::ModelConfig &model, SubAgentEnvironment environment,
-    std::shared_ptr<AgentRunContext> context) {
+    std::shared_ptr<AgentRunContext> context,
+    std::function<void(const domain::AgentExecutionSnapshot &)> publish) {
   // Legacy `runOnePipelineAgent` (lines 554-597).
   if (context->stop_requested()) {
     co_return AgentRunResult{.output = std::string{kAgentTerminatedMessage},
@@ -1055,9 +1174,12 @@ huxerui::Task<AgentRunResult> SubAgentRunner::RunPipelineAgent(
   record.type = inputs.type;
   record.description = agent.description;
 
-  auto result =
-      co_await RunLoop(std::move(inputs), [this, record](const auto &progress) {
+  auto result = co_await RunLoop(
+      std::move(inputs),
+      [this, record, publish = std::move(publish)](const auto &progress) {
         RecordProgress(record, progress);
+        if (publish)
+          publish(progress);
       });
   // The port records every pipeline stage under its own id so `agent_output`
   // can read one stage back without the pipeline summary.
@@ -1077,10 +1199,12 @@ huxerui::Task<void> SubAgentRunner::RunLevelAgent(
     SubAgentEnvironment environment, AgentRunResults completed,
     std::shared_ptr<std::vector<std::optional<AgentRunResult>>> slots,
     std::shared_ptr<std::atomic<std::size_t>> pending, std::size_t index,
-    std::shared_ptr<AgentRunContext> context) {
+    std::shared_ptr<AgentRunContext> context,
+    std::function<void(const domain::AgentExecutionSnapshot &)> publish) {
   const LevelPendingGuard guard{pending};
   (*slots)[index] = co_await RunPipelineAgent(
-      agent, completed, model, std::move(environment), std::move(context));
+      agent, completed, model, std::move(environment), std::move(context),
+      std::move(publish));
 }
 
 huxerui::Task<std::vector<std::pair<domain::PipelineAgent, AgentRunResult>>>
@@ -1088,7 +1212,9 @@ SubAgentRunner::RunLevel(const std::vector<domain::PipelineAgent> &level,
                          const AgentRunResults &completed,
                          const domain::ModelConfig &model,
                          SubAgentEnvironment environment,
-                         std::shared_ptr<AgentRunContext> context) {
+                         std::shared_ptr<AgentRunContext> context,
+                         std::function<void(const domain::AgentExecutionSnapshot &)>
+                             publish) {
   std::vector<std::pair<domain::PipelineAgent, AgentRunResult>> outcomes;
   outcomes.reserve(level.size());
   if (level.empty())
@@ -1103,7 +1229,8 @@ SubAgentRunner::RunLevel(const std::vector<domain::PipelineAgent> &level,
     for (const auto &agent : level) {
       outcomes.emplace_back(agent,
                             co_await RunPipelineAgent(agent, completed, model,
-                                                      environment, context));
+                                                      environment, context,
+                                                      publish));
     }
     co_return outcomes;
   }
@@ -1114,9 +1241,9 @@ SubAgentRunner::RunLevel(const std::vector<domain::PipelineAgent> &level,
   for (std::size_t index = 0; index < slot_count; ++index) {
     background_->Launch([self = shared_from_this(), agent = level[index], model,
                          environment, completed, slots, pending, index,
-                         context]() -> huxerui::Task<void> {
+                         context, publish]() -> huxerui::Task<void> {
       co_await self->RunLevelAgent(agent, model, environment, completed, slots,
-                                   pending, index, context);
+                                   pending, index, context, publish);
     });
   }
   // Bounded by the legacy per-agent time budget so a lost child can never pin
@@ -1200,14 +1327,19 @@ SubAgentRunner::RunAgentPipeline(AgentPipelineRunRequest request) {
         .error = false,
     });
   }
+  auto progress_state = std::make_shared<PipelineLiveProgress>(
+      std::move(pipeline_progress), std::move(request.on_progress));
+  const PipelineProgressGuard progress_guard{progress_state};
+  progress_state->Publish();
+  const auto publish_agent = [progress_state](
+                                 const domain::AgentExecutionSnapshot &agent) {
+    progress_state->Update(agent);
+  };
   const auto finish = [this, &tool_call_id, agent_count,
-                       &pipeline_progress](std::string summary,
-                                           int tool_call_count, bool error) {
+                       progress_state](std::string summary,
+                                       int tool_call_count, bool error) {
     // Legacy `terminatePipeline` and the final compact ref (lines 417-458).
-    pipeline_progress.status = error ? domain::AgentExecutionStatus::error
-                                     : domain::AgentExecutionStatus::done;
-    pipeline_progress.summary = summary;
-    pipeline_progress.error = error;
+    auto pipeline_progress = progress_state->Finish(summary, error);
     SubAgentRunRecord record;
     record.agent_id = results_ ? results_->AllocateId() : std::string{};
     record.tool_call_id = tool_call_id;
@@ -1250,24 +1382,27 @@ SubAgentRunner::RunAgentPipeline(AgentPipelineRunRequest request) {
                            " 分钟，已强制结束。",
                        total_tool_calls, true);
     }
-    auto outcomes =
-        co_await RunLevel(level, results, *model, *environment, context);
+    auto outcomes = co_await RunLevel(level, results, *model, *environment,
+                                     context, publish_agent);
     for (auto &[agent, result] : outcomes) {
       results.Put(agent.id, result);
       const auto progress =
           std::get_if<domain::AgentExecutionSnapshot>(&result.progress);
-      const auto state = std::ranges::find(pipeline_progress.agents, agent.id,
-                                           &domain::AgentExecutionSnapshot::id);
-      if (state != pipeline_progress.agents.end()) {
-        if (progress != nullptr) {
-          *state = *progress;
-        } else {
-          state->status = result.error ? domain::AgentExecutionStatus::error
-                                       : domain::AgentExecutionStatus::done;
-          state->output = result.output;
-          state->error = result.error;
-        }
-      }
+      if (progress != nullptr)
+        progress_state->Update(*progress);
+      else
+        progress_state->Update(domain::AgentExecutionSnapshot{
+            .id = agent.id,
+            .type = NormalizeAgentType(agent.type),
+            .description = agent.description,
+            .dependencies = agent.dependencies,
+            .status = result.error ? domain::AgentExecutionStatus::error
+                                   : domain::AgentExecutionStatus::done,
+            .thinking = {},
+            .output = result.output,
+            .tool_calls = {},
+            .error = result.error,
+        });
       total_tool_calls += result.tool_call_count;
       has_error = has_error || result.error;
       summary += "\n\n## " + agent.id + " · " + agent.description + '\n' +

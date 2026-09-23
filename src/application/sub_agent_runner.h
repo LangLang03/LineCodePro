@@ -378,17 +378,20 @@ private:
   RunLevel(const std::vector<domain::PipelineAgent> &level,
            const AgentRunResults &completed, const domain::ModelConfig &model,
            SubAgentEnvironment environment,
-           std::shared_ptr<AgentRunContext> context);
+           std::shared_ptr<AgentRunContext> context,
+           std::function<void(const domain::AgentExecutionSnapshot &)> publish);
   [[nodiscard]] huxerui::Task<void> RunLevelAgent(
       domain::PipelineAgent agent, domain::ModelConfig model,
       SubAgentEnvironment environment, AgentRunResults completed,
       std::shared_ptr<std::vector<std::optional<AgentRunResult>>> slots,
       std::shared_ptr<std::atomic<std::size_t>> pending, std::size_t index,
-      std::shared_ptr<AgentRunContext> context);
+      std::shared_ptr<AgentRunContext> context,
+      std::function<void(const domain::AgentExecutionSnapshot &)> publish);
   [[nodiscard]] huxerui::Task<AgentRunResult> RunPipelineAgent(
       const domain::PipelineAgent &agent, const AgentRunResults &completed,
       const domain::ModelConfig &model, SubAgentEnvironment environment,
-      std::shared_ptr<AgentRunContext> context);
+      std::shared_ptr<AgentRunContext> context,
+      std::function<void(const domain::AgentExecutionSnapshot &)> publish);
   // Shared tail of `RunAgent`: records the finished run and returns the compact
   // ref the main model sees (legacy `finishAgentWithCompact`, lines 274-312).
   [[nodiscard]] AgentRunResult FinishRecord(SubAgentRunRecord record,

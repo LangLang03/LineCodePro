@@ -955,7 +955,14 @@ View PipelineAgentRow(const AgentRunTimelinePresentation &agent,
                       const TutorialMarkdownLinkHandler &on_link,
                       const TutorialMarkdownCopyHandler &on_copy,
                       const ToolRendererContext &context) {
-  const bool expanded = ToggleState(context.toggled_timeline.Get(), key, false);
+  // Open the active stage automatically so its streamed text is visible.
+  // Explicit choices stay stable when the stage changes from running to done.
+  const auto open_key = key + ":open";
+  const auto closed_key = key + ":closed";
+  const auto &choices = context.toggled_timeline.Get();
+  const bool expanded =
+      std::ranges::contains(choices, open_key) ||
+      (!std::ranges::contains(choices, closed_key) && agent.status == "running");
   const auto &type = AgentTypePolicyFor(agent.type);
   const Color type_color = AgentToneColor(type.tone);
   const auto &status = AgentRunStatusPolicyFor(agent.status, agent.failed);
@@ -997,8 +1004,13 @@ View PipelineAgentRow(const AgentRunTimelinePresentation &agent,
           .Tint(colors::tertiary)
           .With(Frame{.width = 14.0F, .height = 12.0F}),
   }
-                        .OnClick([toggled = context.toggled_timeline, key] {
-                          ToggleKey(toggled, key);
+                        .OnClick([toggled = context.toggled_timeline, open_key,
+                                  closed_key, expanded] {
+                          toggled.Update([&](auto &keys) {
+                            std::erase(keys, open_key);
+                            std::erase(keys, closed_key);
+                            keys.push_back(expanded ? closed_key : open_key);
+                          });
                         })
                         .With(Spacing(4.0F),
                               CrossAlign(CrossAxisAlignment::Center),
@@ -1207,11 +1219,12 @@ ToolRenderer RendererFor(ToolTimelineVisualKind visual) {
 }
 
 // Parsing markdown is not cheap (headings, fences, tables, inline emphasis),
-// and the timeline re-renders this view on every frame, so a transcript full of
-// lists and tables used to re-parse all of it 60 times a second. The parser is a
+// and the timeline rebuilds this view on frequent UI updates, so a transcript
+// full of lists and tables used to re-parse all of it repeatedly. The parser is a
 // pure function of its input, so the parsed document is memoized on a
-// fingerprint of the text. Documents share their nested blocks, so a copy is
-// only a handle copy. Composition runs on the UI thread; no locking is needed.
+// fingerprint of the text. Cache hits use the stored document directly instead
+// of copying all top-level blocks. Composition runs on the UI thread; no
+// locking is needed.
 namespace {
 
 constexpr std::size_t kMarkdownCacheSize = 48U;
@@ -1220,6 +1233,7 @@ constexpr std::uint64_t kMarkdownFnvPrime = 1099511628211ULL;
 
 struct MarkdownCacheEntry final {
   std::uint64_t key{};
+  std::string source;
   domain::TutorialDocument document{};
   bool valid{};
 };
@@ -1233,19 +1247,23 @@ std::uint64_t MarkdownFingerprint(const std::string_view markdown) noexcept {
   return hash;
 }
 
-domain::TutorialDocument ParseMarkdownMemoized(const std::string_view markdown) {
+const domain::TutorialDocument &
+ParseMarkdownMemoized(const std::string_view markdown) {
   static std::array<MarkdownCacheEntry, kMarkdownCacheSize> cache{};
   static std::size_t cursor{};
   const auto key = MarkdownFingerprint(markdown);
   for (const auto &entry : cache) {
-    if (entry.valid && entry.key == key)
+    if (entry.valid && entry.key == key && entry.source == markdown)
       return entry.document;
   }
   infrastructure::TutorialMarkdownParser parser;
   auto document = parser.Parse(markdown);
-  cache[cursor++ % cache.size()] =
-      MarkdownCacheEntry{.key = key, .document = document, .valid = true};
-  return document;
+  auto &entry = cache[cursor++ % cache.size()];
+  entry = MarkdownCacheEntry{.key = key,
+                             .source = std::string{markdown},
+                             .document = std::move(document),
+                             .valid = true};
+  return entry.document;
 }
 
 } // namespace
@@ -1253,7 +1271,7 @@ domain::TutorialDocument ParseMarkdownMemoized(const std::string_view markdown) 
 View AssistantMarkdown(std::string_view markdown, bool code_wrap,
                        const TutorialMarkdownLinkHandler &on_link,
                        const TutorialMarkdownCopyHandler &on_copy) {
-  const auto document = ParseMarkdownMemoized(markdown);
+  const auto &document = ParseMarkdownMemoized(markdown);
   // Legacy MarkdownView is MATCH_PARENT inside the assistant bubble. A fixed
   // desktop-oriented cap here makes short Android replies wrap one line early.
   return TutorialMarkdownDocumentView(document, code_wrap, 1.0F, on_link,

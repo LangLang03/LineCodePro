@@ -67,6 +67,7 @@ struct ChatScreenState final {
   std::optional<bool> has_selected_model;
   huxerui::State<huxerui::TaskHandle> active_generation;
   huxerui::State<std::size_t> revision;
+  std::size_t model_revision{};
   huxerui::State<DrawerModel> workspace;
   huxerui::State<application::ChatInteractionModeState> interaction_mode;
   domain::InputSettings input_settings;
