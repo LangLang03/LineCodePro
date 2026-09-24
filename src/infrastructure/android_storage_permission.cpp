@@ -33,6 +33,30 @@ public:
     Invoke("openManagementSettings", std::move(completion));
   }
 
+  void ResolveLocalDirectory(
+      huxerui::FileReference directory,
+      DirectoryPathCompletion completion) override {
+    if (!channel_.IsOpen()) {
+      completion({.error = "Android storage permission bridge is closed"});
+      return;
+    }
+    channel_.Invoke<std::string>(
+        "resolveLocalDirectory", std::move(directory),
+        [completion = std::move(completion)](
+            huxerui::PlatformResult<std::string> result) mutable {
+          if (const auto *error =
+                  std::get_if<huxerui::PlatformError>(&result)) {
+            completion({.error = error->message.empty() ? error->code
+                                                        : error->message,
+                        .permission_required =
+                            error->code ==
+                            "linecode/storage-permission/permission-required"});
+            return;
+          }
+          completion({.path = std::get<std::string>(std::move(result))});
+        });
+  }
+
 private:
   void Invoke(std::string method, Completion completion) {
     if (!channel_.IsOpen()) {

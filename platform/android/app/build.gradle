@@ -218,6 +218,7 @@ androidComponents.onVariants(androidComponents.selector().all()) { variant ->
 }
 
 dependencies {
+    testImplementation 'junit:junit:4.13.2'
     if (rootProject.gradle.ext.huxeruiUsesSource) {
         implementation project(":HuxerUI")
     } else {
