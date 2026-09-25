@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -49,7 +50,7 @@ struct ModelContextInfo final {
 
 // Port of `ContextManager.estimateTokens(List, boolean)`.
 [[nodiscard]] int EstimateContextTokens(
-    const std::vector<ChatMessage> &messages, bool include_reasoning = true);
+    std::span<const ChatMessage> messages, bool include_reasoning = true);
 
 // Port of the `ContextSnapshot` value object.
 struct ContextSnapshot final {
@@ -67,7 +68,7 @@ struct ContextSnapshot final {
 
 // Computes the snapshot the header indicator and usage sheet render.
 [[nodiscard]] ContextSnapshot SnapshotContext(
-    const std::vector<ChatMessage> &messages, int context_tokens,
+    std::span<const ChatMessage> messages, int context_tokens,
     bool include_reasoning = true);
 
 } // namespace linecode::domain

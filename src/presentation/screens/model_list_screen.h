@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 
+#include <huxerui/state.h>
 #include <huxerui/view.h>
 
 #include "application/ports/model_store.h"
@@ -18,6 +20,7 @@ struct ModelListActions final {
 
 [[huxerui::composable]] huxerui::View
 ModelListScreen(std::shared_ptr<application::ModelStore> store,
-                ModelListActions actions);
+                ModelListActions actions,
+                huxerui::State<std::size_t> refresh_revision);
 
 } // namespace linecode::presentation

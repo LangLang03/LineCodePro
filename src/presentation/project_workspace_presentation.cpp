@@ -474,22 +474,50 @@ void ProjectWorkspaceCoordinator::OpenExternalProject() const {
     return;
   }
   tasks_.Launch([service = service_, state = state_, drawer = drawer_,
-                 picker = picker_, toast = toast_]() -> Task<void> {
+                 picker = picker_, permission = storage_permission_,
+                 tasks = tasks_, toast = toast_]() -> Task<void> {
     auto reference = co_await picker->OpenDirectoryAsync(true);
     if (!reference)
       co_return;
     const auto local = reference->AsFile();
-    if (!local) {
+    const auto name = reference->Name();
+    const auto register_project = [service, state, drawer, tasks, toast,
+                                   name](std::string path) {
+      if (path.empty()) {
+        toast.Show(app::strings::workspace_picker_path_unavailable);
+        return;
+      }
+      tasks.Launch([service, state, drawer, toast, path = std::move(path),
+                    name]() mutable -> Task<void> {
+        auto registered =
+            co_await service->RegisterExternalProject(std::move(path), name);
+        if (!registered) {
+          toast.Show(registered.error().message);
+          co_return;
+        }
+        co_await RefreshWorkspace(service, state, drawer, toast, true);
+      });
+    };
+    if (local) {
+      register_project(local->Path());
+      co_return;
+    }
+    if (!permission) {
       toast.Show(app::strings::workspace_picker_path_unavailable);
       co_return;
     }
-    auto registered = co_await service->RegisterExternalProject(
-        local->Path(), reference->Name());
-    if (!registered) {
-      toast.Show(registered.error().message);
-      co_return;
-    }
-    co_await RefreshWorkspace(service, state, drawer, toast, true);
+    permission->ResolveLocalDirectory(
+        std::move(*reference),
+        [register_project, toast](
+            application::StorageDirectoryPathResult result) {
+          if (result.permission_required) {
+            toast.Show(app::strings::permission_mode_storage_required);
+          } else if (!result.error.empty()) {
+            toast.Show(result.error);
+          } else {
+            register_project(std::move(result.path));
+          }
+        });
   });
 }
 

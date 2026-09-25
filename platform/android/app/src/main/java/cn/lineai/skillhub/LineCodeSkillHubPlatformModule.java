@@ -1,5 +1,7 @@
 package cn.lineai.skillhub;
 
+import cn.lineai.LineCodeLogger;
+
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.webkit.CookieManager;
@@ -37,10 +39,12 @@ public final class LineCodeSkillHubPlatformModule
                 () -> { };
 
         private final CookieManager cookies;
+        private final Context context;
         private final SharedPreferences legacyReading;
         private final Map<String, Invocation> invocations = new HashMap<>();
 
         Module(Context context) {
+            this.context = context;
             cookies = CookieManager.getInstance();
             legacyReading = context.getSharedPreferences(
                     "skill_store_reading", Context.MODE_PRIVATE);
@@ -67,6 +71,7 @@ public final class LineCodeSkillHubPlatformModule
             try {
                 return invocation.invoke(arguments, result);
             } catch (RuntimeException error) {
+                LineCodeLogger.record(context, "skill_hub_platform_call", error);
                 String message = error.getMessage();
                 result.fail(
                         "linecode/skill-hub/android-error",

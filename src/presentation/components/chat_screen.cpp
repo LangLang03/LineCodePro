@@ -550,7 +550,26 @@ View ExportFormatDialog(DialogContext dialog, StringVariant title,
       *message, toggled_timeline, on_link, on_copy, context);
 }
 
-View Conversation(
+struct ConversationPresentationCache final {
+  std::string conversation_id;
+  std::size_t revision{};
+  std::size_t source_count{};
+  std::uint64_t last_message_id{};
+  std::shared_ptr<const std::vector<domain::ChatMessage>> messages;
+};
+
+struct ContextSnapshotCache final {
+  std::string conversation_id;
+  std::size_t revision{};
+  std::size_t source_count{};
+  std::uint64_t last_message_id{};
+  int context_tokens{};
+  bool preserve_reasoning{};
+  bool valid{};
+  domain::ContextSnapshot snapshot;
+};
+
+[[huxerui::composable]] View Conversation(
     const std::shared_ptr<application::ChatSession> &session,
     const std::shared_ptr<application::GenerationController> &generation,
     std::size_t revision,
@@ -568,12 +587,31 @@ View Conversation(
     State<std::uint64_t> scroll_to_bottom_request,
     std::optional<bool> has_selected_model) {
   const auto messages = session->Messages();
+  auto presentation_cache =
+      UseState(std::make_shared<ConversationPresentationCache>());
   if (messages.empty()) {
     return EmptyConversation(navigation, !has_selected_model.value_or(true));
   }
-  auto presentation_messages =
-      std::make_shared<const std::vector<domain::ChatMessage>>(
-          BuildConversationPresentationMessages(messages));
+  // The source transcript is immutable between revision changes. Keep its
+  // merged presentation across pointer, scroll, and streaming recompositions;
+  // copying long message bodies here on every frame stalls the UI thread.
+  auto cache = presentation_cache.Get();
+  const std::string conversation_id{session->CurrentConversationId()};
+  const bool running = generation->State().phase ==
+                       application::GenerationPhase::running;
+  if (!cache->messages || cache->conversation_id != conversation_id ||
+      (!running && cache->revision != revision) ||
+      cache->source_count != messages.size() ||
+      cache->last_message_id != messages.back().id) {
+    cache->conversation_id = conversation_id;
+    cache->revision = revision;
+    cache->source_count = messages.size();
+    cache->last_message_id = messages.back().id;
+    cache->messages =
+        std::make_shared<const std::vector<domain::ChatMessage>>(
+            BuildConversationPresentationMessages(messages));
+  }
+  const auto presentation_messages = cache->messages;
 
   const auto &generation_state = generation->State();
   domain::ChatMessage streaming_message{};
@@ -598,8 +636,6 @@ View Conversation(
         .turn_index = streaming_message.timeline.size(),
         .status = auto_compaction->status});
   }
-  const bool running =
-      generation_state.phase == application::GenerationPhase::running;
   auto live_message =
       std::make_shared<const domain::ChatMessage>(std::move(streaming_message));
   const bool has_process = running && HasAssistantTurnProcess(*live_message);
@@ -817,6 +853,7 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
   const auto export_service = UseService<application::ChatExportService>();
   const auto image_picker = UseService<FilePicker>();
   auto compaction_busy = UseState(std::make_shared<std::atomic<bool>>(false));
+  auto context_cache = UseState(std::make_shared<ContextSnapshotCache>());
   auto attachment_visible = UseState(false);
   auto more_visible = UseState(false);
   auto compaction_confirm_visible = UseState(false);
@@ -1683,10 +1720,32 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
       break;
     }
   }
-  const auto context_snapshot = domain::SnapshotContext(
-      std::vector<domain::ChatMessage>{session->Messages().begin(),
-                                       session->Messages().end()},
-      context_tokens, timeline_settings.Get().preserve_reasoning);
+  const auto source_messages = session->Messages();
+  auto cached_context = context_cache.Get();
+  const bool preserve_reasoning = timeline_settings.Get().preserve_reasoning;
+  const bool generation_running = generation->State().phase ==
+                                  application::GenerationPhase::running;
+  const std::string conversation_id{session->CurrentConversationId()};
+  const std::uint64_t last_message_id =
+      source_messages.empty() ? 0U : source_messages.back().id;
+  if (!cached_context->valid ||
+      cached_context->conversation_id != conversation_id ||
+      (!generation_running && cached_context->revision != revision.Get()) ||
+      cached_context->source_count != source_messages.size() ||
+      cached_context->last_message_id != last_message_id ||
+      cached_context->context_tokens != context_tokens ||
+      cached_context->preserve_reasoning != preserve_reasoning) {
+    cached_context->conversation_id = conversation_id;
+    cached_context->revision = revision.Get();
+    cached_context->source_count = source_messages.size();
+    cached_context->last_message_id = last_message_id;
+    cached_context->context_tokens = context_tokens;
+    cached_context->preserve_reasoning = preserve_reasoning;
+    cached_context->snapshot = domain::SnapshotContext(
+        source_messages, context_tokens, preserve_reasoning);
+    cached_context->valid = true;
+  }
+  const auto context_snapshot = cached_context->snapshot;
   // The write card asks for a decision by identifier; accepting only records
   // the state while rejecting also restores the previous file contents.
   auto review_change = [diff_review, diff_store, tasks, revision, diff_cache,

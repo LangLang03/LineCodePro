@@ -17,9 +17,6 @@
 #include <huxerui/huxerui.h>
 
 #include "presentation/line_theme.h"
-#if defined(__ANDROID__)
-#include "application/ports/window_insets.h"
-#endif
 #include "presentation/platform_features.h"
 
 namespace linecode::presentation {
@@ -77,44 +74,6 @@ View ConversationBody(State<bool> drawer_open, const DrawerModel& model,
                       const DrawerActions& actions);
 View FileBody(State<bool> drawer_open, const DrawerModel& model,
               const DrawerActions& actions);
-
-// DrawerLayout deliberately constrains modal drawers to the safe viewport.
-// The legacy Android drawer instead owns the complete window: its background
-// extends behind both system bars and its fixed 40dp header inset is measured
-// from the physical top. Expand the child through the remaining safe-area
-// insets without changing DrawerLayout or hard-coding a particular device's
-// status/navigation bar heights.
-class LegacyDrawerViewport final : public Layout<LegacyDrawerViewport> {
-public:
-  using Layout::Layout;
-
-  struct InsetsValue {
-    using Value = EdgeInsets;
-  };
-
-  static LayoutResult Measure(LayoutContext& context, ViewNode& node,
-                              Constraints constraints) {
-    LayoutResult result;
-    if (node.ChildCount() == 0) {
-      return result.SetSize(constraints.Constrain({0.0F, 0.0F}));
-    }
-
-    const EdgeInsets insets =
-        node.ChildAt(0).LayoutValueOr<InsetsValue>(EdgeInsets{});
-    Constraints expanded = constraints;
-    expanded.min_height += insets.Vertical();
-    if (expanded.HasBoundedHeight()) {
-      expanded.max_height += insets.Vertical();
-    }
-    ViewNode& content = node.ChildAt(0);
-    const Size content_size = context.Measure(content, expanded);
-    const Size viewport_size = constraints.Constrain(
-        {content_size.width,
-         std::max(0.0F, content_size.height - insets.Vertical())});
-    return result.Place(content, {0.0F, -insets.top})
-        .SetSize(viewport_size);
-  }
-};
 
 TextStyle DrawerTextStyle(float size, FontWeight weight = FontWeight::Regular,
                           Color color = colors::text) {
@@ -581,51 +540,17 @@ View FileBody(State<bool>, const DrawerModel &model,
       .With(Grow(), CrossAlign(CrossAxisAlignment::Stretch));
 }
 
-View RenderDrawerWithInsets(State<bool> drawer_open,
-                            const DrawerTabSelection& selection,
-                            const DrawerModel& model,
-                            const DrawerActions& actions,
-                            EdgeInsets insets) {
+View RenderDrawer(State<bool> drawer_open, const DrawerTabSelection& selection,
+                  const DrawerModel& model, const DrawerActions& actions) {
   const auto& presentation = DrawerTabPresentationFor(selection.active);
-  // The drawer spans the full window height, so its scrolling body pads the
-  // navigation-bar inset itself: without it the last row ends up under the
-  // three-button bar.
   View body = std::invoke(presentation.body, drawer_open, model, actions);
-  if (insets.bottom > 0.0F) {
-    body = Column{std::move(body)}.With(
-        Grow(), Padding(EdgeInsets{.bottom = insets.bottom}));
-  }
-  return LegacyDrawerViewport{Column{
+  return Column{
       Header(presentation, actions), DrawerTabs(selection, actions),
       std::move(body),
   }.With(Frame{.min_width = 240.0F, .max_width = kDrawerWidth},
          CrossAlign(CrossAxisAlignment::Stretch),
-         Background(colors::background))
-                                  .LayoutValue<LegacyDrawerViewport::InsetsValue>(
-                                      insets)};
+         Background(colors::background));
 }
-
-#if defined(__ANDROID__)
-[[huxerui::composable]] View
-RenderDrawer(State<bool> drawer_open, const DrawerTabSelection& selection,
-             const DrawerModel& model, const DrawerActions& actions) {
-  const auto window_insets =
-      UseService<application::WindowInsetsProvider>()->Current();
-  return RenderDrawerWithInsets(
-      drawer_open, selection, model, actions,
-      EdgeInsets{
-          .top = window_insets.top,
-          .right = window_insets.right,
-          .bottom = window_insets.bottom,
-          .left = window_insets.left,
-      });
-}
-#else
-View RenderDrawer(State<bool> drawer_open, const DrawerTabSelection& selection,
-                  const DrawerModel& model, const DrawerActions& actions) {
-  return RenderDrawerWithInsets(drawer_open, selection, model, actions, {});
-}
-#endif
 
 } // namespace
 

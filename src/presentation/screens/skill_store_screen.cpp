@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <exception>
 #include <format>
 #include <functional>
 #include <optional>
@@ -14,6 +15,7 @@
 #include <huxerui/huxerui.h>
 
 #include "domain/app_state.h"
+#include "infrastructure/app_logger.h"
 #include "presentation/components/skill_hub_components.h"
 #include "presentation/line_theme.h"
 
@@ -34,6 +36,7 @@ struct StoreState final {
   std::uint64_t generation{};
   LoadPhase phase{LoadPhase::loading};
   bool account_loading{true};
+  bool account_failed{};
   bool logging_out{};
 };
 
@@ -65,15 +68,24 @@ Task<void> LoadStore(const SkillHubScreenServices services,
     next.error.clear();
     next.page.skills.clear();
   });
-  auto loaded = co_await services.catalog->List({
-      .page = state->page_number,
-      .page_size = 20,
-      .keyword = std::move(keyword),
-      .category = {},
-      .source = "all",
-      .sort_by = state->sort_by,
-      .order = "desc",
-  });
+  application::SkillResult<domain::SkillHubPage> loaded;
+  try {
+    loaded = co_await services.catalog->List({
+        .page = state->page_number,
+        .page_size = 20,
+        .keyword = std::move(keyword),
+        .category = {},
+        .source = "all",
+        .sort_by = state->sort_by,
+        .order = "desc",
+    });
+  } catch (const std::exception &) {
+    infrastructure::LogAppError("skill_store_list_exception");
+    loaded = std::unexpected(application::SkillError{});
+  } catch (...) {
+    infrastructure::LogAppError("skill_store_list_unknown_exception");
+    loaded = std::unexpected(application::SkillError{});
+  }
   if (generation != state->generation)
     co_return;
   state.Update([loaded = std::move(loaded)](StoreState &next) mutable {
@@ -91,16 +103,28 @@ Task<void> LoadAccount(const SkillHubScreenServices services,
                        const State<StoreState> state, std::string cookie) {
   state.Update([](StoreState &next) {
     next.account_loading = true;
+    next.account_failed = false;
     next.account_error.clear();
   });
-  auto loaded = co_await services.session->CurrentSession(std::move(cookie));
+  application::SkillResult<domain::SkillHubSession> loaded;
+  try {
+    loaded = co_await services.session->CurrentSession(std::move(cookie));
+  } catch (const std::exception &) {
+    infrastructure::LogAppError("skill_store_account_exception");
+    loaded = std::unexpected(application::SkillError{});
+  } catch (...) {
+    infrastructure::LogAppError("skill_store_account_unknown_exception");
+    loaded = std::unexpected(application::SkillError{});
+  }
   state.Update([loaded = std::move(loaded)](StoreState &next) mutable {
     next.account_loading = false;
     if (!loaded) {
       next.session.reset();
+      next.account_failed = true;
       next.account_error = std::move(loaded.error().message);
       return;
     }
+    next.account_failed = false;
     next.session = std::move(*loaded);
   });
 }
@@ -114,6 +138,7 @@ void RequestAccount(const SkillHubScreenServices &services,
               [message = std::move(result.error)](StoreState &next) mutable {
                 next.account_loading = false;
                 next.session.reset();
+                next.account_failed = true;
                 next.account_error = std::move(message);
               });
           return;
@@ -131,8 +156,10 @@ Task<void> Logout(const SkillHubScreenServices services,
     next.logging_out = false;
     if (result) {
       next.session = domain::SkillHubSession{};
+      next.account_failed = false;
       next.account_error.clear();
     } else {
+      next.account_failed = true;
       next.account_error = result.error().message;
     }
   });
@@ -206,6 +233,7 @@ void ShowAccountDialog(const SkillHubScreenServices &services,
                           state.Update([message = std::move(result.error)](
                                            StoreState &next) mutable {
                             next.account_error = std::move(message);
+                            next.account_failed = true;
                           });
                           toast.Show(state->account_error);
                           return;
@@ -236,7 +264,11 @@ SkillCard(const domain::SkillHubSummary &skill,
               co_return;
             try {
               icon = ImageAsset::FromEncoded(std::move(*bytes));
-            } catch (const std::invalid_argument &) {
+            } catch (const std::exception &) {
+              infrastructure::LogAppError("skill_store_icon_decode_exception");
+            } catch (...) {
+              infrastructure::LogAppError(
+                  "skill_store_icon_decode_unknown_exception");
             }
           });
         },
@@ -408,10 +440,12 @@ SkillStoreScreen(const SkillHubScreenServices &services) {
   StringVariant account_title = app::strings::skillhub_checking_account;
   StringVariant account_subtitle = app::strings::skillhub_login_via_official;
   ImageResource account_action = app::images::external_link;
-  if (!state->account_loading && !state->account_error.empty()) {
+  if (!state->account_loading && state->account_failed) {
     account_title = app::strings::skillhub_account_check_failed;
     account_subtitle = UseString(app::strings::skillhub_retry_here) + " · " +
-                       state->account_error;
+                       (state->account_error.empty()
+                            ? UseString(app::strings::skillhub_unknown_error)
+                            : state->account_error);
     account_action = app::images::refresh_cw;
   } else if (state->session && state->session->authenticated) {
     account_title = state->session->account.display_name;
@@ -445,7 +479,7 @@ SkillStoreScreen(const SkillHubScreenServices &services) {
           .OnClick([services, state, tasks, navigation, dialogs, toast] {
             if (state->account_loading)
               return;
-            if (!state->account_error.empty()) {
+            if (state->account_failed) {
               RequestAccount(services, state, tasks);
             } else if (state->session && state->session->authenticated) {
               ShowAccountDialog(services, state, dialogs, tasks, toast);
@@ -494,7 +528,9 @@ SkillStoreScreen(const SkillHubScreenServices &services) {
   } else if (state->phase == LoadPhase::failed) {
     content.push_back(
         Text(UseString(app::strings::skillhub_load_failed_retry) + "\n" +
-             state->error)
+             (state->error.empty()
+                  ? UseString(app::strings::skillhub_unknown_error)
+                  : state->error))
             .Style(SkillHubLabel(13.0F, FontWeight::Regular, colors::tertiary))
             .Align(TextAlign::Center)
             .OnClick([services, state, search, tasks] {
@@ -513,7 +549,8 @@ SkillStoreScreen(const SkillHubScreenServices &services) {
             .Style(SkillHubLabel(13.0F, FontWeight::Regular, colors::tertiary))
             .Align(TextAlign::Center)
             .With(Padding(EdgeInsets{.top = 12.0F})));
-    for (const auto &skill : state->page.skills) {
+    for (std::size_t index = 0; index < state->page.skills.size(); ++index) {
+      const auto &skill = state->page.skills[index];
       content.push_back(
           SkillHubTopMargin(SkillCard(skill, services.catalog,
                                       [navigation, slug = skill.slug] {
@@ -522,7 +559,7 @@ SkillStoreScreen(const SkillHubScreenServices &services) {
                                                 slug));
                                       }),
                             8.0F)
-              .Key(skill.slug));
+              .Key(skill.slug + ":" + std::to_string(index)));
     }
   }
 

@@ -33,6 +33,7 @@ using ModelRoute = std::variant<AddOptionsRoute, ModelFormRoute>;
 [[huxerui::composable]] huxerui::View
 ModelListDestination(
     std::shared_ptr<application::ModelStore> store,
+    huxerui::State<std::size_t> refresh_revision,
     std::function<void(bool)> on_selection_availability_changed) {
   const auto app_navigation = huxerui::UseNavigation<domain::AppRoute>();
   const auto model_navigation = huxerui::UseNavigation<ModelRoute>();
@@ -50,7 +51,7 @@ ModelListDestination(
               },
           .on_selection_availability_changed =
               std::move(on_selection_availability_changed),
-      });
+      }, refresh_revision);
 }
 
 [[huxerui::composable]] huxerui::View
@@ -105,8 +106,8 @@ ModelFlowDestination(const ModelRoute &route,
   auto list_revision = huxerui::UseState(std::size_t{0});
   auto root = [store, list_revision,
                on_selection_availability_changed]() -> huxerui::View {
-    return ModelListDestination(store, on_selection_availability_changed)
-        .Key(list_revision.Get());
+    return ModelListDestination(store, list_revision,
+                                on_selection_availability_changed);
   };
   auto destination = [store = std::move(store), catalog = std::move(catalog),
                       list_revision,

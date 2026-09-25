@@ -178,7 +178,7 @@ int EstimateMessageTokens(const ChatMessage &message,
          EstimateToolCalls(message);
 }
 
-int EstimateContextTokens(const std::vector<ChatMessage> &messages,
+int EstimateContextTokens(std::span<const ChatMessage> messages,
                           const bool include_reasoning) {
   int total = 0;
   for (const auto &message : messages)
@@ -186,7 +186,7 @@ int EstimateContextTokens(const std::vector<ChatMessage> &messages,
   return total;
 }
 
-ContextSnapshot SnapshotContext(const std::vector<ChatMessage> &messages,
+ContextSnapshot SnapshotContext(std::span<const ChatMessage> messages,
                                 const int context_tokens,
                                 const bool include_reasoning) {
   const int maximum = std::max(1, context_tokens);

@@ -7,7 +7,6 @@
 #include "infrastructure/android_storage_permission.h"
 #include "infrastructure/android_terminal_provider.h"
 #include "infrastructure/android_termux_integration.h"
-#include "infrastructure/android_window_insets.h"
 #include "infrastructure/workspace_directory_share.h"
 #endif
 #if defined(__ANDROID__) || defined(_WIN32)
@@ -31,7 +30,7 @@ const Application application{
                 .title = "LineCode Pro",
                 .initial_size = {430.0F, 840.0F},
                 .minimum_size = Size{360.0F, 640.0F},
-                .content_mode = WindowContentMode::EdgeToEdge,
+                .content_mode = WindowContentMode::SafeArea,
             },
 #if defined(__ANDROID__)
         .root_hooks =
@@ -39,7 +38,6 @@ const Application application{
              linecode::infrastructure::InstallAndroidStoragePermission,
              linecode::infrastructure::InstallAndroidTerminalProvider,
              linecode::infrastructure::InstallAndroidTermuxIntegration,
-             linecode::infrastructure::InstallAndroidWindowInsets,
              linecode::infrastructure::InstallWorkspaceDirectoryShare,
              linecode::infrastructure::InstallChatExport,
              linecode::infrastructure::InstallExternalLink,
