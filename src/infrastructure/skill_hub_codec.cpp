@@ -10,6 +10,7 @@
 #include <limits>
 #include <ranges>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 #include <huxerui/data.h>
@@ -506,6 +507,7 @@ DecodeSkillHubPage(const std::string_view text) {
     if (!data)
       return std::unexpected(Error("SkillHub response is missing data"));
     std::vector<domain::SkillHubSummary> skills;
+    std::unordered_set<std::string> seen_slugs;
     if (const auto *values = Array(*data, "skills")) {
       for (const auto &value : *values) {
         const auto *object = json::AsObject(&value);
@@ -514,7 +516,8 @@ DecodeSkillHubPage(const std::string_view text) {
         auto summary = Summary(*object);
         if (!ValidateSkillHubSlug(summary.slug))
           return std::unexpected(Error("invalid SkillHub slug"));
-        skills.push_back(std::move(summary));
+        if (seen_slugs.insert(summary.slug).second)
+          skills.push_back(std::move(summary));
       }
     }
     return domain::SkillHubPage{.skills = std::move(skills),

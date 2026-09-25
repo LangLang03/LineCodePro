@@ -280,7 +280,8 @@ View ModelCard(const domain::ModelConfig &model, State<ModelListState> state,
 
 [[huxerui::composable]] View
 ModelListContent(std::shared_ptr<application::ModelStore> store,
-                 ModelListActions actions) {
+                 ModelListActions actions,
+                 State<std::size_t> refresh_revision) {
   auto state = UseState(ModelListState{});
   const auto tasks = UseTaskScope();
   const auto sheets = UseBottomSheet();
@@ -290,7 +291,7 @@ ModelListContent(std::shared_ptr<application::ModelStore> store,
           co_await Reload(store, state,
                           actions.on_selection_availability_changed);
         });
-  });
+  }, refresh_revision);
 
   auto header_action = [state, actions, sheets, tasks, store] {
     if (!state->multi_select) {
@@ -340,9 +341,11 @@ ModelListContent(std::shared_ptr<application::ModelStore> store,
         Text(app::strings::model_list_empty)
             .Style(Label(13.0F, FontWeight::Regular, colors::tertiary)));
   }
-  for (const auto &model : state->models) {
+  for (std::size_t index = 0; index < state->models.size(); ++index) {
+    const auto &model = state->models[index];
     cards.push_back(
-        ModelCard(model, state, store, tasks, sheets, actions).Key(model.id));
+        ModelCard(model, state, store, tasks, sheets, actions)
+            .Key("model:" + model.id + ":" + std::to_string(index)));
     cards.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 8.0F}));
   }
 
@@ -405,13 +408,15 @@ ModelListContent(std::shared_ptr<application::ModelStore> store,
 
 [[huxerui::composable]] View
 ModelListScreen(std::shared_ptr<application::ModelStore> store,
-                ModelListActions actions) {
+                ModelListActions actions,
+                State<std::size_t> refresh_revision) {
   ThemeDefinition overrides;
   overrides.Set(LineDialogBottomSheetStyle(UseLineColors()));
   return Theme(
       std::move(overrides),
-      Scope([store = std::move(store), actions = std::move(actions)] {
-        return ModelListContent(store, actions);
+      Scope([store = std::move(store), actions = std::move(actions),
+             refresh_revision] {
+        return ModelListContent(store, actions, refresh_revision);
       }));
 }
 

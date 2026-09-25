@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <mutex>
 #include <utility>
 
 #include <app_resources.h>
@@ -34,6 +35,7 @@
 #include "application/tool_permission_service.h"
 #include "application/tool_review_broker.h"
 #include "application/user_agreement.h"
+#include "infrastructure/app_logger.h"
 #include "infrastructure/hux_completion_gateway.h"
 #include "infrastructure/hux_known_hosts_store.h"
 #include "infrastructure/hux_mcp_tool_invoker.h"
@@ -52,6 +54,11 @@ namespace linecode::app {
 [[huxerui::composable]] huxerui::View AppContent() {
   const auto application = huxerui::UseApplication();
   const auto directories = application.Directories();
+  static std::once_flag logger_setup;
+  std::call_once(logger_setup, [&directories] {
+    infrastructure::ConfigureAppLogger(
+        directories.data_directory.Child("error_logs").Path());
+  });
   auto http = huxerui::UseService<huxerui::HttpClient>();
   auto error_log_platform =
       huxerui::UseService<application::ErrorLogPlatformActions>();

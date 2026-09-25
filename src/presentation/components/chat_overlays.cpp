@@ -9,9 +9,6 @@
 
 #include <app_resources.h>
 
-#if defined(__ANDROID__)
-#include "application/ports/window_insets.h"
-#endif
 #include <huxerui/huxerui.h>
 
 #include "domain/input_attachment.h"
@@ -23,21 +20,10 @@ namespace {
 
 using namespace huxerui;
 
-// Sheets keep their panel flush with the screen so the system bar looks like
-// part of them, and pad their *content* by the real navigation-bar inset: a
-// fixed allowance left the last row glued to the bar on three-button devices.
-#if defined(__ANDROID__)
-// A trailing spacer sized to the real navigation-bar inset plus a little air.
-[[huxerui::composable]] View SheetBottomSpacer() {
-  return Stack{}.With(Frame{
-      .height = UseService<application::WindowInsetsProvider>()->Current().bottom +
-                16.0F});
-}
-#else
+// The window's SafeArea mode already keeps the panel clear of system bars.
 [[nodiscard]] View SheetBottomSpacer() {
   return Stack{}.With(Frame{.height = 16.0F});
 }
-#endif
 
 constexpr float kSheetRadius = 24.0F;
 constexpr float kSheetMaximumWidth = 560.0F;

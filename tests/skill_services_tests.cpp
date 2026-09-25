@@ -352,6 +352,17 @@ void SkillHubModelsDecodeLegacyShapes() {
   EXPECT_EXPRESSION(page->skills[0].subcategories ==
          std::vector<std::string>{"PDF 工具"});
 
+  const auto duplicate_page = DecodeSkillHubPage(R"json({
+    "code":0,"data":{"total":3,"skills":[
+      {"slug":"pdf-helper","name":"First"},
+      {"slug":"pdf-helper","name":"Second"},
+      {"slug":"other-skill","name":"Other"}
+    ]}
+  })json");
+  EXPECT_EXPRESSION(duplicate_page && duplicate_page->skills.size() == 2);
+  EXPECT_EXPRESSION(duplicate_page->skills[0].name == "First");
+  EXPECT_EXPRESSION(duplicate_page->skills[1].slug == "other-skill");
+
   const auto comments = DecodeSkillHubComments(R"json({"items":[{
     "id":1,"authorName":"作者","content":"评论","createdAt":10,
     "likeCount":3,"replies":{"total":1,"preview":[
