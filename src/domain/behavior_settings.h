@@ -16,6 +16,7 @@ struct AiBehaviorSettings final {
   bool thinking_auto_expand{};
   bool preserve_reasoning{};
   bool learning_mode{};
+  bool minimal_mode{};
   bool soft_compaction{true};
 
   bool operator==(const AiBehaviorSettings &) const = default;

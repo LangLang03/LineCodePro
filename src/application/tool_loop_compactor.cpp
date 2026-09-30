@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "domain/compaction_progress.h"
+#include "domain/context_usage.h"
 
 namespace linecode::application {
 namespace {
@@ -42,6 +43,22 @@ domain::ChatMessage ToDomain(const CompletionMessage &message) {
     converted.timeline.push_back(std::move(event));
   }
   return converted;
+}
+
+int EstimateRequestOverhead(const CompletionRequest &request) {
+  int total = 0;
+  if (!request.messages.empty() &&
+      request.messages.front().role == CompletionRole::system) {
+    total += domain::message_overhead_tokens +
+             domain::EstimateTextTokens(request.messages.front().content);
+  }
+  for (const auto &tool : request.tools) {
+    total += domain::message_overhead_tokens +
+             domain::EstimateTextTokens(tool.name) +
+             domain::EstimateTextTokens(tool.description) +
+             domain::EstimateTextTokens(tool.parameters_json);
+  }
+  return total;
 }
 
 } // namespace
@@ -98,7 +115,8 @@ ToolLoopCompactor::CompactIfNeeded(CompletionRequest request,
 
   if (!ShouldAutoCompactMidLoop(model, converted,
                                 static_cast<int>(observed_input_tokens),
-                                include_reasoning_)) {
+                                include_reasoning_,
+                                EstimateRequestOverhead(request))) {
     co_return request;
   }
 

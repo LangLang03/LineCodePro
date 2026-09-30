@@ -543,16 +543,13 @@ using namespace huxerui;
   const auto permission_mode = state.permission_mode;
   auto toast = std::move(state.toast);
   auto auto_compaction = std::move(state.auto_compaction);
+  auto token_usage = std::move(state.token_usage);
   auto retry_labels = std::move(state.retry_labels);
   auto show_attachment_picker = std::move(actions.show_attachment_picker);
   auto show_image_picker = std::move(actions.show_image_picker);
   auto show_model_picker = std::move(actions.show_model_picker);
   auto show_reasoning_picker = std::move(actions.show_reasoning_picker);
   auto handle_slash_command = std::move(actions.handle_slash_command);
-  // Composition-scoped so the token count survives the runner being rebuilt on
-  // every recomposition.
-  const auto token_usage =
-      UseState(std::make_shared<application::TokenUsageTracker>()).Get();
   auto runner = MakeChatGenerationRunner(
       ChatGenerationDependencies{
           .session = session,

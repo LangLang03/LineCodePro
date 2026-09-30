@@ -90,11 +90,11 @@ struct MemorySkillRecord final {
 
 struct MemoryOverview final {
   std::string project_id;
-  std::vector<MemoryRecord> long_term;
-  std::vector<MemoryRecord> project;
-  std::vector<MemoryRecord> environment;
-  std::vector<WorkingMemoryRecord> short_term;
-  std::vector<ConversationIndexRecord> history;
+  std::vector<MemoryRecord> long_term{};
+  std::vector<MemoryRecord> project{};
+  std::vector<MemoryRecord> environment{};
+  std::vector<WorkingMemoryRecord> short_term{};
+  std::vector<ConversationIndexRecord> history{};
 
   bool operator==(const MemoryOverview &) const = default;
 };

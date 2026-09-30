@@ -179,8 +179,9 @@ int EstimateMessageTokens(const ChatMessage &message,
 }
 
 int EstimateContextTokens(std::span<const ChatMessage> messages,
-                          const bool include_reasoning) {
-  int total = 0;
+                          const bool include_reasoning,
+                          const int additional_tokens) {
+  int total = std::max(0, additional_tokens);
   for (const auto &message : messages)
     total += EstimateMessageTokens(message, include_reasoning);
   return total;
@@ -188,9 +189,13 @@ int EstimateContextTokens(std::span<const ChatMessage> messages,
 
 ContextSnapshot SnapshotContext(std::span<const ChatMessage> messages,
                                 const int context_tokens,
-                                const bool include_reasoning) {
+                                const bool include_reasoning,
+                                const int additional_tokens,
+                                const int observed_input_tokens) {
   const int maximum = std::max(1, context_tokens);
-  const int used = EstimateContextTokens(messages, include_reasoning);
+  const int estimated = EstimateContextTokens(messages, include_reasoning,
+                                              additional_tokens);
+  const int used = std::max(estimated, observed_input_tokens);
   const int percent = static_cast<int>(
       std::lround(static_cast<double>(used) * 100.0 / static_cast<double>(maximum)));
   return ContextSnapshot{.used_tokens = used,

@@ -144,16 +144,22 @@ void HardTriggerThresholdsMatchLegacy() {
   EXPECT_EXPRESSION(!ContextCompactionService::ShouldCompact(below, 1000, true));
   EXPECT_EXPRESSION(ContextCompactionService::ShouldCompact(at, 1000, true));
 
-  // Observed server input tokens win over the local estimate.
+  // The larger of the local estimate and the observed server input tokens
+  // decides, so a lower server count cannot hide an over-limit transcript.
   EXPECT_EXPRESSION(!ContextCompactionService::ShouldCompact(below, 1000, true, 799));
   EXPECT_EXPRESSION(ContextCompactionService::ShouldCompact(below, 1000, true, 800));
-  // Zero observed tokens mean "not observed" and fall back to the estimate.
+  // Zero observed tokens mean "not observed"; the estimate decides alone.
   EXPECT_EXPRESSION(!ContextCompactionService::ShouldCompact(below, 1000, true, 0));
   EXPECT_EXPRESSION(ContextCompactionService::ShouldCompact(at, 1000, true, 0));
+  // Fixed request overhead (system prompt and tool definitions) counts too.
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldCompact(below, 1000, true, 0, 0));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldCompact(below, 1000, true, 0, 1));
 
-  // Degenerate inputs: no messages never triggers, and a zero window floors to
-  // one token instead of dividing by zero.
+  // Degenerate inputs: an empty transcript alone never triggers, while a large
+  // enough fixed overhead still does; a zero window floors to one token instead
+  // of dividing by zero.
   EXPECT_EXPRESSION(!ContextCompactionService::ShouldCompact({}, 1000, true));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldCompact({}, 1000, true, 0, 800));
   EXPECT_EXPRESSION(ContextCompactionService::ShouldCompact({UserMessage("x")}, 0, true));
 
   // Reasoning is only counted when the caller asks for it.
@@ -205,11 +211,16 @@ void SoftTriggerThresholdsMatchLegacy() {
   EXPECT_EXPRESSION(!ContextCompactionService::ShouldSoftCompact(below, 1000, true));
   EXPECT_EXPRESSION(ContextCompactionService::ShouldSoftCompact(eight, 1000, true));
 
-  // Observed server input tokens win over the local estimate.
+  // The larger of the local estimate and the observed server input tokens
+  // decides: `below` only reaches the trigger through the server count, while
+  // `eight` already reaches it on its own.
   EXPECT_EXPRESSION(ContextCompactionService::ShouldSoftCompact(below, 1000, true, 500));
-  EXPECT_EXPRESSION(!ContextCompactionService::ShouldSoftCompact(eight, 1000, true, 499));
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldSoftCompact(eight, 1000, true, 499));
   EXPECT_EXPRESSION(!ContextCompactionService::ShouldSoftCompact(eight, 1000, true, 800));
   EXPECT_EXPRESSION(ContextCompactionService::ShouldSoftCompact(eight, 1000, true, 0));
+  // Fixed request overhead counts as well, and the hard trigger still owns 80%.
+  EXPECT_EXPRESSION(ContextCompactionService::ShouldSoftCompact(below, 1000, true, 0, 400));
+  EXPECT_EXPRESSION(!ContextCompactionService::ShouldSoftCompact(below, 1000, true, 0, 600));
 
   // The model overload resolves the window through the ported parser.
   auto model = ProtocolModel(ModelProtocol::openai_compatible, false);

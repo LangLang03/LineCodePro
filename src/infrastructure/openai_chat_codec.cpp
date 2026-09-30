@@ -623,11 +623,15 @@ void EmitMinimax(std::string &json, const ReasoningContext &context) {
 }
 
 void EmitDeepseek(std::string &json, const ReasoningContext &context) {
-  const bool enabled = ReasoningEnabled(context.effort);
-  json += std::string{",\"thinking\":{\"type\":\""} +
-          (enabled ? "enabled" : "disabled") + "\"}";
-  if (enabled) {
-    json += ",\"reasoning_effort\":";
+  if (context.effort == domain::ReasoningEffort::automatic)
+    return;
+  json += ",\"reasoning_effort\":";
+  if (context.effort == domain::ReasoningEffort::off ||
+      context.effort == domain::ReasoningEffort::medium) {
+    AppendEscaped(json, context.effort == domain::ReasoningEffort::off
+                            ? "none"
+                            : "high");
+  } else {
     AppendEscaped(json, ConcreteEffort(context.effort));
   }
 }

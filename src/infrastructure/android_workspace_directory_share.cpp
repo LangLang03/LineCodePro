@@ -25,11 +25,11 @@ public:
       huxerui::PlatformChannel channel)
       : channel_(std::move(channel)) {}
 
-  [[nodiscard]] bool OpenHome() override {
+  [[nodiscard]] bool MountWorkspace() override {
     if (!channel_.IsOpen())
       return false;
     channel_.Invoke<std::monostate>(
-        "openHome", [](huxerui::PlatformResult<std::monostate>) {});
+        "mountWorkspace", [](huxerui::PlatformResult<std::monostate>) {});
     return true;
   }
 

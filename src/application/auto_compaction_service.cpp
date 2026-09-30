@@ -143,12 +143,13 @@ bool ShouldAutoCompactBeforeRequest(
     const std::vector<domain::ChatMessage> &messages,
     const int observed_input_tokens,
     const std::span<const std::uint64_t> preserved_tail_ids,
-    const bool include_reasoning) {
+    const bool include_reasoning, const int context_overhead_tokens) {
   if (!model.has_value())
     return false;
   if (!ContextCompactionService::ShouldCompact(*model, messages,
                                                include_reasoning,
-                                               observed_input_tokens)) {
+                                               observed_input_tokens,
+                                               context_overhead_tokens)) {
     return false;
   }
   for (const auto &message : messages) {
@@ -171,14 +172,15 @@ bool ShouldAutoSoftCompactBeforeRequest(
     const std::vector<domain::ChatMessage> &messages,
     const int observed_input_tokens, const bool soft_compaction_enabled,
     const std::span<const std::uint64_t> preserved_tail_ids,
-    const bool include_reasoning) {
+    const bool include_reasoning, const int context_overhead_tokens) {
   if (!model.has_value())
     return false;
   if (!soft_compaction_enabled)
     return false;
   if (!ContextCompactionService::ShouldSoftCompact(*model, messages,
                                                    include_reasoning,
-                                                   observed_input_tokens)) {
+                                                   observed_input_tokens,
+                                                   context_overhead_tokens)) {
     return false;
   }
   // Legacy lines 154-163: the base is the conversation without the preserved
@@ -197,12 +199,14 @@ bool ShouldAutoSoftCompactBeforeRequest(
 bool ShouldAutoCompactMidLoop(
     const std::optional<domain::ModelConfig> &model,
     const std::vector<domain::ChatMessage> &messages,
-    const int observed_input_tokens, const bool include_reasoning) {
+    const int observed_input_tokens, const bool include_reasoning,
+    const int context_overhead_tokens) {
   if (!model.has_value())
     return false;
   if (!ContextCompactionService::ShouldCompact(*model, messages,
                                                include_reasoning,
-                                               observed_input_tokens)) {
+                                               observed_input_tokens,
+                                               context_overhead_tokens)) {
     return false;
   }
   // Legacy line 244: the mid-loop trigger preserves nothing explicitly
@@ -211,7 +215,7 @@ bool ShouldAutoCompactMidLoop(
   const auto preserved_ids = MessageIdSet(preserved);
   return ShouldAutoCompactBeforeRequest(
       model, messages, observed_input_tokens, preserved_ids,
-      include_reasoning);
+      include_reasoning, context_overhead_tokens);
 }
 
 domain::ChatMessage

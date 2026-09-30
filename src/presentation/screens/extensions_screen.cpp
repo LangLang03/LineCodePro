@@ -141,7 +141,7 @@ void ShowUnavailableAction(
 void OpenSkillStore(const ExtensionScreenServices &services,
                     RouteNavigationController<domain::AppRoute> navigation,
                     ToastHandle toast);
-void ShareSkillWorkspace(const ExtensionScreenServices &services,
+void MountSkillWorkspace(const ExtensionScreenServices &services,
                          RouteNavigationController<domain::AppRoute> navigation,
                          ToastHandle toast);
 bool AlwaysSupplementAvailable(const ExtensionScreenServices &services);
@@ -353,7 +353,7 @@ const std::array kSkillSupplements{
         app::strings::screen_extension_detail_workspace_share,
         app::strings::screen_extension_detail_workspace_share_desc,
         app::images::folder_open, 83.0F, WorkspaceShareAvailable,
-        ShareSkillWorkspace},
+        MountSkillWorkspace},
 };
 
 const std::array<DetailSupplementPresentation, 0> kNoSupplements{};
@@ -1164,10 +1164,10 @@ void OpenSkillStore(const ExtensionScreenServices &,
   navigation.Push(domain::AppRoute::skill_store);
 }
 
-void ShareSkillWorkspace(const ExtensionScreenServices &services,
+void MountSkillWorkspace(const ExtensionScreenServices &services,
                          RouteNavigationController<domain::AppRoute>,
                          ToastHandle toast) {
-  if (!services.workspace_share || !services.workspace_share->OpenHome())
+  if (!services.workspace_share || !services.workspace_share->MountWorkspace())
     toast.Show(app::strings::screen_extension_unavailable);
 }
 

@@ -933,6 +933,35 @@ else ()
 endif ()
 add_test(NAME memory_store_contract_tests COMMAND memory_store_contract_tests)
 
+add_executable(sqlite_memory_store_tests
+        sqlite_memory_store_tests.cpp
+        ../src/domain/memory.cpp
+        ../src/domain/memory_rag.cpp
+        ../src/infrastructure/sqlite_memory_store.cpp
+)
+target_include_directories(sqlite_memory_store_tests PRIVATE ../src)
+target_compile_features(sqlite_memory_store_tests PRIVATE cxx_std_23)
+huxerui_use_library(sqlite_memory_store_tests
+        TARGET HuxerUI::SQLite
+        URL "https://github.com/HuxerUI/Lib-SQLite.git"
+        COMMIT "0b316df41cbd88b212e6aeead326196e3db6c96a"
+)
+target_link_libraries(sqlite_memory_store_tests PRIVATE
+        HuxerUI::testing)
+set_target_properties(sqlite_memory_store_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(sqlite_memory_store_tests PRIVATE
+            /W4 /permissive-)
+else ()
+    target_compile_options(sqlite_memory_store_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME sqlite_memory_store_tests COMMAND sqlite_memory_store_tests)
+
 add_executable(memory_rag_tests
         memory_rag_tests.cpp
         ../src/domain/memory.cpp

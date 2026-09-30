@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "domain/prompt_renderer.h"
+#include "domain/context_usage.h"
 
 namespace linecode::application {
 namespace {
@@ -90,6 +91,21 @@ std::string ToolContext(const CompletionRequest &request,
     }
   }
   return JoinSections({PermissionContext(context.permission_mode), tools});
+}
+
+std::string MinimalSystemPrompt(const CompletionRequest &request) {
+  std::string prompt = "You are LineCode. Call tools when useful; report only "
+                       "completed actions.\n\nTools: ";
+  if (request.tools.empty()) {
+    prompt += "none.";
+    return prompt;
+  }
+  for (std::size_t index = 0; index < request.tools.size(); ++index) {
+    if (index > 0)
+      prompt += ", ";
+    prompt += request.tools[index].name;
+  }
+  return prompt;
 }
 
 bool CorrespondsTo(CompletionRole role, domain::MessageRole history_role) {
@@ -214,15 +230,31 @@ PromptRequestComposer::PromptRequestComposer(
 huxerui::Task<SettingsResult<CompletionRequest>>
 PromptRequestComposer::Compose(CompletionRequest request,
                                PromptAssemblyContext context) {
-  auto templates = co_await prompt_templates_->Load();
-  if (!templates)
-    co_return std::unexpected(std::move(templates.error()));
   auto behavior = co_await behavior_settings_->Load();
   if (!behavior)
     co_return std::unexpected(std::move(behavior.error()));
 
-  const auto prompt = SystemPromptComposer{std::move(*templates)}.Compose(
-      request, *behavior, context);
+  std::string prompt;
+  if (behavior->minimal_mode) {
+    prompt = MinimalSystemPrompt(request);
+  } else {
+    auto templates = co_await prompt_templates_->Load();
+    if (!templates)
+      co_return std::unexpected(std::move(templates.error()));
+    prompt = SystemPromptComposer{std::move(*templates)}.Compose(
+        request, *behavior, context);
+  }
+  int context_overhead_tokens = domain::message_overhead_tokens +
+                                domain::EstimateTextTokens(prompt);
+  for (const auto &tool : request.tools) {
+    context_overhead_tokens += domain::message_overhead_tokens +
+                               domain::EstimateTextTokens(tool.name) +
+                               domain::EstimateTextTokens(tool.description) +
+                               domain::EstimateTextTokens(tool.parameters_json);
+  }
+  if (context.on_context_overhead_estimated)
+    context.on_context_overhead_estimated(context_overhead_tokens);
+
   InjectAttachmentPrompts(request, context.attachment_history,
                           *attachment_renderer_);
   request.messages.insert(

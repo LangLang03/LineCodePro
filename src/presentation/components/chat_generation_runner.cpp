@@ -165,11 +165,18 @@ private:
                                   : 0;
     const bool hard = application::ShouldAutoCompactBeforeRequest(
         model_option, messages, observed_tokens, preserved_ids,
-        behavior.preserve_reasoning);
+        behavior.preserve_reasoning,
+        dependencies_.token_usage
+            ? dependencies_.token_usage->ContextOverheadTokens()
+            : 0);
     const bool soft = !hard && application::ShouldAutoSoftCompactBeforeRequest(
                                    model_option, messages, observed_tokens,
                                    behavior.soft_compaction, preserved_ids,
-                                   behavior.preserve_reasoning);
+                                   behavior.preserve_reasoning,
+                                   dependencies_.token_usage
+                                       ? dependencies_.token_usage
+                                             ->ContextOverheadTokens()
+                                       : 0);
     if (!hard && !soft)
       co_return;
 
@@ -352,7 +359,7 @@ private:
 
     auto context = co_await dependencies_.memory_context->Prepare(
         current_project_id_, user_text, conversation_id,
-        behavior->learning_mode);
+        behavior->learning_mode && !behavior->minimal_mode);
     if (!dependencies_.generation->IsCurrent(work.generation_id))
       co_return;
     if (!context) {
@@ -364,13 +371,21 @@ private:
     }
 
     auto prompt_context = prompt_context_;
+    if (dependencies_.token_usage) {
+      prompt_context.on_context_overhead_estimated =
+          [token_usage = dependencies_.token_usage,
+           revision = revision_](int tokens) {
+            token_usage->SetContextOverheadTokens(tokens);
+            revision += 1;
+          };
+    }
     if (dependencies_.todo_state) {
       auto todo = co_await dependencies_.todo_state->Load();
       if (todo)
         prompt_context.todo_state = application::RenderTodoState(*todo);
     }
     prompt_context.learning_context = context->prompt;
-    if (dependencies_.skills) {
+    if (dependencies_.skills && !behavior->minimal_mode) {
       auto extensions = co_await dependencies_.skills->BuildExtensionPrompt();
       if (extensions && !extensions->empty()) {
         // Legacy `SystemPromptProvider.build(homePath, tone, chatMode,

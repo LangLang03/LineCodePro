@@ -564,6 +564,8 @@ struct ContextSnapshotCache final {
   std::size_t source_count{};
   std::uint64_t last_message_id{};
   int context_tokens{};
+  int context_overhead_tokens{};
+  int observed_input_tokens{};
   bool preserve_reasoning{};
   bool valid{};
   domain::ContextSnapshot snapshot;
@@ -854,6 +856,8 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
   const auto image_picker = UseService<FilePicker>();
   auto compaction_busy = UseState(std::make_shared<std::atomic<bool>>(false));
   auto context_cache = UseState(std::make_shared<ContextSnapshotCache>());
+  const auto token_usage =
+      UseState(std::make_shared<application::TokenUsageTracker>()).Get();
   auto attachment_visible = UseState(false);
   auto more_visible = UseState(false);
   auto compaction_confirm_visible = UseState(false);
@@ -1681,6 +1685,7 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
             .permission_mode = permission_state->mode,
             .toast = toast,
             .auto_compaction = auto_compaction.Get(),
+            .token_usage = token_usage,
             .retry_labels = retry_labels,
         },
         chat_composer::Actions{
@@ -1728,21 +1733,28 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
   const std::string conversation_id{session->CurrentConversationId()};
   const std::uint64_t last_message_id =
       source_messages.empty() ? 0U : source_messages.back().id;
+  const int context_overhead_tokens = token_usage->ContextOverheadTokens();
+  const int observed_input_tokens = token_usage->LastInputTokens();
   if (!cached_context->valid ||
       cached_context->conversation_id != conversation_id ||
       (!generation_running && cached_context->revision != revision.Get()) ||
       cached_context->source_count != source_messages.size() ||
       cached_context->last_message_id != last_message_id ||
       cached_context->context_tokens != context_tokens ||
+      cached_context->context_overhead_tokens != context_overhead_tokens ||
+      cached_context->observed_input_tokens != observed_input_tokens ||
       cached_context->preserve_reasoning != preserve_reasoning) {
     cached_context->conversation_id = conversation_id;
     cached_context->revision = revision.Get();
     cached_context->source_count = source_messages.size();
     cached_context->last_message_id = last_message_id;
     cached_context->context_tokens = context_tokens;
+    cached_context->context_overhead_tokens = context_overhead_tokens;
+    cached_context->observed_input_tokens = observed_input_tokens;
     cached_context->preserve_reasoning = preserve_reasoning;
     cached_context->snapshot = domain::SnapshotContext(
-        source_messages, context_tokens, preserve_reasoning);
+        source_messages, context_tokens, preserve_reasoning,
+        context_overhead_tokens, observed_input_tokens);
     cached_context->valid = true;
   }
   const auto context_snapshot = cached_context->snapshot;

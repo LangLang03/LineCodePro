@@ -35,10 +35,19 @@ public:
     return last_output_tokens_;
   }
 
+  void SetContextOverheadTokens(int value) noexcept {
+    context_overhead_tokens_ = value > 0 ? value : 0;
+  }
+
+  [[nodiscard]] int ContextOverheadTokens() const noexcept {
+    return context_overhead_tokens_;
+  }
+
   void Reset() noexcept {
     last_input_tokens_ = 0;
     last_output_tokens_ = 0;
     measured_conversation_.clear();
+    context_overhead_tokens_ = 0;
   }
 
   // Legacy `ContextCompactionController.onConversationChanged()`: the count
@@ -50,6 +59,7 @@ public:
     if (transcript_empty || conversation_id != measured_conversation_) {
       last_input_tokens_ = 0;
       last_output_tokens_ = 0;
+      context_overhead_tokens_ = 0;
       measured_conversation_ = std::move(conversation_id);
     }
   }
@@ -57,6 +67,7 @@ public:
 private:
   int last_input_tokens_{};
   int last_output_tokens_{};
+  int context_overhead_tokens_{};
   std::string measured_conversation_;
 };
 

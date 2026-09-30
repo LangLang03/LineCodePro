@@ -30,6 +30,7 @@ class ModelStore;
 class SkillRepository;
 class TodoStateStore;
 class ToolReviewCoordinator;
+class TokenUsageTracker;
 } // namespace linecode::application
 
 namespace linecode::presentation::chat_composer {
@@ -77,6 +78,7 @@ struct ViewState final {
       domain::ToolPermissionMode::automatic};
   huxerui::ToastHandle toast;
   std::shared_ptr<AutoCompactionUiState> auto_compaction;
+  std::shared_ptr<application::TokenUsageTracker> token_usage;
   RetryLabels retry_labels;
 };
 
