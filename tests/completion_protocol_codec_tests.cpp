@@ -121,6 +121,57 @@ void OpenAiCodecCarriesSystemAndProviderReasoning() {
   EXPECT_EXPRESSION(!nvidia->body.contains("enable_thinking"));
 }
 
+void DeepseekUsesSupportedReasoningEffortWithoutThinking() {
+  const auto *codec =
+      FindCompletionProtocolCodec(ModelProtocol::openai_compatible);
+  EXPECT_EXPRESSION(codec != nullptr);
+  auto request = Request(ModelProtocol::openai_compatible, true);
+  request.model.base_url = "https://api.deepseek.com/v1";
+  request.model.model_id = "deepseek-flash-v4.1";
+
+  using linecode::domain::ReasoningEffort;
+  const std::array cases{
+      std::pair{ReasoningEffort::off, std::string_view{"none"}},
+      std::pair{ReasoningEffort::low, std::string_view{"low"}},
+      std::pair{ReasoningEffort::medium, std::string_view{"high"}},
+      std::pair{ReasoningEffort::high, std::string_view{"high"}},
+      std::pair{ReasoningEffort::maximum, std::string_view{"max"}},
+  };
+  for (const auto &[effort, expected] : cases) {
+    request.reasoning_effort = effort;
+    const auto wire = codec->encode(request, request.model.base_url);
+    EXPECT_EXPRESSION(wire.has_value());
+    json::Value storage{json::Null{}};
+    const auto &body = BodyObject(wire->body, storage);
+    EXPECT_EXPRESSION(json::Find(body, "thinking") == nullptr);
+    const auto *reasoning_effort =
+        json::AsString(json::Find(body, "reasoning_effort"));
+    EXPECT_EXPRESSION(reasoning_effort != nullptr);
+    EXPECT_EXPRESSION(*reasoning_effort == expected);
+  }
+
+  request.reasoning_effort = ReasoningEffort::automatic;
+  const auto automatic = codec->encode(request, request.model.base_url);
+  EXPECT_EXPRESSION(automatic.has_value());
+  json::Value storage{json::Null{}};
+  const auto &body = BodyObject(automatic->body, storage);
+  EXPECT_EXPRESSION(json::Find(body, "thinking") == nullptr);
+  EXPECT_EXPRESSION(json::Find(body, "reasoning_effort") == nullptr);
+
+  request.model.base_url = "https://proxy.example.test/v1";
+  request.model.model_id = "deepseek-flash";
+  request.reasoning_effort = ReasoningEffort::maximum;
+  const auto proxy = codec->encode(request, request.model.base_url);
+  EXPECT_EXPRESSION(proxy.has_value());
+  json::Value proxy_storage{json::Null{}};
+  const auto &proxy_body = BodyObject(proxy->body, proxy_storage);
+  EXPECT_EXPRESSION(json::Find(proxy_body, "thinking") == nullptr);
+  const auto *proxy_effort =
+      json::AsString(json::Find(proxy_body, "reasoning_effort"));
+  EXPECT_EXPRESSION(proxy_effort != nullptr);
+  EXPECT_EXPRESSION(*proxy_effort == "max");
+}
+
 void OpenAiCodecSupportsToolRoundTrips() {
   const auto *codec =
       FindCompletionProtocolCodec(ModelProtocol::openai_compatible);
@@ -541,6 +592,7 @@ void StreamUsageSurvivesEmptyChoices() {
 TEST(completion_protocol_codec_tests, LegacySuite) {
   OpenAiCodecStillUsesChatCompletions();
   OpenAiCodecCarriesSystemAndProviderReasoning();
+  DeepseekUsesSupportedReasoningEffortWithoutThinking();
   OpenAiCodecSupportsToolRoundTrips();
   OpenAiCodecDecodesReasoningSeparatelyFromAnswerText();
   AnthropicCodecMatchesMessagesContract();

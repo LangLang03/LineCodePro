@@ -1,64 +1,57 @@
 package cn.lineai.platform;
 
-import android.content.ContentProvider;
-import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.net.Uri;
+import android.os.Bundle;
+import android.os.CancellationSignal;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.ParcelFileDescriptor;
-import android.provider.OpenableColumns;
+import android.provider.DocumentsContract;
+import android.provider.DocumentsProvider;
 import android.webkit.MimeTypeMap;
 
+import cn.lineai.R;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.List;
 import java.util.Locale;
 
-/** Exposes only files/.linecode through canonical, application-owned content URIs. */
-public final class WorkspaceDirectoryProvider extends ContentProvider {
-    private static final String[] DEFAULT_COLUMNS = new String[] {
-            OpenableColumns.DISPLAY_NAME,
-            OpenableColumns.SIZE,
-            "_id",
-            "_data"
+/** Exposes the application-owned .linecode tree through the system document picker. */
+public final class WorkspaceDirectoryProvider extends DocumentsProvider {
+    private static final String ROOT_ID = WorkspaceDocumentPaths.ROOT_ID;
+    private static final String[] ROOT_COLUMNS = {
+            DocumentsContract.Root.COLUMN_ROOT_ID,
+            DocumentsContract.Root.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Root.COLUMN_TITLE,
+            DocumentsContract.Root.COLUMN_FLAGS,
+            DocumentsContract.Root.COLUMN_ICON,
+            DocumentsContract.Root.COLUMN_AVAILABLE_BYTES
+    };
+    private static final String[] DOCUMENT_COLUMNS = {
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE,
+            DocumentsContract.Document.COLUMN_FLAGS,
+            DocumentsContract.Document.COLUMN_SIZE,
+            DocumentsContract.Document.COLUMN_LAST_MODIFIED
     };
 
-    private File linecodeRoot;
+    private WorkspaceDocumentPaths paths;
 
     static String authority(Context context) {
         return context.getPackageName() + ".workspace";
     }
 
-    static Uri rootUri(Context context) {
-        return new Uri.Builder()
-                .scheme("content")
-                .authority(authority(context))
-                .appendPath("root")
-                .build();
+    static Uri rootDocumentUri(Context context) {
+        return DocumentsContract.buildDocumentUri(authority(context), ROOT_ID);
     }
 
-    static Uri fileUri(Context context, String relativePath) {
-        Uri.Builder builder = new Uri.Builder()
-                .scheme("content")
-                .authority(authority(context))
-                .appendPath("file");
-        if (relativePath != null && !relativePath.isEmpty()) {
-            for (String segment : relativePath.split("/")) {
-                if (!segment.isEmpty()) {
-                    builder.appendPath(segment);
-                }
-            }
-        }
-        return builder.build();
-    }
-
-    static File homeDirectory(Context context) {
-        return new File(linecodeDirectory(context), "home");
-    }
-
-    private static File linecodeDirectory(Context context) {
+    static File workspaceDirectory(Context context) {
         return new File(context.getFilesDir(), ".linecode");
     }
 
@@ -68,22 +61,297 @@ public final class WorkspaceDirectoryProvider extends ContentProvider {
         if (context == null) {
             return false;
         }
-        linecodeRoot = linecodeDirectory(context);
-        if (!linecodeRoot.isDirectory() && !linecodeRoot.mkdirs()) {
+        File root = workspaceDirectory(context);
+        if (!root.isDirectory() && !root.mkdirs()) {
             return false;
         }
-        File home = homeDirectory(context);
-        return home.isDirectory() || home.mkdirs();
+        File home = new File(root, "home");
+        if (!home.isDirectory() && !home.mkdirs()) {
+            return false;
+        }
+        try {
+            paths = new WorkspaceDocumentPaths(root);
+            return true;
+        } catch (IOException error) {
+            return false;
+        }
     }
 
     @Override
-    public String getType(Uri uri) {
-        File file = resolveFile(uri);
-        if (file == null) {
-            return null;
+    public Cursor queryRoots(String[] projection) {
+        String[] columns = projection == null ? ROOT_COLUMNS : projection;
+        MatrixCursor cursor = new MatrixCursor(columns, 1);
+        MatrixCursor.RowBuilder row = cursor.newRow();
+        for (String column : columns) {
+            if (DocumentsContract.Root.COLUMN_ROOT_ID.equals(column)
+                    || DocumentsContract.Root.COLUMN_DOCUMENT_ID.equals(column)) {
+                row.add(ROOT_ID);
+            } else if (DocumentsContract.Root.COLUMN_TITLE.equals(column)) {
+                row.add(getContext().getString(R.string.workspace_provider_open_title));
+            } else if (DocumentsContract.Root.COLUMN_FLAGS.equals(column)) {
+                row.add(DocumentsContract.Root.FLAG_LOCAL_ONLY
+                        | DocumentsContract.Root.FLAG_SUPPORTS_CREATE
+                        | DocumentsContract.Root.FLAG_SUPPORTS_IS_CHILD);
+            } else if (DocumentsContract.Root.COLUMN_ICON.equals(column)) {
+                row.add(R.mipmap.ic_launcher);
+            } else if (DocumentsContract.Root.COLUMN_AVAILABLE_BYTES.equals(column)) {
+                row.add(paths.root().getUsableSpace());
+            } else {
+                row.add(null);
+            }
         }
+        return cursor;
+    }
+
+    @Override
+    public Cursor queryDocument(String documentId, String[] projection)
+            throws FileNotFoundException {
+        File file = existingFile(documentId);
+        MatrixCursor cursor = new MatrixCursor(
+                projection == null ? DOCUMENT_COLUMNS : projection, 1);
+        addDocument(cursor, documentId, file);
+        cursor.setNotificationUri(getContext().getContentResolver(), documentUri(documentId));
+        return cursor;
+    }
+
+    @Override
+    public Cursor queryChildDocuments(String parentDocumentId, String[] projection,
+            String sortOrder) throws FileNotFoundException {
+        File parent = existingDirectory(parentDocumentId);
+        File[] children = parent.listFiles();
+        if (children == null) {
+            throw new FileNotFoundException("Unable to list workspace directory");
+        }
+        MatrixCursor cursor = new MatrixCursor(
+                projection == null ? DOCUMENT_COLUMNS : projection, children.length);
+        for (File child : children) {
+            try {
+                addDocument(cursor, paths.documentIdFor(child), child);
+            } catch (FileNotFoundException ignored) {
+                // Symbolic links are not part of the exposed document tree.
+            }
+        }
+        cursor.setNotificationUri(getContext().getContentResolver(),
+                childDocumentsUri(parentDocumentId));
+        return cursor;
+    }
+
+    @Override
+    public Cursor queryChildDocuments(String parentDocumentId, String[] projection,
+            Bundle queryArgs) throws FileNotFoundException {
+        return queryChildDocuments(parentDocumentId, projection, (String) null);
+    }
+
+    @Override
+    public ParcelFileDescriptor openDocument(String documentId, String mode,
+            CancellationSignal signal) throws FileNotFoundException {
+        File file = existingFile(documentId);
+        if (!file.isFile()) {
+            throw new FileNotFoundException("Workspace document is not a file");
+        }
+        int access = ParcelFileDescriptor.parseMode(mode);
+        if (mode.contains("w")) {
+            try {
+                return ParcelFileDescriptor.open(file, access,
+                        new Handler(Looper.getMainLooper()), error -> {
+                            getContext().getContentResolver().notifyChange(
+                                    documentUri(documentId), null);
+                            notifyChildren(parentId(documentId));
+                        });
+            } catch (IOException error) {
+                throw fileError("Unable to open workspace document", error);
+            }
+        }
+        return ParcelFileDescriptor.open(file, access);
+    }
+
+    @Override
+    public String createDocument(String parentDocumentId, String mimeType,
+            String displayName) throws FileNotFoundException {
+        existingDirectory(parentDocumentId);
+        WorkspaceDocumentPaths.validateName(displayName);
+        File file = paths.resolve(parentDocumentId + "/" + displayName);
+        if (file.exists()) {
+            throw new FileNotFoundException("Workspace document already exists");
+        }
+        try {
+            if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mimeType)) {
+                if (!file.mkdir()) {
+                    throw new IOException("Unable to create workspace directory");
+                }
+            } else if (mimeType != null && !mimeType.isEmpty()) {
+                if (!file.createNewFile()) {
+                    throw new IOException("Unable to create workspace file");
+                }
+            } else {
+                throw new FileNotFoundException("Document MIME type is required");
+            }
+        } catch (IOException error) {
+            throw fileError("Unable to create workspace document", error);
+        }
+        notifyChildren(parentDocumentId);
+        return paths.documentIdFor(file);
+    }
+
+    @Override
+    public void deleteDocument(String documentId) throws FileNotFoundException {
+        if (ROOT_ID.equals(documentId)) {
+            throw new FileNotFoundException("Workspace root cannot be deleted");
+        }
+        File file = existingFile(documentId);
+        validateTree(file);
+        deleteTree(file);
+        notifyChildren(parentId(documentId));
+        getContext().getContentResolver().notifyChange(documentUri(documentId), null);
+        revokeDocumentPermission(documentId);
+    }
+
+    @Override
+    public String renameDocument(String documentId, String displayName)
+            throws FileNotFoundException {
+        if (ROOT_ID.equals(documentId)) {
+            throw new FileNotFoundException("Workspace root cannot be renamed");
+        }
+        WorkspaceDocumentPaths.validateName(displayName);
+        File source = existingFile(documentId);
+        String parentId = parentId(documentId);
+        File target = paths.resolve(parentId + "/" + displayName);
+        if (source.equals(target)) {
+            return documentId;
+        }
+        if (target.exists() || !source.renameTo(target)) {
+            throw new FileNotFoundException("Unable to rename workspace document");
+        }
+        String renamedId = paths.documentIdFor(target);
+        notifyChildren(parentId);
+        getContext().getContentResolver().notifyChange(documentUri(documentId), null);
+        revokeDocumentPermission(documentId);
+        return renamedId;
+    }
+
+    @Override
+    public String copyDocument(String sourceDocumentId, String targetParentDocumentId)
+            throws FileNotFoundException {
+        if (ROOT_ID.equals(sourceDocumentId)) {
+            throw new FileNotFoundException("Workspace root cannot be copied");
+        }
+        File source = existingFile(sourceDocumentId);
+        existingDirectory(targetParentDocumentId);
+        if (paths.isChild(sourceDocumentId, targetParentDocumentId)) {
+            throw new FileNotFoundException("Cannot copy a directory into itself");
+        }
+        File target = paths.resolve(targetParentDocumentId + "/" + source.getName());
+        if (target.exists()) {
+            throw new FileNotFoundException("Workspace document already exists");
+        }
+        validateTree(source);
+        try {
+            copyTree(source, target);
+        } catch (IOException error) {
+            if (target.exists()) {
+                try {
+                    deleteTree(target);
+                } catch (FileNotFoundException cleanupError) {
+                    error.addSuppressed(cleanupError);
+                }
+            }
+            throw fileError("Unable to copy workspace document", error);
+        }
+        notifyChildren(targetParentDocumentId);
+        return paths.documentIdFor(target);
+    }
+
+    @Override
+    public String moveDocument(String sourceDocumentId, String sourceParentDocumentId,
+            String targetParentDocumentId) throws FileNotFoundException {
+        if (ROOT_ID.equals(sourceDocumentId)
+                || !parentId(sourceDocumentId).equals(sourceParentDocumentId)) {
+            throw new FileNotFoundException("Invalid workspace move source");
+        }
+        File source = existingFile(sourceDocumentId);
+        existingDirectory(targetParentDocumentId);
+        if (paths.isChild(sourceDocumentId, targetParentDocumentId)) {
+            throw new FileNotFoundException("Cannot move a directory into itself");
+        }
+        File target = paths.resolve(targetParentDocumentId + "/" + source.getName());
+        if (source.equals(target)) {
+            return sourceDocumentId;
+        }
+        if (target.exists() || !source.renameTo(target)) {
+            throw new FileNotFoundException("Unable to move workspace document");
+        }
+        String movedId = paths.documentIdFor(target);
+        notifyChildren(sourceParentDocumentId);
+        notifyChildren(targetParentDocumentId);
+        revokeDocumentPermission(sourceDocumentId);
+        return movedId;
+    }
+
+    @Override
+    public boolean isChildDocument(String parentDocumentId, String documentId) {
+        try {
+            return existingFile(parentDocumentId).isDirectory()
+                    && existingFile(documentId).exists()
+                    && paths.isChild(parentDocumentId, documentId);
+        } catch (FileNotFoundException error) {
+            return false;
+        }
+    }
+
+    private File existingFile(String documentId) throws FileNotFoundException {
+        File file = paths.resolve(documentId);
+        if (!file.exists()) {
+            throw new FileNotFoundException("Workspace document not found");
+        }
+        return file;
+    }
+
+    private File existingDirectory(String documentId) throws FileNotFoundException {
+        File file = existingFile(documentId);
+        if (!file.isDirectory()) {
+            throw new FileNotFoundException("Workspace document is not a directory");
+        }
+        return file;
+    }
+
+    private void addDocument(MatrixCursor cursor, String documentId, File file) {
+        MatrixCursor.RowBuilder row = cursor.newRow();
+        int flags = 0;
+        if (file.isDirectory() && file.canWrite()) {
+            flags |= DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE;
+        } else if (file.isFile() && file.canWrite()) {
+            flags |= DocumentsContract.Document.FLAG_SUPPORTS_WRITE;
+        }
+        if (!ROOT_ID.equals(documentId) && file.getParentFile().canWrite()) {
+            flags |= DocumentsContract.Document.FLAG_SUPPORTS_DELETE
+                    | DocumentsContract.Document.FLAG_SUPPORTS_RENAME
+                    | DocumentsContract.Document.FLAG_SUPPORTS_COPY
+                    | DocumentsContract.Document.FLAG_SUPPORTS_MOVE;
+        }
+        for (String column : cursor.getColumnNames()) {
+            if (DocumentsContract.Document.COLUMN_DOCUMENT_ID.equals(column)) {
+                row.add(documentId);
+            } else if (DocumentsContract.Document.COLUMN_DISPLAY_NAME.equals(column)) {
+                row.add(ROOT_ID.equals(documentId)
+                        ? getContext().getString(R.string.workspace_provider_open_title)
+                        : file.getName());
+            } else if (DocumentsContract.Document.COLUMN_MIME_TYPE.equals(column)) {
+                row.add(mimeType(file));
+            } else if (DocumentsContract.Document.COLUMN_FLAGS.equals(column)) {
+                row.add(flags);
+            } else if (DocumentsContract.Document.COLUMN_SIZE.equals(column)) {
+                row.add(file.isFile() ? file.length() : 0L);
+            } else if (DocumentsContract.Document.COLUMN_LAST_MODIFIED.equals(column)) {
+                row.add(file.lastModified());
+            } else {
+                row.add(null);
+            }
+        }
+    }
+
+    private static String mimeType(File file) {
         if (file.isDirectory()) {
-            return "vnd.android.document/directory";
+            return DocumentsContract.Document.MIME_TYPE_DIR;
         }
         String name = file.getName();
         int dot = name.lastIndexOf('.');
@@ -97,103 +365,80 @@ public final class WorkspaceDirectoryProvider extends ContentProvider {
         return "application/octet-stream";
     }
 
-    @Override
-    public Cursor query(
-            Uri uri,
-            String[] projection,
-            String selection,
-            String[] selectionArgs,
-            String sortOrder) {
-        File file = resolveFile(uri);
-        if (file == null || !file.exists()) {
-            return null;
-        }
-        String[] columns = projection == null ? DEFAULT_COLUMNS : projection;
-        MatrixCursor cursor = new MatrixCursor(columns, 1);
-        Object[] row = new Object[columns.length];
-        for (int index = 0; index < columns.length; index++) {
-            String column = columns[index];
-            if (OpenableColumns.DISPLAY_NAME.equals(column)) {
-                row[index] = file.getName();
-            } else if (OpenableColumns.SIZE.equals(column)) {
-                row[index] = file.isFile() ? file.length() : 0L;
-            } else if ("_id".equals(column)) {
-                row[index] = 1;
-            } else if ("_data".equals(column)) {
-                row[index] = file.getAbsolutePath();
+    private static String parentId(String documentId) {
+        return documentId.substring(0, documentId.lastIndexOf('/'));
+    }
+
+    private Uri documentUri(String documentId) {
+        return DocumentsContract.buildDocumentUri(authority(getContext()), documentId);
+    }
+
+    private Uri childDocumentsUri(String documentId) {
+        return DocumentsContract.buildChildDocumentsUri(authority(getContext()), documentId);
+    }
+
+    private void notifyChildren(String documentId) {
+        getContext().getContentResolver().notifyChange(childDocumentsUri(documentId), null);
+    }
+
+    private void validateTree(File file) throws FileNotFoundException {
+        paths.documentIdFor(file);
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children == null) {
+                throw new FileNotFoundException("Unable to list workspace directory");
+            }
+            for (File child : children) {
+                validateTree(child);
             }
         }
-        cursor.addRow(row);
-        return cursor;
     }
 
-    @Override
-    public ParcelFileDescriptor openFile(Uri uri, String mode)
-            throws FileNotFoundException {
-        File file = resolveFile(uri);
-        if (file == null || !file.isFile()) {
-            throw new FileNotFoundException("Workspace file not found");
+    private void deleteTree(File file) throws FileNotFoundException {
+        paths.documentIdFor(file);
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children == null) {
+                throw new FileNotFoundException("Unable to list workspace directory");
+            }
+            for (File child : children) {
+                deleteTree(child);
+            }
         }
-        int access = mode != null && mode.contains("w")
-                ? ParcelFileDescriptor.MODE_READ_WRITE
-                : ParcelFileDescriptor.MODE_READ_ONLY;
-        return ParcelFileDescriptor.open(file, access);
-    }
-
-    @Override
-    public Uri insert(Uri uri, ContentValues values) {
-        return null;
-    }
-
-    @Override
-    public int delete(Uri uri, String selection, String[] selectionArgs) {
-        return 0;
-    }
-
-    @Override
-    public int update(
-            Uri uri, ContentValues values, String selection, String[] selectionArgs) {
-        return 0;
-    }
-
-    private File resolveFile(Uri uri) {
-        if (uri == null || linecodeRoot == null
-                || !authority(contextOrThrow()).equals(uri.getAuthority())) {
-            return null;
+        if (!file.delete()) {
+            throw new FileNotFoundException("Unable to delete workspace document");
         }
-        List<String> segments = uri.getPathSegments();
-        if (segments == null || segments.isEmpty()) {
-            return null;
-        }
-        File requested;
-        if (segments.size() == 1 && "root".equals(segments.get(0))) {
-            requested = linecodeRoot;
-        } else if ("file".equals(segments.get(0))) {
-            requested = linecodeRoot;
-            for (int index = 1; index < segments.size(); index++) {
-                requested = new File(requested, segments.get(index));
+    }
+
+    private void copyTree(File source, File target) throws IOException {
+        paths.documentIdFor(source);
+        paths.documentIdFor(target);
+        if (source.isDirectory()) {
+            if (!target.mkdir()) {
+                throw new IOException("Unable to create copied workspace directory");
+            }
+            File[] children = source.listFiles();
+            if (children == null) {
+                throw new IOException("Unable to list workspace directory");
+            }
+            for (File child : children) {
+                copyTree(child, new File(target, child.getName()));
             }
         } else {
-            return null;
-        }
-        try {
-            String rootPath = linecodeRoot.getCanonicalPath();
-            String requestedPath = requested.getCanonicalPath();
-            if (!requestedPath.equals(rootPath)
-                    && !requestedPath.startsWith(rootPath + File.separator)) {
-                return null;
+            try (FileInputStream input = new FileInputStream(source);
+                    FileOutputStream output = new FileOutputStream(target)) {
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, count);
+                }
             }
-            return requested;
-        } catch (IOException error) {
-            return null;
         }
     }
 
-    private Context contextOrThrow() {
-        Context context = getContext();
-        if (context == null) {
-            throw new IllegalStateException("Workspace provider has no Context");
-        }
-        return context;
+    private static FileNotFoundException fileError(String message, IOException cause) {
+        FileNotFoundException error = new FileNotFoundException(message);
+        error.initCause(cause);
+        return error;
     }
 }

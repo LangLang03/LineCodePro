@@ -58,6 +58,19 @@ MemoryStoreError StoreError(const huxerui::sqlite::Error &error) {
   return {.message = error.Message()};
 }
 
+// `memories_fts` is the FTS4 index the legacy Android build maintained beside
+// `memories`. This runtime's SQLite has no FTS module, so a database upgraded
+// from that build still carries a virtual table SQLite cannot load: every
+// statement naming it fails with "no such module: fts4", and even
+// `DROP TABLE` cannot remove it. The index is derived data nothing here reads,
+// so removing a memory must not fail because its stale index row is out of
+// reach -- a database without the index at all reports the same way.
+bool IsUnreachableMemoryIndex(const huxerui::sqlite::Error &error) {
+  const auto message = error.Message();
+  return message.find("no such table") != std::string::npos ||
+         message.find("no such module") != std::string::npos;
+}
+
 std::int64_t NowMilliseconds() noexcept {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
              std::chrono::system_clock::now().time_since_epoch())
@@ -433,12 +446,10 @@ SqliteMemoryStore::Delete(std::vector<std::string> ids) {
               transaction.Execute("DELETE FROM memories WHERE id = ?", id);
           if (!row)
             return row.Error();
-          auto fts =
+          auto index =
               transaction.Execute("DELETE FROM memories_fts WHERE id = ?", id);
-          if (!fts && fts.Error().Message().find("no such table") ==
-                          std::string::npos) {
-            return fts.Error();
-          }
+          if (!index && !IsUnreachableMemoryIndex(index.Error()))
+            return index.Error();
         }
         return {};
       });

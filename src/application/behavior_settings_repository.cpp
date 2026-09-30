@@ -11,6 +11,7 @@ constexpr auto kThinkingAutoExpand = "@lineai_thinking_auto_expand";
 constexpr auto kReasoning = "@lineai_reasoning_effort";
 constexpr auto kPreserveReasoning = "@lineai_preserve_reasoning";
 constexpr auto kLearningMode = "@linecode_learning_mode_enabled";
+constexpr auto kMinimalMode = "@linecode_minimal_mode_enabled";
 constexpr auto kSoftCompaction = "@lineai_soft_compaction";
 constexpr auto kEnterKey = "@lineai_enter_key_behavior";
 } // namespace
@@ -35,6 +36,8 @@ AiBehaviorSettingsRepository::Load() {
   if (!preserve) co_return std::unexpected(preserve.error());
   auto learning = co_await store_->GetBoolean(kLearningMode, false);
   if (!learning) co_return std::unexpected(learning.error());
+  auto minimal = co_await store_->GetBoolean(kMinimalMode, false);
+  if (!minimal) co_return std::unexpected(minimal.error());
   auto compaction = co_await store_->GetBoolean(kSoftCompaction, true);
   if (!compaction) co_return std::unexpected(compaction.error());
   co_return domain::AiBehaviorSettings{
@@ -44,6 +47,7 @@ AiBehaviorSettingsRepository::Load() {
       .thinking_auto_expand = *expand,
       .preserve_reasoning = *preserve,
       .learning_mode = *learning,
+      .minimal_mode = *minimal,
       .soft_compaction = *compaction,
   };
 }
@@ -67,6 +71,9 @@ huxerui::Task<SettingsResult<void>> AiBehaviorSettingsRepository::SetPreserveRea
 }
 huxerui::Task<SettingsResult<void>> AiBehaviorSettingsRepository::SetLearningMode(bool value) {
   co_return co_await store_->SetBoolean(kLearningMode, value);
+}
+huxerui::Task<SettingsResult<void>> AiBehaviorSettingsRepository::SetMinimalMode(bool value) {
+  co_return co_await store_->SetBoolean(kMinimalMode, value);
 }
 huxerui::Task<SettingsResult<void>> AiBehaviorSettingsRepository::SetSoftCompaction(bool value) {
   co_return co_await store_->SetBoolean(kSoftCompaction, value);

@@ -21,6 +21,7 @@ public:
   [[nodiscard]] huxerui::Task<SettingsResult<void>> SetThinkingAutoExpand(bool value);
   [[nodiscard]] huxerui::Task<SettingsResult<void>> SetPreserveReasoning(bool value);
   [[nodiscard]] huxerui::Task<SettingsResult<void>> SetLearningMode(bool value);
+  [[nodiscard]] huxerui::Task<SettingsResult<void>> SetMinimalMode(bool value);
   [[nodiscard]] huxerui::Task<SettingsResult<void>> SetSoftCompaction(bool value);
 
 private:

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <initializer_list>
 #include <memory>
 #include <string>
@@ -32,6 +33,9 @@ struct PromptAssemblyContext final {
   std::string permission_mode{"auto"};
   std::string tools_context;
   std::vector<domain::ChatMessage> attachment_history;
+  // Reported back once the request is assembled, so callers can account for
+  // the system prompt and tool definitions in the context estimate.
+  std::function<void(int)> on_context_overhead_estimated{};
 };
 
 // Request-time policy boundary used by the tool loop after it has resolved the

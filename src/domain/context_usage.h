@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <span>
 #include <string>
 #include <string_view>
@@ -48,9 +50,20 @@ struct ModelContextInfo final {
 [[nodiscard]] int EstimateMessageTokens(const ChatMessage &message,
                                         bool include_reasoning);
 
+// Estimates arbitrary request metadata such as the system prompt using the
+// same local characters-over-four heuristic as message content.
+[[nodiscard]] inline int EstimateTextTokens(std::string_view text) {
+  if (text.empty())
+    return 0;
+  return std::max(
+      1, static_cast<int>(std::ceil(static_cast<double>(text.size()) /
+                                    static_cast<double>(characters_per_token))));
+}
+
 // Port of `ContextManager.estimateTokens(List, boolean)`.
 [[nodiscard]] int EstimateContextTokens(
-    std::span<const ChatMessage> messages, bool include_reasoning = true);
+    std::span<const ChatMessage> messages, bool include_reasoning = true,
+    int additional_tokens = 0);
 
 // Port of the `ContextSnapshot` value object.
 struct ContextSnapshot final {
@@ -69,6 +82,7 @@ struct ContextSnapshot final {
 // Computes the snapshot the header indicator and usage sheet render.
 [[nodiscard]] ContextSnapshot SnapshotContext(
     std::span<const ChatMessage> messages, int context_tokens,
-    bool include_reasoning = true);
+    bool include_reasoning = true, int additional_tokens = 0,
+    int observed_input_tokens = 0);
 
 } // namespace linecode::domain

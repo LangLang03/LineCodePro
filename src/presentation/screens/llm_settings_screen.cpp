@@ -157,6 +157,13 @@ struct ReasoningMeta final {
 
   std::vector<View> learning_rows;
   learning_rows.push_back(SwitchRow(
+      app::images::zap, app::strings::screen_llm_minimal_label,
+      app::strings::screen_llm_minimal_desc, settings->minimal_mode,
+      [settings, repository, persist](bool value) {
+        settings.Update([value](auto &next) { next.minimal_mode = value; });
+        persist([repository, value] { return repository->SetMinimalMode(value); });
+      }, 89.5F));
+  learning_rows.push_back(SwitchRow(
       app::images::brain, app::strings::screen_llm_learning_label,
       app::strings::screen_llm_learning_desc, settings->learning_mode,
       [settings, repository, persist](bool value) {

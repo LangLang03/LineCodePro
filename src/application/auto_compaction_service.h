@@ -56,7 +56,7 @@ RetainedUserMessageIds(const std::vector<domain::ChatMessage> &base_snapshot);
     const std::optional<domain::ModelConfig> &model,
     const std::vector<domain::ChatMessage> &messages, int observed_input_tokens,
     std::span<const std::uint64_t> preserved_tail_ids,
-    bool include_reasoning = true);
+    bool include_reasoning = true, int context_overhead_tokens = 0);
 
 // Port of `shouldAutoSoftCompactBeforeRequest` (legacy lines 139-164). The
 // legacy gate `AiBehaviorSettingsRepository.get().isSoftCompactionEnabled()` is
@@ -68,7 +68,7 @@ RetainedUserMessageIds(const std::vector<domain::ChatMessage> &base_snapshot);
     const std::vector<domain::ChatMessage> &messages, int observed_input_tokens,
     bool soft_compaction_enabled,
     std::span<const std::uint64_t> preserved_tail_ids,
-    bool include_reasoning = true);
+    bool include_reasoning = true, int context_overhead_tokens = 0);
 
 // Port of `shouldAutoCompactMidLoop` (legacy lines 234-259). The preserved tail
 // is computed with an empty active user message id, exactly like the legacy
@@ -76,7 +76,7 @@ RetainedUserMessageIds(const std::vector<domain::ChatMessage> &base_snapshot);
 [[nodiscard]] bool ShouldAutoCompactMidLoop(
     const std::optional<domain::ModelConfig> &model,
     const std::vector<domain::ChatMessage> &messages, int observed_input_tokens,
-    bool include_reasoning = true);
+    bool include_reasoning = true, int context_overhead_tokens = 0);
 
 // Port of `hasCompactableBaseMessages` (legacy lines 713-736). A hidden summary
 // produced by an earlier compaction (the C++ stand-in for "isHidden() &&

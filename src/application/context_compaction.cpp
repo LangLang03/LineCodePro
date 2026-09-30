@@ -200,13 +200,16 @@ bool ContextCompactionService::ShouldCompact(
 
 bool ContextCompactionService::ShouldCompact(
     const std::vector<domain::ChatMessage> &messages, const int context_tokens,
-    const bool include_reasoning, const int observed_input_tokens) {
-  if (observed_input_tokens > 0) {
-    return static_cast<double>(observed_input_tokens) >=
-           static_cast<double>(std::max(1, context_tokens)) *
-               COMPACT_TRIGGER_RATIO;
-  }
-  return ShouldCompact(messages, context_tokens, include_reasoning);
+    const bool include_reasoning, const int observed_input_tokens,
+    const int context_overhead_tokens) {
+  if (messages.empty() && context_overhead_tokens <= 0)
+    return false;
+  const int maximum = std::max(1, context_tokens);
+  const int estimated = domain::EstimateContextTokens(
+      messages, include_reasoning, context_overhead_tokens);
+  const int usage = std::max(estimated, observed_input_tokens);
+  return static_cast<double>(usage) >=
+         static_cast<double>(maximum) * COMPACT_TRIGGER_RATIO;
 }
 
 bool ContextCompactionService::ShouldCompact(
@@ -220,43 +223,35 @@ bool ContextCompactionService::ShouldCompact(
 bool ContextCompactionService::ShouldCompact(
     const domain::ModelConfig &model,
     const std::vector<domain::ChatMessage> &messages,
-    const bool include_reasoning, const int observed_input_tokens) {
+    const bool include_reasoning, const int observed_input_tokens,
+    const int context_overhead_tokens) {
   return ShouldCompact(messages, domain::ResolveModelContext(model).context_tokens,
-                       include_reasoning, observed_input_tokens);
+                       include_reasoning, observed_input_tokens,
+                       context_overhead_tokens);
 }
 
 bool ContextCompactionService::ShouldSoftCompact(
     const std::vector<domain::ChatMessage> &messages, const int context_tokens,
     const bool include_reasoning) {
-  if (messages.empty())
+  return ShouldSoftCompact(messages, context_tokens, include_reasoning, 0, 0);
+}
+
+bool ContextCompactionService::ShouldSoftCompact(
+    const std::vector<domain::ChatMessage> &messages, const int context_tokens,
+    const bool include_reasoning, const int observed_input_tokens,
+    const int context_overhead_tokens) {
+  if (messages.empty() && context_overhead_tokens <= 0)
     return false;
   const int maximum = std::max(1, context_tokens);
-  const int usage =
-      domain::EstimateContextTokens(messages, include_reasoning);
+  const int estimated = domain::EstimateContextTokens(
+      messages, include_reasoning, context_overhead_tokens);
+  const int usage = std::max(estimated, observed_input_tokens);
   if (static_cast<double>(usage) <
       static_cast<double>(maximum) * SOFT_COMPACT_TRIGGER_RATIO) {
     return false;
   }
   // The hard trigger owns everything at or above its own ratio.
   if (static_cast<double>(usage) >=
-      static_cast<double>(maximum) * COMPACT_TRIGGER_RATIO) {
-    return false;
-  }
-  return CompactableMessageCount(messages) >=
-         SOFT_COMPACT_MIN_COMPACTABLE_MESSAGES;
-}
-
-bool ContextCompactionService::ShouldSoftCompact(
-    const std::vector<domain::ChatMessage> &messages, const int context_tokens,
-    const bool include_reasoning, const int observed_input_tokens) {
-  if (observed_input_tokens <= 0)
-    return ShouldSoftCompact(messages, context_tokens, include_reasoning);
-  const int maximum = std::max(1, context_tokens);
-  if (static_cast<double>(observed_input_tokens) <
-      static_cast<double>(maximum) * SOFT_COMPACT_TRIGGER_RATIO) {
-    return false;
-  }
-  if (static_cast<double>(observed_input_tokens) >=
       static_cast<double>(maximum) * COMPACT_TRIGGER_RATIO) {
     return false;
   }
@@ -276,10 +271,12 @@ bool ContextCompactionService::ShouldSoftCompact(
 bool ContextCompactionService::ShouldSoftCompact(
     const domain::ModelConfig &model,
     const std::vector<domain::ChatMessage> &messages,
-    const bool include_reasoning, const int observed_input_tokens) {
+    const bool include_reasoning, const int observed_input_tokens,
+    const int context_overhead_tokens) {
   return ShouldSoftCompact(messages,
                            domain::ResolveModelContext(model).context_tokens,
-                           include_reasoning, observed_input_tokens);
+                           include_reasoning, observed_input_tokens,
+                           context_overhead_tokens);
 }
 
 std::vector<domain::ChatMessage> ContextCompactionService::CompactableMessages(

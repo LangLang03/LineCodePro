@@ -120,7 +120,8 @@ public:
   [[nodiscard]] static bool
   ShouldCompact(const std::vector<domain::ChatMessage> &messages,
                 int context_tokens, bool include_reasoning,
-                int observed_input_tokens);
+                int observed_input_tokens,
+                int context_overhead_tokens = 0);
   // Convenience overloads resolving the window through
   // `domain::ResolveModelContext`, so callers reuse the ported parser.
   [[nodiscard]] static bool
@@ -130,7 +131,8 @@ public:
   [[nodiscard]] static bool
   ShouldCompact(const domain::ModelConfig &model,
                 const std::vector<domain::ChatMessage> &messages,
-                bool include_reasoning, int observed_input_tokens);
+                bool include_reasoning, int observed_input_tokens,
+                int context_overhead_tokens = 0);
 
   // Port of the two `shouldSoftCompact` overloads.
   [[nodiscard]] static bool
@@ -139,7 +141,8 @@ public:
   [[nodiscard]] static bool
   ShouldSoftCompact(const std::vector<domain::ChatMessage> &messages,
                     int context_tokens, bool include_reasoning,
-                    int observed_input_tokens);
+                    int observed_input_tokens,
+                    int context_overhead_tokens = 0);
   [[nodiscard]] static bool
   ShouldSoftCompact(const domain::ModelConfig &model,
                     const std::vector<domain::ChatMessage> &messages,
@@ -147,7 +150,8 @@ public:
   [[nodiscard]] static bool
   ShouldSoftCompact(const domain::ModelConfig &model,
                     const std::vector<domain::ChatMessage> &messages,
-                    bool include_reasoning, int observed_input_tokens);
+                    bool include_reasoning, int observed_input_tokens,
+                    int context_overhead_tokens = 0);
 
   // Port of `compactableMessages`.
   //

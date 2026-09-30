@@ -6,9 +6,8 @@ class WorkspaceDirectoryShareService {
 public:
   virtual ~WorkspaceDirectoryShareService() = default;
 
-  // Returns whether a native surface accepted the request to expose the
-  // application-owned .linecode/home directory.
-  [[nodiscard]] virtual bool OpenHome() = 0;
+  // Opens the system directory picker at the application-owned .linecode root.
+  [[nodiscard]] virtual bool MountWorkspace() = 0;
 };
 
 } // namespace linecode::application
