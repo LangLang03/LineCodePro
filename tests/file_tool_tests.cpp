@@ -21,6 +21,7 @@
 #include <huxerui/huxerui.h>
 #include <huxerui/testing/ui_test.h>
 
+#include "application/file_observation_store.h"
 #include "application/file_tool_registry.h"
 #include "application/ports/tool_file_access.h"
 #include "application/tool_text_catalog.h"
@@ -905,7 +906,12 @@ huxerui::Task<void> RunFileToolChecks(std::shared_ptr<Scenario> scenario) {
   EXPECT_EXPRESSION(invoked->content == "Failed to write file: injected write");
   scenario->files->fail_write.reset();
 
-  // 5. file_edit: unique match, no match, ambiguity and replace_all.
+  // 5. file_edit: unique match, no match, ambiguity and replace_all. Editing
+  // rewrites the file, so each target is read first -- the read-before-write
+  // rule covered in its own section below.
+  invoked = co_await scenario->tools->Invoke("file_read",
+                                             R"({"file_path":"edit.txt"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
   invoked = co_await scenario->tools->Invoke(
       "file_edit",
       R"({"file_path":"edit.txt","old_string":"world","new_string":"there"})");
@@ -920,6 +926,9 @@ huxerui::Task<void> RunFileToolChecks(std::shared_ptr<Scenario> scenario) {
   EXPECT_EXPRESSION(invoked && invoked->error);
   EXPECT_EXPRESSION(invoked->content == "No matching text found");
 
+  invoked = co_await scenario->tools->Invoke("file_read",
+                                             R"({"file_path":"multi.txt"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
   invoked = co_await scenario->tools->Invoke(
       "file_edit",
       R"({"file_path":"multi.txt","old_string":"cat","new_string":"dog"})");
@@ -1182,6 +1191,219 @@ huxerui::Task<void> RunFileToolChecks(std::shared_ptr<Scenario> scenario) {
   EXPECT_EXPRESSION(failed.error().code == ToolRegistryErrorCode::load_failed);
   EXPECT_EXPRESSION(failed.error().message.contains("injected"));
   scenario->settings->fail_load = false;
+
+  // 13. Read before write: an existing file may only be replaced or edited
+  // after a read whose recorded content digest still matches the file.
+  scenario->files->Seed("guard.txt", "original");
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard.txt","content":"replaced"})");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content ==
+      "Cannot modify guard.txt: the file already exists but has not been read. "
+      "Read it with file_read first, then try again.");
+  EXPECT_EXPRESSION(scenario->files->Content("guard.txt") == "original");
+
+  // Reading the file authorizes the write, and the write the tool performs
+  // counts as read for the next one, so a sequence of edits needs no re-read.
+  invoked =
+      co_await scenario->tools->Invoke("file_read", R"({"file_path":"guard.txt"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard.txt","content":"one"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Successfully updated file guard.txt (1 lines)");
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard.txt","content":"two"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(scenario->files->Content("guard.txt") == "two");
+
+  // Rewriting the file outside the tools invalidates the recorded read.
+  scenario->files->Seed("guard.txt", "external");
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard.txt","content":"clobber"})");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content ==
+      "Cannot modify guard.txt: the file changed after it was read. Read it "
+      "again with file_read, then try again.");
+  EXPECT_EXPRESSION(scenario->files->Content("guard.txt") == "external");
+
+  // Re-reading the changed file authorizes the write of the new revision.
+  invoked =
+      co_await scenario->tools->Invoke("file_read", R"({"file_path":"guard.txt"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard.txt","content":"three"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(scenario->files->Content("guard.txt") == "three");
+
+  // The rule compares content, not timestamps: touching the same bytes leaves
+  // the recorded revision valid.
+  invoked =
+      co_await scenario->tools->Invoke("file_read", R"({"file_path":"guard.txt"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  scenario->files->Seed("guard.txt", "three");
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard.txt","content":"four"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(scenario->files->Content("guard.txt") == "four");
+
+  // A creation needs no read, and the created file is immediately writable.
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard-new.txt","content":"created"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Successfully created file guard-new.txt (1 lines)");
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard-new.txt","content":"again"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(scenario->files->Content("guard-new.txt") == "again");
+
+  // A read that failed records nothing, so the file stays unread.
+  scenario->files->Seed("guard-failed-read.txt", "untouched");
+  scenario->files->fail_read = application::ToolFileError{
+      .code = application::ToolFileErrorCode::io, .message = "injected read"};
+  invoked = co_await scenario->tools->Invoke(
+      "file_read", R"({"file_path":"guard-failed-read.txt"})");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  scenario->files->fail_read.reset();
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard-failed-read.txt","content":"x"})");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content ==
+      "Cannot modify guard-failed-read.txt: the file already exists but has "
+      "not been read. Read it with file_read first, then try again.");
+  EXPECT_EXPRESSION(scenario->files->Content("guard-failed-read.txt") ==
+                    "untouched");
+
+  // A write that failed leaves the file as it was, so the recorded read still
+  // authorizes the retry.
+  scenario->files->Seed("guard-failed-write.txt", "original");
+  invoked = co_await scenario->tools->Invoke(
+      "file_read", R"({"file_path":"guard-failed-write.txt"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  scenario->files->fail_write = application::ToolFileError{
+      .code = application::ToolFileErrorCode::io, .message = "injected write"};
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard-failed-write.txt","content":"x"})");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "Failed to write file: injected write");
+  scenario->files->fail_write.reset();
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard-failed-write.txt","content":"x"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(scenario->files->Content("guard-failed-write.txt") == "x");
+
+  // file_edit follows the same rule, including the stale case.
+  scenario->files->Seed("guard-edit.txt", "hello world");
+  invoked = co_await scenario->tools->Invoke(
+      "file_edit",
+      R"({"file_path":"guard-edit.txt","old_string":"world","new_string":"there"})");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content ==
+      "Cannot modify guard-edit.txt: the file already exists but has not been "
+      "read. Read it with file_read first, then try again.");
+  EXPECT_EXPRESSION(scenario->files->Content("guard-edit.txt") == "hello world");
+
+  invoked = co_await scenario->tools->Invoke("file_read",
+                                             R"({"file_path":"guard-edit.txt"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  invoked = co_await scenario->tools->Invoke(
+      "file_edit",
+      R"({"file_path":"guard-edit.txt","old_string":"world","new_string":"there"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Successfully edited guard-edit.txt (1 match(es) replaced)");
+  EXPECT_EXPRESSION(scenario->files->Content("guard-edit.txt") == "hello there");
+
+  scenario->files->Seed("guard-edit.txt", "changed elsewhere");
+  invoked = co_await scenario->tools->Invoke(
+      "file_edit",
+      R"({"file_path":"guard-edit.txt","old_string":"changed","new_string":"x"})");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content ==
+      "Cannot modify guard-edit.txt: the file changed after it was read. Read "
+      "it again with file_read, then try again.");
+  EXPECT_EXPRESSION(scenario->files->Content("guard-edit.txt") ==
+                    "changed elsewhere");
+
+  // A range read identifies the whole revision, so it authorizes a write too.
+  invoked = co_await scenario->tools->Invoke(
+      "file_read", R"({"file_path":"large.txt","start_kb":0,"end_kb":1})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"large.txt","content":"small now"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(scenario->files->Content("large.txt") == "small now");
+
+  // The record lives with one registry: the Chinese registry has read nothing,
+  // so it must read the file before it may change it -- and it reports the
+  // refusal in its own language.
+  scenario->files->Seed("guard-shared.txt", "shared");
+  invoked = co_await scenario->tools->Invoke(
+      "file_read", R"({"file_path":"guard-shared.txt"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  chinese_invoked = co_await scenario->chinese_tools->Invoke(
+      "file_write", R"({"file_path":"guard-shared.txt","content":"zh"})");
+  EXPECT_EXPRESSION(chinese_invoked && chinese_invoked->error);
+  EXPECT_EXPRESSION(
+      chinese_invoked->content ==
+      "无法修改 guard-shared.txt：文件已存在但尚未读取。请先用 file_read "
+      "读取该文件，然后重试。");
+  EXPECT_EXPRESSION(scenario->files->Content("guard-shared.txt") == "shared");
+  chinese_invoked = co_await scenario->chinese_tools->Invoke(
+      "file_read", R"({"file_path":"guard-shared.txt"})");
+  EXPECT_EXPRESSION(chinese_invoked && !chinese_invoked->error);
+  scenario->files->Seed("guard-shared.txt", "shared elsewhere");
+  chinese_invoked = co_await scenario->chinese_tools->Invoke(
+      "file_write", R"({"file_path":"guard-shared.txt","content":"zh"})");
+  EXPECT_EXPRESSION(chinese_invoked && chinese_invoked->error);
+  EXPECT_EXPRESSION(
+      chinese_invoked->content ==
+      "无法修改 guard-shared.txt：文件在读取之后已被修改。请用 file_read "
+      "重新读取该文件，然后重试。");
+
+  // A file that disappeared after the read is a creation again, not an
+  // unverified overwrite.
+  scenario->files->Seed("guard-gone.txt", "temporary");
+  invoked = co_await scenario->tools->Invoke("file_read",
+                                             R"({"file_path":"guard-gone.txt"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  invoked = co_await scenario->tools->Invoke(
+      "file_delete", R"({"paths":["guard-gone.txt"],"reason":"cleanup"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard-gone.txt","content":"recreated"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Successfully created file guard-gone.txt (1 lines)");
+
+  // A shared record can be injected, which is how two registries agree on what
+  // has been read.
+  auto shared = std::make_shared<application::FileObservationStore>();
+  auto first = std::make_shared<application::FileToolRegistry>(
+      scenario->settings, scenario->workspace, scenario->files,
+      application::ToolTextLanguage::english, nullptr, shared);
+  auto second = std::make_shared<application::FileToolRegistry>(
+      scenario->settings, scenario->workspace, scenario->files,
+      application::ToolTextLanguage::english, nullptr, shared);
+  auto first_refreshed = co_await first->Refresh();
+  EXPECT_EXPRESSION(first_refreshed);
+  scenario->files->Seed("guard-injected.txt", "before");
+  invoked = co_await first->Invoke("file_read",
+                                   R"({"file_path":"guard-injected.txt"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  auto second_refreshed = co_await second->Refresh();
+  EXPECT_EXPRESSION(second_refreshed);
+  invoked = co_await second->Invoke(
+      "file_write", R"({"file_path":"guard-injected.txt","content":"after"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(scenario->files->Content("guard-injected.txt") == "after");
 
   scenario->done = true;
 }

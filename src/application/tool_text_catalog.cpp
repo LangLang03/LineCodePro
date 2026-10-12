@@ -122,6 +122,18 @@ constexpr std::array<ToolTextEntry, kToolTextKeyCount> kToolTextEntries{{
         .chinese = "写入文件失败: {0}",
     },
     {
+        .key = ToolTextKey::tool_file_write_needs_read,
+        .name = "tool_file_write_needs_read",
+        .english = "Cannot modify {0}: the file already exists but has not been read. Read it with file_read first, then try again.",
+        .chinese = "无法修改 {0}：文件已存在但尚未读取。请先用 file_read 读取该文件，然后重试。",
+    },
+    {
+        .key = ToolTextKey::tool_file_write_stale_read,
+        .name = "tool_file_write_stale_read",
+        .english = "Cannot modify {0}: the file changed after it was read. Read it again with file_read, then try again.",
+        .chinese = "无法修改 {0}：文件在读取之后已被修改。请用 file_read 重新读取该文件，然后重试。",
+    },
+    {
         .key = ToolTextKey::tool_file_edit_no_match,
         .name = "tool_file_edit_no_match",
         .english = "No matching text found",

@@ -1766,6 +1766,8 @@ add_test(NAME web_tool_tests COMMAND web_tool_tests)
 
 add_executable(file_tool_tests
         file_tool_tests.cpp
+        ../src/application/file_content_hash.cpp
+        ../src/application/file_observation_store.cpp
         ../src/application/file_tool_registry.cpp
         ../src/application/tool_file_access.cpp
         ../src/application/tool_file_path_policy.cpp
@@ -1789,6 +1791,26 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 add_test(NAME file_tool_tests COMMAND file_tool_tests)
+
+add_executable(file_observation_tests
+        file_observation_tests.cpp
+        ../src/application/file_content_hash.cpp
+        ../src/application/file_observation_store.cpp
+)
+target_include_directories(file_observation_tests PRIVATE ../src)
+target_compile_features(file_observation_tests PRIVATE cxx_std_23)
+set_target_properties(file_observation_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(file_observation_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(file_observation_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+add_test(NAME file_observation_tests COMMAND file_observation_tests)
 
 add_executable(context_usage_tests
         context_usage_tests.cpp

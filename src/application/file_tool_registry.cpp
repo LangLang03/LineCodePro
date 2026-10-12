@@ -10,6 +10,7 @@
 #include <functional>
 #include <iterator>
 #include <locale>
+#include <optional>
 #include <ranges>
 #include <span>
 #include <sstream>
@@ -23,6 +24,8 @@
 
 #include <huxerui/task.h>
 
+#include "application/file_content_hash.h"
+#include "application/file_observation_store.h"
 #include "application/tool_file_path_policy.h"
 #include "application/tool_text_catalog.h"
 #include "infrastructure/archive_json.h"
@@ -106,6 +109,10 @@ constexpr std::int64_t kMaximumParsedKb = 1'000'000'000;
 
 // FileReadTool.countNewlines() scans with a 64KB buffer.
 constexpr std::uint64_t kNewlineScanChunkBytes = 64ULL * 1024ULL;
+
+// Content digests stream the file in the same bounded chunks, so identifying a
+// revision never loads the whole file.
+constexpr std::uint64_t kHashChunkBytes = 64ULL * 1024ULL;
 
 // Legacy ToolResult.MAX_TOOL_RESULT_CHARS and its half-size truncation window.
 constexpr std::size_t kMaximumResultCharacters = 50U * 1024U;
@@ -355,6 +362,10 @@ struct FileToolContext final {
   // `DiffRecorder` that wrapped FileWriteTool and FileEditTool. Optional: a
   // null store simply means "no review history".
   DiffStore *diffs{};
+  // Remembers the content digest of every file the read tools have seen, so the
+  // write family can require a read and detect a file that changed afterwards.
+  // Optional only so a hand-built context (tests) can opt out.
+  FileObservationStore *observations{};
 };
 
 // Converts one catalog argument exactly like huxerui::StringVariant::Format:
@@ -442,6 +453,80 @@ huxerui::Task<ToolFileResult<bool>> LastByteIsNewline(ToolFileAccess &files,
   if (!last)
     co_return std::unexpected(last.error());
   co_return (*last == "\n");
+}
+
+// SHA-256 of the whole file, streamed in bounded reads. The digest always comes
+// from the bytes on disk, never from an in-memory copy of them, so the revision
+// recorded after a read and the revision checked before a write are computed
+// exactly the same way.
+huxerui::Task<ToolFileResult<std::string>>
+HashFile(ToolFileAccess &files, const std::string &path) {
+  Sha256Digest digest;
+  std::uint64_t offset = 0;
+  while (true) {
+    auto chunk = co_await files.ReadBytes(path, offset, kHashChunkBytes);
+    if (!chunk)
+      co_return std::unexpected(chunk.error());
+    if (chunk->empty())
+      break;
+    digest.Update(*chunk);
+    offset += static_cast<std::uint64_t>(chunk->size());
+  }
+  co_return digest.Hex();
+}
+
+// Remembers the revision a tool just left on disk. A file that cannot be hashed
+// back is forgotten instead, so it counts as unread rather than as verified.
+huxerui::Task<void> RememberObserved(FileToolContext context,
+                                     const std::string &absolute_path) {
+  if (context.observations == nullptr)
+    co_return;
+  auto digest = co_await HashFile(*context.files, absolute_path);
+  if (!digest) {
+    context.observations->Forget(absolute_path);
+    co_return;
+  }
+  context.observations->Record(absolute_path, std::move(*digest));
+}
+
+// Outcome of the read-before-write rule for a file that already exists.
+enum class MutationGuard : std::uint8_t {
+  // The recorded read matches the bytes on disk: the mutation may proceed.
+  allowed,
+  // The file was never read, so overwriting it could discard unseen content.
+  not_read,
+  // The file changed after it was read, or cannot be read back to verify it.
+  changed,
+};
+
+// The read-before-write rule: an existing file may only be replaced or edited
+// after the model read exactly the revision that is on disk now. The caller
+// consults it only for a target that exists; a missing target is a creation.
+huxerui::Task<MutationGuard>
+CheckObservedRevision(FileToolContext context,
+                      const std::string &absolute_path) {
+  if (context.observations == nullptr)
+    co_return MutationGuard::allowed;
+  const auto observed = context.observations->ObservedHash(absolute_path);
+  if (!observed)
+    co_return MutationGuard::not_read;
+  auto current = co_await HashFile(*context.files, absolute_path);
+  if (!current || *current != *observed)
+    co_return MutationGuard::changed;
+  co_return MutationGuard::allowed;
+}
+
+// The model-visible refusal: it always names the remedy, so the next step is a
+// read of the same path rather than a retry of the same mutation.
+ToolInvocationResult MutationRefused(const FileToolContext &context,
+                                     const MutationGuard guard,
+                                     const std::string &input_path) {
+  return ToolFailure(
+      Text(context,
+           guard == MutationGuard::not_read
+               ? ToolTextKey::tool_file_write_needs_read
+               : ToolTextKey::tool_file_write_stale_read,
+           input_path));
 }
 
 // FileReadTool.appendDirectory(): a depth-first tree of "[DIR]  <path>/" and
@@ -550,6 +635,9 @@ ExecuteFileRead(FileToolContext context, std::string arguments_json) {
       co_return ToolFailure(Text(context, ToolTextKey::tool_file_read_failed,
                                  content.error().message));
     }
+    // The read succeeded, so the model has seen this revision: record it before
+    // returning, which is what authorizes a later write of the same file.
+    co_await RememberObserved(context, target->absolute);
     co_return ToolSuccess(TruncateContent(AddLineNumbers(*content, 1)));
   }
 
@@ -622,6 +710,9 @@ ExecuteFileRead(FileToolContext context, std::string arguments_json) {
     --total_lines;
   result += Text(context, ToolTextKey::tool_file_read_range_info, total_lines,
                  start_kb, end_kb, file_length / 1024U);
+  // A windowed read still identifies the whole revision, so it authorizes a
+  // later write of that revision just like a whole-file read does.
+  co_await RememberObserved(context, target->absolute);
   co_return ToolSuccess(TruncateContent(std::move(result)));
 }
 
@@ -672,6 +763,15 @@ ExecuteFileWrite(FileToolContext context, std::string arguments_json) {
     co_return ToolFailure(
         Text(context, ToolTextKey::tool_file_write_is_directory, input_path));
   }
+  // Read before write: an existing file may only be overwritten after a read
+  // that still matches what is on disk. A missing file is a creation, which
+  // cannot discard anything.
+  if (info.has_value()) {
+    const auto guard =
+        co_await CheckObservedRevision(context, target->absolute);
+    if (guard != MutationGuard::allowed)
+      co_return MutationRefused(context, guard, input_path);
+  }
   // Legacy FileWriteTool creates the missing parent chain before writing.
   const std::string parent = ParentPath(target->absolute);
   if (!parent.empty()) {
@@ -696,6 +796,9 @@ ExecuteFileWrite(FileToolContext context, std::string arguments_json) {
     co_return ToolFailure(Text(context, ToolTextKey::tool_file_write_failed,
                                written.error().message));
   }
+  // The tool has just read what it left behind, so the file counts as read for
+  // the rest of the session instead of demanding an immediate re-read.
+  co_await RememberObserved(context, target->absolute);
   auto result =
       ToolSuccess(Text(context,
                        info.has_value() ? ToolTextKey::tool_file_write_updated
@@ -747,6 +850,11 @@ ExecuteFileEdit(FileToolContext context, std::string arguments_json) {
     co_return ToolFailure(
         Text(context, ToolTextKey::tool_file_edit_is_directory, input_path));
   }
+  // Editing rewrites the file, so it follows the same read-before-write rule as
+  // file_write: the model must have read the revision that is on disk now.
+  const auto guard = co_await CheckObservedRevision(context, target->absolute);
+  if (guard != MutationGuard::allowed)
+    co_return MutationRefused(context, guard, input_path);
   auto content = co_await context.files->ReadText(target->absolute);
   if (!content) {
     co_return ToolFailure(Text(context, ToolTextKey::tool_file_edit_failed,
@@ -771,6 +879,7 @@ ExecuteFileEdit(FileToolContext context, std::string arguments_json) {
     co_return ToolFailure(Text(context, ToolTextKey::tool_file_edit_failed,
                                written.error().message));
   }
+  co_await RememberObserved(context, target->absolute);
   auto result = ToolSuccess(Text(context, ToolTextKey::tool_file_edit_success,
                                  target->display, replaced));
   auto diff_id = co_await RecordChange(context, target->absolute, *content,
@@ -1121,9 +1230,12 @@ FileToolRegistry::FileToolRegistry(
     std::shared_ptr<McpExecutionSettingsService> settings,
     std::shared_ptr<ProjectWorkspaceController> workspace,
     std::shared_ptr<ToolFileAccess> files, ToolTextLanguage language,
-    std::shared_ptr<DiffStore> diffs)
+    std::shared_ptr<DiffStore> diffs,
+    std::shared_ptr<FileObservationStore> observations)
     : settings_(std::move(settings)), workspace_(std::move(workspace)),
-      files_(std::move(files)), language_(language), diffs_(std::move(diffs)) {
+      files_(std::move(files)), language_(language), diffs_(std::move(diffs)),
+      observations_(observations ? std::move(observations)
+                                 : std::make_shared<FileObservationStore>()) {
   if (!settings_ || !workspace_ || !files_) {
     throw std::invalid_argument(
         "FileToolRegistry requires settings, project workspace and file access "
@@ -1169,7 +1281,8 @@ FileToolRegistry::Invoke(std::string name, std::string arguments_json) {
       FileToolContext{.projects = workspace_.get(),
                       .files = files_.get(),
                       .language = language_,
-                      .diffs = diffs_.get()},
+                      .diffs = diffs_.get(),
+                      .observations = observations_.get()},
       std::move(arguments_json));
 }
 
