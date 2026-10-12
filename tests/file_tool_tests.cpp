@@ -21,6 +21,7 @@
 #include <huxerui/huxerui.h>
 #include <huxerui/testing/ui_test.h>
 
+#include "application/file_content_hash.h"
 #include "application/file_observation_store.h"
 #include "application/file_tool_registry.h"
 #include "application/ports/tool_file_access.h"
@@ -538,10 +539,18 @@ struct Scenario final {
     files = std::make_shared<MemoryFileAccess>();
     files->root = root;
     SeedWorkspace(*files);
-    tools = std::make_shared<application::FileToolRegistry>(settings, workspace,
-                                                            files);
+    // The registries own one record each. Injecting them lets a test start from a
+    // known state and read back what a call recorded, instead of relying on
+    // whatever an earlier call in the same suite happened to leave behind.
+    observations = std::make_shared<application::FileObservationStore>();
+    chinese_observations =
+        std::make_shared<application::FileObservationStore>();
+    tools = std::make_shared<application::FileToolRegistry>(
+        settings, workspace, files, application::ToolTextLanguage::english,
+        nullptr, observations);
     chinese_tools = std::make_shared<application::FileToolRegistry>(
-        settings, workspace, files, application::ToolTextLanguage::chinese);
+        settings, workspace, files, application::ToolTextLanguage::chinese,
+        nullptr, chinese_observations);
   }
 
   ~Scenario() {
@@ -580,6 +589,8 @@ struct Scenario final {
   std::shared_ptr<StubExecutionSettings> settings;
   std::shared_ptr<StubProjectWorkspace> workspace;
   std::shared_ptr<MemoryFileAccess> files;
+  std::shared_ptr<application::FileObservationStore> observations;
+  std::shared_ptr<application::FileObservationStore> chinese_observations;
   std::shared_ptr<application::FileToolRegistry> tools;
   std::shared_ptr<application::FileToolRegistry> chinese_tools;
   bool done{};
@@ -1332,14 +1343,163 @@ huxerui::Task<void> RunFileToolChecks(std::shared_ptr<Scenario> scenario) {
   EXPECT_EXPRESSION(scenario->files->Content("guard-edit.txt") ==
                     "changed elsewhere");
 
-  // A range read identifies the whole revision, so it authorizes a write too.
+  // A partial read identifies the revision, which is what lets the model edit
+  // the file, but it must not authorize replacing the whole file. The record is
+  // cleared first and a fresh path is read, so only this read can authorize
+  // anything that follows.
+  std::string wide;
+  wide.append(1024, 'w');
+  wide.push_back('\n');
+  wide.append(1024, 'x');
+  wide.push_back('\n');
+  wide.append(1024, 'y');
+  wide.push_back('\n');
+  scenario->files->Seed("guard-window.txt", std::move(wide));
+  const std::string window_path = scenario->root + "/guard-window.txt";
+  scenario->observations->Clear();
   invoked = co_await scenario->tools->Invoke(
-      "file_read", R"({"file_path":"large.txt","start_kb":0,"end_kb":1})");
+      "file_read", R"({"file_path":"guard-window.txt","start_kb":0,"end_kb":1})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  // The read did record something, and it recorded a partial view of exactly the
+  // bytes it delivered.
+  const auto window_observed = scenario->observations->Observed(window_path);
+  EXPECT_EXPRESSION(window_observed.has_value());
+  EXPECT_EXPRESSION(window_observed->complete == false);
+  EXPECT_EXPRESSION(scenario->observations->Size() == 1U);
+
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard-window.txt","content":"small now"})");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content ==
+      "Cannot replace guard-window.txt: the file was never read in full, so "
+      "replacing it could drop content that was never seen. Use file_edit for a "
+      "targeted change.");
+  EXPECT_EXPRESSION(scenario->files->Content("guard-window.txt").size() == 3075U);
+
+  // The same partial view does authorize a localized edit, which keeps every
+  // byte it does not replace, and the edit inherits the partial view.
+  invoked = co_await scenario->tools->Invoke(
+      "file_edit",
+      R"({"file_path":"guard-window.txt","old_string":"w","new_string":"W","replace_all":true})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(scenario->files->Content("guard-window.txt")
+                        .starts_with("WWWW"));
+  EXPECT_EXPRESSION(scenario->files->Content("guard-window.txt").ends_with("yyy\n"));
+  EXPECT_EXPRESSION(scenario->observations->Observed(window_path)->complete ==
+                    false);
+
+  // An explicit range that covers the whole file is a complete view, so it
+  // authorizes a replacement.
+  invoked = co_await scenario->tools->Invoke(
+      "file_read", R"({"file_path":"segment.txt","start_kb":0,"end_kb":2})");
   EXPECT_EXPRESSION(invoked && !invoked->error);
   invoked = co_await scenario->tools->Invoke(
-      "file_write", R"({"file_path":"large.txt","content":"small now"})");
+      "file_write", R"({"file_path":"segment.txt","content":"replaced whole"})");
   EXPECT_EXPRESSION(invoked && !invoked->error);
-  EXPECT_EXPRESSION(scenario->files->Content("large.txt") == "small now");
+  EXPECT_EXPRESSION(scenario->files->Content("segment.txt") ==
+                    "replaced whole");
+
+  // A whole-file read whose rendered output is truncated only showed the model
+  // part of the file, so it is a partial view as well.
+  std::string truncated;
+  for (int line = 0; line < 4500; ++line)
+    truncated += "0123456789\n";
+  EXPECT_EXPRESSION(truncated.size() < 50U * 1024U);
+  scenario->files->Seed("guard-truncated.txt", std::move(truncated));
+  invoked = co_await scenario->tools->Invoke(
+      "file_read", R"({"file_path":"guard-truncated.txt"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content.contains("chars truncated"));
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard-truncated.txt","content":"short"})");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content ==
+      "Cannot replace guard-truncated.txt: the file was never read in full, so "
+      "replacing it could drop content that was never seen. Use file_edit for a "
+      "targeted change.");
+  invoked = co_await scenario->tools->Invoke(
+      "file_edit",
+      R"({"file_path":"guard-truncated.txt","old_string":"0123456789","new_string":"9876543210","replace_all":true})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+
+  // The recorded digest is the digest of the text the read returned, not of a
+  // later look at the path: a read records exactly what the model was given.
+  scenario->observations->Clear();
+  scenario->files->Seed("guard-digest.txt", "exact bytes");
+  invoked = co_await scenario->tools->Invoke("file_read",
+                                             R"({"file_path":"guard-digest.txt"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  const auto digest_observed =
+      scenario->observations->Observed(scenario->root + "/guard-digest.txt");
+  EXPECT_EXPRESSION(digest_observed.has_value());
+  EXPECT_EXPRESSION(digest_observed->content_hash ==
+                    application::Sha256Hex("exact bytes"));
+  EXPECT_EXPRESSION(digest_observed->complete == true);
+
+  // Another tool call already changing the file refuses the mutation instead of
+  // letting both pass the freshness check and one drop the other's change.
+  scenario->files->Seed("guard-busy.txt", "busy");
+  invoked = co_await scenario->tools->Invoke("file_read",
+                                             R"({"file_path":"guard-busy.txt"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  const std::string busy_path = scenario->root + "/guard-busy.txt";
+  EXPECT_EXPRESSION(scenario->observations->Claim(busy_path));
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard-busy.txt","content":"mine"})");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content ==
+      "Cannot modify guard-busy.txt: another tool call is already changing this "
+      "file. Try again.");
+  invoked = co_await scenario->tools->Invoke(
+      "file_edit",
+      R"({"file_path":"guard-busy.txt","old_string":"busy","new_string":"idle"})");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(
+      invoked->content ==
+      "Cannot modify guard-busy.txt: another tool call is already changing this "
+      "file. Try again.");
+  EXPECT_EXPRESSION(scenario->files->Content("guard-busy.txt") == "busy");
+  scenario->observations->Release(busy_path);
+  // A refused mutation released its own claim, so the path is free again.
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard-busy.txt","content":"mine"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(scenario->files->Content("guard-busy.txt") == "mine");
+
+  // A Stat failure that is not "not found" leaves the state of the path unknown,
+  // so the write fails instead of treating an existing file as a creation.
+  scenario->files->Seed("guard-stat.txt", "existing");
+  invoked = co_await scenario->tools->Invoke("file_read",
+                                             R"({"file_path":"guard-stat.txt"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  scenario->files->fail_stat = application::ToolFileError{
+      .code = application::ToolFileErrorCode::io, .message = "injected stat"};
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard-stat.txt","content":"clobber"})");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "Failed to write file: injected stat");
+  invoked = co_await scenario->tools->Invoke(
+      "file_edit",
+      R"({"file_path":"guard-stat.txt","old_string":"existing","new_string":"x"})");
+  EXPECT_EXPRESSION(invoked && invoked->error);
+  EXPECT_EXPRESSION(invoked->content == "Failed to edit file: injected stat");
+  scenario->files->fail_stat.reset();
+  EXPECT_EXPRESSION(scenario->files->Content("guard-stat.txt") == "existing");
+
+  // A missing file is still a creation under a failing Stat only when the
+  // provider reports it as missing.
+  scenario->files->fail_stat = application::ToolFileError{
+      .code = application::ToolFileErrorCode::not_found,
+      .message = "injected missing"};
+  invoked = co_await scenario->tools->Invoke(
+      "file_write", R"({"file_path":"guard-stat-new.txt","content":"created"})");
+  EXPECT_EXPRESSION(invoked && !invoked->error);
+  EXPECT_EXPRESSION(invoked->content ==
+                    "Successfully created file guard-stat-new.txt (1 lines)");
+  scenario->files->fail_stat.reset();
 
   // The record lives with one registry: the Chinese registry has read nothing,
   // so it must read the file before it may change it -- and it reports the

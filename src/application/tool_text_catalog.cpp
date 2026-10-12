@@ -134,6 +134,18 @@ constexpr std::array<ToolTextEntry, kToolTextKeyCount> kToolTextEntries{{
         .chinese = "无法修改 {0}：文件在读取之后已被修改。请用 file_read 重新读取该文件，然后重试。",
     },
     {
+        .key = ToolTextKey::tool_file_write_needs_full_read,
+        .name = "tool_file_write_needs_full_read",
+        .english = "Cannot replace {0}: the file was never read in full, so replacing it could drop content that was never seen. Use file_edit for a targeted change.",
+        .chinese = "无法整体替换 {0}：该文件从未被完整读取，整体替换可能丢失未被看到的内容。请使用 file_edit 做局部修改。",
+    },
+    {
+        .key = ToolTextKey::tool_file_write_busy,
+        .name = "tool_file_write_busy",
+        .english = "Cannot modify {0}: another tool call is already changing this file. Try again.",
+        .chinese = "无法修改 {0}：另一个工具调用正在修改该文件。请重试。",
+    },
+    {
         .key = ToolTextKey::tool_file_edit_no_match,
         .name = "tool_file_edit_no_match",
         .english = "No matching text found",

@@ -48,6 +48,8 @@ enum class ToolTextKey : std::uint8_t {
   tool_file_write_failed,
   tool_file_write_needs_read,
   tool_file_write_stale_read,
+  tool_file_write_needs_full_read,
+  tool_file_write_busy,
   tool_file_edit_no_match,
   tool_file_edit_multiple_matches,
   tool_file_edit_success,
@@ -112,7 +114,7 @@ enum class ToolTextKey : std::uint8_t {
 };
 
 // Number of ToolTextKey values, and the row count of the generated table.
-inline constexpr std::size_t kToolTextKeyCount = 78;
+inline constexpr std::size_t kToolTextKeyCount = 80;
 
 // Packaged resource key of a catalog entry, such as "tool_file_read_failed".
 [[nodiscard]] std::string_view ToolTextName(ToolTextKey key) noexcept;

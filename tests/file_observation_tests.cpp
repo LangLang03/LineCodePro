@@ -79,27 +79,34 @@ TEST(Sha256Digest, IsIndependentOfChunking) {
 TEST(FileObservationStore, TracksTheRevisionOfEveryReadPath) {
   application::FileObservationStore store;
   EXPECT_EXPRESSION(store.Size() == 0U);
-  EXPECT_EXPRESSION(!store.ObservedHash("/workspace/a.txt").has_value());
+  EXPECT_EXPRESSION(!store.Observed("/workspace/a.txt").has_value());
 
-  store.Record("/workspace/a.txt", "first");
-  store.Record("/workspace/b.txt", "second");
+  const application::FileObservation whole{.content_hash = "first",
+                                           .complete = true};
+  const application::FileObservation partial{.content_hash = "second",
+                                             .complete = false};
+  store.Record("/workspace/a.txt", whole);
+  store.Record("/workspace/b.txt", partial);
   EXPECT_EXPRESSION(store.Size() == 2U);
-  EXPECT_EXPRESSION(store.ObservedHash("/workspace/a.txt") ==
-                    std::optional<std::string>{"first"});
-  EXPECT_EXPRESSION(store.ObservedHash("/workspace/b.txt") ==
-                    std::optional<std::string>{"second"});
+  EXPECT_EXPRESSION(store.Observed("/workspace/a.txt") ==
+                    std::optional<application::FileObservation>{whole});
+  EXPECT_EXPRESSION(store.Observed("/workspace/b.txt") ==
+                    std::optional<application::FileObservation>{partial});
 
-  // Reading the same path again replaces the recorded revision.
-  store.Record("/workspace/a.txt", "third");
-  EXPECT_EXPRESSION(store.ObservedHash("/workspace/a.txt") ==
-                    std::optional<std::string>{"third"});
+  // Reading the same path again replaces the recorded revision, including
+  // whether that revision was seen in full.
+  store.Record("/workspace/a.txt", application::FileObservation{
+                                       .content_hash = "third",
+                                       .complete = false});
+  EXPECT_EXPRESSION(store.Observed("/workspace/a.txt")->content_hash == "third");
+  EXPECT_EXPRESSION(store.Observed("/workspace/a.txt")->complete == false);
   EXPECT_EXPRESSION(store.Size() == 2U);
 
   // Paths are matched exactly: a sibling directory is a different file.
-  EXPECT_EXPRESSION(!store.ObservedHash("/elsewhere/a.txt").has_value());
+  EXPECT_EXPRESSION(!store.Observed("/elsewhere/a.txt").has_value());
 
   store.Forget("/workspace/a.txt");
-  EXPECT_EXPRESSION(!store.ObservedHash("/workspace/a.txt").has_value());
+  EXPECT_EXPRESSION(!store.Observed("/workspace/a.txt").has_value());
   EXPECT_EXPRESSION(store.Size() == 1U);
   // Forgetting an unknown path is a no-op.
   store.Forget("/workspace/missing.txt");
@@ -107,7 +114,27 @@ TEST(FileObservationStore, TracksTheRevisionOfEveryReadPath) {
 
   store.Clear();
   EXPECT_EXPRESSION(store.Size() == 0U);
-  EXPECT_EXPRESSION(!store.ObservedHash("/workspace/b.txt").has_value());
+  EXPECT_EXPRESSION(!store.Observed("/workspace/b.txt").has_value());
+}
+
+TEST(FileObservationStore, HandsOutOneMutationClaimPerPath) {
+  application::FileObservationStore store;
+  EXPECT_EXPRESSION(store.Claim("/workspace/a.txt"));
+  // A second tool call cannot claim the path while the first holds it.
+  EXPECT_EXPRESSION(!store.Claim("/workspace/a.txt"));
+  // A different path is unaffected.
+  EXPECT_EXPRESSION(store.Claim("/workspace/b.txt"));
+
+  // Releasing the claim makes the path claimable again.
+  store.Release("/workspace/a.txt");
+  EXPECT_EXPRESSION(store.Claim("/workspace/a.txt"));
+  store.Release("/workspace/a.txt");
+  // Releasing an unheld path is a no-op.
+  store.Release("/workspace/missing.txt");
+
+  // A claim is not an observation: it never authorizes a mutation by itself.
+  EXPECT_EXPRESSION(store.Size() == 0U);
+  EXPECT_EXPRESSION(!store.Observed("/workspace/a.txt").has_value());
 }
 
 TEST(FileObservationStore, StaysBoundedByDroppingTheRecord) {
@@ -116,18 +143,29 @@ TEST(FileObservationStore, StaysBoundedByDroppingTheRecord) {
                                           kMaximumObservedPaths;
        ++index) {
     store.Record("/workspace/file-" + std::to_string(index) + ".txt",
-                 std::to_string(index));
+                 application::FileObservation{
+                     .content_hash = std::to_string(index), .complete = true});
   }
   EXPECT_EXPRESSION(store.Size() ==
                     application::FileObservationStore::kMaximumObservedPaths);
 
   // One more path drops the whole record, so a long-lived process cannot grow
   // without bound; the newest path is still recorded.
-  store.Record("/workspace/overflow.txt", "overflow");
+  store.Record("/workspace/overflow.txt",
+               application::FileObservation{.content_hash = "overflow",
+                                            .complete = false});
   EXPECT_EXPRESSION(store.Size() <=
                     application::FileObservationStore::kMaximumObservedPaths);
-  EXPECT_EXPRESSION(store.ObservedHash("/workspace/overflow.txt") ==
-                    std::optional<std::string>{"overflow"});
+  EXPECT_EXPRESSION(store.Observed("/workspace/overflow.txt")->content_hash ==
+                    "overflow");
+
+  // Dropping the record never drops the claims: a mutation in flight keeps its
+  // path reserved.
+  EXPECT_EXPRESSION(store.Claim("/workspace/held.txt"));
+  store.Record("/workspace/another.txt",
+               application::FileObservation{.content_hash = "another"});
+  EXPECT_EXPRESSION(!store.Claim("/workspace/held.txt"));
+  store.Release("/workspace/held.txt");
 }
 
 } // namespace
