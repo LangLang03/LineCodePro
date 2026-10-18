@@ -716,6 +716,7 @@ struct ContextSnapshotCache final {
                         std::string{session->CurrentConversationId()},
                     .content_revision = revision,
                     .smooth_request = scroll_to_bottom_request.Get(),
+                    .turn_id = generation_state.generation_id,
                 });
 
   View selection_bar = Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});

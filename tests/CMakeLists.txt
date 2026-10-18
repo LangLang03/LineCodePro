@@ -2144,6 +2144,27 @@ else ()
     target_compile_options(tool_review_broker_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
+
+add_executable(chat_tail_scroll_tests
+        chat_tail_scroll_tests.cpp
+        ../src/presentation/components/chat_tail_scroll.cpp
+)
+target_include_directories(chat_tail_scroll_tests PRIVATE ../src)
+target_compile_features(chat_tail_scroll_tests PRIVATE cxx_std_23)
+target_link_libraries(chat_tail_scroll_tests PRIVATE
+        HuxerUI::testing HuxerUI::huxerui)
+set_target_properties(chat_tail_scroll_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(chat_tail_scroll_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(chat_tail_scroll_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
 # ---------------------------------------------------------------------------
 # GoogleTest runner
 #
