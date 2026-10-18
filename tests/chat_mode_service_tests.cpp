@@ -85,8 +85,9 @@ huxerui::View Probe() {
 
       state = co_await scenario->modes->SetChatMode(domain::ChatMode::plan);
       EXPECT_EXPRESSION(state && state->chat_mode == domain::ChatMode::plan);
+      // Plan is read-only and enforced by the permission layer, not the prompt.
       EXPECT_EXPRESSION(state->permission_mode ==
-             domain::ToolPermissionMode::automatic);
+             domain::ToolPermissionMode::read_only);
 
       state = co_await scenario->modes->SetPermissionMode(
           domain::ToolPermissionMode::read_only);

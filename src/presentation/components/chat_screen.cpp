@@ -839,6 +839,7 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
   const auto model_revision = state.model_revision;
   auto workspace = state.workspace;
   auto interaction_mode = state.interaction_mode;
+  auto behavior_state = state.behavior_state;
   auto input_settings = state.input_settings;
   auto current_project_id = std::move(state.current_project_id);
   auto prompt_context = std::move(state.prompt_context);
@@ -867,10 +868,14 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
   auto compaction_confirm_layer = UseState(std::optional<LayerId>{});
   auto permission_layer = UseState(std::optional<LayerId>{});
   auto permission_state = UseState(application::ToolPermissionState{});
-  // Reasoning depth for the composer's control row; owned here so the picker
-  // sheet and the pill always agree.
-  auto reasoning_effort =
-      UseState(std::optional<domain::ReasoningEffort>{});
+  // Reasoning depth for the composer's control row. It reads the shared
+  // behaviour cell, so the pill, the settings screen and the request the runner
+  // builds all come from the same value instead of three private copies.
+  const std::optional<domain::ReasoningEffort> reasoning_effort =
+      behavior_state->loaded
+          ? std::optional<domain::ReasoningEffort>{
+                behavior_state->value.reasoning}
+          : std::nullopt;
   auto external_storage_granted = UseState(false);
   auto selected_attachments = UseState(std::vector<domain::InputAttachment>{});
   auto selected_image = UseState(std::optional<ComposerImageSelection>{});
@@ -958,6 +963,8 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
           UseString(app::strings::chat_model_failed, std::string{kErrorMarker}),
       .no_model = UseString(app::strings::chat_error_no_model),
       .model_missing = UseString(app::strings::chat_error_model_missing),
+      .skipped_writes = UseString(app::strings::chat_retry_skipped_writes),
+      .idle_timeout = UseString(app::strings::chat_idle_timeout),
   };
   const CompactionLabels compaction_labels{
       .failed_prefix = UseString(app::strings::context_compact_failed, ""),
@@ -969,6 +976,35 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
   };
   auto auto_compaction = UseState(std::make_shared<AutoCompactionUiState>());
   const auto toast = UseToast();
+
+  // Applies one optimistic behaviour edit and rolls it back when the store
+  // rejects the write, so a failed save can never leave the pill (or any other
+  // control) showing a value the next request will not use. `previous` and
+  // `optimistic` are captured through Update so this also works from event
+  // callbacks that run outside composition.
+  auto apply_behavior = [tasks, toast, behavior_state, behavior_settings](
+                            auto operation, auto mutate) {
+    domain::AiBehaviorSettings previous{};
+    domain::AiBehaviorSettings optimistic{};
+    behavior_state.Update([&](auto &state) {
+      previous = state.value;
+      optimistic = previous;
+      mutate(optimistic);
+      static_cast<void>(ApplyBehaviorEdit(state, optimistic));
+    });
+    tasks.Launch([operation = std::move(operation), toast, behavior_state,
+                  previous, optimistic]() mutable -> Task<void> {
+      auto result = co_await operation();
+      if (result)
+        co_return;
+      const auto message = result.error().message;
+      behavior_state.Update([&message, previous, optimistic](auto &state) {
+        static_cast<void>(ApplyBehaviorPersistFailure(state, optimistic,
+                                                      previous, message));
+      });
+      toast.Show(message);
+    });
+  };
 
   Lifecycle([reviews = tool_reviews, coordinator = review_coordinator.Get()] {
     if (reviews)
@@ -988,22 +1024,20 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
         toast.Show(loaded.error().message);
     });
   });
-  Lifecycle([tasks, behavior_settings, output_settings, timeline_settings,
-             toast, reasoning_effort] {
-    tasks.Launch([behavior_settings, timeline_settings, toast,
-                  reasoning_effort]() -> Task<void> {
-      auto loaded = co_await behavior_settings->Load();
-      if (!loaded) {
-        toast.Show(loaded.error().message);
-        co_return;
-      }
-      timeline_settings.Update([&loaded](auto &settings) {
-        settings.thinking_auto_expand = loaded->thinking_auto_expand;
-        settings.thinking_scroll = loaded->thinking_scroll;
-        settings.preserve_reasoning = loaded->preserve_reasoning;
-      });
-      reasoning_effort = loaded->reasoning;
-    });
+  // The behaviour values the timeline renders come from the shared cell, and
+  // the dependency re-runs this sync whenever a switch changes while the chat
+  // page stays mounted. Previously this was a private load that never ran again.
+  Lifecycle(
+      [behavior_state, timeline_settings] {
+        const auto behavior = behavior_state->value;
+        timeline_settings.Update([&behavior](auto &settings) {
+          settings.thinking_auto_expand = behavior.thinking_auto_expand;
+          settings.thinking_scroll = behavior.thinking_scroll;
+          settings.preserve_reasoning = behavior.preserve_reasoning;
+        });
+      },
+      behavior_state);
+  Lifecycle([tasks, output_settings, timeline_settings, toast] {
     tasks.Launch([output_settings, timeline_settings, toast]() -> Task<void> {
       auto loaded = co_await output_settings->Load();
       if (!loaded) {
@@ -1097,7 +1131,7 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
 
   const auto handle_slash_command = [tasks, set_chat_mode, model_store,
                                      behavior_settings, revision,
-                                     slash_selected_model_id,
+                                     slash_selected_model_id, apply_behavior,
                                      toast](std::string_view input) {
     auto parsed = application::ParseSlashCommand(input);
     if (!parsed)
@@ -1107,11 +1141,11 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
                      set_chat_mode(command.mode);
                    },
                    [tasks, model_store, behavior_settings, revision,
-                    slash_selected_model_id,
+                    slash_selected_model_id, apply_behavior,
                     toast](application::ModelSlashCommand command) {
                      tasks.Launch([model_store, behavior_settings,
                                    command = std::move(command), revision,
-                                   slash_selected_model_id,
+                                   slash_selected_model_id, apply_behavior,
                                    toast]() mutable -> Task<void> {
                        auto selected =
                            co_await model_store->Select(command.model_id);
@@ -1121,13 +1155,15 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
                        }
                        slash_selected_model_id = command.model_id;
                        if (command.reasoning) {
-                         auto reasoning =
-                             co_await behavior_settings->SetReasoning(
-                                 *command.reasoning);
-                         if (!reasoning) {
-                           toast.Show(reasoning.error().message);
-                           co_return;
-                         }
+                         // Goes through the shared cell so the composer pill
+                         // reflects the level the next request will actually use.
+                         apply_behavior(
+                             [behavior_settings, level = *command.reasoning] {
+                               return behavior_settings->SetReasoning(level);
+                             },
+                             [level = *command.reasoning](auto &next) {
+                               next.reasoning = level;
+                             });
                        }
                        revision += 1;
                      });
@@ -1581,7 +1617,8 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
   };
   auto show_reasoning_picker = [reasoning_picker_sheet, slash_models,
                                  slash_selected_model_id, reasoning_effort,
-                                 behavior_settings, tasks, toast] {
+                                 behavior_settings, apply_behavior, tasks,
+                                 toast] {
     const auto &models = slash_models.Get();
     const auto found = std::ranges::find(
         models, slash_selected_model_id.Get(), &domain::ModelConfig::id);
@@ -1590,7 +1627,7 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
             ? std::string{}
             : (found->name.empty() ? found->model_id : found->name);
     reasoning_picker_sheet.Show([model_name, reasoning_effort,
-                                 behavior_settings, tasks,
+                                 behavior_settings, apply_behavior, tasks,
                                  toast](bool visible,
                                         std::function<void()> dismiss) {
       auto close_after_choice = dismiss;
@@ -1598,24 +1635,23 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
           ChatReasoningPickerState{
               .visible = visible,
               .model_name = model_name,
-              .selected = reasoning_effort.Get().value_or(
+              .selected = reasoning_effort.value_or(
                   domain::ReasoningEffort::medium),
           },
           ChatReasoningPickerCallbacks{
               .on_dismiss_request = std::move(dismiss),
               .on_reasoning_selected =
-                  [reasoning_effort, behavior_settings, tasks, toast,
-                   close_after_choice](domain::ReasoningEffort effort) {
-                    reasoning_effort = effort;
+                  [behavior_settings, apply_behavior, close_after_choice](
+                      domain::ReasoningEffort effort) {
                     if (close_after_choice)
                       close_after_choice();
-                    tasks.Launch([behavior_settings, effort,
-                                  toast]() -> Task<void> {
-                      auto saved =
-                          co_await behavior_settings->SetReasoning(effort);
-                      if (!saved)
-                        toast.Show(saved.error().message);
-                    });
+                    // The shared cell is the only writer, so a rejected write
+                    // puts the pill back to the level the store still holds.
+                    apply_behavior(
+                        [behavior_settings, effort] {
+                          return behavior_settings->SetReasoning(effort);
+                        },
+                        [effort](auto &next) { next.reasoning = effort; });
                   },
           });
     });

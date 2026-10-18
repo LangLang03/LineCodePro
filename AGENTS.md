@@ -11,7 +11,7 @@ Use HuxerUI SDK 0.3.0. Android builds also need JDK 17, Android SDK 36, NDK `29.
 ```sh
 cmake -S tests -B build/tests-ninja -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/tests-ninja --parallel 8
-ctest --test-dir build/tests-ninja --output-on-failure -j8
+cmake --build build/tests-ninja --target run_tests
 (cd tools && python3 -m unittest test_fake_ai_server.py -v)
 ./platform/android/gradlew -p platform/android :app:lintDebug :app:assembleDebug --max-workers=8
 ```

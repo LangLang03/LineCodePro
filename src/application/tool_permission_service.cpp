@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "application/tool_read_only_policy.h"
 #include "infrastructure/archive_json.h"
 
 namespace linecode::application {
@@ -207,16 +208,48 @@ ToolPermissionService::ClearPermanentGrants() {
   co_return co_await store_->Remove(kCommandGrantsKey);
 }
 
+namespace {
+
+// Reads the `command` argument of a shell call. Empty when the call does not
+// name a command at all, which the guard then refuses.
+[[nodiscard]] std::string CommandArgument(const CompletionToolCall &call) {
+  const auto arguments = json::Parse(call.arguments_json);
+  const auto *object = arguments ? json::AsObject(&*arguments) : nullptr;
+  if (!object)
+    return {};
+  const auto *value = json::AsString(json::Find(*object, "command"));
+  return value ? std::string{*value} : std::string{};
+}
+
+} // namespace
+
 huxerui::Task<SettingsResult<ToolPermissionDecision>>
 ToolPermissionService::Evaluate(const RegisteredTool &tool,
                                 const CompletionToolCall &call,
-                                std::string permission_scope) {
+                                std::string permission_scope,
+                                std::string *deny_reason) {
   auto state = co_await Load();
   if (!state)
     co_return std::unexpected(std::move(state.error()));
   if (state->mode == domain::ToolPermissionMode::read_only) {
-    co_return tool.allowed_in_read_only ? ToolPermissionDecision::execute
-                                        : ToolPermissionDecision::deny;
+    if (!tool.allowed_in_read_only) {
+      if (deny_reason)
+        *deny_reason = "This tool is not allowed in read-only mode: " + tool.name;
+      co_return ToolPermissionDecision::deny;
+    }
+    // Staying available in read-only mode must not become a write path: the
+    // remote shell is the only tool that opts into read-only mode while still
+    // taking an argument that can change the target.
+    if (tool.read_only_requires_safe_command &&
+        !IsReadOnlyShellCommand(CommandArgument(call))) {
+      if (deny_reason)
+        *deny_reason =
+            "Read-only mode only allows side-effect-free commands (for example "
+            "pwd, ls, find, cat, head, tail, grep, rg, git status, git diff). "
+            "Write, delete, install, redirect or chained commands are refused.";
+      co_return ToolPermissionDecision::deny;
+    }
+    co_return ToolPermissionDecision::execute;
   }
   if (state->mode == domain::ToolPermissionMode::automatic)
     co_return ToolPermissionDecision::execute;

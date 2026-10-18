@@ -56,8 +56,13 @@ ChatModeService::SetChatMode(domain::ChatMode mode) {
   if (!permission)
     co_return std::unexpected(std::move(permission.error()));
 
+  // Chat and Plan both promise read-only. Enforcing it here (rather than only in
+  // the prompt) matters because minimal mode sends no mode prompt at all, and a
+  // prompt is not a security boundary anyway.
+  const bool read_only_mode =
+      mode == domain::ChatMode::chat || mode == domain::ChatMode::plan;
   auto effective_permission = permission->mode;
-  if (mode == domain::ChatMode::chat) {
+  if (read_only_mode) {
     auto remembered = co_await RememberWritablePermission(effective_permission);
     if (!remembered)
       co_return std::unexpected(std::move(remembered.error()));

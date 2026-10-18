@@ -704,7 +704,7 @@ TEST(SubAgentRunnerTest, ExploreSeesReadToolsOnly) {
     EXPECT_EXPRESSION(system.starts_with(
         "You are a code exploration Agent. Your task is to quickly locate and "
         "analyze code, and answer the user's questions."));
-    EXPECT_EXPRESSION(system.find("你的任务: Explore the repository") !=
+    EXPECT_EXPRESSION(system.find("Task: Explore the repository") !=
            std::string::npos);
     EXPECT_EXPRESSION(system.find("当前工作区: /workspace") != std::string::npos);
     EXPECT_EXPRESSION(system.find("## Agent 范围") != std::string::npos);

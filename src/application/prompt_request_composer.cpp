@@ -80,17 +80,43 @@ std::string ToolContext(const CompletionRequest &request,
   if (request.tools.empty()) {
     tools += "\nNo tools are available for this request.";
   } else {
-    tools += "\nOnly the following injected tools are available:";
-    for (const auto &tool : request.tools) {
-      tools += "\n- ";
-      tools += tool.name;
-      if (!tool.description.empty()) {
-        tools += ": ";
-        tools += tool.description;
-      }
+    // Names only. Repeating every description here duplicated the schemas that
+    // the transport already sends in the `tools` field (roughly 340 tokens per
+    // request) and could contradict them.
+    tools += "\nOnly these tools are injected for this request (parameter "
+             "protocol and constraints are in the tool definitions): ";
+    for (std::size_t index = 0; index < request.tools.size(); ++index) {
+      if (index > 0)
+        tools += ", ";
+      tools += request.tools[index].name;
     }
   }
   return JoinSections({PermissionContext(context.permission_mode), tools});
+}
+
+// Tool names the permission layer permits (or denies) in read-only mode. The
+// mode templates render these instead of a hardcoded list, so the prompt cannot
+// drift away from `allowed_in_read_only`.
+std::string ToolNamesByReadOnly(const CompletionRequest &request,
+                                bool allowed_in_read_only) {
+  std::string names;
+  for (const auto &tool : request.tools) {
+    if (tool.allowed_in_read_only != allowed_in_read_only)
+      continue;
+    if (!names.empty())
+      names += ", ";
+    names += tool.name;
+  }
+  return names.empty() ? std::string{"none"} : names;
+}
+
+std::string BlockedToolNames(const CompletionRequest &request,
+                             const PromptAssemblyContext &context) {
+  // Only read-only mode denies outright. `auto` runs everything and `confirm`
+  // asks the user, so claiming a denial there would be wrong.
+  if (context.permission_mode != "readonly")
+    return "none";
+  return ToolNamesByReadOnly(request, false);
 }
 
 std::string MinimalSystemPrompt(const CompletionRequest &request) {
@@ -176,7 +202,10 @@ std::string SystemPromptComposer::Compose(
   const auto tone = Render(behavior.tone == domain::ToneMode::chat
                                ? "toneChat"
                                : "toneCoding");
-  const auto chat_mode = Render(ChatModeTemplate(context.chat_mode));
+  const auto chat_mode = Render(
+      ChatModeTemplate(context.chat_mode),
+      {{"MODE_TOOLS_ALLOWED", ToolNamesByReadOnly(request, true)},
+       {"MODE_TOOLS_BLOCKED", BlockedToolNames(request, context)}});
   const auto work_directory = Trimmed(context.work_directory).empty()
                                   ? std::string{}
                                   : Render(
@@ -200,9 +229,15 @@ std::string SystemPromptComposer::Compose(
                                          {"MODEL_PROTOCOL",
                                           domain::ModelProtocolLabel(
                                               request.model.protocol)}});
-  const auto todo = Trimmed(context.todo_state).empty()
-                        ? Render("todoUsage")
-                        : Render("todoState", {{"TODO_LIST", context.todo_state}});
+  // Only Agent mode can act on a TODO list: `todo_update` is denied in read-only
+  // modes, so offering the list there would instruct the model to call a tool
+  // that cannot run.
+  const auto todo =
+      context.chat_mode != PromptChatMode::agent
+          ? std::string{}
+          : (Trimmed(context.todo_state).empty()
+                 ? Render("todoUsage")
+                 : Render("todoState", {{"TODO_LIST", context.todo_state}}));
   const auto tools = ToolContext(request, context);
   return Render(
       "systemPrompt",

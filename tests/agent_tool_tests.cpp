@@ -810,11 +810,14 @@ huxerui::View Probe() {
                                                            EXPECT_EXPRESSION(
                                                                tool->category ==
                                                                "agent");
-                                                           // All three override
-                                                           // isAllowedInReadonlyMode()
-                                                           // with true.
+                                                           // Delegation can
+                                                           // write through a
+                                                           // sub-Agent, so only
+                                                           // reading its output
+                                                           // is read-only.
                                                            EXPECT_EXPRESSION(
-                                                               tool->allowed_in_read_only);
+                                                               tool->allowed_in_read_only ==
+                                                               (tool == &agent_output));
                                                            EXPECT_EXPRESSION(
                                                                !tool->SupportsPermanentGrant());
                                                            EXPECT_EXPRESSION(

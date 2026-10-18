@@ -1,6 +1,7 @@
 #pragma once
 
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <map>
@@ -47,15 +48,35 @@ struct SettingsStoreError final {
 template <class Value>
 using SettingsResult = std::expected<Value, SettingsStoreError>;
 
+// Accepts every spelling a stored row can legitimately contain: this app writes
+// "true"/"false", but archive imports copy values verbatim and older or foreign
+// builds stored "1", "yes" or "on". Surrounding whitespace is ignored. Anything
+// unrecognised, including the empty string, is false -- a missing or corrupt row
+// must never read as enabled.
 [[nodiscard]] inline bool ParseStoredBoolean(std::string_view value) noexcept {
+  const auto first = value.find_first_not_of(" \t\r\n");
+  if (first == std::string_view::npos)
+    return false;
+  const auto last = value.find_last_not_of(" \t\r\n");
+  value = value.substr(first, last - first + 1U);
   if (value == "1")
     return true;
-  if (value.size() != 4)
-    return false;
-  return (value[0] == 't' || value[0] == 'T') &&
-         (value[1] == 'r' || value[1] == 'R') &&
-         (value[2] == 'u' || value[2] == 'U') &&
-         (value[3] == 'e' || value[3] == 'E');
+  const auto equals_ascii_lower = [value](std::string_view candidate) noexcept {
+    if (value.size() != candidate.size())
+      return false;
+    for (std::size_t index = 0; index < value.size(); ++index) {
+      const auto character = static_cast<unsigned char>(value[index]);
+      const auto lowered = (character >= 'A' && character <= 'Z')
+                               ? static_cast<char>(character - 'A' + 'a')
+                               : static_cast<char>(character);
+      if (lowered != candidate[index])
+        return false;
+    }
+    return true;
+  };
+  return equals_ascii_lower("true") || equals_ascii_lower("yes") ||
+         equals_ascii_lower("on") || equals_ascii_lower("y") ||
+         equals_ascii_lower("t");
 }
 
 [[nodiscard]] inline std::optional<std::int64_t>

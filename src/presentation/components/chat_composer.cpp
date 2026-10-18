@@ -536,7 +536,7 @@ using namespace huxerui;
   const auto chat_mode = state.chat_mode;
   auto slash_models = std::move(state.slash_models);
   auto slash_selected_model_id = std::move(state.selected_model_id);
-  auto reasoning_effort = std::move(state.reasoning_effort);
+  auto reasoning_effort = state.reasoning_effort;
   const auto input_settings = state.input_settings;
   auto current_project_id = std::move(state.current_project_id);
   auto prompt_context = std::move(state.prompt_context);
@@ -750,8 +750,8 @@ using namespace huxerui;
               show_model_picker();
           })
           .With(Focusable(), PointerCursor(PointerCursorKind::Hand));
-  const auto current_effort = reasoning_effort.Get().value_or(
-      domain::ReasoningEffort::medium);
+  const auto current_effort =
+      reasoning_effort.value_or(domain::ReasoningEffort::medium);
   View reasoning_pill =
       ComposerPill({ComposerPillIcon(app::images::brain, 14.0F),
                     Text(ReasoningLevelLabel(current_effort))

@@ -38,9 +38,12 @@ public:
   SetMode(domain::ToolPermissionMode mode);
   [[nodiscard]] huxerui::Task<SettingsResult<void>> ClearPermanentGrants();
 
+  // `deny_reason` (optional) receives a model-facing explanation when the
+  // decision is `deny`, so the loop can tell the model what to change instead of
+  // echoing a generic refusal.
   [[nodiscard]] huxerui::Task<SettingsResult<ToolPermissionDecision>>
   Evaluate(const RegisteredTool &tool, const CompletionToolCall &call,
-           std::string permission_scope);
+           std::string permission_scope, std::string *deny_reason = nullptr);
   [[nodiscard]] huxerui::Task<SettingsResult<void>>
   RememberPermanentGrant(const RegisteredTool &tool,
                          const CompletionToolCall &call,

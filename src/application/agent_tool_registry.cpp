@@ -206,7 +206,7 @@ const std::array<AgentToolDescriptor, 3> kAgentTools{{
                          .chinese_name = "运行 Agent",
                          .chinese_description =
                              "将一项明确的探索或编程任务委派给子 Agent。"},
-        .allowed_in_read_only = true,
+        .allowed_in_read_only = false,
         .category = kAgentToolGroupId,
         .execute = &ExecuteAgent,
     },
@@ -220,7 +220,7 @@ const std::array<AgentToolDescriptor, 3> kAgentTools{{
                  "Run multiple dependent sub-Agent tasks as a pipeline.",
              .chinese_name = "运行 Agent 流水线",
              .chinese_description = "按依赖关系运行多个子 Agent 任务。"},
-        .allowed_in_read_only = true,
+        .allowed_in_read_only = false,
         .category = kAgentToolGroupId,
         .execute = &ExecuteAgentPipeline,
     },

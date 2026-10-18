@@ -112,7 +112,8 @@ McpCompletionLoop::PrepareTools(CompletionRequest &request) {
   for (const auto &tool : tools_->Tools()) {
     request.tools.push_back({.name = tool.name,
                              .description = tool.description,
-                             .parameters_json = tool.parameters_json});
+                             .parameters_json = tool.parameters_json,
+                             .allowed_in_read_only = tool.allowed_in_read_only});
   }
   co_return std::expected<void, CompletionError>{};
 }
@@ -123,12 +124,19 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
   const bool unlimited = request.model.tool_call_limit ==
                          domain::ModelConfig::unlimited_tool_calls;
   std::size_t invoked_count{};
+  std::size_t mutating_count{};
   std::size_t turn_index{};
   for (;;) {
     auto response = co_await completion_->Complete(
         request, TurnObserver(observer, turn_index));
-    if (!response)
-      co_return std::unexpected(std::move(response.error()));
+    if (!response) {
+      // Attach what the failed attempt already did so the caller can refuse an
+      // automatic retry that would run those tools a second time.
+      auto failure = std::move(response.error());
+      failure.executed_tool_calls = invoked_count;
+      failure.mutating_tool_calls = mutating_count;
+      co_return std::unexpected(std::move(failure));
+    }
     if (response->tool_calls.empty())
       co_return std::move(*response);
 
@@ -190,19 +198,22 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
       }
 
       ToolPermissionDecision permission = ToolPermissionDecision::execute;
+      std::string deny_reason;
       if (permissions_) {
         auto evaluated = co_await permissions_->Evaluate(
-            *descriptor, call, request.permission_scope);
+            *descriptor, call, request.permission_scope, &deny_reason);
         if (!evaluated)
           co_return std::unexpected(LoopError(evaluated.error().message));
         permission = *evaluated;
       }
       if (permission == ToolPermissionDecision::deny) {
+        if (deny_reason.empty())
+          deny_reason =
+              "This tool is not allowed in read-only mode: " + call.name;
         auto result = CompletionToolResult{
             .call_id = call.id,
             .name = call.name,
-            .content =
-                "This tool is not allowed in read-only mode: " + call.name,
+            .content = std::move(deny_reason),
             .error = true};
         const auto display =
             result_display_->Project(call.name, result.content, result.error);
@@ -327,6 +338,10 @@ McpCompletionLoop::RunPrepared(CompletionRequest request,
       result.content = display.model_content;
       request.messages.push_back(CompletionMessage::Tool(std::move(result)));
       ++invoked_count;
+      // Only this branch actually ran a tool. A retry replays the loop from the
+      // same snapshot, so anything that is not a pure read must block it.
+      if (descriptor->agent_category != AgentToolCategory::read)
+        ++mutating_count;
     }
     // Legacy `continueModelAfterTools()`: before the next model turn, give the
     // compactor a chance to shrink the history so a long tool loop cannot

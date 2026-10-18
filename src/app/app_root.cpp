@@ -35,6 +35,7 @@
 #include "application/tool_permission_service.h"
 #include "application/tool_review_broker.h"
 #include "application/user_agreement.h"
+#include "domain/prompt_template.h"
 #include "infrastructure/app_logger.h"
 #include "infrastructure/hux_completion_gateway.h"
 #include "infrastructure/hux_known_hosts_store.h"
@@ -166,6 +167,17 @@ namespace linecode::app {
   auto prompt_templates =
       huxerui::UseState(std::make_shared<application::PromptTemplateRepository>(
           settings_store.Get()));
+  // Prompt upgrades have to reach installs that already saved a copy of the old
+  // built-in text. The migration drops only overrides that still match a
+  // superseded default, plus keys for templates that no longer exist.
+  huxerui::Lifecycle([tasks, prompt_templates] {
+    tasks.Launch([repository = prompt_templates.Get()]() -> huxerui::Task<void> {
+      auto migrated = co_await repository->MigrateSupersededDefaults(
+          domain::SupersededPromptDefaults(), domain::kPromptTemplateRevision);
+      if (!migrated)
+        infrastructure::LogAppError("prompt_template_migration_failed");
+    });
+  });
   auto prompt_request_composer = huxerui::UseState(
       std::shared_ptr<application::CompletionRequestComposer>{std::make_shared<
           application::PromptRequestComposer>(

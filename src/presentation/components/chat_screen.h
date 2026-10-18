@@ -17,6 +17,7 @@
 #include "application/tool_review_broker.h"
 #include "domain/app_state.h"
 #include "domain/behavior_settings.h"
+#include "presentation/components/behavior_settings_state.h"
 #include "presentation/components/drawer.h"
 
 namespace linecode::application {
@@ -70,6 +71,10 @@ struct ChatScreenState final {
   std::size_t model_revision{};
   huxerui::State<DrawerModel> workspace;
   huxerui::State<application::ChatInteractionModeState> interaction_mode;
+  // Shared behaviour-settings cell owned by the main screen. Reading it here
+  // instead of loading a private copy is what keeps the composer pills and the
+  // settings switches telling the same story.
+  huxerui::State<BehaviorSettingsState> behavior_state;
   domain::InputSettings input_settings;
   std::string current_project_id;
   application::PromptAssemblyContext prompt_context;

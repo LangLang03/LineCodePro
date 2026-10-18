@@ -1,17 +1,22 @@
 #include "infrastructure/hux_completion_gateway.h"
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cstddef>
 #include <expected>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <system_error>
 #include <utility>
 
 #include "infrastructure/bounded_text_accumulator.h"
 #include "infrastructure/completion_end_marker.h"
 #include "infrastructure/completion_protocol_codec.h"
+#include "infrastructure/http_response_policy.h"
 #include "infrastructure/model_url_policy.h"
 #include "infrastructure/sse_decoder.h"
 
@@ -27,6 +32,12 @@ constexpr std::size_t kMaximumBufferedResponse = 4U * 1024U * 1024U;
 constexpr std::size_t kMaximumStreamedText = 4U * 1024U * 1024U;
 constexpr std::size_t kMaximumStreamedReasoning = 4U * 1024U * 1024U;
 constexpr std::size_t kHttpReadChunkBytes = 64U * 1024U;
+// After the protocol's end-of-stream marker the provider still sends its
+// usage-only chunk in a later read. Drain a bounded amount so that accounting
+// is not dropped, without letting a provider that keeps the event stream open
+// hang the request.
+constexpr std::size_t kMaximumPostDoneReads = 8U;
+constexpr std::size_t kMaximumPostDoneBytes = 64U * 1024U;
 
 huxerui::Bytes BytesFromString(const std::string_view value) {
   const auto *begin = reinterpret_cast<const std::byte *>(value.data());
@@ -41,22 +52,45 @@ std::string StringFromBytes(const huxerui::Bytes &value) {
   return {reinterpret_cast<const char *>(value.data()), value.size()};
 }
 
+
+// Empty when the final URL still points at the requested host; otherwise the
+// message explaining why the request was abandoned.
+std::string RedirectedToAnotherHost(std::string_view requested,
+                                    std::string_view final_url) {
+  const auto requested_host = HostOfUrl(requested);
+  const auto final_host = HostOfUrl(final_url);
+  if (requested_host.empty() || final_host.empty() ||
+      requested_host == final_host)
+    return {};
+  return "The model endpoint redirected the request from " + requested_host +
+         " to " + final_host +
+         "; the API key was not sent there. Check the model base URL.";
+}
+
 CompletionError TransportError(const huxerui::HttpError &error) {
-  return {.code = CompletionErrorCode::transport, .message = error.message};
+  return {.code = error.code == huxerui::HttpErrorCode::Timeout
+                      ? CompletionErrorCode::timeout
+                      : CompletionErrorCode::transport,
+          .message = error.message};
 }
 
 CompletionError TransportError(const huxerui::IoError &error) {
-  return {.code = CompletionErrorCode::transport, .message = error.message};
+  return {.code = error.code == huxerui::IoErrorCode::Timeout
+                      ? CompletionErrorCode::timeout
+                      : CompletionErrorCode::transport,
+          .message = error.message};
 }
 
-CompletionError StatusError(const int status, std::string body) {
+CompletionError StatusError(const int status, std::string body,
+                            std::optional<std::int64_t> retry_after = std::nullopt) {
   if (body.size() > 4096U) {
     body.resize(4096U);
   }
   return {.code = CompletionErrorCode::http_status,
           .message = "HTTP " + std::to_string(status) +
                      (body.empty() ? std::string{} : ": " + body),
-          .http_status = status};
+          .http_status = status,
+          .retry_after_seconds = retry_after};
 }
 
 CompletionError DecodeError(const CompletionProtocolCodecError &error) {
@@ -71,11 +105,14 @@ CompletionError DecodeError(const SseDecodeError &error) {
 
 huxerui::HttpRequest BuildRequest(const CompletionRequest &request,
                                   CompletionProtocolWireRequest wire_request) {
+  // Deliberately no `Connection: close`: the platform transport pools and
+  // reuses connections, and forcing a close made every request -- including
+  // every tool-loop round -- pay a fresh DNS + TCP + TLS handshake. Detailed
+  // retry policy lives in `application/completion_retry_policy.h`.
   std::vector<huxerui::HttpHeader> headers{
       {.name = "Content-Type", .value = "application/json"},
       {.name = "Accept",
        .value = request.stream ? "text/event-stream" : "application/json"},
-      {.name = "Connection", .value = "close"},
   };
   headers.reserve(headers.size() + wire_request.headers.size());
   for (auto &[name, value] : wire_request.headers) {
@@ -120,9 +157,20 @@ CompleteBuffered(const std::shared_ptr<huxerui::HttpClient> &http,
     co_return std::unexpected(TransportError(result.Error()));
   }
   auto response = std::move(result).Value();
+  // The request carried an API key. A redirect to another host would have handed
+  // that credential to a different server, so treat it as a configuration error
+  // rather than decoding whatever came back.
+  if (const auto redirected = RedirectedToAnotherHost(request.url, response.url);
+      !redirected.empty()) {
+    co_return std::unexpected(CompletionError{
+        .code = CompletionErrorCode::invalid_configuration,
+        .message = std::move(redirected)});
+  }
   const auto body = StringFromBytes(response.body);
   if (response.status_code < 200 || response.status_code >= 300) {
-    co_return std::unexpected(StatusError(response.status_code, body));
+    co_return std::unexpected(
+        StatusError(response.status_code, body,
+                    ParseRetryAfterSeconds(response.headers)));
   }
   if (response.body.size() > kMaximumBufferedResponse) {
     co_return std::unexpected(CompletionError{
@@ -148,12 +196,19 @@ CompleteStreaming(const std::shared_ptr<huxerui::HttpClient> &http,
     co_return std::unexpected(TransportError(opened.Error()));
   }
   auto stream = std::move(opened).Value();
+  if (const auto redirected = RedirectedToAnotherHost(request.url, stream.Url());
+      !redirected.empty()) {
+    co_return std::unexpected(CompletionError{
+        .code = CompletionErrorCode::invalid_configuration,
+        .message = std::move(redirected)});
+  }
   if (stream.StatusCode() < 200 || stream.StatusCode() >= 300) {
     const auto status = stream.StatusCode();
+    const auto retry_after = ParseRetryAfterSeconds(stream.Headers());
     auto body = co_await ReadBody(stream, 4096U);
-    co_return std::unexpected(body.has_value()
-                                  ? StatusError(status, std::move(*body))
-                                  : std::move(body.error()));
+    co_return std::unexpected(
+        body.has_value() ? StatusError(status, std::move(*body), retry_after)
+                         : std::move(body.error()));
   }
 
   SseDecoder decoder;
@@ -269,6 +324,8 @@ CompleteStreaming(const std::shared_ptr<huxerui::HttpClient> &http,
     // returning early dropped that accounting.
     bool done = false;
     for (const auto &event : events) {
+      if (IsIgnorableSsePayload(event.data))
+        continue;
       auto chunk = codec.decode_stream_event(event.data);
       if (!chunk.has_value()) {
         return std::unexpected(DecodeError(chunk.error()));
@@ -335,6 +392,25 @@ CompleteStreaming(const std::shared_ptr<huxerui::HttpClient> &http,
     return done;
   };
 
+  // Finishes the response from whatever was accumulated. Called once, on EOF or
+  // when the post-`done` drain window closes.
+  auto finish_response = [&]() -> CompletionResponse {
+    response.text = std::move(text).Take();
+    response.reasoning_content = std::move(reasoning).Take();
+    std::erase_if(streamed_tool_calls, [](const auto &call) {
+      return call.id.empty() || call.name.empty();
+    });
+    for (auto &call : streamed_tool_calls) {
+      if (call.arguments_json.empty())
+        call.arguments_json = "{}";
+    }
+    response.tool_calls = std::move(streamed_tool_calls);
+    return std::move(response);
+  };
+  bool done_seen = false;
+  std::size_t post_done_reads{};
+  std::size_t post_done_bytes{};
+
   while (true) {
     auto read = co_await stream.Body().ReadAsync(kHttpReadChunkBytes);
     if (!read.Succeeded()) {
@@ -353,18 +429,9 @@ CompleteStreaming(const std::shared_ptr<huxerui::HttpClient> &http,
       if (auto flushed = flush_marker_filters(); !flushed.has_value()) {
         co_return std::unexpected(std::move(flushed.error()));
       }
-      response.text = std::move(text).Take();
-      response.reasoning_content = std::move(reasoning).Take();
-      std::erase_if(streamed_tool_calls, [](const auto &call) {
-        return call.id.empty() || call.name.empty();
-      });
-      for (auto &call : streamed_tool_calls) {
-        if (call.arguments_json.empty())
-          call.arguments_json = "{}";
-      }
-      response.tool_calls = std::move(streamed_tool_calls);
-      co_return response;
+      co_return finish_response();
     }
+    const auto batch_bytes = bytes.size();
     auto events = decoder.Feed(std::span<const std::byte>{bytes});
     if (!events.has_value()) {
       co_return std::unexpected(DecodeError(events.error()));
@@ -373,22 +440,22 @@ CompleteStreaming(const std::shared_ptr<huxerui::HttpClient> &http,
     if (!consumed.has_value()) {
       co_return std::unexpected(consumed.error());
     }
-    if (*consumed) {
-      if (auto flushed = flush_marker_filters(); !flushed.has_value()) {
-        co_return std::unexpected(std::move(flushed.error()));
-      }
-      response.text = std::move(text).Take();
-      response.reasoning_content = std::move(reasoning).Take();
-      std::erase_if(streamed_tool_calls, [](const auto &call) {
-        return call.id.empty() || call.name.empty();
-      });
-      for (auto &call : streamed_tool_calls) {
-        if (call.arguments_json.empty())
-          call.arguments_json = "{}";
-      }
-      response.tool_calls = std::move(streamed_tool_calls);
-      co_return response;
+    if (*consumed)
+      done_seen = true;
+    if (!done_seen)
+      continue;
+    // Keep draining a bounded amount after the end marker: providers send the
+    // usage-only chunk in a following read, and the local token estimate cannot
+    // substitute for it when auto-compaction decides whether to summarize.
+    ++post_done_reads;
+    post_done_bytes += batch_bytes;
+    if (post_done_reads < kMaximumPostDoneReads &&
+        post_done_bytes < kMaximumPostDoneBytes)
+      continue;
+    if (auto flushed = flush_marker_filters(); !flushed.has_value()) {
+      co_return std::unexpected(std::move(flushed.error()));
     }
+    co_return finish_response();
   }
 }
 

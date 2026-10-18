@@ -110,6 +110,9 @@ SshToolRegistry::Refresh() {
             "command requires user confirmation before execution.",
         .parameters_json = std::string{kShellSchema},
         .allowed_in_read_only = true,
+        // The shell stays available in read-only mode for remote reads, but its
+        // command must pass the read-only predicate.
+        .read_only_requires_safe_command = true,
         .permanent_grant_arguments = {{.name = "command", .required = true},
                                       {.name = "cwd", .required = false}},
         .agent_category = AgentToolCategory::system,

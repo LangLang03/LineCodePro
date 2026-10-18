@@ -77,7 +77,7 @@ Run the native GoogleTest suite with Ninja:
 ```sh
 cmake -S tests -B build/tests-ninja -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/tests-ninja --parallel 8
-ctest --test-dir build/tests-ninja --output-on-failure -j8
+cmake --build build/tests-ninja --target run_tests
 ```
 
 On Windows, install the same HuxerUI SDK version and create the native package with `huxerui package windows --project . --config Release`. Signed Android release builds additionally require private signing properties and are produced by the release workflow; signing material must never be committed.

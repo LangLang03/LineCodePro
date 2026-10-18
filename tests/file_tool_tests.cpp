@@ -622,13 +622,14 @@ void CheckDescriptor(const application::FileToolRegistry &registry,
                      std::string_view schema,
                      std::initializer_list<std::string_view> required,
                      application::AgentToolCategory agent_category,
-                     bool selected_by_default = false) {
+                     bool selected_by_default = false,
+                     bool allowed_in_read_only = false) {
   const auto *tool = FindTool(registry, name);
   EXPECT_EXPRESSION(tool != nullptr);
   EXPECT_EXPRESSION(tool->description == description);
   EXPECT_EXPRESSION(tool->parameters_json == schema);
   EXPECT_EXPRESSION(tool->category == "file_ops");
-  EXPECT_EXPRESSION(!tool->allowed_in_read_only);
+  EXPECT_EXPRESSION(tool->allowed_in_read_only == allowed_in_read_only);
   EXPECT_EXPRESSION(!tool->SupportsPermanentGrant());
   EXPECT_EXPRESSION(tool->agent_category == agent_category);
   EXPECT_EXPRESSION(tool->agent_selectable);
@@ -740,7 +741,8 @@ huxerui::Task<void> RunFileToolChecks(std::shared_ptr<Scenario> scenario) {
   EXPECT_EXPRESSION(refreshed);
   EXPECT_EXPRESSION(scenario->tools->Tools().size() == 6U);
   CheckDescriptor(tools, "file_read", kFileReadDescription, kFileReadSchema,
-                  {"file_path"}, application::AgentToolCategory::read, true);
+                  {"file_path"}, application::AgentToolCategory::read, true,
+                  true);
   CheckDescriptor(tools, "file_write", kFileWriteDescription, kFileWriteSchema,
                   {"content", "file_path"},
                   application::AgentToolCategory::write);
@@ -751,10 +753,10 @@ huxerui::Task<void> RunFileToolChecks(std::shared_ptr<Scenario> scenario) {
                   kFileDeleteSchema, {"paths", "reason"},
                   application::AgentToolCategory::write);
   CheckDescriptor(tools, "glob", kGlobDescription, kGlobSchema, {"pattern"},
-                  application::AgentToolCategory::read, true);
+                  application::AgentToolCategory::read, true, true);
   CheckDescriptor(tools, "list_dir", kListDirectoryDescription,
                   kListDirectorySchema, {},
-                  application::AgentToolCategory::read);
+                  application::AgentToolCategory::read, false, true);
 
   // 2. Localized templates: spot checks in both languages.
   EXPECT_EXPRESSION(Text(application::ToolTextKey::tool_file_read_failed,
@@ -1126,7 +1128,8 @@ huxerui::Task<void> RunFileToolChecks(std::shared_ptr<Scenario> scenario) {
   EXPECT_EXPRESSION(chinese_refreshed);
   EXPECT_EXPRESSION(scenario->chinese_tools->Tools().size() == 6U);
   CheckDescriptor(chinese, "file_read", kFileReadDescription, kFileReadSchema,
-                  {"file_path"}, application::AgentToolCategory::read, true);
+                  {"file_path"}, application::AgentToolCategory::read, true,
+                  true);
   auto chinese_invoked = co_await scenario->chinese_tools->Invoke(
       "file_read", R"({"file_path":"missing.txt"})");
   EXPECT_EXPRESSION(chinese_invoked && chinese_invoked->error);

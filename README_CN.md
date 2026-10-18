@@ -77,7 +77,7 @@ Android 构建还需要 JDK 17、Android Platform 36、NDK `29.0.14206865`、CMa
 ```sh
 cmake -S tests -B build/tests-ninja -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/tests-ninja --parallel 8
-ctest --test-dir build/tests-ninja --output-on-failure -j8
+cmake --build build/tests-ninja --target run_tests
 ```
 
 Windows 上请安装相同版本的 HuxerUI SDK，然后执行 `huxerui package windows --project . --config Release`。签名 Android Release 还需要私有签名配置，并由发布工作流生成；任何签名材料都不能提交到仓库。

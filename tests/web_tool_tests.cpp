@@ -438,9 +438,8 @@ void RegistryCatalogContract() {
   EXPECT_EXPRESSION(fetch.description == kExpectedFetchDescription);
   EXPECT_EXPRESSION(fetch.parameters_json == kExpectedFetchParameters);
   EXPECT_EXPRESSION(fetch.category == kWebGroup);
-  // BaseTool.isAllowedInReadonlyMode() defaults to false (BaseTool.java:29-31)
-  // and neither web tool overrides it.
-  EXPECT_EXPRESSION(!fetch.allowed_in_read_only);
+  // Both web tools only read, so Chat/Plan sessions can search the web.
+  EXPECT_EXPRESSION(fetch.allowed_in_read_only);
   EXPECT_EXPRESSION(!fetch.SupportsPermanentGrant());
   EXPECT_EXPRESSION(fetch.agent_category ==
                     application::AgentToolCategory::read);
@@ -450,7 +449,7 @@ void RegistryCatalogContract() {
   EXPECT_EXPRESSION(search.description == kExpectedSearchDescription);
   EXPECT_EXPRESSION(search.parameters_json == kExpectedSearchParameters);
   EXPECT_EXPRESSION(search.category == kWebGroup);
-  EXPECT_EXPRESSION(!search.allowed_in_read_only);
+  EXPECT_EXPRESSION(search.allowed_in_read_only);
   EXPECT_EXPRESSION(!search.SupportsPermanentGrant());
   EXPECT_EXPRESSION(search.agent_category ==
                     application::AgentToolCategory::read);

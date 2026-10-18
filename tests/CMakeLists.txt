@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.20)
 
 project(linecodepro_tests LANGUAGES CXX)
 
-enable_testing()
 
 set(HUXERUI_HOME "$ENV{HUXERUI_HOME}" CACHE PATH "HuxerUI SDK directory")
 if (HUXERUI_HOME)
@@ -16,7 +15,6 @@ else ()
 endif ()
 find_package(ZLIB REQUIRED)
 find_package(GTest CONFIG REQUIRED)
-include(GoogleTest)
 link_libraries(GTest::gtest_main)
 # Every target here is built on HuxerUI types, so they all need the SDK's
 # include directories. Working from an installed SDK on a machine that also has
@@ -78,8 +76,6 @@ else ()
     target_compile_options(linecodepro_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif ()
 
-add_test(NAME linecodepro_tests COMMAND linecodepro_tests)
-
 add_executable(app_route_tests app_route_tests.cpp)
 target_include_directories(app_route_tests PRIVATE ../src)
 target_compile_features(app_route_tests PRIVATE cxx_std_23)
@@ -94,8 +90,6 @@ else ()
     target_compile_options(app_route_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME app_route_tests COMMAND app_route_tests)
-
 add_executable(working_status_presentation_tests
         working_status_presentation_tests.cpp
 )
@@ -113,9 +107,6 @@ else ()
     target_compile_options(working_status_presentation_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME working_status_presentation_tests
-        COMMAND working_status_presentation_tests)
-
 add_executable(project_workspace_presentation_tests
         project_workspace_presentation_tests.cpp
         ../src/presentation/project_workspace_path.cpp
@@ -135,9 +126,6 @@ else ()
     target_compile_options(project_workspace_presentation_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME project_workspace_presentation_tests
-        COMMAND project_workspace_presentation_tests)
-
 add_executable(model_form_service_tests
         model_form_service_tests.cpp
         ../src/application/model_form_service.cpp
@@ -157,8 +145,6 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 
-add_test(NAME model_form_service_tests COMMAND model_form_service_tests)
-
 add_executable(model_form_presentation_tests
         model_form_presentation_tests.cpp
 )
@@ -177,9 +163,6 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 
-add_test(NAME model_form_presentation_tests
-        COMMAND model_form_presentation_tests)
-
 add_executable(linecodepro_theme_tests
         theme_settings_tests.cpp
         ../src/application/theme_settings.cpp
@@ -197,8 +180,6 @@ if (MSVC)
 else ()
     target_compile_options(linecodepro_theme_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif ()
-
-add_test(NAME linecodepro_theme_tests COMMAND linecodepro_theme_tests)
 
 add_executable(presentation_theme_tests
         presentation_theme_tests.cpp
@@ -219,8 +200,6 @@ else ()
     target_compile_options(presentation_theme_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-
-add_test(NAME presentation_theme_tests COMMAND presentation_theme_tests)
 
 find_package(SQLite3 REQUIRED)
 if (TARGET SQLite::SQLite3 AND NOT TARGET SQLite3::SQLite3)
@@ -246,9 +225,6 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 
-add_test(NAME legacy_conversation_schema_tests
-        COMMAND legacy_conversation_schema_tests)
-
 add_executable(legacy_feature_schema_tests
         legacy_feature_schema_tests.cpp
 )
@@ -267,9 +243,6 @@ else ()
     target_compile_options(legacy_feature_schema_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-
-add_test(NAME legacy_feature_schema_tests
-        COMMAND legacy_feature_schema_tests)
 
 add_executable(settings_store_schema_tests
         settings_store_schema_tests.cpp
@@ -290,9 +263,6 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 
-add_test(NAME settings_store_schema_tests
-        COMMAND settings_store_schema_tests)
-
 add_executable(behavior_settings_tests
         behavior_settings_tests.cpp
         ../src/domain/prompt_template.cpp
@@ -311,7 +281,25 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 
-add_test(NAME behavior_settings_tests COMMAND behavior_settings_tests)
+# Pure logic only: the shared behaviour-settings cell needs no runtime, no SDK
+# library and no GUI, so this target stays a header-only include.
+add_executable(behavior_settings_state_tests
+        behavior_settings_state_tests.cpp
+)
+target_include_directories(behavior_settings_state_tests PRIVATE ../src)
+target_compile_features(behavior_settings_state_tests PRIVATE cxx_std_23)
+set_target_properties(behavior_settings_state_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(behavior_settings_state_tests PRIVATE
+            /W4 /WX /permissive-)
+else ()
+    target_compile_options(behavior_settings_state_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
 
 add_executable(chat_export_tests
         chat_export_tests.cpp
@@ -330,8 +318,6 @@ else ()
     target_compile_options(chat_export_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME chat_export_tests COMMAND chat_export_tests)
-
 add_executable(image_generation_codec_tests
         image_generation_codec_tests.cpp
         ../src/infrastructure/archive_json.cpp
@@ -352,9 +338,6 @@ else ()
     target_compile_options(image_generation_codec_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME image_generation_codec_tests
-        COMMAND image_generation_codec_tests)
-
 add_executable(image_generation_tool_registry_tests
         image_generation_tool_registry_tests.cpp
         ../src/application/image_generation_tool_registry.cpp
@@ -380,9 +363,6 @@ else ()
     target_compile_options(image_generation_tool_registry_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME image_generation_tool_registry_tests
-        COMMAND image_generation_tool_registry_tests)
-
 add_executable(image_understanding_codec_tests
         image_understanding_codec_tests.cpp
         ../src/infrastructure/archive_json.cpp
@@ -404,12 +384,10 @@ else ()
     target_compile_options(image_understanding_codec_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME image_understanding_codec_tests
-        COMMAND image_understanding_codec_tests)
-
 add_executable(image_understanding_tool_registry_tests
         image_understanding_tool_registry_tests.cpp
         ../src/application/image_understanding_tool_registry.cpp
+        ../src/application/file_content_hash.cpp
         ../src/application/prompt_template_repository.cpp
         ../src/domain/prompt_template.cpp
         ../src/domain/tool_settings.cpp
@@ -434,9 +412,6 @@ else ()
     target_compile_options(image_understanding_tool_registry_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME image_understanding_tool_registry_tests
-        COMMAND image_understanding_tool_registry_tests)
-
 add_executable(workspace_image_readers_tests
         workspace_image_readers_tests.cpp
         ../src/application/ssh_workspace_service.cpp
@@ -458,9 +433,6 @@ else ()
     target_compile_options(workspace_image_readers_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME workspace_image_readers_tests
-        COMMAND workspace_image_readers_tests)
-
 add_executable(sse_decoder_tests
         sse_decoder_tests.cpp
         ../src/infrastructure/sse_decoder.cpp
@@ -478,8 +450,6 @@ else ()
     target_compile_options(sse_decoder_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-
-add_test(NAME sse_decoder_tests COMMAND sse_decoder_tests)
 
 add_executable(model_store_selection_tests
         model_store_selection_tests.cpp
@@ -499,9 +469,6 @@ else ()
     target_compile_options(model_store_selection_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-
-add_test(NAME model_store_selection_tests
-        COMMAND model_store_selection_tests)
 
 add_executable(completion_pipeline_tests
         completion_pipeline_tests.cpp
@@ -532,8 +499,6 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 
-add_test(NAME completion_pipeline_tests COMMAND completion_pipeline_tests)
-
 add_executable(completion_protocol_codec_tests
         completion_protocol_codec_tests.cpp
         ../src/infrastructure/archive_json.cpp
@@ -555,12 +520,67 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 
-add_test(NAME completion_protocol_codec_tests
-        COMMAND completion_protocol_codec_tests)
+add_executable(completion_retry_policy_tests
+        completion_retry_policy_tests.cpp
+)
+target_include_directories(completion_retry_policy_tests PRIVATE ../src)
+target_compile_features(completion_retry_policy_tests PRIVATE cxx_std_23)
+target_link_libraries(completion_retry_policy_tests PRIVATE HuxerUI::testing)
+set_target_properties(completion_retry_policy_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(completion_retry_policy_tests PRIVATE
+            /W4 /WX /permissive-)
+else ()
+    target_compile_options(completion_retry_policy_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+add_executable(http_response_policy_tests
+        http_response_policy_tests.cpp
+)
+target_include_directories(http_response_policy_tests PRIVATE ../src)
+target_compile_features(http_response_policy_tests PRIVATE cxx_std_23)
+target_link_libraries(http_response_policy_tests PRIVATE HuxerUI::testing)
+set_target_properties(http_response_policy_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(http_response_policy_tests PRIVATE
+            /W4 /WX /permissive-)
+else ()
+    target_compile_options(http_response_policy_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+add_executable(tool_read_only_policy_tests
+        tool_read_only_policy_tests.cpp
+        ../src/application/tool_read_only_policy.cpp
+)
+target_include_directories(tool_read_only_policy_tests PRIVATE ../src)
+target_compile_features(tool_read_only_policy_tests PRIVATE cxx_std_23)
+set_target_properties(tool_read_only_policy_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(tool_read_only_policy_tests PRIVATE
+            /W4 /WX /permissive-)
+else ()
+    target_compile_options(tool_read_only_policy_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
 
 add_executable(prompt_request_composer_tests
         prompt_request_composer_tests.cpp
         ../src/application/behavior_settings_repository.cpp
+        ../src/application/file_content_hash.cpp
         ../src/application/legacy_attachment_prompt_renderer.cpp
         ../src/application/prompt_request_composer.cpp
         ../src/application/prompt_template_repository.cpp
@@ -585,9 +605,6 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 
-add_test(NAME prompt_request_composer_tests
-        COMMAND prompt_request_composer_tests)
-
 add_executable(output_settings_tests
         output_settings_tests.cpp
 )
@@ -604,8 +621,6 @@ else ()
     target_compile_options(output_settings_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-
-add_test(NAME output_settings_tests COMMAND output_settings_tests)
 
 add_executable(model_catalog_codec_tests
         model_catalog_codec_tests.cpp
@@ -624,8 +639,6 @@ else ()
     target_compile_options(model_catalog_codec_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-
-add_test(NAME model_catalog_codec_tests COMMAND model_catalog_codec_tests)
 
 add_executable(error_log_tests
         error_log_tests.cpp
@@ -646,8 +659,6 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 
-add_test(NAME error_log_tests COMMAND error_log_tests)
-
 add_executable(storage_stats_tests
         storage_stats_tests.cpp
         ../src/application/storage_stats.cpp
@@ -665,8 +676,6 @@ else ()
     target_compile_options(storage_stats_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-
-add_test(NAME storage_stats_tests COMMAND storage_stats_tests)
 
 add_executable(archive_safety_tests
         archive_safety_tests.cpp
@@ -691,8 +700,6 @@ else ()
     target_compile_options(archive_safety_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-
-add_test(NAME archive_safety_tests COMMAND archive_safety_tests)
 
 add_executable(archive_transaction_tests
         archive_transaction_tests.cpp
@@ -721,8 +728,6 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 
-add_test(NAME archive_transaction_tests COMMAND archive_transaction_tests)
-
 add_executable(archive_redaction_tests
         archive_redaction_tests.cpp
         ../src/infrastructure/archive_json.cpp
@@ -741,8 +746,6 @@ else ()
     target_compile_options(archive_redaction_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-
-add_test(NAME archive_redaction_tests COMMAND archive_redaction_tests)
 
 add_executable(sqlite_archive_redaction_tests
         sqlite_archive_redaction_tests.cpp
@@ -778,9 +781,6 @@ else ()
     target_compile_options(sqlite_archive_redaction_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME sqlite_archive_redaction_tests
-        COMMAND sqlite_archive_redaction_tests)
-
 add_executable(tutorial_markdown_parser_tests
         tutorial_markdown_parser_tests.cpp
         ../src/infrastructure/tutorial_markdown_parser.cpp
@@ -800,9 +800,6 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 
-add_test(NAME tutorial_markdown_parser_tests
-        COMMAND tutorial_markdown_parser_tests)
-
 add_executable(streaming_markdown_chunks_tests
         streaming_markdown_chunks_tests.cpp
         ../src/presentation/streaming_markdown_chunks.cpp
@@ -816,11 +813,6 @@ else ()
     target_compile_options(streaming_markdown_chunks_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME streaming_markdown_chunks_tests
-        COMMAND streaming_markdown_chunks_tests)
-set_tests_properties(tutorial_markdown_parser_tests PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/..")
-
 add_executable(tutorial_table_layout_tests
         tutorial_table_layout_tests.cpp
         ../src/presentation/components/tutorial_table_layout.cpp
@@ -841,9 +833,6 @@ else ()
     target_compile_options(tutorial_table_layout_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME tutorial_table_layout_tests
-        COMMAND tutorial_table_layout_tests)
-
 add_executable(mcp_execution_settings_tests
         mcp_execution_settings_tests.cpp
 )
@@ -861,9 +850,6 @@ else ()
     target_compile_options(mcp_execution_settings_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-
-add_test(NAME mcp_execution_settings_tests
-        COMMAND mcp_execution_settings_tests)
 
 add_executable(tool_settings_tests
         tool_settings_tests.cpp
@@ -887,8 +873,6 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 
-add_test(NAME tool_settings_tests COMMAND tool_settings_tests)
-
 add_executable(ssh_settings_tests
         ssh_settings_tests.cpp
         ../src/domain/ssh_config.cpp
@@ -910,8 +894,6 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 
-add_test(NAME ssh_settings_tests COMMAND ssh_settings_tests)
-
 add_executable(memory_store_contract_tests
         memory_store_contract_tests.cpp
         ../src/domain/memory.cpp
@@ -931,8 +913,6 @@ else ()
     target_compile_options(memory_store_contract_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME memory_store_contract_tests COMMAND memory_store_contract_tests)
-
 add_executable(sqlite_memory_store_tests
         sqlite_memory_store_tests.cpp
         ../src/domain/memory.cpp
@@ -960,8 +940,6 @@ else ()
     target_compile_options(sqlite_memory_store_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME sqlite_memory_store_tests COMMAND sqlite_memory_store_tests)
-
 add_executable(memory_rag_tests
         memory_rag_tests.cpp
         ../src/domain/memory.cpp
@@ -981,8 +959,6 @@ else ()
     target_compile_options(memory_rag_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME memory_rag_tests COMMAND memory_rag_tests)
-
 add_executable(memory_context_service_tests
         memory_context_service_tests.cpp
         ../src/domain/memory.cpp
@@ -1005,8 +981,6 @@ else ()
     target_compile_options(memory_context_service_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME memory_context_service_tests COMMAND memory_context_service_tests)
-
 add_executable(memory_conversation_snapshot_tests
         memory_conversation_snapshot_tests.cpp
         ../src/application/memory_conversation_snapshot.cpp
@@ -1028,10 +1002,6 @@ else ()
     target_compile_options(memory_conversation_snapshot_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-gtest_discover_tests(memory_conversation_snapshot_tests
-        TEST_PREFIX "memory_conversation_snapshot."
-)
-
 add_executable(chat_generation_state_tests
         chat_generation_state_tests.cpp
         ../src/presentation/components/chat_generation_state.cpp
@@ -1051,10 +1021,6 @@ else ()
     target_compile_options(chat_generation_state_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-gtest_discover_tests(chat_generation_state_tests
-        TEST_PREFIX "chat_generation_state."
-)
-
 add_executable(extension_store_tests
         extension_store_tests.cpp
         ../src/domain/extension_config.cpp
@@ -1074,8 +1040,6 @@ else ()
     target_compile_options(extension_store_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME extension_store_tests COMMAND extension_store_tests)
-
 add_executable(terminal_provider_contract_tests
         terminal_provider_contract_tests.cpp
 )
@@ -1094,9 +1058,6 @@ else ()
     target_compile_options(terminal_provider_contract_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME terminal_provider_contract_tests
-        COMMAND terminal_provider_contract_tests)
-
 add_executable(mcp_protocol_codec_tests
         mcp_protocol_codec_tests.cpp
         ../src/domain/extension_config.cpp
@@ -1116,8 +1077,6 @@ else ()
     target_compile_options(mcp_protocol_codec_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME mcp_protocol_codec_tests COMMAND mcp_protocol_codec_tests)
-
 add_executable(mcp_response_reader_tests
         mcp_response_reader_tests.cpp
         ../src/domain/extension_config.cpp
@@ -1142,8 +1101,6 @@ else ()
     target_compile_options(mcp_response_reader_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME mcp_response_reader_tests COMMAND mcp_response_reader_tests)
-
 add_executable(mcp_extension_tool_registry_tests
         mcp_extension_tool_registry_tests.cpp
         ../src/application/mcp_extension_tool_registry.cpp
@@ -1167,14 +1124,12 @@ else ()
     target_compile_options(mcp_extension_tool_registry_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME mcp_extension_tool_registry_tests
-        COMMAND mcp_extension_tool_registry_tests)
-
 add_executable(mcp_completion_loop_tests
         mcp_completion_loop_tests.cpp
         ../src/application/mcp_completion_loop.cpp
         ../src/application/mcp_extension_tool_registry.cpp
         ../src/application/tool_permission_service.cpp
+        ../src/application/tool_read_only_policy.cpp
         ../src/application/tool_result_display_policy.cpp
         ../src/domain/extension_config.cpp
         ../src/infrastructure/json_mcp_tool_schema_policy.cpp
@@ -1194,8 +1149,6 @@ else ()
     target_compile_options(mcp_completion_loop_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME mcp_completion_loop_tests COMMAND mcp_completion_loop_tests)
-
 add_executable(skill_services_tests
         skill_services_tests.cpp
         ../src/application/skill_management_service.cpp
@@ -1225,8 +1178,6 @@ else ()
     target_compile_options(skill_services_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME skill_services_tests COMMAND skill_services_tests)
-
 add_executable(skill_hub_route_tests
         skill_hub_route_tests.cpp
 )
@@ -1243,8 +1194,6 @@ else ()
     target_compile_options(skill_hub_route_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME skill_hub_route_tests COMMAND skill_hub_route_tests)
-
 add_executable(sqlite_skill_record_store_tests
         sqlite_skill_record_store_tests.cpp
         ../src/domain/skill.cpp
@@ -1273,9 +1222,6 @@ else ()
     target_compile_options(sqlite_skill_record_store_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME sqlite_skill_record_store_tests
-        COMMAND sqlite_skill_record_store_tests)
-
 add_executable(project_workspace_service_tests
         project_workspace_service_tests.cpp
         ../src/application/project_workspace_service.cpp
@@ -1312,9 +1258,6 @@ else ()
     target_compile_options(project_workspace_service_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME project_workspace_service_tests
-        COMMAND project_workspace_service_tests)
-
 add_executable(runtime_tool_registry_tests
         runtime_tool_registry_tests.cpp
         ../src/application/composite_tool_registry.cpp
@@ -1337,9 +1280,6 @@ else ()
     target_compile_options(runtime_tool_registry_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME runtime_tool_registry_tests
-        COMMAND runtime_tool_registry_tests)
-
 add_executable(tool_approval_presentation_tests
         tool_approval_presentation_tests.cpp
         ../src/presentation/tool_approval_presentation.cpp
@@ -1359,12 +1299,10 @@ else ()
     target_compile_options(tool_approval_presentation_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME tool_approval_presentation_tests
-        COMMAND tool_approval_presentation_tests)
-
 add_executable(tool_permission_service_tests
         tool_permission_service_tests.cpp
         ../src/application/tool_permission_service.cpp
+        ../src/application/tool_read_only_policy.cpp
         ../src/infrastructure/archive_json.cpp
 )
 target_include_directories(tool_permission_service_tests PRIVATE ../src)
@@ -1382,13 +1320,11 @@ else ()
     target_compile_options(tool_permission_service_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME tool_permission_service_tests
-        COMMAND tool_permission_service_tests)
-
 add_executable(chat_mode_service_tests
         chat_mode_service_tests.cpp
         ../src/application/chat_mode_service.cpp
         ../src/application/tool_permission_service.cpp
+        ../src/application/tool_read_only_policy.cpp
         ../src/infrastructure/archive_json.cpp
 )
 target_include_directories(chat_mode_service_tests PRIVATE ../src)
@@ -1405,8 +1341,6 @@ else ()
     target_compile_options(chat_mode_service_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME chat_mode_service_tests COMMAND chat_mode_service_tests)
-
 add_executable(slash_command_catalog_tests
         slash_command_catalog_tests.cpp
         ../src/application/slash_command_catalog.cpp
@@ -1419,8 +1353,6 @@ else ()
     target_compile_options(slash_command_catalog_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME slash_command_catalog_tests COMMAND slash_command_catalog_tests)
-
 add_executable(attachment_backend_tests
         attachment_backend_tests.cpp
         ../src/application/chat_session.cpp
@@ -1446,8 +1378,6 @@ else ()
     target_compile_options(attachment_backend_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME attachment_backend_tests COMMAND attachment_backend_tests)
-
 add_executable(pending_message_queue_tests
   pending_message_queue_tests.cpp
   ${PROJECT_SOURCE_DIR}/../src/application/pending_message_queue.cpp
@@ -1458,8 +1388,6 @@ add_executable(pending_message_queue_tests
 target_include_directories(pending_message_queue_tests PRIVATE ${PROJECT_SOURCE_DIR}/../src)
 target_compile_features(pending_message_queue_tests PRIVATE cxx_std_23)
 target_compile_options(pending_message_queue_tests PRIVATE -Wall -Wextra -Werror)
-add_test(NAME pending_message_queue_tests COMMAND pending_message_queue_tests)
-
 add_executable(sqlite_conversation_attachment_tests
         sqlite_conversation_attachment_tests.cpp
         ../src/domain/compaction_progress.cpp
@@ -1491,9 +1419,6 @@ else ()
     target_compile_options(sqlite_conversation_attachment_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME sqlite_conversation_attachment_tests
-        COMMAND sqlite_conversation_attachment_tests)
-
 add_executable(chat_timeline_presentation_tests
         chat_timeline_presentation_tests.cpp
         ../src/application/agent_result_registry.cpp
@@ -1511,9 +1436,6 @@ else ()
     target_compile_options(chat_timeline_presentation_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME chat_timeline_presentation_tests
-        COMMAND chat_timeline_presentation_tests)
-
 add_executable(ssh_backend_tests
         ssh_backend_tests.cpp
         ../src/application/execution_mode_project_workspace.cpp
@@ -1539,8 +1461,6 @@ else ()
     target_compile_options(ssh_backend_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME ssh_backend_tests COMMAND ssh_backend_tests)
-
 add_executable(ssh_protocol_tests
         ssh_protocol_tests.cpp
         ../src/domain/ssh_config.cpp
@@ -1568,13 +1488,21 @@ if (UNIX AND NOT APPLE)
     find_program(LINECODE_SSHD_EXECUTABLE sshd)
     find_program(LINECODE_SSH_KEYGEN_EXECUTABLE ssh-keygen)
     if (LINECODE_SSHD_EXECUTABLE AND LINECODE_SSH_KEYGEN_EXECUTABLE)
-        add_test(NAME ssh_protocol_fixture
-                COMMAND bash
+        # The only non-GoogleTest entry: a real sshd fixture wrapping
+        # `ssh_protocol_tests`. Recorded for the aggregated runner at the bottom
+        # of this file, which executes it as a separate step.
+        set(LINECODE_SSH_FIXTURE_COMMAND
+                bash
                 "${CMAKE_CURRENT_SOURCE_DIR}/run_ssh_protocol_fixture.sh"
                 "$<TARGET_FILE:ssh_protocol_tests>"
                 "${LINECODE_SSHD_EXECUTABLE}"
                 "${LINECODE_SSH_KEYGEN_EXECUTABLE}")
-        set_tests_properties(ssh_protocol_fixture PROPERTIES TIMEOUT 45)
+        find_program(LINECODE_TIMEOUT_EXECUTABLE timeout)
+        if (LINECODE_TIMEOUT_EXECUTABLE)
+            # Keep the 45s guard the CTest registration used to carry.
+            list(PREPEND LINECODE_SSH_FIXTURE_COMMAND
+                    "${LINECODE_TIMEOUT_EXECUTABLE}" 45)
+        endif ()
     endif ()
 endif ()
 
@@ -1592,9 +1520,6 @@ else ()
     target_compile_options(skill_hub_reading_settings_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME skill_hub_reading_settings_tests
-        COMMAND skill_hub_reading_settings_tests)
-
 add_executable(user_agreement_tests
         user_agreement_tests.cpp
         ../src/application/user_agreement.cpp)
@@ -1608,8 +1533,6 @@ else ()
     target_compile_options(user_agreement_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME user_agreement_tests COMMAND user_agreement_tests)
-
 add_executable(theme_settings_migration_tests
         theme_settings_migration_tests.cpp
         ../src/application/theme_settings_migration.cpp
@@ -1625,9 +1548,6 @@ else ()
     target_compile_options(theme_settings_migration_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME theme_settings_migration_tests
-        COMMAND theme_settings_migration_tests)
-
 add_executable(legacy_upgrade_integration_tests
         legacy_upgrade_integration_tests.cpp
         ../src/application/theme_settings.cpp
@@ -1660,9 +1580,6 @@ else ()
     target_compile_options(legacy_upgrade_integration_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME legacy_upgrade_integration_tests
-        COMMAND legacy_upgrade_integration_tests)
-
 add_executable(markdown_link_policy_tests
         markdown_link_policy_tests.cpp
         ../src/presentation/markdown_link_policy.cpp)
@@ -1676,8 +1593,6 @@ else ()
     target_compile_options(markdown_link_policy_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME markdown_link_policy_tests COMMAND markdown_link_policy_tests)
-
 add_executable(agent_extension_draft_tests
         agent_extension_draft_tests.cpp
         ../src/application/agent_extension_draft.cpp
@@ -1695,8 +1610,6 @@ else ()
     target_compile_options(agent_extension_draft_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME agent_extension_draft_tests COMMAND agent_extension_draft_tests)
-
 add_executable(todo_tool_tests
         todo_tool_tests.cpp
         ../src/application/todo_tool_registry.cpp
@@ -1716,8 +1629,6 @@ else ()
     target_compile_options(todo_tool_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME todo_tool_tests COMMAND todo_tool_tests)
-
 add_executable(memory_tool_tests
         memory_tool_tests.cpp
         ../src/application/memory_tool_registry.cpp
@@ -1738,8 +1649,6 @@ else ()
     target_compile_options(memory_tool_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME memory_tool_tests COMMAND memory_tool_tests)
-
 add_executable(web_tool_tests
         web_tool_tests.cpp
         ../src/application/web_tool_registry.cpp
@@ -1762,8 +1671,6 @@ else ()
     target_compile_options(web_tool_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME web_tool_tests COMMAND web_tool_tests)
-
 add_executable(file_tool_tests
         file_tool_tests.cpp
         ../src/application/file_content_hash.cpp
@@ -1790,8 +1697,6 @@ else ()
     target_compile_options(file_tool_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME file_tool_tests COMMAND file_tool_tests)
-
 add_executable(file_observation_tests
         file_observation_tests.cpp
         ../src/application/file_content_hash.cpp
@@ -1810,8 +1715,6 @@ else ()
     target_compile_options(file_observation_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME file_observation_tests COMMAND file_observation_tests)
-
 add_executable(context_usage_tests
         context_usage_tests.cpp
         ../src/domain/context_usage.cpp
@@ -1830,11 +1733,10 @@ else ()
     target_compile_options(context_usage_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME context_usage_tests COMMAND context_usage_tests)
-
 add_executable(context_compaction_tests
         context_compaction_tests.cpp
         ../src/application/context_compaction.cpp
+        ../src/application/file_content_hash.cpp
         ../src/application/prompt_template_repository.cpp
         ../src/domain/context_usage.cpp
         ../src/domain/input_attachment.cpp
@@ -1856,8 +1758,6 @@ else ()
     target_compile_options(context_compaction_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME context_compaction_tests COMMAND context_compaction_tests)
-
 add_executable(diff_lines_tests
         diff_lines_tests.cpp
         ../src/domain/diff_lines.cpp
@@ -1875,8 +1775,6 @@ else ()
     target_compile_options(diff_lines_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME diff_lines_tests COMMAND diff_lines_tests)
-
 add_executable(diff_store_tests
         diff_store_tests.cpp
         ../src/infrastructure/sqlite_diff_store.cpp
@@ -1903,8 +1801,6 @@ else ()
     target_compile_options(diff_store_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME diff_store_tests COMMAND diff_store_tests)
-
 add_executable(diff_review_service_tests
         diff_review_service_tests.cpp
         ../src/application/diff_review_service.cpp
@@ -1924,8 +1820,6 @@ else ()
     target_compile_options(diff_review_service_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME diff_review_service_tests COMMAND diff_review_service_tests)
-
 add_executable(agent_pipeline_tests
         agent_pipeline_tests.cpp
         ../src/domain/agent_pipeline.cpp
@@ -1943,18 +1837,18 @@ else ()
     target_compile_options(agent_pipeline_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME agent_pipeline_tests COMMAND agent_pipeline_tests)
-
 add_executable(sub_agent_runner_tests
         sub_agent_runner_tests.cpp
         ../src/application/agent_result_registry.cpp
         ../src/application/agent_run_progress_codec.cpp
         ../src/application/sub_agent_environment.cpp
         ../src/application/tool_permission_service.cpp
+        ../src/application/tool_read_only_policy.cpp
         ../src/application/tool_review_broker.cpp
         ../src/application/tool_text_catalog.cpp
         ../src/domain/agent_pipeline.cpp
         ../src/application/sub_agent_runner.cpp
+        ../src/application/file_content_hash.cpp
         ../src/application/prompt_template_repository.cpp
         ../src/application/skill_repository.cpp
         ../src/domain/skill.cpp
@@ -1979,10 +1873,6 @@ else ()
     target_compile_options(sub_agent_runner_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-gtest_discover_tests(sub_agent_runner_tests
-        TEST_PREFIX "sub_agent_runner."
-)
-
 add_executable(agent_tool_tests
         agent_tool_tests.cpp
         ../src/application/agent_result_registry.cpp
@@ -2006,14 +1896,13 @@ else ()
     target_compile_options(agent_tool_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME agent_tool_tests COMMAND agent_tool_tests)
-
 add_executable(auto_compaction_tests
         auto_compaction_tests.cpp
         ../src/application/auto_compaction_service.cpp
         ../src/application/chat_session.cpp
         ../src/application/context_compaction.cpp
         ../src/application/legacy_attachment_policy.cpp
+        ../src/application/file_content_hash.cpp
         ../src/application/prompt_template_repository.cpp
         ../src/application/send_message.cpp
         ../src/infrastructure/in_memory_conversation_store.cpp
@@ -2039,8 +1928,6 @@ else ()
     target_compile_options(auto_compaction_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME auto_compaction_tests COMMAND auto_compaction_tests)
-
 add_executable(tool_loop_compactor_tests
         tool_loop_compactor_tests.cpp
         ../src/application/tool_loop_compactor.cpp
@@ -2050,6 +1937,7 @@ add_executable(tool_loop_compactor_tests
         ../src/infrastructure/in_memory_conversation_store.cpp
         ../src/application/auto_compaction_service.cpp
         ../src/application/context_compaction.cpp
+        ../src/application/file_content_hash.cpp
         ../src/application/prompt_template_repository.cpp
         ../src/domain/compaction_progress.cpp
         ../src/domain/context_usage.cpp
@@ -2072,8 +1960,6 @@ else ()
     target_compile_options(tool_loop_compactor_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME tool_loop_compactor_tests COMMAND tool_loop_compactor_tests)
-
 # Port tests for the streamed-reasoning inline emphasis parser
 # (`cn.lineai.ui.theme.InlineEmphasisParser`).
 add_executable(inline_emphasis_tests
@@ -2093,8 +1979,6 @@ else ()
     target_compile_options(inline_emphasis_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME inline_emphasis_tests COMMAND inline_emphasis_tests)
-
 # Bare-URL recognition equivalent to `Linkify.addLinks(..., WEB_URLS)`.
 add_executable(markdown_linkify_tests
         markdown_linkify_tests.cpp
@@ -2113,8 +1997,6 @@ else ()
     target_compile_options(markdown_linkify_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME markdown_linkify_tests COMMAND markdown_linkify_tests)
-
 # Quotes and list items keep their block-level children.
 add_executable(tutorial_nested_blocks_tests
         tutorial_nested_blocks_tests.cpp
@@ -2134,9 +2016,6 @@ else ()
     target_compile_options(tutorial_nested_blocks_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME tutorial_nested_blocks_tests
-        COMMAND tutorial_nested_blocks_tests)
-
 add_executable(generation_retry_tests
         generation_retry_tests.cpp
         ../src/application/agent_run_progress_codec.cpp
@@ -2166,8 +2045,6 @@ else ()
     target_compile_options(generation_retry_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME generation_retry_tests COMMAND generation_retry_tests)
-
 add_executable(conversation_resume_sanitizer_tests
         conversation_resume_sanitizer_tests.cpp
         ../src/domain/conversation_resume_sanitizer.cpp
@@ -2186,8 +2063,6 @@ else ()
     target_compile_options(conversation_resume_sanitizer_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME conversation_resume_sanitizer_tests COMMAND conversation_resume_sanitizer_tests)
-
 add_executable(token_usage_tracker_tests
         token_usage_tracker_tests.cpp
 )
@@ -2205,8 +2080,6 @@ else ()
     target_compile_options(token_usage_tracker_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME token_usage_tracker_tests COMMAND token_usage_tracker_tests)
-
 add_executable(custom_agent_tool_tests
         custom_agent_tool_tests.cpp
         ../src/application/agent_extension_tool_registry.cpp
@@ -2230,8 +2103,6 @@ else ()
     target_compile_options(custom_agent_tool_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME custom_agent_tool_tests COMMAND custom_agent_tool_tests)
-
 add_executable(legacy_archive_writer_tests
         legacy_archive_writer_tests.cpp
         ../src/infrastructure/archive_validation.cpp
@@ -2254,10 +2125,6 @@ else ()
     target_compile_options(legacy_archive_writer_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME legacy_archive_writer_tests
-        COMMAND legacy_archive_writer_tests
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
-
 add_executable(tool_review_broker_tests
         tool_review_broker_tests.cpp
         ../src/application/tool_review_broker.cpp
@@ -2277,4 +2144,151 @@ else ()
     target_compile_options(tool_review_broker_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
-add_test(NAME tool_review_broker_tests COMMAND tool_review_broker_tests)
+# ---------------------------------------------------------------------------
+# GoogleTest runner
+#
+# Note for maintainers: this project no longer calls enable_testing(), so
+# `ctest --test-dir <build>` reports "No tests were found!!!" and exits 0. That
+# is CTest's behaviour for an empty project, not a passing suite -- run the
+# target below instead. Do not "fix" a stale ctest invocation by trusting it.
+#
+# This project does not use CTest. Every target below already links
+# GTest::gtest_main, so the suite is executed by running those binaries
+# directly:
+#
+#     cmake --build build/tests-ninja --target run_tests
+#
+# Adding a test needs no registration: create `add_executable(<name>_tests ...)`
+# in this file and the runner picks it up. Environment variables:
+#   GTEST_FILTER              forwarded to every binary as --gtest_filter
+#   LINECODE_TEST_VERBOSE=1   print full GoogleTest output instead of failures
+# ---------------------------------------------------------------------------
+
+# Working directories the old CTest registrations set explicitly. Everything
+# else runs from the build directory, which is what CTest used as its default.
+set(LINECODE_TEST_WORKING_DIRECTORY_tutorial_markdown_parser_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/..")
+set(LINECODE_TEST_WORKING_DIRECTORY_legacy_archive_writer_tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/..")
+
+# Binaries that are not standalone tests: they need a harness to supply their
+# arguments (`ssh_protocol_tests` expects six fixture arguments and is driven by
+# `run_ssh_protocol_fixture.sh`, which the runner executes below).
+set(LINECODE_TEST_FIXTURE_ONLY_EXECUTABLES ssh_protocol_tests)
+
+get_property(LINECODE_ALL_TARGETS DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+set(LINECODE_TEST_EXECUTABLES "")
+foreach (_linecode_target IN LISTS LINECODE_ALL_TARGETS)
+    if (NOT _linecode_target MATCHES "_tests$")
+        continue ()
+    endif ()
+    if (_linecode_target IN_LIST LINECODE_TEST_FIXTURE_ONLY_EXECUTABLES)
+        continue ()
+    endif ()
+    get_target_property(_linecode_type ${_linecode_target} TYPE)
+    if (_linecode_type STREQUAL "EXECUTABLE")
+        list(APPEND LINECODE_TEST_EXECUTABLES ${_linecode_target})
+    endif ()
+endforeach ()
+list(SORT LINECODE_TEST_EXECUTABLES)
+list(LENGTH LINECODE_TEST_EXECUTABLES LINECODE_TEST_EXECUTABLE_COUNT)
+# A silent discovery failure would turn the gate into a no-op, so refuse to
+# configure a runner that found almost nothing.
+if (LINECODE_TEST_EXECUTABLE_COUNT LESS 50)
+    message(FATAL_ERROR
+            "discovered only ${LINECODE_TEST_EXECUTABLE_COUNT} test "
+            "executables; the GoogleTest runner would skip tests")
+endif ()
+
+set(_linecode_runner [==[# Generated by tests/CMakeLists.txt -- do not edit.
+# Runs every GoogleTest binary of this project directly; there is no CTest.
+set(LINECODE_TEST_TOTAL 0)
+set(LINECODE_TEST_FAILED 0)
+set(LINECODE_TEST_FAILED_NAMES "")
+
+macro(linecode_record_result _label _result)
+  math(EXPR LINECODE_TEST_TOTAL "${LINECODE_TEST_TOTAL} + 1")
+  # No early return() here: a macro does not open a scope of its own, so
+  # return() would abort the whole generated script after the first binary.
+  if(_result EQUAL 0)
+    message(STATUS "[  OK  ] ${_label}")
+  else()
+    math(EXPR LINECODE_TEST_FAILED "${LINECODE_TEST_FAILED} + 1")
+    list(APPEND LINECODE_TEST_FAILED_NAMES "${_label}")
+    message(STATUS "[FAILED] ${_label} (exit ${_result})")
+  endif()
+endmacro()
+
+# GoogleTest >= 1.11 prints only failures with --gtest_brief, which keeps the
+# CI log readable; LINECODE_TEST_VERBOSE=1 restores the full output.
+macro(linecode_run_gtest _binary _working_directory)
+  set(_args "${_binary}")
+  if(NOT "$ENV{LINECODE_TEST_VERBOSE}" STREQUAL "1")
+    list(APPEND _args "--gtest_brief=1")
+  endif()
+  if(DEFINED ENV{GTEST_FILTER} AND NOT "$ENV{GTEST_FILTER}" STREQUAL "")
+    list(APPEND _args "--gtest_filter=$ENV{GTEST_FILTER}")
+  endif()
+  execute_process(COMMAND ${_args}
+                  WORKING_DIRECTORY "${_working_directory}"
+                  RESULT_VARIABLE _result)
+  get_filename_component(_label "${_binary}" NAME)
+  linecode_record_result("${_label}" "${_result}")
+endmacro()
+
+# Non-GoogleTest steps (the sshd fixture wrapping ssh_protocol_tests). The label
+# is explicit because `list(GET ARGV ..)` does not resolve inside a macro (only
+# functions define ARGV as a real list variable).
+macro(linecode_run_step _label)
+  set(_command ${ARGN})
+  execute_process(COMMAND ${_command}
+                  WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}"
+                  RESULT_VARIABLE _result)
+  linecode_record_result("${_label}" "${_result}")
+endmacro()
+]==])
+
+foreach (_linecode_target IN LISTS LINECODE_TEST_EXECUTABLES)
+    set(_linecode_workdir "${CMAKE_CURRENT_BINARY_DIR}")
+    if (DEFINED LINECODE_TEST_WORKING_DIRECTORY_${_linecode_target})
+        set(_linecode_workdir
+                "${LINECODE_TEST_WORKING_DIRECTORY_${_linecode_target}}")
+    endif ()
+    string(APPEND _linecode_runner
+            "linecode_run_gtest(\"$<TARGET_FILE:${_linecode_target}>\" \"${_linecode_workdir}\")\n")
+endforeach ()
+
+if (DEFINED LINECODE_SSH_FIXTURE_COMMAND)
+    set(_linecode_fixture_arguments "")
+    foreach (_linecode_part IN LISTS LINECODE_SSH_FIXTURE_COMMAND)
+        string(APPEND _linecode_fixture_arguments "\"${_linecode_part}\" ")
+    endforeach ()
+    string(APPEND _linecode_runner
+            "linecode_run_step(\"ssh_protocol_fixture\" ${_linecode_fixture_arguments})\n")
+endif ()
+
+string(APPEND _linecode_runner [==[
+message(STATUS "")
+if(LINECODE_TEST_FAILED GREATER 0)
+  message(STATUS "${LINECODE_TEST_FAILED} of ${LINECODE_TEST_TOTAL} test binaries FAILED:")
+  foreach(_name IN LISTS LINECODE_TEST_FAILED_NAMES)
+    message(STATUS "  - ${_name}")
+  endforeach()
+  message(FATAL_ERROR
+          "GoogleTest suite: ${LINECODE_TEST_FAILED} of ${LINECODE_TEST_TOTAL} binaries failed")
+endif()
+message(STATUS "GoogleTest suite: all ${LINECODE_TEST_TOTAL} binaries passed")
+]==])
+
+file(GENERATE
+        OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/run_tests.cmake"
+        CONTENT "${_linecode_runner}")
+
+add_custom_target(run_tests
+        COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/run_tests.cmake"
+        DEPENDS ${LINECODE_TEST_EXECUTABLES}
+        COMMENT "Running the GoogleTest suite (${LINECODE_TEST_EXECUTABLE_COUNT} binaries)"
+        USES_TERMINAL VERBATIM)
+
+# Convenience alias so the entry point is discoverable by the tool it runs.
+add_custom_target(gtest DEPENDS run_tests)

@@ -11,6 +11,7 @@
 
 #include "application/behavior_settings_repository.h"
 #include "domain/app_state.h"
+#include "presentation/components/behavior_settings_state.h"
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/components/legacy_settings_card_frame.h"
 #include "presentation/components/legacy_switch.h"
@@ -108,26 +109,82 @@ struct ReasoningMeta final {
   StringResource title;
   StringResource description;
 };
+
+// Shown instead of the switches while the shared settings cell has no
+// successfully loaded value. Rendering the controls with struct defaults here
+// is what used to make this screen claim "minimal mode is off" while the store
+// still had it on and every request kept running in minimal mode.
+View StatusCard(StringResource title, std::string detail, bool can_retry,
+                std::function<void()> retry, std::string retry_label) {
+  std::vector<View> children;
+  children.push_back(
+      Text(title).Style(Label(15.0F, FontWeight::Medium))
+          .With(Padding(EdgeInsets{.top = 14.0F,
+                                   .right = 16.0F,
+                                   .bottom = 8.0F,
+                                   .left = 16.0F}),
+                CrossAlign(CrossAxisAlignment::Stretch)));
+  if (!detail.empty()) {
+    children.push_back(
+        Text(std::move(detail))
+            .Style(Label(12.0F, FontWeight::Regular, colors::tertiary))
+            .With(Padding(EdgeInsets{.right = 16.0F,
+                                     .bottom = 14.0F,
+                                     .left = 16.0F})));
+  }
+  View card = LegacySettingsCardFrame{Column(std::move(children))
+      .With(CornerRadius(12.0F), Background(colors::elevated),
+            CrossAlign(CrossAxisAlignment::Stretch))};
+  if (!can_retry)
+    return card;
+  return Column{
+      std::move(card),
+      Text(std::move(retry_label))
+          .Style(Label(15.0F, FontWeight::Medium, colors::accent))
+          .OnClick([retry = std::move(retry)] {
+            if (retry)
+              std::invoke(retry);
+          })
+          .With(Frame{.min_height = 52.0F}, Padding(EdgeInsets::All(16.0F)),
+                Align(HorizontalAlignment::Center, VerticalAlignment::Center),
+                Focusable(), PointerCursor(PointerCursorKind::Hand)),
+  }.With(CrossAlign(CrossAxisAlignment::Stretch));
+}
 } // namespace
 
 [[huxerui::composable]] View LlmSettingsScreen(
-    std::shared_ptr<application::AiBehaviorSettingsRepository> repository) {
+    std::shared_ptr<application::AiBehaviorSettingsRepository> repository,
+    huxerui::State<BehaviorSettingsState> behavior_state,
+    std::function<void()> reload) {
   const auto navigation = UseNavigation<domain::AppRoute>();
   const auto tasks = UseTaskScope();
   const auto toast = UseToast();
-  auto settings = UseState(domain::AiBehaviorSettings{});
-  Lifecycle([tasks, repository, settings, toast] {
-    tasks.Launch([repository, settings, toast]() -> Task<void> {
-      auto loaded = co_await repository->Load();
-      if (loaded) settings = *loaded;
-      else toast.Show(loaded.error().message);
-    });
-  });
+  const auto current = behavior_state->value;
+  const auto ready = behavior_state->loaded;
+  const auto error = behavior_state->error;
 
-  auto persist = [tasks, toast](auto operation) {
-    tasks.Launch([operation = std::move(operation), toast]() mutable -> Task<void> {
+  // Optimistic write with rollback: a switch may only show a value the store
+  // accepted, and a newer edit always wins over an older failure.
+  auto apply = [tasks, toast, behavior_state](auto operation, auto mutate) {
+    domain::AiBehaviorSettings previous{};
+    domain::AiBehaviorSettings optimistic{};
+    behavior_state.Update([&](auto &state) {
+      previous = state.value;
+      optimistic = previous;
+      mutate(optimistic);
+      static_cast<void>(ApplyBehaviorEdit(state, optimistic));
+    });
+    tasks.Launch([operation = std::move(operation), toast, behavior_state,
+                  previous, optimistic]() mutable -> Task<void> {
       auto result = co_await operation();
-      if (!result) toast.Show(result.error().message);
+      if (result)
+        co_return;
+      const auto message = result.error().message;
+      behavior_state.Update([&message, previous, optimistic](auto &state) {
+        static_cast<void>(ApplyBehaviorPersistFailure(state, optimistic,
+                                                      previous, message));
+      });
+      toast.Show(message);
     });
   };
 
@@ -148,50 +205,53 @@ struct ReasoningMeta final {
   std::vector<View> reasoning_rows;
   for (const auto &item : reasoning) {
     reasoning_rows.push_back(OptionRow(
-        app::images::sparkles, item.title, item.description, settings->reasoning == item.value,
-        [settings, repository, persist, value = item.value] {
-          settings.Update([value](auto &next) { next.reasoning = value; });
-          persist([repository, value] { return repository->SetReasoning(value); });
+        app::images::sparkles, item.title, item.description,
+        current.reasoning == item.value,
+        [apply, repository, value = item.value] {
+          apply([repository, value] { return repository->SetReasoning(value); },
+                [value](auto &next) { next.reasoning = value; });
         }).Key(item.value));
   }
 
   std::vector<View> learning_rows;
   learning_rows.push_back(SwitchRow(
       app::images::zap, app::strings::screen_llm_minimal_label,
-      app::strings::screen_llm_minimal_desc, settings->minimal_mode,
-      [settings, repository, persist](bool value) {
-        settings.Update([value](auto &next) { next.minimal_mode = value; });
-        persist([repository, value] { return repository->SetMinimalMode(value); });
+      app::strings::screen_llm_minimal_desc, current.minimal_mode,
+      [apply, repository](bool value) {
+        apply([repository, value] { return repository->SetMinimalMode(value); },
+              [value](auto &next) { next.minimal_mode = value; });
       }, 89.5F));
   learning_rows.push_back(SwitchRow(
       app::images::brain, app::strings::screen_llm_learning_label,
-      app::strings::screen_llm_learning_desc, settings->learning_mode,
-      [settings, repository, persist](bool value) {
-        settings.Update([value](auto &next) { next.learning_mode = value; });
-        persist([repository, value] { return repository->SetLearningMode(value); });
+      app::strings::screen_llm_learning_desc, current.learning_mode,
+      [apply, repository](bool value) {
+        apply([repository, value] { return repository->SetLearningMode(value); },
+              [value](auto &next) { next.learning_mode = value; });
       }, 89.5F));
   learning_rows.push_back(SwitchRow(
       app::images::rotate_ccw, app::strings::screen_llm_soft_compact_label,
-      app::strings::screen_llm_soft_compact_desc, settings->soft_compaction,
-      [settings, repository, persist](bool value) {
-        settings.Update([value](auto &next) { next.soft_compaction = value; });
-        persist([repository, value] { return repository->SetSoftCompaction(value); });
+      app::strings::screen_llm_soft_compact_desc, current.soft_compaction,
+      [apply, repository](bool value) {
+        apply([repository, value] { return repository->SetSoftCompaction(value); },
+              [value](auto &next) { next.soft_compaction = value; });
       }, 106.75F));
 
   std::vector<View> tone_rows;
   tone_rows.push_back(OptionRow(
       app::images::zap, app::strings::screen_llm_tone_coding,
-      app::strings::screen_llm_tone_coding_desc, settings->tone == domain::ToneMode::coding,
-      [settings, repository, persist] {
-        settings.Update([](auto &next) { next.tone = domain::ToneMode::coding; });
-        persist([repository] { return repository->SetTone(domain::ToneMode::coding); });
+      app::strings::screen_llm_tone_coding_desc,
+      current.tone == domain::ToneMode::coding,
+      [apply, repository] {
+        apply([repository] { return repository->SetTone(domain::ToneMode::coding); },
+              [](auto &next) { next.tone = domain::ToneMode::coding; });
       }));
   tone_rows.push_back(OptionRow(
       app::images::smile, app::strings::screen_llm_tone_chat,
-      app::strings::screen_llm_tone_chat_desc, settings->tone == domain::ToneMode::chat,
-      [settings, repository, persist] {
-        settings.Update([](auto &next) { next.tone = domain::ToneMode::chat; });
-        persist([repository] { return repository->SetTone(domain::ToneMode::chat); });
+      app::strings::screen_llm_tone_chat_desc,
+      current.tone == domain::ToneMode::chat,
+      [apply, repository] {
+        apply([repository] { return repository->SetTone(domain::ToneMode::chat); },
+              [](auto &next) { next.tone = domain::ToneMode::chat; });
       }));
 
   std::vector<View> prompt_rows;
@@ -204,23 +264,46 @@ struct ReasoningMeta final {
   auto boolean_row = [&](ImageResource icon, StringResource title, StringResource description,
                          bool value, auto member, auto save) {
     display_rows.push_back(SwitchRow(std::move(icon), title, description, value,
-        [settings, repository, persist, member, save](bool next_value) {
-          settings.Update([member, next_value](auto &next) { next.*member = next_value; });
-          persist([repository, save, next_value] { return (repository.get()->*save)(next_value); });
+        [apply, repository, member, save](bool next_value) {
+          apply([repository, save, next_value] {
+                  return (repository.get()->*save)(next_value);
+                },
+                [member, next_value](auto &next) { next.*member = next_value; });
         }));
   };
   boolean_row(app::images::scroll_text, app::strings::screen_llm_scroll_label,
-              app::strings::screen_llm_scroll_desc, settings->thinking_scroll,
+              app::strings::screen_llm_scroll_desc, current.thinking_scroll,
               &domain::AiBehaviorSettings::thinking_scroll,
               &application::AiBehaviorSettingsRepository::SetThinkingScroll);
   boolean_row(app::images::expand, app::strings::screen_llm_auto_expand_label,
-              app::strings::screen_llm_auto_expand_desc, settings->thinking_auto_expand,
+              app::strings::screen_llm_auto_expand_desc, current.thinking_auto_expand,
               &domain::AiBehaviorSettings::thinking_auto_expand,
               &application::AiBehaviorSettingsRepository::SetThinkingAutoExpand);
   boolean_row(app::images::brain, app::strings::screen_llm_keep_reasoning_label,
-              app::strings::screen_llm_keep_reasoning_desc, settings->preserve_reasoning,
+              app::strings::screen_llm_keep_reasoning_desc, current.preserve_reasoning,
               &domain::AiBehaviorSettings::preserve_reasoning,
               &application::AiBehaviorSettingsRepository::SetPreserveReasoning);
+
+  if (!ready) {
+    // No successfully loaded value: show why, plus a way to try again, instead
+    // of a switch panel that would be inventing values.
+    const auto can_retry = static_cast<bool>(reload);
+    const auto retry_label = UseString(app::strings::screen_memory_retry);
+    return Column{
+        Header(navigation), LegacyScreenHeaderDivider(),
+        ScrollView(Column{
+            StatusCard(error.empty()
+                           ? app::strings::screen_llm_settings_loading
+                           : app::strings::screen_llm_settings_unavailable,
+                       error, can_retry, std::move(reload),
+                       std::string{retry_label}),
+            Stack{}.With(Frame{.width = 1.0F, .height = 100.0F}),
+        }.With(CrossAlign(CrossAxisAlignment::Stretch),
+               Background(colors::background)))
+            .ScrollAxis(Axis::Vertical).With(Grow()),
+    }.With(CrossAlign(CrossAxisAlignment::Stretch),
+           Background(colors::background), SafeAreaPadding{});
+  }
 
   return Column{
       Header(navigation), LegacyScreenHeaderDivider(),

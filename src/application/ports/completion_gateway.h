@@ -1,9 +1,9 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <functional>
-#include <cstdint>
 #include <optional>
 #include <string>
 #include <variant>
@@ -29,6 +29,10 @@ struct CompletionTool final {
   std::string name;
   std::string description;
   std::string parameters_json;
+  // Mirrors `RegisteredTool::allowed_in_read_only`. The prompt composer renders
+  // the read-only allow-list from this instead of a hardcoded name list that
+  // drifted away from what the permission layer actually permits.
+  bool allowed_in_read_only{};
 
   bool operator==(const CompletionTool &) const = default;
 };
@@ -158,8 +162,16 @@ using CompletionEvent =
 enum class CompletionErrorCode : std::uint8_t {
   unsupported_protocol,
   invalid_configuration,
+  // The connection failed, or the stream ended before the response was
+  // complete. Retryable.
   transport,
+  // The whole-operation deadline elapsed. Kept separate from `transport` so the
+  // retry policy and the user-facing reason can tell a stall from a reset.
+  timeout,
+  // A response arrived with a non-2xx status. `http_status` carries the code.
   http_status,
+  // The response could not be decoded; retrying an identical request cannot fix
+  // a protocol or payload problem.
   decode,
 };
 
@@ -167,6 +179,13 @@ struct CompletionError final {
   CompletionErrorCode code{CompletionErrorCode::transport};
   std::string message;
   int http_status{};
+  // `Retry-After` from the failed response, when the transport exposed it.
+  std::optional<std::int64_t> retry_after_seconds{};
+  // What the failed attempt already did. A retry replays the whole tool loop
+  // from the same request snapshot, so the caller must refuse to retry once a
+  // state-changing tool has run.
+  std::size_t executed_tool_calls{};
+  std::size_t mutating_tool_calls{};
 
   bool operator==(const CompletionError &) const = default;
 };

@@ -130,6 +130,8 @@ TerminalProviderToolRegistry::Refresh() {
           // Legacy read-only policy permits shell on an isolated remote or
           // terminal-provider target, while local mutation tools remain denied.
           .allowed_in_read_only = true,
+          // Same contract as the SSH shell: read-only mode inspects the command.
+          .read_only_requires_safe_command = true,
           .permanent_grant_arguments = {{.name = "command", .required = true},
                                         {.name = "cwd", .required = false}},
           .agent_category = AgentToolCategory::system,

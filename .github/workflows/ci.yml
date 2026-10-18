@@ -96,7 +96,7 @@ jobs:
 
       - name: Run GoogleTest suite
         timeout-minutes: 15
-        run: ctest --test-dir build/tests-ninja --output-on-failure -j8
+        run: cmake --build build/tests-ninja --target run_tests
 
       - name: Run fake AI server tests
         working-directory: tools

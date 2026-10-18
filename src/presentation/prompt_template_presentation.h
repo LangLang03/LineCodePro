@@ -105,10 +105,8 @@ MakePromptTemplatePresentationRegistry(Resolver&& resolve) {
                    text(PromptTemplateText::chat_mode_agent_title),
                    text(PromptTemplateText::chat_mode_agent_description),
                    source(PromptTemplateText::source_builtin_agent)},
-      Presentation{"learningContext",
-                   text(PromptTemplateText::learning_context_title),
-                   text(PromptTemplateText::learning_context_description),
-                   std::nullopt},
+      // `learningContext` was removed: the learning block is rendered from the
+      // memory renderer, so the editor entry only pretended to be editable.
       Presentation{"contextCompaction",
                    text(PromptTemplateText::context_compaction_title),
                    text(PromptTemplateText::context_compaction_description),

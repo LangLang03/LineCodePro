@@ -113,7 +113,9 @@ HuxMcpToolInvoker::Invoke(domain::McpExtension extension,
             : std::string{};
     auto called = co_await Send(
         http_, std::move(extension.url), RequestHeaders(extension, session_id),
-        std::move(*call_body), call_id, std::chrono::seconds{60});
+        // 120s rather than 60s: a long-running MCP tool that streams progress
+        // was being killed with the request still alive.
+        std::move(*call_body), call_id, std::chrono::seconds{120});
     if (!called)
       co_return std::unexpected(std::move(called.error()));
     if (called->status < 200 || called->status >= 300) {

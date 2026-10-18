@@ -39,6 +39,7 @@
 #include "application/user_agreement.h"
 #include "domain/app_state.h"
 #include "domain/memory_rag.h"
+#include "presentation/components/behavior_settings_state.h"
 #include "presentation/components/chat_screen.h"
 #include "presentation/components/drawer.h"
 #include "presentation/line_theme.h"
@@ -90,6 +91,29 @@ Task<void> LoadAgreement(std::shared_ptr<application::UserAgreement> agreement,
                          State<AgreementPhase> phase) {
   phase = co_await agreement->ShouldShow() ? AgreementPhase::required
                                            : AgreementPhase::accepted;
+}
+
+// The one loader for the shared behaviour-settings cell. `started_at` is read
+// from the cell itself so a load that began before the user's tap can never
+// overwrite it, and a failed load reports the reason instead of leaving the
+// screens to render defaults that were never stored.
+Task<void> LoadBehaviorSettings(
+    std::shared_ptr<application::AiBehaviorSettingsRepository> repository,
+    State<BehaviorSettingsState> behavior_state) {
+  std::uint64_t started_at{};
+  behavior_state.Update(
+      [&started_at](auto &state) { started_at = state.edit_revision; });
+  auto loaded = co_await repository->Load();
+  if (!loaded) {
+    const auto message = loaded.error().message;
+    behavior_state.Update([&message](auto &state) {
+      ApplyBehaviorLoadFailure(state, message);
+    });
+    co_return;
+  }
+  behavior_state.Update([&loaded, started_at](auto &state) {
+    static_cast<void>(ApplyBehaviorLoad(state, started_at, *loaded));
+  });
 }
 
 View AgreementAction(StringVariant label, Color color, bool enabled,
@@ -308,6 +332,7 @@ huxerui::View HomeScreen(
     std::shared_ptr<application::MemoryContextService> memory_context,
     std::shared_ptr<application::AiBehaviorSettingsRepository>
         behavior_settings,
+    huxerui::State<BehaviorSettingsState> behavior_state,
     std::shared_ptr<application::TodoStateStore> todo_state,
     std::shared_ptr<application::SkillRepository> skills,
     std::shared_ptr<application::McpExecutionSettingsService>
@@ -486,6 +511,7 @@ huxerui::View HomeScreen(
                   .model_revision = model_revision.Get(),
                   .workspace = drawer_model,
                   .interaction_mode = interaction_mode,
+                  .behavior_state = behavior_state,
                   .input_settings = input_settings,
                   .current_project_id = project_id,
                   .prompt_context = std::move(prompt_context),
@@ -579,6 +605,11 @@ huxerui::View MainScreen(
   auto extension_revision = UseState(std::size_t{0});
   auto active_input_settings = UseState(domain::InputSettings{});
   auto interaction_mode = UseState(application::ChatInteractionModeState{});
+  // Single source of truth for the AI behaviour switches: the settings screen
+  // and the chat screen both read this cell, and every write goes through it,
+  // so a failed or late write can no longer leave the UI showing a value the
+  // store never accepted.
+  auto behavior_state = UseState(BehaviorSettingsState{});
   auto workspace_state = UseState(ProjectWorkspacePresentationState{});
   auto termux_ssh_mode = UseState(false);
   auto agreement_phase = UseState(AgreementPhase::loading);
@@ -592,7 +623,8 @@ huxerui::View MainScreen(
   const auto line_colors = UseEnvironment<LineColors>();
 
   Lifecycle([settings_tasks, input_settings, active_input_settings, chat_modes,
-             interaction_mode, user_agreement, agreement_phase] {
+             interaction_mode, user_agreement, agreement_phase,
+             ai_behavior_settings, behavior_state] {
     settings_tasks.Launch(LoadAgreement(user_agreement, agreement_phase));
     settings_tasks.Launch(
         [input_settings, active_input_settings]() -> Task<void> {
@@ -605,7 +637,16 @@ huxerui::View MainScreen(
       if (loaded)
         interaction_mode = *loaded;
     });
+    settings_tasks.Launch(
+        LoadBehaviorSettings(ai_behavior_settings, behavior_state));
   });
+
+  // Re-runs the shared load. The settings screen uses it to recover from a
+  // failed load without requiring an app restart.
+  auto reload_behavior = [settings_tasks, ai_behavior_settings, behavior_state] {
+    settings_tasks.Launch(
+        LoadBehaviorSettings(ai_behavior_settings, behavior_state));
+  };
 
   if (agreement_phase.Get() != AgreementPhase::accepted) {
     if (agreement_phase.Get() == AgreementPhase::loading) {
@@ -622,6 +663,7 @@ huxerui::View MainScreen(
        agent_results = std::move(agent_results),
        storage_permission = std::move(storage_permission),
        memory_context = memory_context.Get(), ai_behavior_settings,
+       behavior_state,
        todo_state = std::move(todo_state), skills = std::move(skills),
        execution_settings = std::move(execution_settings), ssh_settings,
        compaction_service = std::move(compaction_service),
@@ -635,7 +677,8 @@ huxerui::View MainScreen(
     return HomeScreen(
         initial_session, project_workspace, model_store, completion_loop,
         agent_results, storage_permission, memory_context,
-        ai_behavior_settings, todo_state, skills, execution_settings,
+        ai_behavior_settings, behavior_state, todo_state, skills,
+        execution_settings,
         ssh_settings, compaction_service, diff_store, diff_review,
         output_settings_service, tool_permissions, tool_reviews, chat_modes,
         interaction_mode, active_input_settings.Get(), linecode_root,
@@ -648,6 +691,7 @@ huxerui::View MainScreen(
       [model_store = std::move(model_store),
        model_catalog = std::move(model_catalog),
        ai_behavior_settings = std::move(ai_behavior_settings),
+       behavior_state, reload_behavior,
        input_settings = std::move(input_settings), active_input_settings,
        prompt_templates = std::move(prompt_templates), output_settings_service,
        theme_service = std::move(theme_service), theme_settings,
@@ -770,7 +814,8 @@ huxerui::View MainScreen(
                                    });
     }
     if (route == domain::AppRoute::llm) {
-      return LlmSettingsScreen(ai_behavior_settings);
+      return LlmSettingsScreen(ai_behavior_settings, behavior_state,
+                               reload_behavior);
     }
     if (route == domain::AppRoute::mcp) {
       return McpSettingsScreen(
@@ -850,8 +895,8 @@ huxerui::View MainScreen(
       const auto after_import = callbacks.after_import;
       callbacks.after_import =
           [after_import, model_store, selected_model_available, generation,
-           chat_revision, workspace_revision,
-           model_revision]() -> Task<DataSettingsCallbackResult> {
+           chat_revision, workspace_revision, model_revision,
+           reload_behavior]() -> Task<DataSettingsCallbackResult> {
         if (after_import) {
           auto reloaded = co_await after_import();
           if (!reloaded) {
@@ -867,6 +912,9 @@ huxerui::View MainScreen(
         chat_revision += 1;
         workspace_revision += 1;
         model_revision += 1;
+        // An import rewrites the settings rows, so the shared behaviour cell
+        // has to be re-read instead of keeping the pre-import switches.
+        reload_behavior();
         co_return DataSettingsCallbackResult{};
       };
       return DataSettingsScreen(data_archive, std::move(callbacks));
