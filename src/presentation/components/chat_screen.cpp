@@ -660,7 +660,8 @@ struct ContextSnapshotCache final {
           [presentation_messages, live_message, chunks, history_count,
            has_header, has_process, show_status, multi_select, action_message,
            selected_messages, callbacks, timeline_settings, toggled_timeline,
-           on_link, on_copy, context, compact_label](std::size_t index) -> View {
+           on_link, on_copy, context, compact_label,
+           local_model_load](std::size_t index) -> View {
             if (index == 0U)
               return Stack{}.With(Frame{.height = 8.0F}).Key("top");
             std::size_t cursor = index - 1U;

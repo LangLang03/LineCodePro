@@ -322,7 +322,7 @@ private:
 };
 
 // Renders the animated status row for an already-resolved label.
-View WorkingStatusLabel(const std::string &label) {
+[[huxerui::composable]] View WorkingStatusLabel(const std::string &label) {
   const auto &locale = UseEnvironment<Locale>();
   const TextStyle style{Font::Monospace(13.0F), colors::secondary};
   const auto metrics = UseTextMeasurer().MeasureRun(

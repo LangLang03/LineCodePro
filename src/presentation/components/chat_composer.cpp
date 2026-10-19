@@ -317,12 +317,6 @@ constexpr float kModelPillTextMaxWidth = 128.0F;
 // the model picker still shows the complete name.
 constexpr float kCompactModelPillTextMaxWidth = 96.0F;
 
-float ModelPillTextBudget() {
-  return UseViewportClass() == ViewportClass::Compact
-             ? kCompactModelPillTextMaxWidth
-             : kModelPillTextMaxWidth;
-}
-
 TextStyle ModelPillTextStyle() {
   return ChatTextStyle(12.0F, FontWeight::Medium, colors::secondary);
 }
@@ -745,7 +739,12 @@ using namespace huxerui;
       FindSlashModel(slash_models.Get(), slash_selected_model_id.Get());
   // The pill is one clipped line, so it shows the model's own name segment and
   // elides anything that still would not fit; the picker keeps the full name.
-  const float model_pill_text_budget = ModelPillTextBudget();
+  // The pill is one clipped line, so the budget it is measured against belongs
+  // to the viewport: a compact one also carries the reasoning pill and the
+  // primary action.
+  const float model_pill_text_budget =
+      UseViewportClass() == ViewportClass::Compact ? kCompactModelPillTextMaxWidth
+                                                   : kModelPillTextMaxWidth;
   std::string model_label;
   if (selected_model != nullptr) {
     model_label =
