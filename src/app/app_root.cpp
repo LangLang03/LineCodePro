@@ -38,6 +38,8 @@
 #include "domain/prompt_template.h"
 #include "infrastructure/app_logger.h"
 #include "infrastructure/hux_completion_gateway.h"
+#include "infrastructure/local_model_completion_gateway.h"
+#include "infrastructure/local_model_engine_factory.h"
 #include "infrastructure/hux_known_hosts_store.h"
 #include "infrastructure/hux_mcp_tool_invoker.h"
 #include "infrastructure/libssh2_transport.h"
@@ -217,9 +219,15 @@ namespace linecode::app {
       huxerui::UseState(std::shared_ptr<application::SshSettingsService>{
           std::make_shared<infrastructure::PersistedSshSettings>(
               settings_store.Get(), ssh_runtime.Get())});
+  // A local GGUF model runs in this process, so the routing decorator picks the
+  // local engine for it and forwards every remote protocol to the HTTP gateway.
+  // With the local model support off, the engine is the placeholder that
+  // reports the backend as absent and the decorator is a pass-through.
   auto completion_gateway =
       huxerui::UseState(std::shared_ptr<application::CompletionGateway>{
-          std::make_shared<infrastructure::HuxCompletionGateway>(http)});
+          std::make_shared<infrastructure::LocalModelCompletionGateway>(
+              std::make_shared<infrastructure::HuxCompletionGateway>(http),
+              infrastructure::CreateLocalModelEngine())});
   auto mcp_tool_invoker =
       huxerui::UseState(std::shared_ptr<application::McpToolInvoker>{
           std::make_shared<infrastructure::HuxMcpToolInvoker>(http)});

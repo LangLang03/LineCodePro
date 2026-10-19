@@ -7,6 +7,8 @@
 #include <string>
 #include <utility>
 
+#include "application/local_model_support.h"
+
 namespace linecode::application {
 namespace {
 
@@ -38,6 +40,65 @@ bool IsLocal(const ModelDraft &draft) noexcept {
   return draft.local || draft.protocol == domain::ModelProtocol::local_gguf;
 }
 
+// The file name without directories, used to name a local model the user has
+// not labelled. The stored model id has to be stable across restarts because
+// conversations and the selection row reference it.
+std::string FileBaseName(std::string_view path) {
+  const auto slash = path.find_last_of("/\\");
+  const auto name = slash == std::string_view::npos ? path : path.substr(slash + 1);
+  const auto dot = name.find_last_of('.');
+  const auto stem = dot == std::string_view::npos || dot == 0 ? name : name.substr(0, dot);
+  return Trim(stem);
+}
+
+std::expected<domain::ModelConfig, ModelValidationError>
+BuildLocal(const ModelDraft &draft) {
+  if constexpr (!local_model_enabled) {
+    return std::unexpected(
+        ModelValidationError{ModelValidationCode::local_backend_unavailable});
+  }
+  const auto path = Trim(draft.local_model_path);
+  if (path.empty()) {
+    return std::unexpected(
+        ModelValidationError{ModelValidationCode::missing_local_model_path});
+  }
+  auto model_id = Trim(draft.model_id);
+  if (model_id.empty()) {
+    model_id = FileBaseName(path);
+  }
+  auto name = Trim(draft.name);
+  if (name.empty()) {
+    name = model_id;
+  }
+  if (name.empty()) {
+    return std::unexpected(
+        ModelValidationError{ModelValidationCode::missing_name_or_model_id});
+  }
+  const auto tool_limit = ParseToolLimit(draft.tool_call_limit);
+  if (!tool_limit) {
+    return std::unexpected(
+        ModelValidationError{ModelValidationCode::invalid_tool_call_limit});
+  }
+  domain::ModelConfig model{
+      .id = draft.id,
+      .name = std::move(name),
+      .protocol = domain::ModelProtocol::local_gguf,
+      .provider_label = Trim(draft.provider_label),
+      .base_url = {},
+      .api_key = {},
+      .model_id = std::move(model_id),
+      .tool_call_limit = *tool_limit,
+      .compression_model_enabled = false,
+      .compression_model_auto = draft.compression_auto,
+      .compression_model_id = {},
+      .context_size = ModelFormService::ParseContextSize(draft.context_size),
+      .local_model_path = path,
+      .local_acceleration = draft.local_acceleration,
+  };
+  model.Normalize();
+  return model;
+}
+
 } // namespace
 
 ModelDraft
@@ -56,6 +117,7 @@ ModelFormService::New(std::optional<domain::ModelProviderPreset> preset,
       std::to_string(domain::ModelConfig::default_tool_call_limit);
   draft.context_size = local ? "4096" : "";
   draft.local = local;
+  draft.local_acceleration = domain::LocalAcceleration::automatic;
   return draft;
 }
 
@@ -74,15 +136,15 @@ ModelDraft ModelFormService::Edit(const domain::ModelConfig &model) {
       .compression_model_id = model.compression_model_id,
       .context_size = FormatContextSize(model.context_size),
       .local = model.protocol == domain::ModelProtocol::local_gguf,
+      .local_model_path = model.local_model_path,
+      .local_acceleration = model.local_acceleration,
   };
 }
 
 std::expected<domain::ModelConfig, ModelValidationError>
 ModelFormService::Build(const ModelDraft &draft) {
-  const bool local = IsLocal(draft);
-  if (local) {
-    return std::unexpected(
-        ModelValidationError{ModelValidationCode::local_backend_unavailable});
+  if (IsLocal(draft)) {
+    return BuildLocal(draft);
   }
   const auto model_id = Trim(draft.model_id);
   auto name = Trim(draft.name);
@@ -123,6 +185,10 @@ ModelFormService::Build(const ModelDraft &draft) {
       .compression_model_auto = draft.compression_auto,
       .compression_model_id = compression_id,
       .context_size = ParseContextSize(draft.context_size),
+      // A remote model owns no local state; Normalize() would clear these
+      // anyway, and stating them keeps the designated initializer exhaustive.
+      .local_model_path = {},
+      .local_acceleration = domain::LocalAcceleration::automatic,
   };
   model.Normalize();
   return model;
@@ -130,9 +196,10 @@ ModelFormService::Build(const ModelDraft &draft) {
 
 std::expected<domain::ModelConfig, ModelValidationError>
 ModelFormService::BuildForProbe(const ModelDraft &draft) {
+  // A local model has no HTTP endpoint to probe, and its validation is the same
+  // one saving performs, so the two share a path instead of drifting.
   if (IsLocal(draft)) {
-    return std::unexpected(
-        ModelValidationError{ModelValidationCode::local_backend_unavailable});
+    return BuildLocal(draft);
   }
   const auto model_id = Trim(draft.model_id);
   if (model_id.empty()) {
@@ -162,6 +229,10 @@ ModelFormService::BuildForProbe(const ModelDraft &draft) {
       .compression_model_auto = draft.compression_auto,
       .compression_model_id = Trim(draft.compression_model_id),
       .context_size = ParseContextSize(draft.context_size),
+      // A remote model owns no local state; Normalize() would clear these
+      // anyway, and stating them keeps the designated initializer exhaustive.
+      .local_model_path = {},
+      .local_acceleration = domain::LocalAcceleration::automatic,
   };
   model.Normalize();
   return model;

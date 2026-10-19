@@ -58,6 +58,7 @@ ModelListDestination(
 ModelFlowDestination(const ModelRoute &route,
                      std::shared_ptr<application::ModelStore> store,
                      std::shared_ptr<application::ModelCatalogGateway> catalog,
+                     const std::string &local_model_directory,
                      huxerui::State<std::size_t> list_revision,
                      std::function<void(bool)>
                          on_selection_availability_changed) {
@@ -82,7 +83,7 @@ ModelFlowDestination(const ModelRoute &route,
           .editing = form.editing,
           .local = form.local,
       },
-      std::move(store), std::move(catalog),
+      std::move(store), std::move(catalog), local_model_directory,
       {
           .on_back = [navigation] { navigation.Pop(); },
           .on_saved =
@@ -101,6 +102,7 @@ ModelFlowDestination(const ModelRoute &route,
 [[huxerui::composable]] huxerui::View ModelManagementScreen(
     std::shared_ptr<application::ModelStore> store,
     std::shared_ptr<application::ModelCatalogGateway> catalog,
+    std::string local_model_directory,
     std::function<void(bool)> on_selection_availability_changed) {
   auto path = huxerui::UseState(huxerui::NavigationPath<ModelRoute>{});
   auto list_revision = huxerui::UseState(std::size_t{0});
@@ -110,11 +112,13 @@ ModelFlowDestination(const ModelRoute &route,
                                 on_selection_availability_changed);
   };
   auto destination = [store = std::move(store), catalog = std::move(catalog),
+                      local_model_directory = std::move(local_model_directory),
                       list_revision,
                       on_selection_availability_changed =
                           std::move(on_selection_availability_changed)](
                          const ModelRoute &route) -> huxerui::View {
-    return ModelFlowDestination(route, store, catalog, list_revision,
+    return ModelFlowDestination(route, store, catalog, local_model_directory,
+                                list_revision,
                                 on_selection_availability_changed);
   };
   return huxerui::NavigationStack(std::move(root), path,

@@ -585,6 +585,7 @@ struct ContextSnapshotCache final {
     const TutorialMarkdownCopyHandler &on_copy,
     const ToolRendererContext &context,
     const std::shared_ptr<AutoCompactionUiState> &auto_compaction,
+    const std::shared_ptr<LocalModelLoadUiState> &local_model_load,
     std::string compact_label, ScrollController conversation_scroll,
     State<std::uint64_t> scroll_to_bottom_request,
     std::optional<bool> has_selected_model) {
@@ -692,7 +693,10 @@ struct ContextSnapshotCache final {
             if (show_status && cursor == 0U) {
               return chat_message::StreamingMessageStatus(
                          !live_message->reasoning_content.empty() &&
-                         live_message->content.empty())
+                         live_message->content.empty(),
+                         local_model_load
+                             ? LocalModelLoadPercent(*local_model_load)
+                             : std::nullopt)
                   .Key("stream-status");
             }
             if (show_status)
@@ -976,6 +980,7 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
       .progress = UseString(app::strings::context_compact_label),
   };
   auto auto_compaction = UseState(std::make_shared<AutoCompactionUiState>());
+  auto local_model_load = UseState(std::make_shared<LocalModelLoadUiState>());
   const auto toast = UseToast();
 
   // Applies one optimistic behaviour edit and rolls it back when the store
@@ -1722,6 +1727,7 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
             .permission_mode = permission_state->mode,
             .toast = toast,
             .auto_compaction = auto_compaction.Get(),
+            .local_model_load = local_model_load.Get(),
             .token_usage = token_usage,
             .retry_labels = retry_labels,
         },
@@ -1866,7 +1872,8 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
                                        .on_review = review_change,
                                        .agent_results = agent_results,
                                        .toggled_timeline = toggled_timeline},
-                   auto_compaction.Get(), compaction_labels.progress,
+                   auto_compaction.Get(), local_model_load.Get(),
+                   compaction_labels.progress,
                    conversation_scroll, scroll_to_bottom_request,
                    has_selected_model),
       std::move(composer_or_review),

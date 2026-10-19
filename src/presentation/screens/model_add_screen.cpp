@@ -24,7 +24,6 @@ namespace {
 using namespace huxerui;
 
 enum class CatalogTarget : std::uint8_t { primary, compression };
-enum class LocalAcceleration : std::uint8_t { automatic, cpu, npu };
 
 struct ModelFormState final {
   std::string id;
@@ -47,7 +46,10 @@ struct ModelFormState final {
   bool probing{};
   bool saving{};
   bool attempted_save{};
-  LocalAcceleration acceleration{LocalAcceleration::automatic};
+  domain::LocalAcceleration acceleration{domain::LocalAcceleration::automatic};
+  // Absolute path of the imported GGUF weights. Empty until the user picks a
+  // file, which is what the local form validates before it can save.
+  std::string local_model_path;
   std::vector<std::string> primary_catalog;
   std::vector<std::string> compression_catalog;
   std::string error;
@@ -118,6 +120,9 @@ const std::array validation_presentations{
         application::ModelValidationCode::local_backend_unavailable,
         app::strings::model_form_local_pending},
     ValidationPresentation{
+        application::ModelValidationCode::missing_local_model_path,
+        app::strings::model_form_local_missing_file},
+    ValidationPresentation{
         application::ModelValidationCode::missing_name_or_model_id,
         app::strings::model_form_missing_id},
     ValidationPresentation{application::ModelValidationCode::missing_api_key,
@@ -131,18 +136,35 @@ const std::array validation_presentations{
 };
 
 struct LocalAccelerationPresentation final {
-  LocalAcceleration mode;
+  domain::LocalAcceleration mode;
   StringResource label;
 };
 
+// Every mode the domain knows, in the order the form shows them. Which of them a
+// given build can actually serve is decided by SelectableLocalAccelerations(),
+// so the table stays a pure presentation mapping.
 const std::array local_acceleration_presentations{
-    LocalAccelerationPresentation{LocalAcceleration::automatic,
+    LocalAccelerationPresentation{domain::LocalAcceleration::automatic,
                                   app::strings::model_form_acceleration_auto},
-    LocalAccelerationPresentation{LocalAcceleration::cpu,
+    LocalAccelerationPresentation{domain::LocalAcceleration::cpu,
                                   app::strings::model_form_acceleration_cpu},
-    LocalAccelerationPresentation{LocalAcceleration::npu,
-                                  app::strings::model_form_acceleration_npu},
+    LocalAccelerationPresentation{domain::LocalAcceleration::gpu,
+                                  app::strings::model_form_acceleration_gpu},
 };
+// No NPU entry: NPU acceleration is not supported yet, and the hint below the
+// row says so instead of offering an option that could only degrade to the CPU.
+
+// Named for what it returns: the translated label resource. `LocalAccelerationLabel`
+// is already a domain function that returns the untranslated label, and an
+// unqualified call would be ambiguous against it.
+[[nodiscard]] StringResource
+LocalAccelerationResource(domain::LocalAcceleration mode) {
+  const auto found = std::ranges::find(local_acceleration_presentations, mode,
+                                       &LocalAccelerationPresentation::mode);
+  if (found != local_acceleration_presentations.end())
+    return found->label;
+  std::unreachable();
+}
 
 TextStyle Label(float size, FontWeight weight = FontWeight::Regular,
                 Color color = colors::text) {
@@ -183,6 +205,8 @@ ModelFormState MakeState(const application::ModelDraft &draft,
       .local = draft.local,
       .protocol_locked = protocol_locked,
       .preset_mode = preset_mode,
+      .acceleration = draft.local_acceleration,
+      .local_model_path = draft.local_model_path,
   };
 }
 
@@ -201,6 +225,8 @@ application::ModelDraft MakeDraft(const ModelFormState &state) {
       .compression_model_id = state.compression_id.Effective().text,
       .context_size = state.context_size.text,
       .local = state.local,
+      .local_model_path = state.local_model_path,
+      .local_acceleration = state.acceleration,
   };
 }
 
@@ -298,6 +324,31 @@ StringVariant BaseUrlHint(domain::ModelProtocol protocol) {
   return ModelProtocolPresentationFor(protocol).base_url_hint;
 }
 
+// What the linked runtime is and which accelerators it carries. This is
+// build-time information, so the form states it without loading a model or
+// enumerating devices, and a user who cannot find the NPU option sees why.
+StringVariant LocalEngineStatusText() {
+  if (!application::local_model_enabled) {
+    return app::strings::model_form_local_pending;
+  }
+  std::string text{application::LocalModelEngineName()};
+  const auto revision = application::LocalModelEngineRevision();
+  if (!revision.empty()) {
+    text += " ";
+    text += revision;
+  }
+  const auto backends = application::EnabledLocalModelBackendIds();
+  if (backends.empty()) {
+    text += " · CPU";
+  } else {
+    for (const auto backend : backends) {
+      text += " · ";
+      text += backend;
+    }
+  }
+  return text;
+}
+
 View FormField(TextEditingValue value, StringVariant label,
                StringVariant placeholder,
                std::function<void(const TextEditingValue &)> changed,
@@ -328,6 +379,12 @@ View ProtocolSelector(State<ModelFormState> state, ToastHandle toast) {
   items.reserve(model_protocol_presentations.size());
   for (const auto &presentation : model_protocol_presentations) {
     const auto protocol = presentation.protocol;
+    // A build without the local backend renders no local tab, so the protocol
+    // row shows exactly the protocols this build can serve.
+    if (protocol == domain::ModelProtocol::local_gguf &&
+        !LocalModelProtocolSelectable()) {
+      continue;
+    }
     const bool selected = state->protocol == protocol;
     const auto decision = ResolveProtocolTabDecision(state->protocol, protocol,
                                                      state->protocol_locked);
@@ -677,14 +734,27 @@ View ModelSelector(TextEditingValue selection, bool enabled, bool busy,
       .With(Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center));
 }
 
-View LocalForm(State<ModelFormState> state, ToastHandle toast) {
+// The imported copy lives in the application's own model directory, whose path
+// is long enough to push the rest of the row out and says nothing the user needs
+// here. The file name is what identifies the model in the row.
+std::string LocalModelFileName(std::string_view path) {
+  const auto separator = path.find_last_of("/\\");
+  return separator == std::string_view::npos ? std::string{path}
+                                            : std::string{path.substr(separator + 1U)};
+}
+
+View LocalForm(State<ModelFormState> state, ToastHandle toast,
+               std::function<void()> pick_file) {
+  // Only the accelerators this build compiled are offered, so an option
+  // that could never run is not shown as a choice.
+  const auto selectable = application::SelectableLocalAccelerations();
   std::vector<View> acceleration;
-  acceleration.reserve(local_acceleration_presentations.size());
-  for (const auto &presentation : local_acceleration_presentations) {
-    const bool selected = state->acceleration == presentation.mode;
+  acceleration.reserve(selectable.size());
+  for (const auto mode : selectable) {
+    const bool selected = state->acceleration == mode;
     acceleration.push_back(
         Stack{
-            Text(presentation.label)
+            Text(LocalAccelerationResource(mode))
                 .Style(
                     Label(16.0F, FontWeight::Bold,
                           selected ? colors::text_on_color : colors::secondary))
@@ -695,7 +765,14 @@ View LocalForm(State<ModelFormState> state, ToastHandle toast) {
                   Grow(),
                   Align(HorizontalAlignment::Center, VerticalAlignment::Center),
                   Background(selected ? colors::accent : colors::surface_light),
-                  CornerRadius(12.0F)));
+                  CornerRadius(12.0F), Focusable(),
+                  PointerCursor(PointerCursorKind::Hand))
+            .OnClick([state, mode] {
+              auto next = state.Get();
+              next.acceleration = mode;
+              next.error.clear();
+              state = std::move(next);
+            }));
   }
 
   return Column{
@@ -707,7 +784,10 @@ View LocalForm(State<ModelFormState> state, ToastHandle toast) {
               Align(HorizontalAlignment::Center, VerticalAlignment::Center),
               Background(colors::accent_muted), CornerRadius(8.0F)),
           Column{
-              Text(app::strings::model_form_local_file_title)
+              Text(state->local_model_path.empty()
+                       ? StringVariant{app::strings::model_form_local_file_title}
+                       : StringVariant{LocalModelFileName(
+                             state->local_model_path)})
                   .Style(Label(16.0F, FontWeight::Bold, colors::tertiary)),
               Text(app::strings::model_form_local_file_desc)
                   .Style(Label(11.0F, FontWeight::Regular, colors::tertiary)),
@@ -716,8 +796,9 @@ View LocalForm(State<ModelFormState> state, ToastHandle toast) {
           Glyph(app::images::chevron_down, 14.0F, colors::tertiary)
               .With(Frame{.width = 16.0F, .height = 16.0F}),
       }
-          .OnClick([toast] {
-            toast.Show(app::strings::model_form_local_picker_pending);
+          .OnClick([pick_file] {
+            if (pick_file)
+              std::invoke(pick_file);
           })
           .With(Frame{.min_height = 74.0F}, Spacing(12.0F),
                 Padding(EdgeInsets::All(12.0F)),
@@ -743,6 +824,7 @@ View LocalForm(State<ModelFormState> state, ToastHandle toast) {
       Row(std::move(acceleration))
           .With(Spacing(8.0F), CrossAlign(CrossAxisAlignment::Center)),
       SupportingText(app::strings::model_form_acceleration_hint),
+      SupportingText(LocalEngineStatusText()),
   }
       .With(CrossAlign(CrossAxisAlignment::Stretch));
 }
@@ -753,6 +835,7 @@ View LocalForm(State<ModelFormState> state, ToastHandle toast) {
 ModelAddContent(ModelAddScreenOptions options,
                 std::shared_ptr<application::ModelStore> store,
                 std::shared_ptr<application::ModelCatalogGateway> catalog,
+                std::string local_model_directory,
                 ModelAddScreenActions actions) {
   const bool editing = options.editing.has_value();
   const auto initial_draft =
@@ -766,6 +849,46 @@ ModelAddContent(ModelAddScreenOptions options,
   const auto toast = UseToast();
   const auto dialogs = UseDialog();
   const auto sheets = UseBottomSheet();
+  const auto picker = UseService<FilePicker>();
+
+  // Importing copies the picked GGUF into the application's own model directory.
+  // The picker's reference is a capability, not a path the runtime can open, and
+  // llama.cpp needs a real file path, so the copy is what makes the selection
+  // survive the reference going away.
+  auto pick_local_model_file = [state, tasks, picker, toast,
+                                local_model_directory] {
+    if (!picker || !picker->CanOpenFiles()) {
+      toast.Show(app::strings::model_form_local_picker_unavailable);
+      return;
+    }
+    tasks.Launch([state, picker, toast, local_model_directory]() -> Task<void> {
+      auto selected = co_await picker->OpenFileAsync(
+          FilePickerFilter{.name = "GGUF", .extensions = {"gguf"}});
+      if (!selected) {
+        co_return;
+      }
+      const auto directory = File{local_model_directory};
+      if (!co_await directory.CreateDirectoriesAsync()) {
+        toast.Show(app::strings::model_form_local_import_failed);
+        co_return;
+      }
+      const auto name = selected->Name().empty() ? std::string{"model.gguf"}
+                                                : selected->Name();
+      const auto destination = directory.Child(name);
+      if (!co_await selected->ImportToAsync(destination, true)) {
+        toast.Show(app::strings::model_form_local_import_failed);
+        co_return;
+      }
+      auto next = state.Get();
+      next.local_model_path = destination.Path();
+      if (next.name.text.empty()) {
+        next.name = TextEditingValue::FromText(name);
+      }
+      next.error.clear();
+      state = std::move(next);
+      toast.Show(app::strings::model_form_local_import_done);
+    });
+  };
 
   const auto current_draft = MakeDraft(state.Get());
   const auto validation = application::ModelFormService::Build(current_draft);
@@ -834,7 +957,7 @@ ModelAddContent(ModelAddScreenOptions options,
     form.push_back(FormField(state->name, app::strings::model_form_name,
                              app::strings::model_form_name_local_hint,
                              ChangeText(state, &ModelFormState::name)));
-    form.push_back(LocalForm(state, toast));
+    form.push_back(LocalForm(state, toast, pick_local_model_file));
   } else {
     form.push_back(SectionLabel(app::strings::model_form_name,
                                 ModelFormSectionLabelKind::cjk_or_mixed));
@@ -1030,14 +1153,18 @@ ModelAddContent(ModelAddScreenOptions options,
 ModelAddScreen(ModelAddScreenOptions options,
                std::shared_ptr<application::ModelStore> store,
                std::shared_ptr<application::ModelCatalogGateway> catalog,
+               std::string local_model_directory,
                ModelAddScreenActions actions) {
   ThemeDefinition overrides;
   overrides.Set(LineDialogBottomSheetStyle(UseLineColors()));
   return Theme(
       std::move(overrides),
       Scope([options = std::move(options), store = std::move(store),
-             catalog = std::move(catalog), actions = std::move(actions)] {
-        return ModelAddContent(options, store, catalog, actions);
+             catalog = std::move(catalog),
+             local_model_directory = std::move(local_model_directory),
+             actions = std::move(actions)] {
+        return ModelAddContent(options, store, catalog, local_model_directory,
+                               actions);
       }));
 }
 

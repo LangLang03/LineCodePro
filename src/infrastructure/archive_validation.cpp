@@ -248,6 +248,26 @@ domain::ModelConfig DecodeLegacyModel(const json::Object &object) {
       0);
   if (context_size < 0)
     context_size = 0;
+  // The legacy archive already carried a nested `localModel` object for GGUF
+  // entries. Its path is device specific, so the accelerator preference is the
+  // part worth restoring, and the path is kept because the entry also records
+  // which file the user had imported.
+  std::string local_path;
+  auto local_acceleration = domain::LocalAcceleration::automatic;
+  if (protocol == domain::ModelProtocol::local_gguf) {
+    if (const auto *local = json::AsObject(json::Find(object, "localModel"));
+        local != nullptr) {
+      local_path = StringOr(*local, "localPath");
+      if (local_path.empty()) {
+        local_path = StringOr(*local, "fileName");
+      }
+      local_acceleration = domain::ParseLocalAcceleration(
+          StringOr(*local, "acceleration"));
+    }
+    if (local_path.empty()) {
+      local_path = model_id;
+    }
+  }
   return domain::ModelConfig{
       .id = StringOr(object, "id"),
       .name = StringOr(object, "name"),
@@ -264,11 +284,13 @@ domain::ModelConfig DecodeLegacyModel(const json::Object &object) {
       .compression_model_auto = compression_auto,
       .compression_model_id = std::move(compression_id),
       .context_size = context_size,
+      .local_model_path = std::move(local_path),
+      .local_acceleration = local_acceleration,
   };
 }
 
 json::Value LegacyModelJson(const domain::ModelConfig &model) {
-  return json::Object{
+  json::Object encoded{
       {"apiKey", model.api_key},
       {"baseUrl", model.base_url},
       {"compressionModelAuto", model.compression_model_auto},
@@ -282,6 +304,19 @@ json::Value LegacyModelJson(const domain::ModelConfig &model) {
       {"providerLabel", model.provider_label},
       {"toolCallLimit", std::int64_t{model.tool_call_limit}},
   };
+  // Emitted only for a local model: a remote entry keeps the exact JSON it had
+  // before this field existed, which is what keeps an exported archive
+  // comparable across versions.
+  if (model.IsLocal()) {
+    encoded.emplace("localModel",
+                    json::Object{
+                        {"acceleration",
+                         std::string{domain::LocalAccelerationStorageName(
+                             model.local_acceleration)}},
+                        {"localPath", model.local_model_path},
+                    });
+  }
+  return encoded;
 }
 
 std::string SafeConversationFileName(std::string_view id) {

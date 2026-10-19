@@ -40,6 +40,9 @@ struct ChatGenerationDependencies final {
   std::shared_ptr<application::SkillRepository> skills;
   std::shared_ptr<application::ContextCompactionService> compaction;
   std::shared_ptr<AutoCompactionUiState> auto_compaction;
+  // Shared with the conversation surface so the status row can show the load a
+  // local turn performs before it streams.
+  std::shared_ptr<LocalModelLoadUiState> local_model_load;
 };
 
 class ChatGenerationRunner {

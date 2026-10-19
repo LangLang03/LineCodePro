@@ -45,6 +45,27 @@ std::int64_t NowMilliseconds() noexcept {
   return ticks + static_cast<std::uint64_t>(attempt) * 0x9E3779B97F4A7C15ULL;
 }
 
+// Marks the window in which a local turn loads its weights, so the status row
+// can show the engine's percentage instead of the generic working label.
+class LocalModelLoadGuard final {
+public:
+  explicit LocalModelLoadGuard(
+      std::shared_ptr<LocalModelLoadUiState> state) noexcept
+      : state_(std::move(state)) {
+    if (state_)
+      state_->Begin();
+  }
+  ~LocalModelLoadGuard() {
+    if (state_)
+      state_->Finish();
+  }
+  LocalModelLoadGuard(const LocalModelLoadGuard &) = delete;
+  LocalModelLoadGuard &operator=(const LocalModelLoadGuard &) = delete;
+
+private:
+  std::shared_ptr<LocalModelLoadUiState> state_;
+};
+
 class DefaultChatGenerationRunner final
     : public ChatGenerationRunner,
       public std::enable_shared_from_this<DefaultChatGenerationRunner> {
@@ -103,6 +124,28 @@ public:
     // socket that stays open without sending anything would keep the UI
     // "generating" for the full ten minutes. Cancelling the generation marks it
     // non-current, which is also what stops the retry loop from restarting it.
+    tasks_.Launch([self = shared_from_this(), generation_id]() -> Task<void> {
+      // The engine reads the GGUF weights before the first token can exist, and
+      // during that window no stream event reaches the surface. Republish as the
+      // reported percentage moves and treat it as liveness, so a slow cold load
+      // neither freezes the status row nor trips the idle watchdog.
+      auto last_percent = -1;
+      while (self->dependencies_.generation->State().generation_id ==
+                 generation_id &&
+             self->dependencies_.generation->State().phase ==
+                 application::GenerationPhase::running) {
+        co_await Delay(std::chrono::milliseconds{100});
+        const auto *load = self->dependencies_.local_model_load.get();
+        if (load == nullptr || !load->loading.load(std::memory_order_relaxed))
+          continue;
+        const int percent = load->percent.load(std::memory_order_relaxed);
+        self->last_progress_at_ = std::chrono::steady_clock::now();
+        if (percent == last_percent)
+          continue;
+        last_percent = percent;
+        self->revision_ += 1;
+      }
+    });
     const auto request_handle = active_generation_.Get();
     tasks_.Launch([self = shared_from_this(), request_handle,
                    generation_id]() -> Task<void> {
@@ -115,9 +158,16 @@ public:
         if (std::chrono::steady_clock::now() - self->last_progress_at_ <
             kCompletionIdleTimeout)
           continue;
+        // A stalled request is a terminal failure like any other, so it is
+        // recorded in the transcript where it can still be read afterwards.
+        // The toast it used to show disappeared before that was possible.
+        static_cast<void>(self->dependencies_.generation->Fail(
+            generation_id,
+            application::CompletionError{
+                .code = application::CompletionErrorCode::timeout,
+                .message = self->retry_labels_.idle_timeout}));
         self->dependencies_.generation->Cancel();
         request_handle.Cancel();
-        self->toast_.Show(self->retry_labels_.idle_timeout);
         self->revision_ += 1;
         co_return;
       }
@@ -446,6 +496,14 @@ private:
         .stream = true,
         .permission_scope = current_project_id_,
     };
+    // A local turn cannot stream until the weights are in memory. Marking the
+    // window lets the status row show the engine's percentage instead of a bare
+    // "working" label, and clears it once the attempt has produced an outcome.
+    const bool local_turn =
+        request.model.protocol == domain::ModelProtocol::local_gguf;
+    std::optional<LocalModelLoadGuard> load_guard;
+    if (local_turn)
+      load_guard.emplace(dependencies_.local_model_load);
     std::optional<application::CompletionResponse> response;
     for (int attempt = 0; attempt < application::kMaximumCompletionAttempts;
          ++attempt) {
@@ -457,6 +515,13 @@ private:
                       const application::CompletionEvent &event) {
                     if (dependencies_.generation->Observe(generation_id, event))
                       PublishStreamUpdate(event, generation_id);
+                  },
+              // Fired on the engine's loading thread, so only the atomic state
+              // is touched here; the poller above republishes a revision.
+              .on_load_progress =
+                  [load = dependencies_.local_model_load](int percent) {
+                    if (load)
+                      load->Report(percent);
                   },
               .on_tool_review = ToolReviewer(),
           });

@@ -806,7 +806,12 @@ huxerui::View MainScreen(
       return PlatformKeepAliveDestination();
     }
     if (route == domain::AppRoute::models) {
+      // Imported GGUF weights live under the application's own LineCode
+      // directory, next to the generated home and skills roots.
+      const auto local_model_directory =
+          (std::filesystem::path{linecode_root} / "models").string();
       return ModelManagementScreen(model_store, model_catalog,
+                                   local_model_directory,
                                    [selected_model_available,
                                     model_revision](bool available) {
                                      selected_model_available = available;

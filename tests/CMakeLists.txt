@@ -680,6 +680,7 @@ endif ()
 add_executable(archive_safety_tests
         archive_safety_tests.cpp
         ../src/infrastructure/archive_json.cpp
+        ../src/domain/model_config.cpp
         ../src/infrastructure/archive_validation.cpp
         ../src/infrastructure/linecode_zip.cpp
 )
@@ -705,6 +706,7 @@ add_executable(archive_transaction_tests
         archive_transaction_tests.cpp
         ../src/application/data_archive.cpp
         ../src/infrastructure/archive_json.cpp
+        ../src/domain/model_config.cpp
         ../src/infrastructure/archive_validation.cpp
         ../src/infrastructure/hux_data_archive_service.cpp
         ../src/infrastructure/linecode_zip.cpp
@@ -2145,6 +2147,44 @@ else ()
             -Wall -Wextra -Wpedantic -Werror)
 endif ()
 
+add_executable(local_model_load_state_tests
+        local_model_load_state_tests.cpp
+        ../src/presentation/components/chat_generation_state.cpp
+)
+target_include_directories(local_model_load_state_tests PRIVATE ../src)
+target_compile_features(local_model_load_state_tests PRIVATE cxx_std_23)
+set_target_properties(local_model_load_state_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(local_model_load_state_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(local_model_load_state_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+add_executable(chat_composer_controls_tests
+        chat_composer_controls_tests.cpp
+        ../src/presentation/components/chat_composer_controls.cpp
+)
+target_include_directories(chat_composer_controls_tests PRIVATE ../src)
+target_compile_features(chat_composer_controls_tests PRIVATE cxx_std_23)
+target_link_libraries(chat_composer_controls_tests PRIVATE
+        HuxerUI::testing HuxerUI::huxerui)
+set_target_properties(chat_composer_controls_tests PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+)
+if (MSVC)
+    target_compile_options(chat_composer_controls_tests PRIVATE /W4 /permissive-)
+else ()
+    target_compile_options(chat_composer_controls_tests PRIVATE
+            -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
 add_executable(chat_tail_scroll_tests
         chat_tail_scroll_tests.cpp
         ../src/presentation/components/chat_tail_scroll.cpp
@@ -2163,6 +2203,122 @@ if (MSVC)
 else ()
     target_compile_options(chat_tail_scroll_tests PRIVATE
             -Wall -Wextra -Wpedantic -Werror)
+endif ()
+
+# ---------------------------------------------------------------------------
+# Local model (llama.cpp) build switch
+#
+# The default configuration has no local model backend, so the suite covers the
+# off branch through `local_model_support_tests`. The enabled branch is a
+# separate target compiled with the same definitions `-DLINCODE_ENABLE_LOCAL_MODEL=ON`
+# produces, which is what keeps both halves of the switch from rotting.
+# ---------------------------------------------------------------------------
+set(LINCODE_LOCAL_MODEL_TEST_SOURCES
+        ../src/application/local_model_device.cpp
+        ../src/application/model_form_service.cpp
+        ../src/domain/model_config.cpp
+)
+
+add_executable(local_model_support_tests
+        local_model_support_tests.cpp
+        ${LINCODE_LOCAL_MODEL_TEST_SOURCES}
+)
+target_include_directories(local_model_support_tests PRIVATE ../src)
+
+add_executable(local_model_enabled_tests
+        local_model_enabled_tests.cpp
+        ../src/application/local_model_prompt.cpp
+        ../src/infrastructure/archive_json.cpp
+        ${LINCODE_LOCAL_MODEL_TEST_SOURCES}
+)
+target_include_directories(local_model_enabled_tests PRIVATE ../src)
+target_compile_definitions(local_model_enabled_tests PRIVATE
+        LINCODE_LOCAL_MODEL_ENABLED=1
+        LINCODE_LOCAL_MODEL_PACKAGED=1
+        LINCODE_LOCAL_BACKEND_VULKAN=1
+        LINCODE_LOCAL_BACKEND_OPENCL=1
+        LINCODE_LLAMA_REVISION="test-revision"
+)
+
+foreach (_linecode_local_target
+        local_model_support_tests local_model_enabled_tests)
+    target_compile_features(${_linecode_local_target} PRIVATE cxx_std_23)
+    set_target_properties(${_linecode_local_target} PROPERTIES
+            CXX_STANDARD 23
+            CXX_STANDARD_REQUIRED ON
+            CXX_EXTENSIONS OFF
+    )
+    if (MSVC)
+        target_compile_options(${_linecode_local_target} PRIVATE
+                /W4 /permissive-)
+    else ()
+        target_compile_options(${_linecode_local_target} PRIVATE
+                -Wall -Wextra -Wpedantic -Werror)
+    endif ()
+endforeach ()
+
+# The adapter itself is only built where a llama.cpp runtime can be resolved.
+# A machine without one still runs the rest of the suite; when one is present,
+# the real device enumeration and the routing decorator are verified against it
+# rather than against a stub.
+# Found through the library and header directly rather than through
+# `find_package(llama CONFIG)`: that package marks its imported target with a C
+# compile feature, and this project enables only C++.
+find_path(LINCODE_TEST_LLAMA_INCLUDE_DIR NAMES llama.h)
+find_library(LINCODE_TEST_LLAMA_LIBRARY NAMES llama)
+# The runtime delegates to the ggml core libraries, and the linker does not
+# resolve symbols through a shared library's own dependencies, so they are named
+# explicitly.
+set(LINCODE_TEST_LLAMA_SUPPORT_LIBRARIES "")
+foreach (_linecode_ggml_library IN ITEMS ggml ggml-base)
+    find_library(LINCODE_TEST_${_linecode_ggml_library}_LIBRARY
+            NAMES ${_linecode_ggml_library})
+    if (LINCODE_TEST_${_linecode_ggml_library}_LIBRARY)
+        list(APPEND LINCODE_TEST_LLAMA_SUPPORT_LIBRARIES
+                "${LINCODE_TEST_${_linecode_ggml_library}_LIBRARY}")
+    endif ()
+endforeach ()
+if (LINCODE_TEST_LLAMA_INCLUDE_DIR AND LINCODE_TEST_LLAMA_LIBRARY)
+    add_executable(llama_local_model_engine_tests
+            llama_local_model_engine_tests.cpp
+            ../src/application/local_model_device.cpp
+            ../src/application/local_model_prompt.cpp
+            ../src/domain/model_config.cpp
+            ../src/infrastructure/archive_json.cpp
+            ../src/infrastructure/app_logger.cpp
+            ../src/infrastructure/llama_local_model_engine.cpp
+            ../src/infrastructure/local_model_completion_gateway.cpp
+    )
+    target_include_directories(llama_local_model_engine_tests PRIVATE
+            ../src ${LINCODE_TEST_LLAMA_INCLUDE_DIR})
+    target_compile_definitions(llama_local_model_engine_tests PRIVATE
+            LINCODE_LOCAL_MODEL_ENABLED=1
+            LINCODE_LOCAL_MODEL_PACKAGED=1
+            LINCODE_LOCAL_BACKEND_VULKAN=1
+            LINCODE_LOCAL_BACKEND_OPENCL=1
+    )
+    target_link_libraries(llama_local_model_engine_tests PRIVATE
+            HuxerUI::testing
+            ${LINCODE_TEST_LLAMA_LIBRARY}
+            ${LINCODE_TEST_LLAMA_SUPPORT_LIBRARIES}
+    )
+    target_compile_features(llama_local_model_engine_tests PRIVATE cxx_std_23)
+    set_target_properties(llama_local_model_engine_tests PROPERTIES
+            CXX_STANDARD 23
+            CXX_STANDARD_REQUIRED ON
+            CXX_EXTENSIONS OFF
+    )
+    if (MSVC)
+        target_compile_options(llama_local_model_engine_tests PRIVATE
+                /W4 /permissive-)
+    else ()
+        target_compile_options(llama_local_model_engine_tests PRIVATE
+                -Wall -Wextra -Wpedantic -Werror)
+    endif ()
+else ()
+    message(STATUS
+            "LineCode tests: no llama.cpp runtime found, skipping "
+            "llama_local_model_engine_tests")
 endif ()
 
 # ---------------------------------------------------------------------------

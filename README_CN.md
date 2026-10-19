@@ -80,6 +80,54 @@ cmake --build build/tests-ninja --parallel 8
 cmake --build build/tests-ninja --target run_tests
 ```
 
+### 本地模型（llama.cpp）
+
+本地 GGUF 模型通过 llama.cpp 在本进程内推理。这套后端由构建参数决定，默认构建完全不含它：
+没有翻译单元包含 `llama.h`，没有链接运行时，界面里也没有任何本地模型入口，因此默认产物保持小体积。
+只在需要携带该功能的构建里打开。
+
+| 构建参数 | 默认值 | 作用 |
+| --- | --- | --- |
+| `linecodeEnableLocalModel` | `false` | 编译后端，并显示「加载本地模型」入口、本地协议标签和本地模型表单。关闭时三者都不显示。 |
+| `linecodeLocalModelBundle` | `false` | 把 llama.cpp 与 ggml 的动态库打进产物。只开后端不开打包时仍会链接，但动态库不会进入 APK。 |
+| `linecodeLocalModelGpuVulkan` | `true` | 请求 Vulkan GPU 后端。 |
+| `linecodeLocalModelGpuOpenCL` | `true` | 请求 OpenCL GPU 后端（Adreno）。 |
+| `linecodeLlamaCppSourceDir` | 空 | 使用已有的 llama.cpp 检出目录构建，不再联网拉取。离线构建必须设置它。 |
+| `linecodeLlamaCppGitTag` | 固定 | 未指定本地源码时拉取的 llama.cpp 版本。 |
+
+每个加速后端都是「先请求、再按 llama.cpp 实际提供的能力收窄」：源码树里没有实现的后端会被报告为
+不可用，而不是被谎称可用，因此本地表单只呈现当前链接的运行时真正能提供的选项。运行时还会再按实际
+枚举到的设备收窄一次，GPU 请求在没有对应设备时会回退到 CPU，并把最终生效的加速方式回报给调用方。
+
+```sh
+# 默认：小体积，不含本地模型支持。
+./platform/android/gradlew -p platform/android :app:assembleDebug --max-workers=8
+
+# 完整本地模型支持，包含原生库。
+./platform/android/gradlew -p platform/android :app:assembleDebug --max-workers=8 \
+    -PlinecodeEnableLocalModel=true -PlinecodeLocalModelBundle=true
+```
+
+同一组开关在原生 CMake 构建里是
+`-DLINCODE_ENABLE_LOCAL_MODEL=ON -DLINCODE_LOCAL_MODEL_BUNDLE=ON`。开启后端的构建按
+`LINCODE_LLAMA_CPP_SOURCE_DIR`、已安装的 llama.cpp、固定版本的顺序解析依赖；既无网络又无本地检出时，
+配置阶段会直接失败并列出上述可选路径，而不是悄悄构建出一个不含该功能的产物。
+
+#### NPU 加速：暂不支持
+
+NPU 加速是**明确不提供**的功能，本地模型表单里的加速项会直接说明，而不是给出一个只会降级的选项。
+
+上游 llama.cpp 没有能脱离 SDK 构建的 NPU 后端：唯一的 `GGML_HEXAGON` 需要**高通 Hexagon SDK**
+——它的 HTP skel 要用 Hexagon 工具链编译，host 侧还要用无法随本项目再分发的 SDK 头文件。为一个
+自包含的构建引入厂商账号不是本项目愿意做的取舍，所以这项功能是**搁置**，而不是半接一半。几点影响：
+
+- 带了 NPU 加速标记的归档或手改配置会被读成 CPU 请求，因此仍能加载，而不会悄悄变成"自动"。
+- 任何设备都不会被判定为 NPU，因此 BLAS、AMX 这类库不会被误当成 NPU。
+- Vulkan 与 OpenCL 的 GPU 加速不受影响，且不需要任何 SDK。
+
+导入的 GGUF 文件会被复制到应用自己的 `models` 目录：系统选择器返回的是一个访问能力，而不是运行时
+能直接打开的文件路径。
+
 Windows 上请安装相同版本的 HuxerUI SDK，然后执行 `huxerui package windows --project . --config Release`。签名 Android Release 还需要私有签名配置，并由发布工作流生成；任何签名材料都不能提交到仓库。
 
 ## 讨论与反馈

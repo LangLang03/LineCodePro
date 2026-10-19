@@ -79,6 +79,7 @@ struct ViewState final {
       domain::ToolPermissionMode::automatic};
   huxerui::ToastHandle toast;
   std::shared_ptr<AutoCompactionUiState> auto_compaction;
+  std::shared_ptr<LocalModelLoadUiState> local_model_load;
   std::shared_ptr<application::TokenUsageTracker> token_usage;
   RetryLabels retry_labels;
 };

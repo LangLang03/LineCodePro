@@ -80,6 +80,67 @@ cmake --build build/tests-ninja --parallel 8
 cmake --build build/tests-ninja --target run_tests
 ```
 
+### Local models (llama.cpp)
+
+Local GGUF models run in this process through llama.cpp. The backend is a build
+parameter, and the default build has none of it: nothing includes `llama.h`,
+nothing links the runtime, and the app compiles without any local-model entry
+point, so the default artifact stays small. Turn it on only for a build that
+should carry the feature.
+
+| Build parameter | Default | Effect |
+| --- | --- | --- |
+| `linecodeEnableLocalModel` | `false` | Compiles the backend and shows the "Load local model" entry, the local protocol tab and the local form. Off hides all three. |
+| `linecodeLocalModelBundle` | `false` | Packages the llama.cpp and ggml shared libraries into the artifact. A build that enables the backend without bundling still links it but keeps the libraries out of the APK. |
+| `linecodeLocalModelGpuVulkan` | `true` | Requests the Vulkan GPU backend. |
+| `linecodeLocalModelGpuOpenCL` | `true` | Requests the OpenCL GPU backend (Adreno). |
+| `linecodeLlamaCppSourceDir` | empty | Builds llama.cpp from an existing checkout instead of fetching it. Required for an offline build. |
+| `linecodeLlamaCppGitTag` | pinned | The llama.cpp revision fetched when no local source is given. |
+
+Each accelerator is requested and then narrowed to what the resolved llama.cpp
+actually provides: a backend the tree does not implement is reported as
+unavailable rather than claimed, so the local form only ever offers options the
+linked runtime can serve. At run time the choice is narrowed again to the devices
+the runtime enumerates, and a GPU request that no device satisfies falls back to
+the CPU with the effective accelerator reported to the caller.
+
+#### NPU acceleration: not supported yet
+
+NPU acceleration is deliberately absent, and the acceleration list in the model
+form says so instead of offering an option that could only degrade.
+
+Upstream llama.cpp has no NPU backend that can be built from the runtime alone:
+`GGML_HEXAGON` is the only one, and it needs the **Qualcomm Hexagon SDK** -- its
+HTP skels are compiled with the Hexagon toolchain and its host side compiles
+against SDK headers that this project cannot redistribute. Requiring a vendor
+account to build a release is not a trade this project makes, so the feature is
+parked rather than half-wired. Consequences worth knowing:
+
+- An archive or a hand-edited model that still names an NPU accelerator is read
+  as a CPU request, so it keeps loading instead of silently becoming "auto".
+- No device is ever classified as an NPU, so a BLAS or AMX library cannot be
+  mistaken for one.
+- GPU acceleration through Vulkan and OpenCL is unaffected and needs no SDK.
+
+```sh
+# Default: small artifact, no local model support.
+./platform/android/gradlew -p platform/android :app:assembleDebug --max-workers=8
+
+# Full local model support, native libraries included.
+./platform/android/gradlew -p platform/android :app:assembleDebug --max-workers=8 \
+    -PlinecodeEnableLocalModel=true -PlinecodeLocalModelBundle=true
+```
+
+The same switches exist for a native CMake build as
+`-DLINCODE_ENABLE_LOCAL_MODEL=ON -DLINCODE_LOCAL_MODEL_BUNDLE=ON`. Builds that
+enable the backend resolve llama.cpp from `LINCODE_LLAMA_CPP_SOURCE_DIR`, then a
+prebuilt installation, then the pinned revision; with no network and no local
+checkout, configure fails with that list instead of silently building without the
+feature.
+
+Imported GGUF files are copied into the app's own `models` directory, because the
+system picker returns a capability rather than a path the runtime can open.
+
 On Windows, install the same HuxerUI SDK version and create the native package with `huxerui package windows --project . --config Release`. Signed Android release builds additionally require private signing properties and are produced by the release workflow; signing material must never be committed.
 
 ## Community

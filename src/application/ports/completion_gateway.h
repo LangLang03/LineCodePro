@@ -193,6 +193,10 @@ struct CompletionError final {
 struct CompletionObserver final {
   // One typed stream for assistant prose, reasoning and tool lifecycle.
   std::function<void(const CompletionEvent &)> on_event{};
+  // Reports the in-process runtime loading model weights before a local turn
+  // can stream, as a percentage. Fired on the loading thread, so an observer
+  // must be thread-safe. Remote gateways never call it.
+  std::function<void(int)> on_load_progress{};
   enum class ToolReviewDecision : std::uint8_t {
     reject,
     allow_once,

@@ -62,6 +62,29 @@ std::string_view ModelProtocolLabel(ModelProtocol protocol) noexcept {
   return ModelProtocolInfo(protocol).label;
 }
 
+LocalAcceleration ParseLocalAcceleration(std::string_view value) noexcept {
+  const auto normalized = LowerTrimmed(value);
+  if (normalized.empty() || normalized == "auto" || normalized == "automatic" ||
+      normalized == "default") {
+    return LocalAcceleration::automatic;
+  }
+  if (normalized == "cpu" || normalized == "host") {
+    return LocalAcceleration::cpu;
+  }
+  if (normalized == "gpu" || normalized == "vulkan" ||
+      normalized == "opencl" || normalized == "adreno") {
+    return LocalAcceleration::gpu;
+  }
+  // NPU acceleration is not supported yet, so an NPU-era spelling from an
+  // outside archive is honoured as a CPU request instead of being discarded as
+  // an unknown value that would silently become "auto".
+  if (normalized == "npu" || normalized == "nnapi" || normalized == "qnn" ||
+      normalized == "hexagon" || normalized == "htp") {
+    return LocalAcceleration::cpu;
+  }
+  return LocalAcceleration::automatic;
+}
+
 std::string ModelConfig::EffectiveCompressionModelId() const {
   if (!compression_model_enabled || compression_model_auto ||
       compression_model_id.empty()) {
@@ -88,6 +111,23 @@ void ModelConfig::Normalize() {
           : compression_model_id.substr(first, last - first + 1);
   if (provider_label.empty()) {
     provider_label = ModelProtocolLabel(protocol);
+  }
+  // Only a GGUF model owns local state. Dropping it for every other protocol
+  // keeps a model that was switched back to a remote provider from carrying a
+  // stale path or accelerator into storage and the archive.
+  if (!IsLocal()) {
+    local_model_path.clear();
+    local_acceleration = LocalAcceleration::automatic;
+  } else {
+    const auto path_first = local_model_path.find_first_not_of(" \t\n\r");
+    const auto path_last = local_model_path.find_last_not_of(" \t\n\r");
+    local_model_path =
+        path_first == std::string::npos
+            ? std::string{}
+            : local_model_path.substr(path_first, path_last - path_first + 1);
+    if (local_acceleration == LocalAcceleration::count) {
+      local_acceleration = LocalAcceleration::automatic;
+    }
   }
 }
 

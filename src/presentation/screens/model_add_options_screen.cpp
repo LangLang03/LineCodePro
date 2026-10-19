@@ -9,6 +9,7 @@
 
 #include "presentation/components/legacy_screen_header_layout.h"
 #include "presentation/line_theme.h"
+#include "presentation/model_form_presentation.h"
 #include "presentation/model_protocol_presentation.h"
 #include "presentation/model_provider_preset_presentation.h"
 
@@ -133,10 +134,15 @@ ModelAddOptionsScreen(ModelAddOptionsActions actions) {
       app::images::sliders_horizontal, app::strings::model_add_custom,
       app::strings::model_add_custom_desc, actions.on_custom));
   content.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 8.4F}));
-  content.push_back(
-      OptionCard(app::images::file_up, app::strings::model_add_local,
-                 app::strings::model_add_local_desc, actions.on_local));
-  content.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 8.4F}));
+  // The local entry point only exists in a build that compiled the backend. A
+  // build without llama.cpp renders no row at all rather than a disabled one
+  // whose only outcome would be an error message.
+  if (LocalModelProtocolSelectable()) {
+    content.push_back(
+        OptionCard(app::images::file_up, app::strings::model_add_local,
+                   app::strings::model_add_local_desc, actions.on_local));
+    content.push_back(Stack{}.With(Frame{.width = 1.0F, .height = 8.4F}));
+  }
   content.push_back(Row{
       Glyph(app::images::boxes, 16.0F, colors::secondary),
       Text(app::strings::model_add_presets)
