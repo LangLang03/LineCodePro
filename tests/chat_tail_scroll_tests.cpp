@@ -41,11 +41,14 @@ public:
   std::uint64_t smooth_request{};
   std::uint64_t turn_id{};
   bool finished{};
+  bool failed{};
   bool captured{};
 
   // Item 0 is the leading spacer and the last item is the trailing spacer, as
   // `Conversation()` builds them.
   [[nodiscard]] std::size_t answer_rows() const {
+    if (failed)
+      return live_chunks == 0U ? 0U : 1U;
     if (!finished)
       return live_chunks;
     return live_chunks == 0U ? 0U : 1U;
@@ -82,6 +85,7 @@ View TailProbe() {
   auto revision = UseState(scenario->revision);
   auto smooth_request = UseState(scenario->smooth_request);
   auto finished = UseState(scenario->finished);
+  auto failed = UseState(scenario->failed);
   auto turn_id = UseState(scenario->turn_id);
 
   const auto history_rows = history.Get();
@@ -90,9 +94,11 @@ View TailProbe() {
   const auto message_height = scenario->message_height;
   const auto chunk_height = scenario->chunk_height;
   const auto estimate = scenario->estimated_extent;
+  const bool answer_failed = failed.Get();
   const bool answer_is_persisted = finished.Get();
-  const auto answer_rows =
-      answer_is_persisted ? (live_chunks == 0U ? 0U : 1U) : live_chunks;
+  const auto answer_rows = (answer_failed || answer_is_persisted)
+                               ? (live_chunks == 0U ? 0U : 1U)
+                               : live_chunks;
   const auto count = 2U + history_rows + answer_rows;
 
   View controls = Row{
@@ -125,6 +131,12 @@ View TailProbe() {
                   scenario->revision += 1U;
                   scenario->turn_id += 1U;
                 }),
+      TapTarget("fail-answer", [scenario, failed, revision] {
+        failed = true;
+        revision += 1U;
+        scenario->failed = true;
+        scenario->revision += 1U;
+      }),
       TapTarget("finish-answer", [scenario, finished, revision] {
         finished = true;
         revision += 1U;
@@ -136,13 +148,18 @@ View TailProbe() {
   View list = VirtualList(
                   count,
                   [history_rows, live_chunks, answer_rows,
-                   answer_is_persisted, message_height, chunk_height,
-                   live_growth, count](std::size_t index) {
+                   answer_is_persisted, answer_failed, message_height,
+                   chunk_height, live_growth,
+                   count](std::size_t index) {
                     if (index == 0U)
                       return Stack{}.With(Frame{.height = 8.0F}).Key("top");
                     if (index > history_rows + answer_rows)
                       return Stack{}.With(Frame{.height = 8.0F}).Key("tail");
                     if (index > history_rows) {
+                      if (answer_failed)
+                        return Stack{Text("error")}
+                            .With(Frame{.height = 60.0F})
+                            .Key("error");
                       if (answer_is_persisted) {
                         // The completed answer is persisted under a new key, so
                         // the list starts from its extent estimate again.
@@ -199,6 +216,8 @@ UiSelector NewestRowSelector(const TailScenario &scenario) {
   const auto index = scenario.newest_row_index();
   if (index <= scenario.history_rows)
     return UiSelector::Key(index);
+  if (scenario.failed)
+    return UiSelector::Key("error");
   if (scenario.finished)
     return UiSelector::Key("answer");
   return UiSelector::Key("chunk:" + std::to_string(index));
@@ -358,5 +377,33 @@ TEST(chat_tail_scroll_tests, NewTurnResumesFollowing) {
   EXPECT_TRUE(AtTail(streamed)) << DescribeTail(streamed);
   EXPECT_TRUE(RowVisible(ui, NewestRowSelector(*active)))
       << DescribeTail(streamed);
+  active.reset();
+}
+
+// A failed request is reported as a message carrying the error text, and that
+// message is the newest output: it has to be on screen instead of leaving the
+// reader in blank space below the transcript.
+TEST(chat_tail_scroll_tests, KeepsTheErrorRowInView) {
+  active = std::make_shared<TailScenario>();
+  const Application application(TailProbe, {.show_debug_overlay = false});
+  UiTestOptions options;
+  options.viewport = {800.0F, 600.0F};
+  UiTest ui(application, options);
+  ui.PumpAndSettle();
+
+  for (int step = 0; step < 3; ++step) {
+    ui.Find(UiSelector::Key("stream-chunk")).Tap();
+    ui.PumpAndSettle();
+  }
+
+  // The failure clears the streamed rows and appends the error message.
+  ui.Find(UiSelector::Key("fail-answer")).Tap();
+  ui.PumpAndSettle();
+
+  const auto metrics = active->controller.Metrics();
+  EXPECT_TRUE(AtTail(metrics)) << DescribeTail(metrics);
+  EXPECT_TRUE(RowVisible(ui, NewestRowSelector(*active)))
+      << "error row off screen " << DescribeTail(metrics);
+  EXPECT_TRUE(TrailingItemVisible(ui)) << DescribeTail(metrics);
   active.reset();
 }
