@@ -109,21 +109,19 @@ PlanSshAuthentication(const SshConfig &config, SshAuthMethods advertised) {
   const bool advertised_anything = advertised.Any();
   // Without an advertisement every configured credential is worth trying: this
   // is the path taken when the server denies the list query itself.
-  const auto allows = [&](SshAuthMethod method, bool advertised_flag,
-                          bool available) {
+  const auto allows = [&](bool advertised_flag, bool available) {
     if (!available)
       return false;
     return !advertised_anything || advertised_flag;
   };
-  if (allows(SshAuthMethod::public_key, advertised.public_key, has_key))
+  if (allows(advertised.public_key, has_key))
     plan.push_back(SshAuthMethod::public_key);
-  if (allows(SshAuthMethod::password, advertised.password, has_password))
+  if (allows(advertised.password, has_password))
     plan.push_back(SshAuthMethod::password);
   // `password` and `keyboard-interactive` carry the same secret. Falling back
   // to the interactive exchange is what makes password login work against the
   // PAM-backed default configuration on most servers and on Termux sshd.
-  if (allows(SshAuthMethod::keyboard_interactive,
-             advertised.keyboard_interactive, has_password))
+  if (allows(advertised.keyboard_interactive, has_password))
     plan.push_back(SshAuthMethod::keyboard_interactive);
   return plan;
 }
