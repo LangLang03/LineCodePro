@@ -1,4 +1,4 @@
-package cn.lineai.termux;
+package cn.lineai.coexist.termux;
 
 import android.app.Activity;
 import android.app.PendingIntent;

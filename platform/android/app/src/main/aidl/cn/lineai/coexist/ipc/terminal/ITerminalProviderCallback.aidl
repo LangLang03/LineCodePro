@@ -1,4 +1,4 @@
-package cn.lineai.ipc.terminal;
+package cn.lineai.coexist.ipc.terminal;
 
 interface ITerminalProviderCallback {
     void onOutput(String content);

@@ -17,7 +17,7 @@ namespace linecode::infrastructure {
 namespace {
 
 constexpr auto kPlatformModuleName = "linecode/share-text";
-constexpr auto kJavaFactoryClass = "cn.lineai.platform.LineCodeShareTextModule";
+constexpr auto kJavaFactoryClass = "cn.lineai.coexist.platform.LineCodeShareTextModule";
 
 class AndroidShareTextService final : public application::ShareTextService {
 public:

@@ -1,4 +1,4 @@
-package cn.lineai.platform;
+package cn.lineai.coexist.platform;
 
 import android.content.Context;
 import android.content.Intent;
@@ -6,7 +6,7 @@ import android.os.Build;
 import android.provider.DocumentsContract;
 import android.widget.Toast;
 
-import cn.lineai.R;
+import cn.lineai.coexist.R;
 import java.io.File;
 import org.huxerui.HuxerUIPlatformChannel;
 import org.huxerui.HuxerUIPlatformModule;

@@ -1,4 +1,4 @@
-package cn.lineai.platform;
+package cn.lineai.coexist.platform;
 
 import android.content.Context;
 import android.database.Cursor;
@@ -13,7 +13,7 @@ import android.provider.DocumentsContract;
 import android.provider.DocumentsProvider;
 import android.webkit.MimeTypeMap;
 
-import cn.lineai.R;
+import cn.lineai.coexist.R;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;

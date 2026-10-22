@@ -19,7 +19,7 @@ namespace {
 
 constexpr auto kPlatformModuleName = "linecode/terminal-provider";
 constexpr auto kJavaFactoryClass =
-    "cn.lineai.terminal.LineCodeTerminalProviderModule";
+    "cn.lineai.coexist.terminal.LineCodeTerminalProviderModule";
 
 struct ScanPayload final {
   std::vector<domain::ScannedTerminalProvider> values;

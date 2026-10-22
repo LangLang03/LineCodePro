@@ -19,7 +19,7 @@ namespace {
 
 constexpr auto kPlatformModuleName = "linecode/chat-export";
 constexpr auto kJavaFactoryClass =
-    "cn.lineai.platform.LineCodeChatExportModule";
+    "cn.lineai.coexist.platform.LineCodeChatExportModule";
 
 huxerui::PlatformPayload EncodeFile(
     const application::ShareFileRequest &file) {

@@ -17,7 +17,7 @@ namespace {
 
 constexpr auto kPlatformModuleName = "linecode/android-storage-permission";
 constexpr auto kJavaFactoryClass =
-    "cn.lineai.storage.LineCodeStoragePermissionModule";
+    "cn.lineai.coexist.storage.LineCodeStoragePermissionModule";
 
 class AndroidStoragePermissionService final
     : public application::StoragePermissionService {

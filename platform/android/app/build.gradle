@@ -71,16 +71,16 @@ android {
         aidl = true
     }
 
-    namespace = "cn.lineai"
+    namespace = "cn.lineai.coexist"
     compileSdk = huxeruiCompileSdk
     ndkVersion = huxeruiNdkVersion
 
     defaultConfig {
-        applicationId = "cn.lineai"
+        applicationId = "cn.lineai.coexist"
         minSdk = huxeruiMinSdk
         targetSdk = huxeruiTargetSdk
-        versionCode = 38
-        versionName = "1.3.4"
+        versionCode = 39
+        versionName = "1.3.5"
 
         externalNativeBuild {
             cmake {

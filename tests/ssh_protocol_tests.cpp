@@ -103,6 +103,24 @@ TEST(ssh_protocol_tests, ProtocolFixture) {
   connected = transport.Connect(config, 5s, cancellation.get_token());
   EXPECT_EXPRESSION(connected);
   auto &files = **connected;
+  // Tilde is shell syntax and neither SFTP nor `sftp-server` expands it.  The
+  // SSH workspace resolves its default root through `~`, so a client that
+  // passed it through verbatim reported every home-relative path as missing
+  // and the connection as unusable.  SFTP's `.` means the same directory.
+  auto home = files.CanonicalPath("~", cancellation.get_token());
+  EXPECT_EXPRESSION(home);
+  EXPECT_EXPRESSION(!home->empty() && home->front() == '/');
+  auto current = files.CanonicalPath(".", cancellation.get_token());
+  EXPECT_EXPRESSION(current);
+  EXPECT_EXPRESSION(*home == *current);
+  // `CanonicalPath` is the expansion point; the raw path operations keep
+  // kernel semantics, where `~` is not a directory that exists.
+  auto home_info = files.Stat(*home, false, cancellation.get_token());
+  EXPECT_EXPRESSION(home_info);
+  EXPECT_EXPRESSION(home_info->kind == application::SshFileKind::directory);
+  auto home_child = files.CanonicalPath("~/", cancellation.get_token());
+  EXPECT_EXPRESSION(home_child && *home_child == *home);
+
   const std::string directory = fixture_arguments.remote_root + "/workspace";
   const std::string file = directory + "/hello.txt";
   const std::string renamed = directory + "/renamed.txt";

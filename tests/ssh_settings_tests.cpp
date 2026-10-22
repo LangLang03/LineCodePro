@@ -1,6 +1,9 @@
 #include "gtest_support.h"
+#include <chrono>
+#include <cstddef>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "application/ssh_settings_service.h"
 #include "domain/ssh_config.h"
@@ -81,6 +84,90 @@ void VerifyLegacyCodec() {
                 std::string_view{"@lineai_ssh_config"});
 }
 
+void VerifyAuthMethodNegotiation() {
+  using namespace linecode::domain;
+  using namespace std::chrono_literals;
+  namespace application = linecode::application;
+
+  const auto advertised =
+      ParseSshAuthMethods("publickey,keyboard-interactive");
+  EXPECT_EXPRESSION(advertised.public_key);
+  EXPECT_EXPRESSION(!advertised.password);
+  EXPECT_EXPRESSION(advertised.keyboard_interactive);
+  EXPECT_EXPRESSION(advertised.Any());
+
+  // Whitespace and unknown method names must not hide the known ones.
+  const auto padded =
+      ParseSshAuthMethods(" publickey , gssapi-with-mic ,password ");
+  EXPECT_EXPRESSION(padded.public_key);
+  EXPECT_EXPRESSION(padded.password);
+  EXPECT_EXPRESSION(!padded.keyboard_interactive);
+  EXPECT_EXPRESSION(!ParseSshAuthMethods("").Any());
+  EXPECT_EXPRESSION(DescribeSshAuthMethods(ParseSshAuthMethods("")) == "none");
+  EXPECT_EXPRESSION(DescribeSshAuthMethods(padded) == "publickey, password");
+
+  const SshConfig both{.host = "host",
+                       .port = 22,
+                       .username = "line",
+                       .password = "secret",
+                       .private_key = "-----BEGIN-----",
+                       .passphrase = {}};
+  const SshConfig password_only{.host = "host",
+                                .port = 22,
+                                .username = "line",
+                                .password = "secret",
+                                .private_key = {},
+                                .passphrase = {}};
+  const SshConfig key_only{.host = "host",
+                           .port = 22,
+                           .username = "line",
+                           .password = {},
+                           .private_key = "-----BEGIN-----",
+                           .passphrase = {}};
+
+  // Keys are tried before secrets, and a PAM-only server still gets a chance
+  // through the keyboard-interactive exchange.
+  EXPECT_EXPRESSION(
+      PlanSshAuthentication(both, ParseSshAuthMethods("publickey,password")) ==
+      std::vector<SshAuthMethod>{SshAuthMethod::public_key,
+                                 SshAuthMethod::password});
+  EXPECT_EXPRESSION(
+      PlanSshAuthentication(password_only,
+                            ParseSshAuthMethods("publickey,keyboard-interactive")) ==
+      std::vector<SshAuthMethod>{SshAuthMethod::keyboard_interactive});
+  EXPECT_EXPRESSION(
+      PlanSshAuthentication(both,
+                            ParseSshAuthMethods("keyboard-interactive")) ==
+      std::vector<SshAuthMethod>{SshAuthMethod::keyboard_interactive});
+  EXPECT_EXPRESSION(
+      PlanSshAuthentication(key_only, ParseSshAuthMethods("password")).empty());
+  // A server that never answers the list query must not be written off.
+  EXPECT_EXPRESSION(
+      PlanSshAuthentication(both, SshAuthMethods{}) ==
+      std::vector<SshAuthMethod>{SshAuthMethod::public_key,
+                                 SshAuthMethod::password,
+                                 SshAuthMethod::keyboard_interactive});
+  EXPECT_EXPRESSION(PlanSshAuthentication(SshConfig{}, SshAuthMethods{}).empty());
+
+  static_assert(application::ssh_setting_keys::config ==
+                std::string_view{"@lineai_ssh_config"});
+}
+
+void VerifyConnectAttemptBudget() {
+  using namespace linecode::domain;
+  using namespace std::chrono_literals;
+  // One address keeps the whole budget; several addresses get an even share so
+  // a dead IPv6 address cannot consume the IPv4 attempt.
+  EXPECT_EXPRESSION(ConnectAttemptBudget(30s, 1U) == 30s);
+  EXPECT_EXPRESSION(ConnectAttemptBudget(30s, 0U) == 30s);
+  EXPECT_EXPRESSION(ConnectAttemptBudget(30s, 3U) == 10s);
+  EXPECT_EXPRESSION(ConnectAttemptBudget(30s, 2U) == 15s);
+  // Never less than five seconds per address, and never more than what is left.
+  EXPECT_EXPRESSION(ConnectAttemptBudget(10s, 4U) == 5s);
+  EXPECT_EXPRESSION(ConnectAttemptBudget(3s, 4U) == 3s);
+  EXPECT_EXPRESSION(ConnectAttemptBudget(1s, 8U) == 1s);
+}
+
 void VerifyTermuxEntryRemainsActionableWithoutCapability() {
   using linecode::presentation::ResolveTermuxEntryAction;
   using linecode::presentation::TermuxEntryAction;
@@ -95,5 +182,7 @@ void VerifyTermuxEntryRemainsActionableWithoutCapability() {
 TEST(ssh_settings_tests, LegacySuite) {
   VerifyDefaultsAndNormalization();
   VerifyLegacyCodec();
+  VerifyAuthMethodNegotiation();
+  VerifyConnectAttemptBudget();
   VerifyTermuxEntryRemainsActionableWithoutCapability();
 }

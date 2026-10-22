@@ -1,4 +1,4 @@
-package cn.lineai.platform;
+package cn.lineai.coexist.platform;
 
 import java.io.File;
 import java.io.FileNotFoundException;

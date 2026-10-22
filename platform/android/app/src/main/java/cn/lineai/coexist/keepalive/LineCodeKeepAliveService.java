@@ -1,4 +1,4 @@
-package cn.lineai.keepalive;
+package cn.lineai.coexist.keepalive;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -14,12 +14,12 @@ import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
 
-import cn.lineai.MainActivity;
-import cn.lineai.R;
+import cn.lineai.coexist.MainActivity;
+import cn.lineai.coexist.R;
 
 /** Actuates an effective state computed by the portable C++ policy. */
 public final class LineCodeKeepAliveService extends Service {
-    private static final String ACTION_APPLY = "cn.lineai.action.APPLY_KEEP_ALIVE_STATE";
+    private static final String ACTION_APPLY = "cn.lineai.coexist.action.APPLY_KEEP_ALIVE_STATE";
     private static final String EXTRA_WAKE_LOCK = "wake_lock";
     private static final String EXTRA_FOREGROUND = "foreground";
     private static final String EXTRA_SILENT_AUDIO = "silent_audio";

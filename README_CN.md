@@ -53,7 +53,7 @@ LineCode Pro 使用 SQLite 在本机保存对话、设置、记忆、扩展元�
 
 ## 获取应用
 
-预编译产物和发行说明会发布在 [GitHub Releases](https://github.com/LangLang03/LineCodePro/releases)。Android 发布包继续使用 `cn.lineai` 包名，并延续原 LineCode 的签名和版本序列。
+预编译产物和发行说明会发布在 [GitHub Releases](https://github.com/LangLang03/LineCodePro/releases)。Android 发布包使用 `cn.lineai.coexist` 应用 ID(由 `cn.lineai` 改名而来)。包名变化后,同一签名的安装会作为独立应用存在,数据相互独立。
 
 ## 从源码构建
 

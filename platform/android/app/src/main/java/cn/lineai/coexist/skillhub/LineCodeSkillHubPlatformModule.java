@@ -1,6 +1,6 @@
-package cn.lineai.skillhub;
+package cn.lineai.coexist.skillhub;
 
-import cn.lineai.LineCodeLogger;
+import cn.lineai.coexist.LineCodeLogger;
 
 import android.content.Context;
 import android.content.SharedPreferences;

@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <chrono>
 #include <climits>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <mutex>
@@ -22,6 +23,7 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -74,6 +76,20 @@ bool SetNonBlocking(Socket socket) noexcept {
 #else
   const int flags = fcntl(socket, F_GETFL, 0);
   return flags >= 0 && fcntl(socket, F_SETFL, flags | O_NONBLOCK) == 0;
+#endif
+}
+
+// Small interactive writes (channel requests, keystrokes, keepalives) should
+// not wait for Nagle to coalesce them; SSH already batches its own packets.
+void SetNoDelay(Socket socket) noexcept {
+  const int enabled = 1;
+#ifdef _WIN32
+  static_cast<void>(setsockopt(
+      socket, IPPROTO_TCP, TCP_NODELAY,
+      reinterpret_cast<const char *>(&enabled), sizeof(enabled)));
+#else
+  static_cast<void>(setsockopt(socket, IPPROTO_TCP, TCP_NODELAY, &enabled,
+                               sizeof(enabled)));
 #endif
 }
 
@@ -211,9 +227,26 @@ SshResult<Socket> ConnectSocket(std::string_view host, std::int32_t port,
     ~AddressOwner() { freeaddrinfo(value); }
   } owner{addresses};
 
+  // A host frequently resolves to both an IPv6 and an IPv4 address while only
+  // one of the two is routable (IPv6 on a mobile network without prefix
+  // delegation, for example). Spending the whole connect budget on the first
+  // unreachable address skipped every later address: the loop then reported
+  // "timed out" although a reachable address was already known.
+  std::size_t remaining_addresses{};
+  for (auto *address = addresses; address; address = address->ai_next)
+    ++remaining_addresses;
   for (auto *address = addresses; address; address = address->ai_next) {
     if (stop.stop_requested())
       return std::unexpected(Cancelled());
+    const auto now = Clock::now();
+    if (now >= deadline)
+      return std::unexpected(TimedOut());
+    const auto remaining =
+        std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+    const auto attempt_deadline =
+        now + domain::ConnectAttemptBudget(remaining, remaining_addresses);
+    if (remaining_addresses > 0U)
+      --remaining_addresses;
     Socket socket = ::socket(address->ai_family, address->ai_socktype,
                              address->ai_protocol);
     if (socket == kInvalidSocket)
@@ -225,17 +258,21 @@ SshResult<Socket> ConnectSocket(std::string_view host, std::int32_t port,
     const int connected =
         ::connect(socket, address->ai_addr,
                   static_cast<decltype(address->ai_addrlen)>(address->ai_addrlen));
-    if (connected == 0)
+    if (connected == 0) {
+      SetNoDelay(socket);
       return socket;
+    }
     if (!ConnectInProgress()) {
       CloseSocket(socket);
       continue;
     }
-    auto ready = WaitSocket(socket, false, true, deadline, stop);
+    auto ready = WaitSocket(socket, false, true, attempt_deadline, stop);
     if (!ready) {
       CloseSocket(socket);
       if (ready.error().code == SshErrorCode::cancelled)
         return std::unexpected(std::move(ready.error()));
+      // A per-address timeout only rules out this address; the remaining ones
+      // keep whatever budget is left.
       continue;
     }
     int socket_error{};
@@ -252,6 +289,7 @@ SshResult<Socket> ConnectSocket(std::string_view host, std::int32_t port,
 #endif
                    &error_size) == 0 &&
         socket_error == 0) {
+      SetNoDelay(socket);
       return socket;
     }
     CloseSocket(socket);
@@ -580,20 +618,19 @@ Libssh2Session::Execute(const application::SshCommandRequest &request,
   return output;
 }
 
-SshResult<std::string>
-Libssh2Session::CanonicalPath(std::string_view path, std::stop_token stop) {
-  if (path.empty() || path.find('\0') != std::string_view::npos)
-    return std::unexpected(Error(SshErrorCode::invalid_argument,
-                                 "SSH path is empty or malformed"));
-  const auto deadline = Deadline();
-  auto sftp = Sftp(deadline, stop);
-  if (!sftp)
-    return std::unexpected(std::move(sftp.error()));
+// `LIBSSH2_SFTP_REALPATH` with a growing buffer.  The reply is a path, not an
+// attribute set, so a too-small buffer is reported by libssh2 itself rather
+// than through `libssh2_sftp_last_error`.
+SshResult<std::string> RealPath(LIBSSH2_SESSION *session, Socket socket,
+                                LIBSSH2_SFTP *sftp, std::string_view path,
+                                Clock::time_point deadline,
+                                std::stop_token stop,
+                                std::string_view missing_message) {
   std::vector<char> value(512);
   while (true) {
-    auto resolved = RetryInt(session_, socket_, deadline, stop, [&] {
+    auto resolved = RetryInt(session, socket, deadline, stop, [&] {
       return static_cast<int>(libssh2_sftp_symlink_ex(
-          *sftp, path.data(), static_cast<unsigned int>(path.size()),
+          sftp, path.data(), static_cast<unsigned int>(path.size()),
           value.data(), static_cast<unsigned int>(value.size()),
           LIBSSH2_SFTP_REALPATH));
     });
@@ -606,8 +643,43 @@ Libssh2Session::CanonicalPath(std::string_view path, std::stop_token stop) {
       value.resize(value.size() * 2U);
       continue;
     }
-    return std::unexpected(SftpError("Unable to resolve SSH path"));
+    if (libssh2_sftp_last_error(sftp) == LIBSSH2_FX_NO_SUCH_FILE ||
+        libssh2_sftp_last_error(sftp) == LIBSSH2_FX_NO_SUCH_PATH)
+      return std::unexpected(
+          Error(SshErrorCode::not_found, std::string{missing_message}));
+    return std::unexpected(
+        SessionError(session, SshErrorCode::protocol,
+                     std::string{missing_message}));
   }
+}
+
+SshResult<std::string>
+Libssh2Session::CanonicalPath(std::string_view path, std::stop_token stop) {
+  if (path.empty() || path.find('\0') != std::string_view::npos)
+    return std::unexpected(Error(SshErrorCode::invalid_argument,
+                                 "SSH path is empty or malformed"));
+  const auto deadline = Deadline();
+  auto sftp = Sftp(deadline, stop);
+  if (!sftp)
+    return std::unexpected(std::move(sftp.error()));
+
+  std::string requested{path};
+  if (requested == "~" || requested.starts_with("~/")) {
+    // Tilde is shell syntax: neither SFTP nor `sftp-server` expands it, so
+    // `realpath("~")` failed with "no such file" and every caller that used a
+    // relative-to-home path (`Root` in the workspace service, the default SSH
+    // project) reported the connection as unusable.  SFTP resolves `.` to the
+    // authenticated user's home directory, which is the same value `~` means.
+    auto home = RealPath(session_, socket_, *sftp, ".", deadline, stop,
+                         "Unable to resolve the SSH home directory");
+    if (!home)
+      return std::unexpected(std::move(home.error()));
+    requested = *home;
+    if (path.size() > 1U)
+      requested += std::string{path.substr(1)};
+  }
+  return RealPath(session_, socket_, *sftp, requested, deadline, stop,
+                  "Unable to resolve SSH path");
 }
 
 SshResult<SshFileEntry> Libssh2Session::Stat(std::string_view path,
@@ -922,36 +994,152 @@ Libssh2Transport::Connect(const domain::SshConfig &input,
       !verified) {
     return fail(std::move(verified.error()));
   }
+  // A mobile network drops idle NAT mappings within a couple of minutes, and
+  // the socket then looks open until the next write.  Asking for a reply every
+  // 20 seconds keeps the mapping alive and turns a silently dead session into
+  // an error the next operation can report.
+  libssh2_keepalive_config(session, 1, 20);
 
-  bool authenticated{};
-  if (!config.private_key.empty()) {
-    auto key_auth = RetryInt(session, socket, deadline, stop, [&] {
-      return libssh2_userauth_publickey_frommemory(
-          session, config.username.c_str(), config.username.size(), nullptr, 0,
-          config.private_key.c_str(), config.private_key.size(),
-          config.passphrase.empty() ? nullptr : config.passphrase.c_str());
-    });
-    if (!key_auth)
-      return fail(std::move(key_auth.error()));
-    authenticated = *key_auth == 0;
+  domain::SshAuthMethods advertised;
+  {
+    auto listed = RetryPointer<char>(
+        session, socket, deadline, stop, [&] {
+          return libssh2_userauth_list(
+              session, config.username.c_str(),
+              static_cast<unsigned int>(config.username.size()));
+        });
+    if (!listed)
+      return fail(std::move(listed.error()));
+    if (*listed)
+      advertised = domain::ParseSshAuthMethods(*listed);
+    else if (libssh2_userauth_authenticated(session) != 0)
+      // The list query itself authenticates when the server accepts the "none"
+      // method; libssh2 reports that as a successful call with no list.
+      return std::unique_ptr<application::SshSession>{
+          std::make_unique<Libssh2Session>(socket, session, timeout)};
   }
-  if (!authenticated && !config.password.empty()) {
-    auto password_auth = RetryInt(session, socket, deadline, stop, [&] {
-      return libssh2_userauth_password_ex(
-          session, config.username.c_str(),
-          static_cast<unsigned int>(config.username.size()),
-          config.password.c_str(),
-          static_cast<unsigned int>(config.password.size()), nullptr);
-    });
-    if (!password_auth)
-      return fail(std::move(password_auth.error()));
-    authenticated = *password_auth == 0;
+
+  const auto plan = domain::PlanSshAuthentication(config, advertised);
+  if (plan.empty()) {
+    std::string message{"SSH authentication failed: the server offers "};
+    message += domain::DescribeSshAuthMethods(advertised);
+    message += " but no matching credential is configured";
+    return fail(Error(SshErrorCode::authentication_failed, std::move(message)));
   }
-  if (!authenticated)
-    return fail(Error(SshErrorCode::authentication_failed,
-                      "SSH authentication failed"));
-  return std::unique_ptr<application::SshSession>{
-      std::make_unique<Libssh2Session>(socket, session, timeout)};
+
+  std::string failures;
+  for (const auto method : plan) {
+    if (stop.stop_requested())
+      return fail(Cancelled());
+    if (Clock::now() >= deadline)
+      return fail(TimedOut());
+    const auto append_failure = [&failures](std::string_view text) {
+      if (!failures.empty())
+        failures += "; ";
+      failures += text;
+    };
+    switch (method) {
+    case domain::SshAuthMethod::public_key: {
+      auto key_auth = RetryInt(session, socket, deadline, stop, [&] {
+        return libssh2_userauth_publickey_frommemory(
+            session, config.username.c_str(), config.username.size(), nullptr,
+            0, config.private_key.c_str(), config.private_key.size(),
+            config.passphrase.empty() ? nullptr : config.passphrase.c_str());
+      });
+      if (!key_auth)
+        return fail(std::move(key_auth.error()));
+      if (*key_auth == 0)
+        return std::unique_ptr<application::SshSession>{
+            std::make_unique<Libssh2Session>(socket, session, timeout)};
+      if (*key_auth == LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED ||
+          *key_auth == LIBSSH2_ERROR_AUTHENTICATION_FAILED) {
+        append_failure("publickey was rejected (wrong key or passphrase)");
+        continue;
+      }
+      // Any other failure is not something another method can repair.
+      return fail(SessionError(session, SshErrorCode::authentication_failed,
+                               "SSH public key authentication failed"));
+    }
+    case domain::SshAuthMethod::password: {
+      auto password_auth = RetryInt(session, socket, deadline, stop, [&] {
+        return libssh2_userauth_password_ex(
+            session, config.username.c_str(),
+            static_cast<unsigned int>(config.username.size()),
+            config.password.c_str(),
+            static_cast<unsigned int>(config.password.size()), nullptr);
+      });
+      if (!password_auth)
+        return fail(std::move(password_auth.error()));
+      if (*password_auth == 0)
+        return std::unique_ptr<application::SshSession>{
+            std::make_unique<Libssh2Session>(socket, session, timeout)};
+      append_failure("password was rejected");
+      continue;
+    }
+    case domain::SshAuthMethod::keyboard_interactive: {
+      // The prompt exchange is where PAM-backed servers ask for the password.
+      // Every prompt gets the configured password: servers that also ask for a
+      // one-time code cannot be satisfied here, and libssh2 frees the response
+      // buffers itself after the callback returns.
+      //
+      // The callback only receives the session's abstract pointer, so the
+      // secret travels through it and is cleared again afterwards: the pointer
+      // outlives this function inside the session and must not refer to a
+      // local.
+      auto *abstract = libssh2_session_abstract(session);
+      *abstract = const_cast<std::string *>(&config.password);
+      struct AbstractReset final {
+        void **value;
+        ~AbstractReset() { *value = nullptr; }
+      } abstract_reset{abstract};
+      auto interactive = RetryInt(session, socket, deadline, stop, [&] {
+        return libssh2_userauth_keyboard_interactive_ex(
+            session, config.username.c_str(),
+            static_cast<unsigned int>(config.username.size()),
+            [](const char *, int, const char *, int, int num_prompts,
+               const LIBSSH2_USERAUTH_KBDINT_PROMPT *,
+               LIBSSH2_USERAUTH_KBDINT_RESPONSE *responses, void **abstract) {
+              // `abstract` is the session's user pointer (see
+              // libssh2_session_abstract), which Connect fills with the
+              // password for the duration of this call.
+              if (num_prompts <= 0 || !responses)
+                return;
+              const auto *secret =
+                  abstract ? static_cast<const std::string *>(*abstract)
+                           : nullptr;
+              const std::string empty;
+              const std::string &password = secret ? *secret : empty;
+              for (int index = 0; index < num_prompts; ++index) {
+                responses[index].text =
+                    static_cast<char *>(malloc(password.size() + 1U));
+                if (!responses[index].text) {
+                  responses[index].length = 0;
+                  continue;
+                }
+                std::memcpy(responses[index].text, password.c_str(),
+                            password.size() + 1U);
+                responses[index].length =
+                    static_cast<unsigned int>(password.size());
+              }
+            });
+      });
+      if (!interactive)
+        return fail(std::move(interactive.error()));
+      if (*interactive == 0)
+        return std::unique_ptr<application::SshSession>{
+            std::make_unique<Libssh2Session>(socket, session, timeout)};
+      append_failure("keyboard-interactive was rejected");
+      continue;
+    }
+    }
+  }
+  std::string message{"SSH authentication failed"};
+  if (!failures.empty()) {
+    message += " (";
+    message += failures;
+    message += ")";
+  }
+  return fail(Error(SshErrorCode::authentication_failed, std::move(message)));
 }
 
 } // namespace linecode::infrastructure

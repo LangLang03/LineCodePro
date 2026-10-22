@@ -1,4 +1,4 @@
-package cn.lineai;
+package cn.lineai.coexist;
 
 import android.content.Context;
 import android.util.Log;

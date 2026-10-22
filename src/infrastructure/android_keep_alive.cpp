@@ -26,7 +26,7 @@ using application::KeepAliveSystemState;
 
 constexpr auto kPlatformModuleName = "linecode/android-keep-alive";
 constexpr auto kJavaFactoryClass =
-    "cn.lineai.keepalive.LineCodeKeepAliveModule";
+    "cn.lineai.coexist.keepalive.LineCodeKeepAliveModule";
 
 std::string Describe(const huxerui::PlatformError &error) {
   return error.message.empty() ? error.code : error.message;
