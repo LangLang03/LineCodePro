@@ -189,11 +189,34 @@ SshError SessionError(LIBSSH2_SESSION *session, SshErrorCode code,
   char *text{};
   int length{};
   static_cast<void>(libssh2_session_last_error(session, &text, &length, 0));
-  if (text && length > 0) {
+  // A retried call leaves LIBSSH2_ERROR_EAGAIN ("Would block ...") behind in
+  // the session's single error slot. That text describes an earlier, already
+  // handled condition, so appending it to an unrelated failure produced
+  // messages such as "SSH public key authentication failed: Would block
+  // requesting userauth list" that pointed at the wrong problem.
+  if (text && length > 0 &&
+      libssh2_session_last_errno(session) != LIBSSH2_ERROR_EAGAIN) {
     fallback += ": ";
     fallback.append(text, static_cast<std::size_t>(length));
   }
   return Error(code, std::move(fallback));
+}
+
+// Errors that mean the session itself is unusable. No other credential can
+// repair them, so authentication must stop instead of trying the next method.
+bool IsFatalTransportError(int code) noexcept {
+  switch (code) {
+  case LIBSSH2_ERROR_ALLOC:
+  case LIBSSH2_ERROR_SOCKET_SEND:
+  case LIBSSH2_ERROR_SOCKET_RECV:
+  case LIBSSH2_ERROR_SOCKET_DISCONNECT:
+  case LIBSSH2_ERROR_SOCKET_TIMEOUT:
+  case LIBSSH2_ERROR_BAD_SOCKET:
+  case LIBSSH2_ERROR_TIMEOUT:
+    return true;
+  default:
+    return false;
+  }
 }
 
 SshResult<Socket> ConnectSocket(std::string_view host, std::int32_t port,
@@ -1051,14 +1074,18 @@ Libssh2Transport::Connect(const domain::SshConfig &input,
       if (*key_auth == 0)
         return std::unique_ptr<application::SshSession>{
             std::make_unique<Libssh2Session>(socket, session, timeout)};
-      if (*key_auth == LIBSSH2_ERROR_PUBLICKEY_UNVERIFIED ||
-          *key_auth == LIBSSH2_ERROR_AUTHENTICATION_FAILED) {
-        append_failure("publickey was rejected (wrong key or passphrase)");
-        continue;
-      }
-      // Any other failure is not something another method can repair.
-      return fail(SessionError(session, SshErrorCode::authentication_failed,
-                               "SSH public key authentication failed"));
+      if (IsFatalTransportError(*key_auth))
+        return fail(SessionError(session, SshErrorCode::authentication_failed,
+                                 "SSH public key authentication failed"));
+      // Every other rejection is local to this method: the key does not parse,
+      // the server does not accept it, or the passphrase is wrong. Returning
+      // here aborted the whole plan, so a stored key that had been truncated or
+      // exported in an unsupported format made a correct password unusable too.
+      append_failure(*key_auth == LIBSSH2_ERROR_FILE
+                         ? "publickey could not be loaded (bad key format or "
+                           "passphrase)"
+                         : "publickey was rejected (wrong key or passphrase)");
+      continue;
     }
     case domain::SshAuthMethod::password: {
       auto password_auth = RetryInt(session, socket, deadline, stop, [&] {
@@ -1073,6 +1100,9 @@ Libssh2Transport::Connect(const domain::SshConfig &input,
       if (*password_auth == 0)
         return std::unique_ptr<application::SshSession>{
             std::make_unique<Libssh2Session>(socket, session, timeout)};
+      if (IsFatalTransportError(*password_auth))
+        return fail(SessionError(session, SshErrorCode::authentication_failed,
+                                 "SSH password authentication failed"));
       append_failure("password was rejected");
       continue;
     }

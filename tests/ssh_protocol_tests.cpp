@@ -156,6 +156,30 @@ TEST(ssh_protocol_tests, ProtocolFixture) {
   auto trusted = store->Load();
   EXPECT_EXPRESSION(trusted && trusted->contains("[127.0.0.1]:" + std::to_string(port)));
 
+  // A stored private key that no longer parses (truncated paste, a format
+  // libssh2 cannot read) used to abort the whole plan from inside the
+  // publickey branch, so a correct password was never tried and the user saw
+  // "SSH public key authentication failed". The key failure has to stay local
+  // to its own method and the reported reason must describe the key rather
+  // than an unrelated earlier EAGAIN.  This runs before the known-hosts entry
+  // is replaced below, while the fixture host key is still trusted.
+  domain::SshConfig broken_key = config;
+  broken_key.private_key =
+      "-----BEGIN OPENSSH PRIVATE KEY-----\n"
+      "this is not a private key\n"
+      "-----END OPENSSH PRIVATE KEY-----\n";
+  broken_key.password = {};
+  auto unparsable = transport.Connect(broken_key, 5s, cancellation.get_token());
+  EXPECT_EXPRESSION(!unparsable);
+  EXPECT_EXPRESSION(unparsable.error().code ==
+                    application::SshErrorCode::authentication_failed);
+  EXPECT_EXPRESSION(unparsable.error().message.find("could not be loaded") !=
+                    std::string::npos);
+  // The single libssh2 error slot still held LIBSSH2_ERROR_EAGAIN's text after
+  // the retry loop drained it; appending that described the wrong problem.
+  EXPECT_EXPRESSION(unparsable.error().message.find("Would block") ==
+                    std::string::npos);
+
   // Replace only the key material with a different valid host key.  The next
   // handshake must be rejected as a mismatch and must not silently overwrite
   // the previously trusted identity.
