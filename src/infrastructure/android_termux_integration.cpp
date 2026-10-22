@@ -20,7 +20,7 @@ namespace {
 
 constexpr auto kPlatformModuleName = "linecode/termux-integration";
 constexpr auto kJavaFactoryClass =
-    "cn.lineai.termux.LineCodeTermuxIntegrationModule";
+    "cn.lineai.coexist.termux.LineCodeTermuxIntegrationModule";
 
 domain::TermuxErrorCode ErrorCode(std::string_view code) {
   struct Mapping final {

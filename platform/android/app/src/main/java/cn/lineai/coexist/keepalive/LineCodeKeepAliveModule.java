@@ -1,4 +1,4 @@
-package cn.lineai.keepalive;
+package cn.lineai.coexist.keepalive;
 
 import android.Manifest;
 import android.app.Activity;

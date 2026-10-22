@@ -18,7 +18,7 @@ namespace {
 
 constexpr auto kPlatformModuleName = "linecode/external-link";
 constexpr auto kJavaFactoryClass =
-    "cn.lineai.platform.LineCodeExternalLinkModule";
+    "cn.lineai.coexist.platform.LineCodeExternalLinkModule";
 
 class AndroidExternalLinkService final
     : public application::ExternalLinkService {

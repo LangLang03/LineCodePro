@@ -1,4 +1,4 @@
-package cn.lineai.platform;
+package cn.lineai.coexist.platform;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;

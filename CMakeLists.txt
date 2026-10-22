@@ -33,7 +33,7 @@ huxerui_add_app(linecodepro
         BUNDLE_NAME
             "LineCodePro"
         BUNDLE_IDENTIFIER
-            "cn.lineai"
+            "cn.lineai.coexist"
 )
 
 huxerui_use_library(linecodepro

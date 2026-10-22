@@ -1,4 +1,4 @@
-package cn.lineai.platform;
+package cn.lineai.coexist.platform;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;

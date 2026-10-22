@@ -18,15 +18,15 @@
         android:maxSdkVersion="29" />
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
     <permission
-        android:name="cn.lineai.permission.IPC_TERMINAL_PROVIDER"
+        android:name="cn.lineai.coexist.permission.IPC_TERMINAL_PROVIDER"
         android:description="@string/permission_ipc_terminal_provider_desc"
         android:protectionLevel="normal" />
-    <uses-permission android:name="cn.lineai.permission.IPC_TERMINAL_PROVIDER" />
+    <uses-permission android:name="cn.lineai.coexist.permission.IPC_TERMINAL_PROVIDER" />
 
     <queries>
         <package android:name="com.termux" />
         <intent>
-            <action android:name="cn.lineai.action.IPC_TERMINAL_PROVIDER" />
+            <action android:name="cn.lineai.coexist.action.IPC_TERMINAL_PROVIDER" />
         </intent>
     </queries>
 

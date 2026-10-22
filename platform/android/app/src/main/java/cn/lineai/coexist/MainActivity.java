@@ -1,4 +1,4 @@
-package cn.lineai;
+package cn.lineai.coexist;
 
 import android.graphics.Color;
 import android.os.Build;

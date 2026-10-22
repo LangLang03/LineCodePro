@@ -1,4 +1,4 @@
-package cn.lineai.terminal;
+package cn.lineai.coexist.terminal;
 
 import android.content.ComponentName;
 import android.content.Context;
@@ -11,8 +11,8 @@ import android.content.pm.ServiceInfo;
 import android.os.IBinder;
 import android.os.RemoteException;
 
-import cn.lineai.ipc.terminal.ITerminalProviderCallback;
-import cn.lineai.ipc.terminal.ITerminalProviderService;
+import cn.lineai.coexist.ipc.terminal.ITerminalProviderCallback;
+import cn.lineai.coexist.ipc.terminal.ITerminalProviderService;
 
 import org.huxerui.HuxerUIPlatformChannel;
 import org.huxerui.HuxerUIPlatformModule;
@@ -33,8 +33,8 @@ import java.util.concurrent.atomic.AtomicReference;
 /** Android-only adapter for LineCode terminal-provider discovery and AIDL calls. */
 public final class LineCodeTerminalProviderModule
         implements HuxerUIPlatformModule.Factory {
-    private static final String ACTION = "cn.lineai.action.IPC_TERMINAL_PROVIDER";
-    private static final String PERMISSION = "cn.lineai.permission.IPC_TERMINAL_PROVIDER";
+    private static final String ACTION = "cn.lineai.coexist.action.IPC_TERMINAL_PROVIDER";
+    private static final String PERMISSION = "cn.lineai.coexist.permission.IPC_TERMINAL_PROVIDER";
 
     @Override
     public HuxerUIPlatformModule create(

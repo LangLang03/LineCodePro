@@ -53,7 +53,7 @@ Export and diagnostic paths are designed to redact credentials, but you should s
 
 ## Get LineCode Pro
 
-Prebuilt artifacts and release notes are published on the [GitHub Releases](https://github.com/LangLang03/LineCodePro/releases) page. Android release packages retain the `cn.lineai` application id and continue the existing LineCode signing and version sequence.
+Prebuilt artifacts and release notes are published on the [GitHub Releases](https://github.com/LangLang03/LineCodePro/releases) page. Android releases use the `cn.lineai.coexist` application id; the package was renamed from `cn.lineai`, so a build signed with the same key still installs as a separate app that keeps its own data.
 
 ## Build from source
 

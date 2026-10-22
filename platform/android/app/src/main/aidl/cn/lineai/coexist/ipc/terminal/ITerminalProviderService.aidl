@@ -1,6 +1,6 @@
-package cn.lineai.ipc.terminal;
+package cn.lineai.coexist.ipc.terminal;
 
-import cn.lineai.ipc.terminal.ITerminalProviderCallback;
+import cn.lineai.coexist.ipc.terminal.ITerminalProviderCallback;
 
 interface ITerminalProviderService {
     String getProviderType();

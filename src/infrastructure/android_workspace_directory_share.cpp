@@ -16,7 +16,7 @@ namespace {
 
 constexpr auto kPlatformModuleName = "linecode/workspace-directory-share";
 constexpr auto kJavaFactoryClass =
-    "cn.lineai.platform.LineCodeWorkspaceDirectoryShareModule";
+    "cn.lineai.coexist.platform.LineCodeWorkspaceDirectoryShareModule";
 
 class AndroidWorkspaceDirectoryShareService final
     : public application::WorkspaceDirectoryShareService {

@@ -103,6 +103,24 @@ TEST(ssh_protocol_tests, ProtocolFixture) {
   connected = transport.Connect(config, 5s, cancellation.get_token());
   EXPECT_EXPRESSION(connected);
   auto &files = **connected;
+  // Tilde is shell syntax and neither SFTP nor `sftp-server` expands it.  The
+  // SSH workspace resolves its default root through `~`, so a client that
+  // passed it through verbatim reported every home-relative path as missing
+  // and the connection as unusable.  SFTP's `.` means the same directory.
+  auto home = files.CanonicalPath("~", cancellation.get_token());
+  EXPECT_EXPRESSION(home);
+  EXPECT_EXPRESSION(!home->empty() && home->front() == '/');
+  auto current = files.CanonicalPath(".", cancellation.get_token());
+  EXPECT_EXPRESSION(current);
+  EXPECT_EXPRESSION(*home == *current);
+  // `CanonicalPath` is the expansion point; the raw path operations keep
+  // kernel semantics, where `~` is not a directory that exists.
+  auto home_info = files.Stat(*home, false, cancellation.get_token());
+  EXPECT_EXPRESSION(home_info);
+  EXPECT_EXPRESSION(home_info->kind == application::SshFileKind::directory);
+  auto home_child = files.CanonicalPath("~/", cancellation.get_token());
+  EXPECT_EXPRESSION(home_child && *home_child == *home);
+
   const std::string directory = fixture_arguments.remote_root + "/workspace";
   const std::string file = directory + "/hello.txt";
   const std::string renamed = directory + "/renamed.txt";
@@ -137,6 +155,30 @@ TEST(ssh_protocol_tests, ProtocolFixture) {
 
   auto trusted = store->Load();
   EXPECT_EXPRESSION(trusted && trusted->contains("[127.0.0.1]:" + std::to_string(port)));
+
+  // A stored private key that no longer parses (truncated paste, a format
+  // libssh2 cannot read) used to abort the whole plan from inside the
+  // publickey branch, so a correct password was never tried and the user saw
+  // "SSH public key authentication failed". The key failure has to stay local
+  // to its own method and the reported reason must describe the key rather
+  // than an unrelated earlier EAGAIN.  This runs before the known-hosts entry
+  // is replaced below, while the fixture host key is still trusted.
+  domain::SshConfig broken_key = config;
+  broken_key.private_key =
+      "-----BEGIN OPENSSH PRIVATE KEY-----\n"
+      "this is not a private key\n"
+      "-----END OPENSSH PRIVATE KEY-----\n";
+  broken_key.password = {};
+  auto unparsable = transport.Connect(broken_key, 5s, cancellation.get_token());
+  EXPECT_EXPRESSION(!unparsable);
+  EXPECT_EXPRESSION(unparsable.error().code ==
+                    application::SshErrorCode::authentication_failed);
+  EXPECT_EXPRESSION(unparsable.error().message.find("could not be loaded") !=
+                    std::string::npos);
+  // The single libssh2 error slot still held LIBSSH2_ERROR_EAGAIN's text after
+  // the retry loop drained it; appending that described the wrong problem.
+  EXPECT_EXPRESSION(unparsable.error().message.find("Would block") ==
+                    std::string::npos);
 
   // Replace only the key material with a different valid host key.  The next
   // handshake must be rejected as a mismatch and must not silently overwrite

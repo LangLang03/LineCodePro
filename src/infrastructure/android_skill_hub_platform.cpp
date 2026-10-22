@@ -19,7 +19,7 @@ namespace {
 
 constexpr auto kPlatformModuleName = "linecode/skill-hub-platform";
 constexpr auto kJavaFactoryClass =
-    "cn.lineai.skillhub.LineCodeSkillHubPlatformModule";
+    "cn.lineai.coexist.skillhub.LineCodeSkillHubPlatformModule";
 
 class AndroidSkillHubPlatformService final
     : public application::SkillHubPlatformService {
