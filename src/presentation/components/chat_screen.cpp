@@ -648,7 +648,10 @@ struct ContextSnapshotCache final {
   const auto chunks = running ? SplitStreamingMarkdown(live_message->content)
                               : std::vector<StreamingMarkdownChunk>{};
   const ScrollMetrics metrics = conversation_scroll.Metrics();
-  const bool at_bottom = metrics.maximum_offset <= metrics.offset + 2.0F;
+  // The wide tolerance keeps the floating scroll button from flickering while
+  // extent estimates settle around the tail during streaming; tail following
+  // holds the viewport exactly at the bottom, so the resting state is stable.
+  const bool at_bottom = metrics.maximum_offset <= metrics.offset + 8.0F;
   const auto history_count = presentation_messages->size();
   const auto item_count = 2U + history_count +
                           (has_header ? 1U : 0U) + chunks.size() +
@@ -722,6 +725,7 @@ struct ContextSnapshotCache final {
                     .content_revision = revision,
                     .smooth_request = scroll_to_bottom_request.Get(),
                     .turn_id = generation_state.generation_id,
+                    .item_count = item_count,
                 });
 
   View selection_bar = Stack{}.With(Frame{.width = 0.0F, .height = 0.0F});

@@ -185,7 +185,8 @@ View TailProbe() {
                                     .conversation_id = "tail-conversation",
                                     .content_revision = revision.Get(),
                                     .smooth_request = smooth_request.Get(),
-                                    .turn_id = turn_id.Get()});
+                                    .turn_id = turn_id.Get(),
+                                    .item_count = count});
 
   return Column{std::move(list), std::move(controls)}
       .With(CrossAlign(CrossAxisAlignment::Stretch));

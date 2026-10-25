@@ -17,6 +17,10 @@ struct ChatTailScroll final {
   /// follow even when the reader had scrolled away from the tail; content that
   /// arrives within the same turn leaves their position alone.
   std::uint64_t turn_id = 0;
+  /// Logical item count of the conversation list. Tail following aligns the
+  /// trailing item's end edge, so the virtual layout can refine the offset
+  /// against measured extents instead of extent estimates.
+  std::size_t item_count = 0;
 
   bool operator==(const ChatTailScroll &) const = default;
 
