@@ -96,7 +96,21 @@ TEST(settings_store_schema_tests, LegacySuite) {
   EXPECT_EXPRESSION(application::ParseStoredBoolean("TRUE"));
   EXPECT_EXPRESSION(application::ParseStoredBoolean("1"));
   EXPECT_EXPRESSION(!application::ParseStoredBoolean("false"));
-  EXPECT_EXPRESSION(!application::ParseStoredBoolean("yes"));
+  // Archive imports copy stored values verbatim, so the spellings older and
+  // foreign builds wrote must not silently read as "off".
+  EXPECT_EXPRESSION(application::ParseStoredBoolean("yes"));
+  EXPECT_EXPRESSION(application::ParseStoredBoolean("Yes"));
+  EXPECT_EXPRESSION(application::ParseStoredBoolean("on"));
+  EXPECT_EXPRESSION(application::ParseStoredBoolean("ON"));
+  EXPECT_EXPRESSION(application::ParseStoredBoolean(" y "));
+  EXPECT_EXPRESSION(application::ParseStoredBoolean("\ttrue\n"));
+  EXPECT_EXPRESSION(!application::ParseStoredBoolean("no"));
+  EXPECT_EXPRESSION(!application::ParseStoredBoolean("off"));
+  EXPECT_EXPRESSION(!application::ParseStoredBoolean(""));
+  EXPECT_EXPRESSION(!application::ParseStoredBoolean("   "));
+  EXPECT_EXPRESSION(!application::ParseStoredBoolean("0"));
+  EXPECT_EXPRESSION(!application::ParseStoredBoolean("yes please"));
+  EXPECT_EXPRESSION(!application::ParseStoredBoolean("truthy"));
 
   EXPECT_EXPRESSION(application::ParseStoredInteger("-42") == -42);
   EXPECT_EXPRESSION(application::ParseStoredInteger("0") == 0);

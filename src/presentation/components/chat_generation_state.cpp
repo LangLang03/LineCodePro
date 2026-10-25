@@ -1,5 +1,6 @@
 #include "presentation/components/chat_generation_state.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace linecode::presentation {
@@ -29,6 +30,28 @@ std::string FormatModelFailed(std::string_view template_text,
     at += error.size();
   }
   return text;
+}
+
+void LocalModelLoadUiState::Begin() noexcept {
+  percent.store(0, std::memory_order_relaxed);
+  loading.store(true, std::memory_order_relaxed);
+}
+
+void LocalModelLoadUiState::Report(int value) noexcept {
+  if (!loading.load(std::memory_order_relaxed))
+    return;
+  percent.store(std::clamp(value, 0, 100), std::memory_order_relaxed);
+}
+
+void LocalModelLoadUiState::Finish() noexcept {
+  loading.store(false, std::memory_order_relaxed);
+}
+
+std::optional<int>
+LocalModelLoadPercent(const LocalModelLoadUiState &state) noexcept {
+  if (!state.loading.load(std::memory_order_relaxed))
+    return std::nullopt;
+  return state.percent.load(std::memory_order_relaxed);
 }
 
 void AutoCompactionUiState::Begin(std::uint64_t generation) {

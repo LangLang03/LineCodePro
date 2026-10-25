@@ -2,6 +2,7 @@ import com.android.build.api.artifact.SingleArtifact
 import com.android.build.api.variant.BuildConfigField
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
+import java.util.Locale
 import javax.inject.Inject
 
 plugins {
@@ -29,6 +30,61 @@ abstract class StageHuxerUIAssets extends DefaultTask {
             from resourcePackage
             into outputDirectory
         }
+    }
+}
+
+// Copies a variant's APK to a stable name that carries the release version and
+// which of the two builds produced it.
+//
+// `assembleDebug` and `assembleRelease` write the same `app-*.apk` for both the
+// slim build and the local-model build, so building one after the other silently
+// replaced the previous artifact. The copy is what makes the two coexist: the
+// intermediate file keeps its Gradle name and stays where AGP puts it.
+abstract class DistributeApk extends DefaultTask {
+    @InputDirectory
+    @PathSensitive(PathSensitivity.NONE)
+    abstract DirectoryProperty getApkDirectory()
+
+    @Input
+    abstract Property<String> getFileBaseName()
+
+    @OutputFile
+    abstract RegularFileProperty getTargetApk()
+
+    @OutputFile
+    abstract RegularFileProperty getTargetChecksum()
+
+    @TaskAction
+    void distribute() {
+        def candidates = apkDirectory.get().asFile.listFiles()?.findAll {
+            it.isFile() && it.name.endsWith(".apk")
+        } ?: []
+        if (candidates.size() != 1) {
+            throw new GradleException(
+                    "expected exactly one APK in ${apkDirectory.get().asFile} but found ${candidates.size()}")
+        }
+        def target = targetApk.get().asFile
+        target.parentFile.mkdirs()
+        java.nio.file.Files.copy(candidates[0].toPath(), target.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        // The checksum is written next to the APK with the bare file name, which
+        // is what `sha256sum -c` expects after both files are downloaded.
+        def digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(java.nio.file.Files.readAllBytes(target.toPath()))
+                .encodeHex()
+                .toString()
+        targetChecksum.get().asFile.text = "${digest}  ${target.name}\n"
+        // The checksum names the file it belongs to, so an unexpected casing (a
+        // generated artifact renamed by something else, or a case-insensitive
+        // mount) would leave a checksum nobody can verify. Fail here instead of
+        // publishing an artifact whose own manifest does not match it.
+        def onDisk = target.parentFile.listFiles()?.findAll { it.name.equalsIgnoreCase(target.name) } ?: []
+        if (onDisk.size() != 1 || onDisk[0].name != target.name) {
+            throw new GradleException(
+                    "expected exactly ${target.name} in ${target.parentFile} but found " +
+                            onDisk.collect { it.name }.join(", "))
+        }
+        logger.lifecycle("Distributed ${target.name} (${target.length()} bytes)")
     }
 }
 
@@ -65,6 +121,37 @@ def huxeruiNdkVersion = huxeruiProperty("huxeruiNdkVersion")
 def huxeruiAbis = huxeruiProperty("huxeruiAbis").split(",")
 def huxeruiStl = huxeruiProperty("huxeruiStl")
 
+// Local model build parameters. They are read here rather than hardcoded so the
+// same Gradle invocation can produce both the small default artifact and the
+// full local-model one:
+//
+//   ./gradlew :app:assembleDebug \
+//       -PlinecodeEnableLocalModel=true -PlinecodeLocalModelBundle=true
+//
+// The native libraries are only packaged when both switches are on; a build
+// that enables the backend without bundling keeps the .so files out of the APK
+// so their size cost can be measured in isolation.
+def linecodeBooleanProperty = { String name, String fallback ->
+    def value = providers.gradleProperty(name).getOrElse(fallback)
+    value.trim().toLowerCase(Locale.ROOT) in ["true", "on", "yes", "1"]
+}
+def linecodeStringProperty = { String name, String fallback ->
+    providers.gradleProperty(name).getOrElse(fallback).trim()
+}
+def linecodeEnableLocalModel = linecodeBooleanProperty("linecodeEnableLocalModel", "false")
+def linecodeBundleLocalModel = linecodeBooleanProperty("linecodeLocalModelBundle", "false")
+def linecodeLocalModelCmakeArguments = [
+        "-DLINCODE_ENABLE_LOCAL_MODEL=${linecodeEnableLocalModel ? "ON" : "OFF"}",
+        "-DLINCODE_LOCAL_MODEL_BUNDLE=${linecodeBundleLocalModel ? "ON" : "OFF"}",
+        "-DLINCODE_LOCAL_MODEL_GPU_VULKAN=${linecodeBooleanProperty("linecodeLocalModelGpuVulkan", "true") ? "ON" : "OFF"}",
+        "-DLINCODE_LOCAL_MODEL_GPU_OPENCL=${linecodeBooleanProperty("linecodeLocalModelGpuOpenCL", "true") ? "ON" : "OFF"}",
+        "-DLINCODE_LLAMA_CPP_GIT_TAG=${linecodeStringProperty("linecodeLlamaCppGitTag", "b11201")}",
+]
+def linecodeLlamaCppSourceDir = linecodeStringProperty("linecodeLlamaCppSourceDir", "")
+if (!linecodeLlamaCppSourceDir.isEmpty()) {
+    linecodeLocalModelCmakeArguments.add("-DLINCODE_LLAMA_CPP_SOURCE_DIR=${linecodeLlamaCppSourceDir}")
+}
+
 android {
     buildFeatures {
         buildConfig = true
@@ -79,13 +166,14 @@ android {
         applicationId = "cn.lineai"
         minSdk = huxeruiMinSdk
         targetSdk = huxeruiTargetSdk
-        versionCode = 38
-        versionName = "1.3.4"
+        versionCode = 42
+        versionName = "1.5.2"
 
         externalNativeBuild {
             cmake {
                 arguments "-DANDROID_STL=${huxeruiStl}",
                         "-DHUXERUI_HOME=${huxeruiHome.absolutePath}"
+                arguments.addAll(linecodeLocalModelCmakeArguments)
             }
         }
 
@@ -137,6 +225,18 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    packaging {
+        jniLibs {
+            // A build that compiles the local model backend without bundling it
+            // still links llama.cpp, so its shared libraries exist in the CMake
+            // output. Excluding them here is what keeps that combination small
+            // instead of quietly shipping the runtime anyway.
+            if (linecodeEnableLocalModel && !linecodeBundleLocalModel) {
+                excludes += ["libllama*.so", "libggml*.so", "libmtmd*.so"]
+            }
+        }
     }
 
     externalNativeBuild {
@@ -215,6 +315,35 @@ androidComponents.onVariants(androidComponents.selector().all()) { variant ->
         })
     }
     variant.sources.assets.addGeneratedSourceDirectory(stageAssets) { it.outputDirectory }
+
+    // The version comes from the same `defaultConfig` literal the release
+    // workflow parses, so the artifact name cannot drift from the app's own.
+    def versionName = android.defaultConfig.versionName
+    // The unbundled build is a size-measurement artifact, not something to ship:
+    // it links llama.cpp but leaves the libraries out of the package. It carries
+    // its own tag so it cannot replace the real local-model APK.
+    def flavorTag
+    if (!linecodeEnableLocalModel) {
+        flavorTag = "slim"
+    } else if (linecodeBundleLocalModel) {
+        flavorTag = "localmodel"
+    } else {
+        flavorTag = "localmodel-unbundled"
+    }
+    def artifactBaseName =
+            "LineCodePro-${versionName}-${flavorTag}-${variant.buildType}"
+    def distRoot = rootProject.layout.projectDirectory.dir("dist")
+    def distributeApk = tasks.register(
+            "dist${variant.name.capitalize()}Apk", DistributeApk) {
+        apkDirectory.set(variant.artifacts.get(SingleArtifact.APK.INSTANCE))
+        fileBaseName.set(artifactBaseName)
+        targetApk.set(distRoot.file("${artifactBaseName}.apk"))
+        targetChecksum.set(distRoot.file("${artifactBaseName}.apk.sha256"))
+    }
+    // The assemble task is created after this callback runs, so it is matched
+    // lazily instead of looked up by name.
+    tasks.matching { it.name == "assemble${variant.name.capitalize()}" }
+            .configureEach { finalizedBy(distributeApk) }
 }
 
 dependencies {

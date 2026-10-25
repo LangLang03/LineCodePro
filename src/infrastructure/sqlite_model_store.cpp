@@ -71,6 +71,12 @@ Result<domain::ModelConfig> DecodeModel(const RowView &row) {
   auto context_size = row.Get<std::int64_t>(11);
   if (!context_size)
     return context_size.Error();
+  auto local_model_path = row.Get<std::optional<std::string>>(12);
+  if (!local_model_path)
+    return local_model_path.Error();
+  auto local_acceleration = row.Get<std::optional<std::string>>(13);
+  if (!local_acceleration)
+    return local_acceleration.Error();
 
   domain::ModelConfig model{
       .id = std::move(*id),
@@ -85,6 +91,9 @@ Result<domain::ModelConfig> DecodeModel(const RowView &row) {
       .compression_model_auto = *compression_auto,
       .compression_model_id = compression_id->value_or(""),
       .context_size = static_cast<int>(*context_size),
+      .local_model_path = local_model_path->value_or(""),
+      .local_acceleration = domain::ParseLocalAcceleration(
+          local_acceleration->value_or("AUTOMATIC")),
   };
   model.Normalize();
   return model;
@@ -93,7 +102,7 @@ Result<domain::ModelConfig> DecodeModel(const RowView &row) {
 constexpr std::string_view kSelectColumns =
     "id, name, protocol_type, provider_label, base_url, api_key, model_id, "
     "tool_call_limit, compression_model_enabled, compression_model_auto, "
-    "compression_model_id, context_size";
+    "compression_model_id, context_size, local_model_path, local_acceleration";
 
 Result<void> EnsureSchema(Transaction &transaction) {
   auto created =
@@ -203,9 +212,10 @@ SqliteModelStore::Save(domain::ModelConfig model) {
         "(id, name, protocol_type, provider_label, base_url, api_key, "
         "model_id, "
         "tool_call_limit, compression_model_enabled, compression_model_auto, "
-        "compression_model_id, context_size, selected, raw_json, created_at, "
+        "compression_model_id, context_size, local_model_path, "
+        "local_acceleration, selected, raw_json, created_at, "
         "updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?) "
         "ON CONFLICT(id) DO UPDATE SET "
         "name = excluded.name, protocol_type = excluded.protocol_type, "
         "provider_label = excluded.provider_label, base_url = "
@@ -215,7 +225,10 @@ SqliteModelStore::Save(domain::ModelConfig model) {
         "compression_model_enabled = excluded.compression_model_enabled, "
         "compression_model_auto = excluded.compression_model_auto, "
         "compression_model_id = excluded.compression_model_id, "
-        "context_size = excluded.context_size, selected = excluded.selected, "
+        "context_size = excluded.context_size, "
+        "local_model_path = excluded.local_model_path, "
+        "local_acceleration = excluded.local_acceleration, "
+        "selected = excluded.selected, "
         "updated_at = excluded.updated_at",
         model.id, model.name,
         std::string{domain::ModelProtocolStorageName(model.protocol)},
@@ -223,8 +236,10 @@ SqliteModelStore::Save(domain::ModelConfig model) {
         static_cast<std::int64_t>(model.tool_call_limit),
         model.compression_model_enabled, model.compression_model_auto,
         model.compression_model_id,
-        static_cast<std::int64_t>(model.context_size), selected, timestamp,
-        timestamp);
+        static_cast<std::int64_t>(model.context_size), model.local_model_path,
+        std::string{domain::LocalAccelerationStorageName(
+            model.local_acceleration)},
+        selected, timestamp, timestamp);
     if (!inserted)
       return inserted.Error();
     return {};

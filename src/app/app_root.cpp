@@ -35,8 +35,11 @@
 #include "application/tool_permission_service.h"
 #include "application/tool_review_broker.h"
 #include "application/user_agreement.h"
+#include "domain/prompt_template.h"
 #include "infrastructure/app_logger.h"
 #include "infrastructure/hux_completion_gateway.h"
+#include "infrastructure/local_model_completion_gateway.h"
+#include "infrastructure/local_model_engine_factory.h"
 #include "infrastructure/hux_known_hosts_store.h"
 #include "infrastructure/hux_mcp_tool_invoker.h"
 #include "infrastructure/libssh2_transport.h"
@@ -166,6 +169,17 @@ namespace linecode::app {
   auto prompt_templates =
       huxerui::UseState(std::make_shared<application::PromptTemplateRepository>(
           settings_store.Get()));
+  // Prompt upgrades have to reach installs that already saved a copy of the old
+  // built-in text. The migration drops only overrides that still match a
+  // superseded default, plus keys for templates that no longer exist.
+  huxerui::Lifecycle([tasks, prompt_templates] {
+    tasks.Launch([repository = prompt_templates.Get()]() -> huxerui::Task<void> {
+      auto migrated = co_await repository->MigrateSupersededDefaults(
+          domain::SupersededPromptDefaults(), domain::kPromptTemplateRevision);
+      if (!migrated)
+        infrastructure::LogAppError("prompt_template_migration_failed");
+    });
+  });
   auto prompt_request_composer = huxerui::UseState(
       std::shared_ptr<application::CompletionRequestComposer>{std::make_shared<
           application::PromptRequestComposer>(
@@ -205,9 +219,15 @@ namespace linecode::app {
       huxerui::UseState(std::shared_ptr<application::SshSettingsService>{
           std::make_shared<infrastructure::PersistedSshSettings>(
               settings_store.Get(), ssh_runtime.Get())});
+  // A local GGUF model runs in this process, so the routing decorator picks the
+  // local engine for it and forwards every remote protocol to the HTTP gateway.
+  // With the local model support off, the engine is the placeholder that
+  // reports the backend as absent and the decorator is a pass-through.
   auto completion_gateway =
       huxerui::UseState(std::shared_ptr<application::CompletionGateway>{
-          std::make_shared<infrastructure::HuxCompletionGateway>(http)});
+          std::make_shared<infrastructure::LocalModelCompletionGateway>(
+              std::make_shared<infrastructure::HuxCompletionGateway>(http),
+              infrastructure::CreateLocalModelEngine())});
   auto mcp_tool_invoker =
       huxerui::UseState(std::shared_ptr<application::McpToolInvoker>{
           std::make_shared<infrastructure::HuxMcpToolInvoker>(http)});

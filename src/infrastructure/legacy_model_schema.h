@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS model_configs (
   compression_model_auto INTEGER NOT NULL DEFAULT 1,
   compression_model_id TEXT,
   context_size INTEGER NOT NULL DEFAULT 0,
+  local_model_path TEXT NOT NULL DEFAULT '',
+  local_acceleration TEXT NOT NULL DEFAULT 'AUTOMATIC',
   selected INTEGER NOT NULL DEFAULT 0,
   raw_json TEXT,
   created_at INTEGER NOT NULL,
@@ -79,6 +81,17 @@ inline constexpr std::array column_migrations{
         "context_size",
         "ALTER TABLE model_configs ADD COLUMN context_size INTEGER NOT NULL "
         "DEFAULT 0"},
+    // Databases written before the in-process GGUF backend existed have neither
+    // the imported weights path nor the accelerator preference. Existing rows
+    // are genuinely remote models, so the defaults leave them untouched.
+    ColumnMigration{
+        "local_model_path",
+        "ALTER TABLE model_configs ADD COLUMN local_model_path TEXT NOT NULL "
+        "DEFAULT ''"},
+    ColumnMigration{
+        "local_acceleration",
+        "ALTER TABLE model_configs ADD COLUMN local_acceleration TEXT NOT NULL "
+        "DEFAULT 'AUTOMATIC'"},
 };
 
 } // namespace linecode::infrastructure::legacy_model_schema

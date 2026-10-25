@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <utility>
 
+#include "application/local_model_support.h"
 #include "domain/model_config.h"
 
 namespace linecode::presentation {
@@ -91,10 +92,19 @@ struct ProtocolTabDecision final {
   ProtocolTabAction action{ProtocolTabAction::none};
 };
 
+// A build without the local model backend has no local protocol tab and no way
+// to enter the local form, so the decision is resolved here rather than left to
+// each call site to remember.
 [[nodiscard]] constexpr ProtocolTabDecision
 ResolveProtocolTabDecision(domain::ModelProtocol current,
                            domain::ModelProtocol target,
                            bool locked_preset) noexcept {
+  if constexpr (!application::local_model_enabled) {
+    if (target == domain::ModelProtocol::local_gguf ||
+        current == domain::ModelProtocol::local_gguf) {
+      return {};
+    }
+  }
   const bool selected = current == target;
   const bool enabled = !locked_preset || selected;
   if (!enabled)
@@ -106,6 +116,12 @@ ResolveProtocolTabDecision(domain::ModelProtocol current,
   if (!locked_preset)
     return {true, ProtocolTabAction::select_protocol};
   return {true, ProtocolTabAction::none};
+}
+
+// Whether the local protocol is offered at all. Views that render a protocol
+// list read this instead of testing the protocol against a hardcoded set.
+[[nodiscard]] constexpr bool LocalModelProtocolSelectable() noexcept {
+  return application::local_model_enabled;
 }
 
 } // namespace linecode::presentation

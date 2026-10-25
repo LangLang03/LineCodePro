@@ -23,12 +23,18 @@ struct ModelDraft final {
   std::string compression_model_id;
   std::string context_size;
   bool local{};
+  // Absolute path of the imported GGUF weights, only meaningful for a local
+  // model. Defaulted so existing drafts that name the field not at all still
+  // describe a complete draft.
+  std::string local_model_path{};
+  domain::LocalAcceleration local_acceleration{domain::LocalAcceleration::automatic};
 
   bool operator==(const ModelDraft &) const = default;
 };
 
 enum class ModelValidationCode : std::uint8_t {
   local_backend_unavailable,
+  missing_local_model_path,
   missing_name_or_model_id,
   missing_api_key,
   invalid_tool_call_limit,

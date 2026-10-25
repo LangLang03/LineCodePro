@@ -73,6 +73,10 @@ struct RegisteredTool final {
   // Read-only mode can expose only tools whose implementation explicitly
   // opts in. Unknown/extension tools therefore remain denied by default.
   bool allowed_in_read_only{};
+  // Set by tools that stay available in read-only mode but whose arguments can
+  // still change the target (the remote shell). The permission service then
+  // requires the `command` argument to pass `IsReadOnlyShellCommand`.
+  bool read_only_requires_safe_command{};
   // Exact permanent grants are intentionally limited to implementations that
   // can derive a stable, narrow action key.
   std::vector<PermanentGrantArgument> permanent_grant_arguments{};

@@ -21,6 +21,7 @@
 #include "application/token_usage_tracker.h"
 #include "application/tool_review_coordinator.h"
 #include "application/utf8_text.h"
+#include "presentation/components/chat_composer_controls.h"
 #include "presentation/components/chat_generation_runner.h"
 #include "presentation/line_theme.h"
 
@@ -310,6 +311,11 @@ std::string PillModelName(std::string_view name) {
 }
 
 constexpr float kModelPillTextMaxWidth = 128.0F;
+// The composer's control row also carries the reasoning pill and the primary
+// action. On a compact viewport those two plus the attach control already use
+// most of the width, so the model label gets a smaller one-line budget there;
+// the model picker still shows the complete name.
+constexpr float kCompactModelPillTextMaxWidth = 96.0F;
 
 TextStyle ModelPillTextStyle() {
   return ChatTextStyle(12.0F, FontWeight::Medium, colors::secondary);
@@ -320,13 +326,14 @@ TextStyle ModelPillTextStyle() {
 // clipped height then hides everything after the break. Shorten the label to
 // the longest prefix that still measures as one line with an ellipsis, using
 // the same paragraph measurement that layout and painting use.
-std::string FitModelPillLabel(std::string_view label, TextMeasurer &measurer) {
+std::string FitModelPillLabel(std::string_view label, TextMeasurer &measurer,
+                              float max_width) {
   if (label.empty())
     return {};
   const TextStyle style = ModelPillTextStyle();
-  const auto fits_one_line = [&measurer, &style](std::string_view text) {
-    return measurer.MeasureText(text, style, kModelPillTextMaxWidth)
-               .line_count <= 1U;
+  const auto fits_one_line = [&measurer, &style, max_width](
+                                 std::string_view text) {
+    return measurer.MeasureText(text, style, max_width).line_count <= 1U;
   };
   if (fits_one_line(label))
     return std::string{label};
@@ -536,13 +543,14 @@ using namespace huxerui;
   const auto chat_mode = state.chat_mode;
   auto slash_models = std::move(state.slash_models);
   auto slash_selected_model_id = std::move(state.selected_model_id);
-  auto reasoning_effort = std::move(state.reasoning_effort);
+  auto reasoning_effort = state.reasoning_effort;
   const auto input_settings = state.input_settings;
   auto current_project_id = std::move(state.current_project_id);
   auto prompt_context = std::move(state.prompt_context);
   const auto permission_mode = state.permission_mode;
   auto toast = std::move(state.toast);
   auto auto_compaction = std::move(state.auto_compaction);
+  auto local_model_load = std::move(state.local_model_load);
   auto token_usage = std::move(state.token_usage);
   auto retry_labels = std::move(state.retry_labels);
   auto show_attachment_picker = std::move(actions.show_attachment_picker);
@@ -563,6 +571,7 @@ using namespace huxerui;
           .skills = skills,
           .compaction = compaction_service,
           .auto_compaction = auto_compaction,
+          .local_model_load = local_model_load,
       },
       tool_reviews, pending_messages, tasks, active_generation, revision,
       std::move(current_project_id), std::move(prompt_context), permission_mode,
@@ -730,10 +739,17 @@ using namespace huxerui;
       FindSlashModel(slash_models.Get(), slash_selected_model_id.Get());
   // The pill is one clipped line, so it shows the model's own name segment and
   // elides anything that still would not fit; the picker keeps the full name.
+  // The pill is one clipped line, so the budget it is measured against belongs
+  // to the viewport: a compact one also carries the reasoning pill and the
+  // primary action.
+  const float model_pill_text_budget =
+      UseViewportClass() == ViewportClass::Compact ? kCompactModelPillTextMaxWidth
+                                                   : kModelPillTextMaxWidth;
   std::string model_label;
   if (selected_model != nullptr) {
-    model_label = FitModelPillLabel(PillModelName(SlashModelName(*selected_model)),
-                                    UseTextMeasurer());
+    model_label =
+        FitModelPillLabel(PillModelName(SlashModelName(*selected_model)),
+                          UseTextMeasurer(), model_pill_text_budget);
   } else {
     model_label = UseString(app::strings::slash_command_model_title);
   }
@@ -741,7 +757,7 @@ using namespace huxerui;
   View model_pill =
       ComposerPill({Text(model_label)
                         .Style(ModelPillTextStyle())
-                        .With(Frame{.max_width = kModelPillTextMaxWidth,
+                        .With(Frame{.max_width = model_pill_text_budget,
                                     .max_height = 16.0F},
                               ClipChildren()),
                     ComposerPillIcon(app::images::chevron_down, 12.0F)})
@@ -750,8 +766,8 @@ using namespace huxerui;
               show_model_picker();
           })
           .With(Focusable(), PointerCursor(PointerCursorKind::Hand));
-  const auto current_effort = reasoning_effort.Get().value_or(
-      domain::ReasoningEffort::medium);
+  const auto current_effort =
+      reasoning_effort.value_or(domain::ReasoningEffort::medium);
   View reasoning_pill =
       ComposerPill({ComposerPillIcon(app::images::brain, 14.0F),
                     Text(ReasoningLevelLabel(current_effort))
@@ -798,7 +814,7 @@ using namespace huxerui;
                   // its content the way the ChatGPT/DSH composer does.
                   .With(Frame{.min_height = 40.0F, .max_height = 132.0F},
                         ClipChildren()),
-              Row{
+              ComposerControlRow(
                   ComposerAction(
                       ComposerActionVisual{
                           .icon = app::images::plus,
@@ -812,9 +828,7 @@ using namespace huxerui;
                           [show_image_picker = std::move(show_image_picker)](
                               const LongPressEvent &) { show_image_picker(); })
                       .With(LongPressGesture{}),
-                  Spacer(),
-                  std::move(model_pill),
-                  std::move(reasoning_pill),
+                  std::move(model_pill), std::move(reasoning_pill),
                   ComposerAction(
                       ComposerActionVisual{
                           .icon = primary_action.icon,
@@ -824,9 +838,7 @@ using namespace huxerui;
                                                  : Color::Transparent(),
                           .icon_size = primary_action.icon_size,
                       },
-                      can_send, send),
-              }
-                  .With(Spacing(6.0F), CrossAlign(CrossAxisAlignment::Center)),
+                      can_send, send)),
           }
               .With(Spacing(2.0F), CrossAlign(CrossAxisAlignment::Stretch)),
       }

@@ -10,6 +10,7 @@
 #include "application/auto_compaction_service.h"
 #include "application/behavior_settings_repository.h"
 #include "application/chat_session.h"
+#include "application/completion_retry_policy.h"
 #include "application/context_compaction.h"
 #include "application/generation_controller.h"
 #include "application/mcp_completion_loop.h"
@@ -33,8 +34,37 @@ std::int64_t NowMilliseconds() noexcept {
       .count();
 }
 
-// Legacy `GenerationFlowController.RETRY_DELAY_MS`.
-constexpr auto kRetryDelay = std::chrono::milliseconds{5000};
+// Legacy `GenerationFlowController.RETRY_DELAY_MS` was a fixed 5s for every
+// failure. The replacement policy (application/completion_retry_policy.h)
+// classifies the error, backs off exponentially with jitter, honours
+// `Retry-After`, and refuses to replay a tool loop that already changed the
+// workspace. The seed only exists to spread retries across devices.
+[[nodiscard]] std::uint64_t RetryJitterSeed(int attempt) noexcept {
+  const auto ticks = static_cast<std::uint64_t>(
+      std::chrono::steady_clock::now().time_since_epoch().count());
+  return ticks + static_cast<std::uint64_t>(attempt) * 0x9E3779B97F4A7C15ULL;
+}
+
+// Marks the window in which a local turn loads its weights, so the status row
+// can show the engine's percentage instead of the generic working label.
+class LocalModelLoadGuard final {
+public:
+  explicit LocalModelLoadGuard(
+      std::shared_ptr<LocalModelLoadUiState> state) noexcept
+      : state_(std::move(state)) {
+    if (state_)
+      state_->Begin();
+  }
+  ~LocalModelLoadGuard() {
+    if (state_)
+      state_->Finish();
+  }
+  LocalModelLoadGuard(const LocalModelLoadGuard &) = delete;
+  LocalModelLoadGuard &operator=(const LocalModelLoadGuard &) = delete;
+
+private:
+  std::shared_ptr<LocalModelLoadUiState> state_;
+};
 
 class DefaultChatGenerationRunner final
     : public ChatGenerationRunner,
@@ -74,6 +104,7 @@ public:
 
     last_stream_update_ = {};
     stream_update_scheduled_ = false;
+    last_progress_at_ = std::chrono::steady_clock::now();
     revision_ += 1;
     const std::string conversation_id{
         dependencies_.session->CurrentConversationId()};
@@ -81,12 +112,65 @@ public:
         dependencies_.session->Conversations(),
         dependencies_.session->Messages(), current_project_id_, conversation_id,
         NowMilliseconds());
+    const auto generation_id = work->generation_id;
     auto self = shared_from_this();
     active_generation_ = tasks_.Launch([self = std::move(self), conversation_id,
                                         user_text, turn = std::move(turn),
                                         work = std::move(*work)]() mutable {
       return self->Run(std::move(work), std::move(turn),
                        std::move(conversation_id), std::move(user_text));
+    });
+    // Idle watchdog. The transport's deadline covers the whole operation, so a
+    // socket that stays open without sending anything would keep the UI
+    // "generating" for the full ten minutes. Cancelling the generation marks it
+    // non-current, which is also what stops the retry loop from restarting it.
+    tasks_.Launch([self = shared_from_this(), generation_id]() -> Task<void> {
+      // The engine reads the GGUF weights before the first token can exist, and
+      // during that window no stream event reaches the surface. Republish as the
+      // reported percentage moves and treat it as liveness, so a slow cold load
+      // neither freezes the status row nor trips the idle watchdog.
+      auto last_percent = -1;
+      while (self->dependencies_.generation->State().generation_id ==
+                 generation_id &&
+             self->dependencies_.generation->State().phase ==
+                 application::GenerationPhase::running) {
+        co_await Delay(std::chrono::milliseconds{100});
+        const auto *load = self->dependencies_.local_model_load.get();
+        if (load == nullptr || !load->loading.load(std::memory_order_relaxed))
+          continue;
+        const int percent = load->percent.load(std::memory_order_relaxed);
+        self->last_progress_at_ = std::chrono::steady_clock::now();
+        if (percent == last_percent)
+          continue;
+        last_percent = percent;
+        self->revision_ += 1;
+      }
+    });
+    const auto request_handle = active_generation_.Get();
+    tasks_.Launch([self = shared_from_this(), request_handle,
+                   generation_id]() -> Task<void> {
+      while (true) {
+        co_await Delay(kCompletionIdlePollInterval);
+        const auto &state = self->dependencies_.generation->State();
+        if (state.phase != application::GenerationPhase::running ||
+            state.generation_id != generation_id)
+          co_return;
+        if (std::chrono::steady_clock::now() - self->last_progress_at_ <
+            kCompletionIdleTimeout)
+          continue;
+        // A stalled request is a terminal failure like any other, so it is
+        // recorded in the transcript where it can still be read afterwards.
+        // The toast it used to show disappeared before that was possible.
+        static_cast<void>(self->dependencies_.generation->Fail(
+            generation_id,
+            application::CompletionError{
+                .code = application::CompletionErrorCode::timeout,
+                .message = self->retry_labels_.idle_timeout}));
+        self->dependencies_.generation->Cancel();
+        request_handle.Cancel();
+        self->revision_ += 1;
+        co_return;
+      }
     });
     return true;
   }
@@ -412,11 +496,17 @@ private:
         .stream = true,
         .permission_scope = current_project_id_,
     };
+    // A local turn cannot stream until the weights are in memory. Marking the
+    // window lets the status row show the engine's percentage instead of a bare
+    // "working" label, and clears it once the attempt has produced an outcome.
+    const bool local_turn =
+        request.model.protocol == domain::ModelProtocol::local_gguf;
+    std::optional<LocalModelLoadGuard> load_guard;
+    if (local_turn)
+      load_guard.emplace(dependencies_.local_model_load);
     std::optional<application::CompletionResponse> response;
-    // Legacy `MAX_RETRIES = 3` / `RETRY_DELAY_MS = 5000`: the first failure
-    // announces attempt 2 of 3, the second announces 3 of 3, and the third
-    // gives up.
-    for (int attempt = 0; attempt < kMaxGenerationAttempts; ++attempt) {
+    for (int attempt = 0; attempt < application::kMaximumCompletionAttempts;
+         ++attempt) {
       auto current_response = co_await dependencies_.completion_loop->Complete(
           request, prompt_context,
           application::CompletionObserver{
@@ -426,6 +516,13 @@ private:
                     if (dependencies_.generation->Observe(generation_id, event))
                       PublishStreamUpdate(event, generation_id);
                   },
+              // Fired on the engine's loading thread, so only the atomic state
+              // is touched here; the poller above republishes a revision.
+              .on_load_progress =
+                  [load = dependencies_.local_model_load](int percent) {
+                    if (load)
+                      load->Report(percent);
+                  },
               .on_tool_review = ToolReviewer(),
           });
       if (!dependencies_.generation->IsCurrent(work.generation_id))
@@ -434,11 +531,25 @@ private:
         response = std::move(*current_response);
         break;
       }
-      const int next_attempt = attempt + 1;
-      if (next_attempt >= kMaxGenerationAttempts) {
-        auto failure = std::move(current_response.error());
+      auto failure = std::move(current_response.error());
+      const auto decision = application::DecideCompletionRetry(
+          application::RetryInput{
+              .code = failure.code,
+              .http_status = failure.http_status,
+              .retry_after_seconds = failure.retry_after_seconds,
+              .executed_tool_calls = failure.executed_tool_calls,
+              .mutating_tool_calls = failure.mutating_tool_calls,
+              .attempt = attempt,
+          },
+          RetryJitterSeed(attempt));
+      if (!decision.retry) {
         failure.message =
             FormatModelFailed(retry_labels_.failed, failure.message);
+        if (decision.block_reason ==
+            application::RetryBlockReason::state_changing_tools_ran) {
+          failure.message += "\n\n";
+          failure.message += retry_labels_.skipped_writes;
+        }
         FailAndContinue(work.generation_id, std::move(failure));
         co_return;
       }
@@ -448,15 +559,15 @@ private:
           dependencies_.generation->ResetAttempt(work.generation_id));
       domain::ChatMessage notice;
       notice.role = domain::MessageRole::assistant;
-      notice.content = FormatRetryNotice(retry_labels_, next_attempt + 1,
-                                         current_response.error().message);
+      notice.content = FormatRetryNotice(retry_labels_, attempt + 2,
+                                         failure.message);
       notice.retry_notice = true;
       notice.processing_started_at = NowMilliseconds();
       notice.processing_finished_at = notice.processing_started_at;
       static_cast<void>(
           dependencies_.session->AppendAssistant(std::move(notice)));
       revision_ += 1;
-      co_await Delay(kRetryDelay);
+      co_await Delay(decision.delay);
       if (!dependencies_.generation->IsCurrent(work.generation_id))
         co_return;
     }
@@ -489,6 +600,9 @@ private:
   void PublishStreamUpdate(const application::CompletionEvent &event,
                            std::uint64_t generation_id) {
     const auto now = std::chrono::steady_clock::now();
+    // Every event counts as progress for the idle watchdog, even when the
+    // repaint below is throttled: otherwise a fast stream would look stalled.
+    last_progress_at_ = now;
     constexpr auto kMinimumInterval = std::chrono::milliseconds{50};
     const bool tool_event =
         std::holds_alternative<application::CompletionToolCallEvent>(event);
@@ -519,6 +633,8 @@ private:
 
   ChatGenerationDependencies dependencies_;
   std::chrono::steady_clock::time_point last_stream_update_{};
+  // Last time any stream event arrived; read by the idle watchdog.
+  std::chrono::steady_clock::time_point last_progress_at_{};
   bool stream_update_scheduled_{};
   RetryLabels retry_labels_;
   std::shared_ptr<application::ToolReviewCoordinator> tool_reviews_;

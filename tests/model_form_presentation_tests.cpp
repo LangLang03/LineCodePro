@@ -6,6 +6,7 @@
 namespace {
 
 using linecode::domain::ModelProtocol;
+using linecode::presentation::LocalModelProtocolSelectable;
 using linecode::presentation::ModelFormLayoutMetrics;
 using linecode::presentation::ModelFormSectionLabelKind;
 using linecode::presentation::ModelFormSectionLabelMetricsFor;
@@ -29,28 +30,33 @@ void LayoutMetricsMatchMeasuredLegacyControls() {
              .line_box_height == 15.24F);
 }
 
+// This target compiles without the local model backend, which is the default
+// configuration. The local protocol therefore exists only when the build
+// compiled it, and these assertions pin that branch; the enabled branch is
+// covered by `local_model_enabled_tests`.
 void NewRemoteFormSelectsProtocolsAndRedirectsLocalEntry() {
   const auto codex = ResolveProtocolTabDecision(
       ModelProtocol::openai_compatible, ModelProtocol::codex_responses, false);
   EXPECT_EXPRESSION(codex.enabled);
   EXPECT_EXPRESSION(codex.action == ProtocolTabAction::select_protocol);
 
+  EXPECT_EXPRESSION(!LocalModelProtocolSelectable());
   const auto local = ResolveProtocolTabDecision(
       ModelProtocol::openai_compatible, ModelProtocol::local_gguf, false);
-  EXPECT_EXPRESSION(local.enabled);
-  EXPECT_EXPRESSION(local.action == ProtocolTabAction::prompt_local_entry);
+  EXPECT_EXPRESSION(!local.enabled);
+  EXPECT_EXPRESSION(local.action == ProtocolTabAction::none);
 }
 
 void NewLocalFormKeepsTabsOpaqueAndRedirectsRemoteEntry() {
   const auto remote = ResolveProtocolTabDecision(
       ModelProtocol::local_gguf, ModelProtocol::openai_compatible, false);
-  EXPECT_EXPRESSION(remote.enabled);
-  EXPECT_EXPRESSION(remote.action == ProtocolTabAction::prompt_custom_entry);
+  EXPECT_EXPRESSION(!remote.enabled);
+  EXPECT_EXPRESSION(remote.action == ProtocolTabAction::none);
 
   const auto local = ResolveProtocolTabDecision(
       ModelProtocol::local_gguf, ModelProtocol::local_gguf, false);
-  EXPECT_EXPRESSION(local.enabled);
-  EXPECT_EXPRESSION(local.action == ProtocolTabAction::prompt_local_entry);
+  EXPECT_EXPRESSION(!local.enabled);
+  EXPECT_EXPRESSION(local.action == ProtocolTabAction::none);
 }
 
 void LockedFormsDisableOtherProtocolsWithoutDimmingTheActiveTab() {

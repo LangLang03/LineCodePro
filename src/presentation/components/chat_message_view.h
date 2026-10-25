@@ -53,6 +53,9 @@ MessageBubble(const domain::ChatMessage &message,
     const TutorialMarkdownCopyHandler &on_copy,
     const chat_timeline::ToolRendererContext &context);
 
-[[huxerui::composable]] huxerui::View StreamingMessageStatus(bool thinking);
+// Renders the live turn status. `load_percent` replaces the generic working
+// label while a local model is still reading its weights into memory.
+[[huxerui::composable]] huxerui::View
+StreamingMessageStatus(bool thinking, std::optional<int> load_percent = std::nullopt);
 
 } // namespace linecode::presentation::chat_message

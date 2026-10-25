@@ -23,6 +23,7 @@ namespace {
 namespace json = linecode::infrastructure::archive_json;
 using linecode::infrastructure::DecodeLegacyArchive;
 using linecode::infrastructure::EncodeLegacyArchive;
+using linecode::infrastructure::EncodeLegacyModelJson;
 using linecode::infrastructure::ZipEntryData;
 
 std::string ReadFixture() {
@@ -146,6 +147,83 @@ void EmptyDataProducesAValidAsyncStorage() {
   EXPECT_EXPRESSION(encoding.conversation_files.empty());
 }
 
+// A local model's imported path and accelerator preference survive an export and
+// the matching import, while a remote model's JSON keeps the exact shape it had
+// before local models existed.
+void LocalModelStateSurvivesTheLegacyRoundTrip() {
+  linecode::domain::ModelConfig remote;
+  remote.id = "remote-1";
+  remote.name = "Remote";
+  remote.protocol = linecode::domain::ModelProtocol::openai_compatible;
+  remote.provider_label = "OpenAI";
+  remote.base_url = "https://api.example.com/v1";
+  remote.api_key = "secret";
+  remote.model_id = "gpt-fixture";
+  remote.tool_call_limit = 200;
+  remote.Normalize();
+  EXPECT_EXPRESSION(EncodeLegacyModelJson(remote).find("localModel") ==
+                    std::string::npos);
+
+  linecode::domain::ModelConfig local;
+  local.id = "local-1";
+  local.name = "Local";
+  local.protocol = linecode::domain::ModelProtocol::local_gguf;
+  local.provider_label = "Local";
+  local.model_id = "Qwen2.5-7B-Instruct";
+  local.tool_call_limit = 200;
+  local.context_size = 8192;
+  local.local_model_path = "/data/models/Qwen2.5-7B-Instruct-Q4_K_M.gguf";
+  local.local_acceleration = linecode::domain::LocalAcceleration::gpu;
+  local.Normalize();
+
+  const auto encoded = EncodeLegacyModelJson(local);
+  auto parsed = json::Parse(encoded);
+  EXPECT_EXPRESSION(parsed.has_value());
+  const auto *object = parsed ? json::AsObject(&*parsed) : nullptr;
+  EXPECT_EXPRESSION(object != nullptr);
+  if (object == nullptr) {
+    return;
+  }
+  const auto *nested = json::AsObject(json::Find(*object, "localModel"));
+  EXPECT_EXPRESSION(nested != nullptr);
+  if (nested != nullptr) {
+    EXPECT_EXPRESSION(*json::AsString(json::Find(*nested, "acceleration")) ==
+                      "GPU");
+    EXPECT_EXPRESSION(*json::AsString(json::Find(*nested, "localPath")) ==
+                      "/data/models/Qwen2.5-7B-Instruct-Q4_K_M.gguf");
+  }
+
+  // Feed the exported entry back through the reader. Decoding is driven by the
+  // `@lineai_models` value of `async-storage.json`, which is the only entry it
+  // needs.
+  const auto model_list =
+      json::Serialize(json::Array{json::Value{*object}});
+  const auto storage = json::Serialize(json::Array{json::Value{json::Object{
+      {"key", std::string{"@lineai_models"}},
+      {"value", model_list},
+  }}});
+  const auto *begin = reinterpret_cast<const std::byte *>(storage.data());
+  std::vector<ZipEntryData> entries{ZipEntryData{
+      .name = "async-storage.json",
+      .content = huxerui::Bytes(begin, begin + storage.size()),
+  }};
+
+  auto decoded = DecodeLegacyArchive(entries, 0);
+  EXPECT_EXPRESSION(decoded.has_value());
+  if (!decoded.has_value() || decoded->models.empty()) {
+    return;
+  }
+  const auto &config = decoded->models.front().config;
+  EXPECT_EXPRESSION(config.protocol ==
+                    linecode::domain::ModelProtocol::local_gguf);
+  EXPECT_EXPRESSION(config.local_model_path ==
+                    "/data/models/Qwen2.5-7B-Instruct-Q4_K_M.gguf");
+  EXPECT_EXPRESSION(config.local_acceleration ==
+                    linecode::domain::LocalAcceleration::gpu);
+  EXPECT_EXPRESSION(config.context_size == 8192);
+  EXPECT_EXPRESSION(config.model_id == "Qwen2.5-7B-Instruct");
+}
+
 } // namespace
 
 TEST(legacy_archive_writer_tests, LegacySuite) {
@@ -153,6 +231,7 @@ TEST(legacy_archive_writer_tests, LegacySuite) {
   ReEncodingReproducesTheLegacyEntries();
   ConversationMetadataMatchesTheEmittedFile();
   EmptyDataProducesAValidAsyncStorage();
+  LocalModelStateSurvivesTheLegacyRoundTrip();
   std::cout << "legacy_archive_writer_tests passed\n";
   return;
 }

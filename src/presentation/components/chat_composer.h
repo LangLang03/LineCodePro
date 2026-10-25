@@ -68,9 +68,10 @@ struct ViewState final {
   domain::ChatMode chat_mode{domain::ChatMode::chat};
   huxerui::State<std::vector<domain::ModelConfig>> slash_models;
   huxerui::State<std::string> selected_model_id;
-  // Reasoning depth shown by the composer's control row; owned by the screen so
-  // the picker sheet and the pill never disagree.
-  huxerui::State<std::optional<domain::ReasoningEffort>> reasoning_effort;
+  // Reasoning depth shown by the composer's control row. It is a value derived
+  // from the shared behaviour-settings cell, so the pill can never disagree
+  // with the level the request actually uses.
+  std::optional<domain::ReasoningEffort> reasoning_effort;
   domain::InputSettings input_settings;
   std::string current_project_id;
   application::PromptAssemblyContext prompt_context;
@@ -78,6 +79,7 @@ struct ViewState final {
       domain::ToolPermissionMode::automatic};
   huxerui::ToastHandle toast;
   std::shared_ptr<AutoCompactionUiState> auto_compaction;
+  std::shared_ptr<LocalModelLoadUiState> local_model_load;
   std::shared_ptr<application::TokenUsageTracker> token_usage;
   RetryLabels retry_labels;
 };

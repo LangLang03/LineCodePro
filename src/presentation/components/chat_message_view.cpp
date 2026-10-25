@@ -321,10 +321,8 @@ private:
   std::optional<double> start_timestamp_;
 };
 
-[[huxerui::composable]] View WorkingStatus(bool thinking) {
-  const std::string label =
-      UseString(thinking ? app::strings::chat_assistant_thinking
-                         : app::strings::chat_assistant_working);
+// Renders the animated status row for an already-resolved label.
+[[huxerui::composable]] View WorkingStatusLabel(const std::string &label) {
   const auto &locale = UseEnvironment<Locale>();
   const TextStyle style{Font::Monospace(13.0F), colors::secondary};
   const auto metrics = UseTextMeasurer().MeasureRun(
@@ -343,6 +341,12 @@ private:
                 .accent = colors::accent,
                 .secondary = colors::secondary,
             });
+}
+
+[[huxerui::composable]] View WorkingStatus(bool thinking) {
+  return WorkingStatusLabel(UseString(
+      thinking ? app::strings::chat_assistant_thinking
+               : app::strings::chat_assistant_working));
 }
 
 View MessageBubble(const domain::ChatMessage &message,
@@ -552,8 +556,17 @@ View StreamingMessageChangedFiles(
                                .left = 16.0F}));
 }
 
-[[huxerui::composable]] View StreamingMessageStatus(bool thinking) {
-  return WorkingStatus(thinking).With(
+[[huxerui::composable]] View StreamingMessageStatus(
+    bool thinking, std::optional<int> load_percent) {
+  // Both branches resolve exactly one label, so the hook sequence does not
+  // change when a load starts or finishes mid-turn.
+  const std::string label =
+      load_percent
+          ? UseString(StringVariant::Format(
+                app::strings::chat_local_model_loading, *load_percent))
+          : UseString(thinking ? app::strings::chat_assistant_thinking
+                               : app::strings::chat_assistant_working);
+  return WorkingStatusLabel(label).With(
       Padding(EdgeInsets{.right = 16.0F, .bottom = 28.0F, .left = 16.0F}));
 }
 

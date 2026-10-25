@@ -165,6 +165,46 @@ huxerui::View Probe() {
           "/workspace");
       EXPECT_EXPRESSION(decision &&
                         *decision == application::ToolPermissionDecision::deny);
+      // The remote shell opts into the read-only command guard: reads still run,
+      // anything that can change the target is refused with a model-facing
+      // reason instead of a generic refusal.
+      const application::RegisteredTool guarded_shell{
+          .name = "shell_execute",
+          .description = "shell",
+          .parameters_json = R"({"type":"object"})",
+          .allowed_in_read_only = true,
+          .read_only_requires_safe_command = true,
+          .permanent_grant_arguments = {{.name = "command", .required = true}},
+      };
+      std::string deny_reason;
+      decision = co_await scenario->permissions->Evaluate(
+          guarded_shell, call, "/workspace", &deny_reason);
+      EXPECT_EXPRESSION(decision &&
+                        *decision ==
+                            application::ToolPermissionDecision::execute);
+      EXPECT_EXPRESSION(deny_reason.empty());
+
+      decision = co_await scenario->permissions->Evaluate(
+          guarded_shell,
+          application::CompletionToolCall{
+              .id = "call-read-only-write",
+              .name = "shell_execute",
+              .arguments_json = R"({"command":"rm -rf build"})"},
+          "/workspace", &deny_reason);
+      EXPECT_EXPRESSION(decision &&
+                        *decision == application::ToolPermissionDecision::deny);
+      EXPECT_EXPRESSION(!deny_reason.empty());
+
+      decision = co_await scenario->permissions->Evaluate(
+          guarded_shell,
+          application::CompletionToolCall{
+              .id = "call-read-only-pipe",
+              .name = "shell_execute",
+              .arguments_json = R"({"command":"git diff --stat | head -n 5"})"},
+          "/workspace", &deny_reason);
+      EXPECT_EXPRESSION(decision &&
+                        *decision ==
+                            application::ToolPermissionDecision::execute);
 
       EXPECT_EXPRESSION(co_await scenario->permissions->ClearPermanentGrants());
       state = co_await scenario->permissions->Load();

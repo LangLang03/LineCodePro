@@ -284,7 +284,7 @@ const std::array kWebToolPlans{
                              "打开网页并提取其中可阅读的文本。"},
         // BaseTool.isAllowedInReadonlyMode() defaults to false and
         // WebFetchTool does not override it.
-        .allowed_in_read_only = false,
+        .allowed_in_read_only = true,
         .agent_category = AgentToolCategory::read,
         .execute = &ExecuteWebFetch,
     },
@@ -299,7 +299,7 @@ const std::array kWebToolPlans{
                          .chinese_description = "搜索在线来源以获取最新信息。"},
         // BaseTool.isAllowedInReadonlyMode() defaults to false and
         // WebSearchTool does not override it.
-        .allowed_in_read_only = false,
+        .allowed_in_read_only = true,
         .agent_category = AgentToolCategory::read,
         .execute = &ExecuteWebSearch,
     },

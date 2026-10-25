@@ -1188,9 +1188,9 @@ struct FileToolDescriptor final {
   FileToolExecutor execute;
 };
 
-// FileReadTool/GlobTool/ListDirectoryTool do not override
-// isAllowedInReadonlyMode(), so the BaseTool default (false) applies to every
-// row: the whole file_ops group stays denied in read-only mode.
+// Read-only mode must still be able to read and search, otherwise Chat and Plan
+// sessions cannot inspect the workspace they are asked about. Only the three
+// mutating tools stay denied.
 const std::array<FileToolDescriptor, 6> kFileTools{{
     {
         .name = kFileReadToolName,
@@ -1202,7 +1202,7 @@ const std::array<FileToolDescriptor, 6> kFileTools{{
                  "Read text or inspect a directory in the current workspace.",
              .chinese_name = "读取文件",
              .chinese_description = "读取当前工作区中的文本，或查看目录内容。"},
-        .allowed_in_read_only = false,
+        .allowed_in_read_only = true,
         .agent_category = AgentToolCategory::read,
         .agent_selected_by_default = true,
         .execute = &ExecuteFileRead,
@@ -1262,7 +1262,7 @@ const std::array<FileToolDescriptor, 6> kFileTools{{
                          .chinese_name = "查找文件",
                          .chinese_description =
                              "使用通配模式查找工作区中的文件。"},
-        .allowed_in_read_only = false,
+        .allowed_in_read_only = true,
         .agent_category = AgentToolCategory::read,
         .agent_selected_by_default = true,
         .execute = &ExecuteGlob,
@@ -1277,7 +1277,7 @@ const std::array<FileToolDescriptor, 6> kFileTools{{
                          .chinese_name = "列出目录",
                          .chinese_description =
                              "列出工作区目录中的文件和文件夹。"},
-        .allowed_in_read_only = false,
+        .allowed_in_read_only = true,
         .agent_category = AgentToolCategory::read,
         .agent_selected_by_default = false,
         .execute = &ExecuteListDirectory,

@@ -108,7 +108,12 @@ jobs:
           echo "code=$version_code" >> "$GITHUB_OUTPUT"
           echo "Releasing $version_name (code $version_code)"
 
-      - name: Build signed release APK
+      # Two independent artifacts are built and published: the slim APK, which
+      # carries no llama.cpp at all, and the local-model APK, which does. They
+      # are built in separate invocations because the switch is a build
+      # parameter, and the Gradle `dist` task names each one after the build
+      # that produced it so neither can replace the other.
+      - name: Build signed slim release APK
         timeout-minutes: 60
         env:
           HUXERUI_HOME: /home/runner/.local/share/HuxerUI
@@ -119,21 +124,57 @@ jobs:
             :app:validateReleaseSigning :app:assembleRelease \
             --build-cache --max-workers=8 --console=plain
 
+      # llama.cpp is resolved from the pinned revision by CMake. The job needs
+      # network access for that clone; the pin keeps the runtime reproducible.
+      - name: Build signed local model release APK
+        timeout-minutes: 90
+        env:
+          HUXERUI_HOME: /home/runner/.local/share/HuxerUI
+        run: |
+          set -euo pipefail
+          ./platform/android/gradlew -p platform/android \
+            :app:assembleRelease \
+            --build-cache --max-workers=8 --console=plain \
+            -PlinecodeEnableLocalModel=true \
+            -PlinecodeLocalModelBundle=true
+
+      - name: Verify the local model APK carries the runtime
+        run: |
+          set -euo pipefail
+          apk="$(ls platform/android/dist/*-localmodel-release.apk)"
+          test -n "$apk"
+          unzip -l "$apk" | grep -q "lib/arm64-v8a/libllama.so"
+          unzip -l "$apk" | grep -q "lib/arm64-v8a/libggml"
+          slim="$(ls platform/android/dist/*-slim-release.apk)"
+          test -n "$slim"
+          # The slim artifact must stay free of the runtime, which is the whole
+          # point of keeping the two builds apart.
+          if unzip -l "$slim" | grep -qiE "lib/arm64-v8a/(libllama|libggml)"; then
+            echo "slim APK unexpectedly contains llama.cpp libraries" >&2
+            exit 1
+          fi
+
       - name: Prepare release artifacts
         env:
           VERSION_NAME: ${{ steps.version.outputs.name }}
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          cp platform/android/app/build/outputs/apk/release/app-release.apk "artifacts/LineCodePro-$VERSION_NAME.apk"
+          for build in slim localmodel; do
+            cp "platform/android/dist/LineCodePro-${VERSION_NAME}-${build}-release.apk" \
+               "artifacts/LineCodePro-${VERSION_NAME}-${build}.apk"
+          done
           # Checksum the bare file name from inside `artifacts`. Hashing the
           # path wrote "artifacts/LineCodePro-....apk" into the file, which no
-          # longer matches once a user downloads the two files side by side.
+          # longer matches once a user downloads the files side by side.
           (
             cd artifacts
-            sha256sum "LineCodePro-$VERSION_NAME.apk" > "LineCodePro-$VERSION_NAME.apk.sha256"
+            for build in slim localmodel; do
+              sha256sum "LineCodePro-${VERSION_NAME}-${build}.apk" \
+                > "LineCodePro-${VERSION_NAME}-${build}.apk.sha256"
+            done
           )
-          cat "artifacts/LineCodePro-$VERSION_NAME.apk.sha256"
+          cat artifacts/*.sha256
 
       # Release notes come from `update.md`: take the block for the version
       # being released, the way the Java repository's workflow did, and fall
@@ -174,8 +215,11 @@ jobs:
             echo "---"
             echo
             echo "### 下载说明"
-            echo "- 下载 \`LineCodePro-${VERSION_NAME}.apk\` 直接安装"
-            echo "- 校验文件: \`LineCodePro-${VERSION_NAME}.apk.sha256\`"
+            echo "- \`LineCodePro-${VERSION_NAME}-slim.apk\`: 精简版，不含本地模型后端，体积最小"
+            echo "- \`LineCodePro-${VERSION_NAME}-localmodel.apk\`: 本地模型版，内置 llama.cpp"
+            echo "  （GGUF 模型文件需自行在应用内导入；GPU 加速取决于设备）"
+            echo "- 校验文件: 两个 APK 各自带一个 \`.sha256\`"
+            echo "- 两个包版本号相同，安装其一即可；本地模型版体积明显更大"
           } > release_notes.md
           cat release_notes.md
 

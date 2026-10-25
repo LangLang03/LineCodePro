@@ -28,7 +28,7 @@ TEST(behavior_settings_tests, LegacySuite) {
   using namespace linecode::presentation;
   constexpr auto presentations = MakePromptTemplatePresentationRegistry(
       [](PromptTemplateText text) { return text; });
-  static_assert(presentations.size() == 20);
+  static_assert(presentations.size() == 19);
   static_assert(FindPromptTemplatePresentation(presentations, "missing") ==
                 nullptr);
   static_assert(
@@ -42,7 +42,7 @@ TEST(behavior_settings_tests, LegacySuite) {
           ->builtin_source == PromptTemplateText::source_builtin_agent);
 
   const auto templates = BuiltInPromptTemplates();
-  EXPECT_EXPRESSION(templates.size() == 20);
+  EXPECT_EQ(templates.size(), 19U);
   EXPECT_EXPRESSION(templates.front().id == "systemPrompt");
   EXPECT_EXPRESSION(templates.back().id == "contextCompactionResponsesFallback");
   EXPECT_EXPRESSION(std::ranges::none_of(templates, [](const auto &item) {
@@ -51,7 +51,7 @@ TEST(behavior_settings_tests, LegacySuite) {
   EXPECT_EXPRESSION(std::ranges::all_of(templates, [](const auto &item) {
     return !item.id.empty() && !item.source.empty() && !item.default_text.empty();
   }));
-  EXPECT_EXPRESSION(templates.size() == presentations.size());
+  EXPECT_EQ(templates.size(), presentations.size());
   EXPECT_EXPRESSION(std::ranges::all_of(templates, [&presentations](const auto& item) {
     return FindPromptTemplatePresentation(presentations, item.id) != nullptr;
   }));
@@ -66,9 +66,30 @@ TEST(behavior_settings_tests, LegacySuite) {
   const auto chat = std::ranges::find(templates, std::string_view{"chatModeChat"},
                                       &PromptTemplateDefinition::id);
   EXPECT_EXPRESSION(chat != templates.end());
-  EXPECT_EXPRESSION(chat->default_text.starts_with("## Current Session Mode\nCurrent mode: Chat."));
+  EXPECT_EXPRESSION(chat->default_text.starts_with(
+      "## Current Session Mode\nCurrent mode: Chat (read-only)."));
   const auto work = std::ranges::find(templates, std::string_view{"workDirectory"},
                                       &PromptTemplateDefinition::id);
   EXPECT_EXPRESSION(work != templates.end());
   EXPECT_EXPRESSION(work->variables.size() == 5);
+  // The learning block is rendered by the memory renderer, so the editor must
+  // not offer a template that has no effect.
+  EXPECT_EXPRESSION(std::ranges::none_of(templates, [](const auto &item) {
+    return item.id == "learningContext";
+  }));
+  // Overfit and i18n guards: the catalog serves arbitrary projects in either UI
+  // language, so no default may name one ecosystem or carry Chinese prose.
+  EXPECT_EXPRESSION(std::ranges::none_of(templates, [](const auto &item) {
+    return item.default_text.find("TypeScript") != std::string::npos ||
+           item.default_text.find("React Native") != std::string::npos ||
+           item.default_text.find("你的任务") != std::string::npos;
+  }));
+  // The mode templates derive their tool lists from the permission layer.
+  const auto plan = std::ranges::find(templates, std::string_view{"chatModePlan"},
+                                      &PromptTemplateDefinition::id);
+  EXPECT_EXPRESSION(plan != templates.end());
+  EXPECT_EXPRESSION(std::ranges::find(plan->variables, std::string{"MODE_TOOLS_ALLOWED"}) !=
+                    plan->variables.end());
+  EXPECT_EXPRESSION(std::ranges::find(plan->variables, std::string{"MODE_TOOLS_BLOCKED"}) !=
+                    plan->variables.end());
 }
