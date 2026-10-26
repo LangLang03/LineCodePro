@@ -32,7 +32,8 @@ std::string FormatModelFailed(std::string_view template_text,
   return text;
 }
 
-void LocalModelLoadUiState::Begin() noexcept {
+void LocalModelLoadUiState::Begin(std::uint64_t generation) noexcept {
+  owner = generation;
   percent.store(0, std::memory_order_relaxed);
   loading.store(true, std::memory_order_relaxed);
 }
@@ -43,7 +44,9 @@ void LocalModelLoadUiState::Report(int value) noexcept {
   percent.store(std::clamp(value, 0, 100), std::memory_order_relaxed);
 }
 
-void LocalModelLoadUiState::Finish() noexcept {
+void LocalModelLoadUiState::Finish(std::uint64_t generation) noexcept {
+  if (owner != generation)
+    return;
   loading.store(false, std::memory_order_relaxed);
 }
 

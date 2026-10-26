@@ -75,6 +75,18 @@ struct LocalGenerationRequest final {
   // GGUF file. The runtime calls it from its loading thread, so an observer must
   // be thread-safe; the load finishes before the first piece is emitted.
   std::function<void(int)> on_load_progress{};
+  // Fired once the weights are in memory, on the task's runtime thread. A model
+  // that is already cached fires it without any progress report, and a failed
+  // load fires it before the failure is returned. Without it a caller cannot
+  // tell "still loading" from "loaded a while ago", which is what keeps a
+  // loading label on screen for the rest of the turn.
+  std::function<void()> on_load_finished{};
+  // Fired after every decode slice, including the ones that only evaluate the
+  // prompt. It carries no payload on purpose: it exists so a caller's stall
+  // detection can tell a slow turn from a stuck one. A tool-calling turn is
+  // buffered and streams nothing until the calls are extracted, so silence
+  // between slices is the normal state, not a sign of a stall.
+  std::function<void()> on_activity{};
 };
 
 struct LocalGenerationResult final {

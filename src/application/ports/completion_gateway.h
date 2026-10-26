@@ -197,6 +197,15 @@ struct CompletionObserver final {
   // can stream, as a percentage. Fired on the loading thread, so an observer
   // must be thread-safe. Remote gateways never call it.
   std::function<void(int)> on_load_progress{};
+  // Fired when the weights are in memory, including when they already were.
+  // Also fired on a failed load, before the failure is returned, so a caller
+  // can end the loading state instead of holding it for the whole turn. Runs on
+  // the task's runtime thread, unlike `on_load_progress`.
+  std::function<void()> on_load_finished{};
+  // Fired after every decode slice of a local turn, prompt evaluation included.
+  // A buffered tool turn streams nothing for minutes at a time, so this is the
+  // only sign of life a caller has while it runs.
+  std::function<void()> on_activity{};
   enum class ToolReviewDecision : std::uint8_t {
     reject,
     allow_once,

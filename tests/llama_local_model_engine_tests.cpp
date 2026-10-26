@@ -2,12 +2,15 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include <huxerui/huxerui.h>
 #include <huxerui/testing/ui_test.h>
@@ -25,6 +28,9 @@ using linecode::application::CompletionObserver;
 using linecode::application::CompletionRequest;
 using linecode::application::CompletionResponse;
 using linecode::application::CompletionRole;
+using linecode::application::LocalChatTurn;
+using linecode::application::LocalGenerationRequest;
+using linecode::application::LocalGenerationResult;
 using linecode::domain::LocalAcceleration;
 using linecode::domain::ModelProtocol;
 using linecode::infrastructure::LlamaLocalModelEngine;
@@ -61,6 +67,10 @@ struct Scenario final {
       real_result;
   std::string streamed;
   std::string real_text;
+  bool load_finished{};
+  bool piece_before_finish{};
+  int load_finishes{};
+  int activity_reports{};
   bool done{};
 };
 
@@ -120,9 +130,20 @@ huxerui::View Probe() {
                 .on_event = [scenario](const auto &event) {
                   if (const auto *delta = std::get_if<
                           linecode::application::CompletionTextDelta>(&event)) {
+                    // A piece can only exist after the weights do; a piece that
+                    // arrives before the load window closed would mean the
+                    // status row is still claiming to load while text streams.
+                    if (!scenario->load_finished) {
+                      scenario->piece_before_finish = true;
+                    }
                     scenario->real_text += delta->text;
                   }
                 },
+                .on_load_finished = [scenario] {
+                  scenario->load_finished = true;
+                  ++scenario->load_finishes;
+                },
+                .on_activity = [scenario] { ++scenario->activity_reports; },
                 .on_tool_review = {},
             });
       }
@@ -222,5 +243,102 @@ TEST(llama_local_model_engine_tests, RoutesLocalModelsAndLeavesRemoteOnesAlone) 
     // Streaming and the final response have to agree, because the caller
     // replaces the streamed bubble with `response.text`.
     EXPECT_EXPRESSION(active->real_text == response.text);
+    // The load window closed exactly once, before any text existed, and the
+    // decode loop kept the turn alive while it worked.
+    EXPECT_EXPRESSION(active->load_finishes == 1);
+    EXPECT_EXPRESSION(!active->piece_before_finish);
+    EXPECT_EXPRESSION(active->activity_reports > 0);
   }
+}
+
+namespace {
+
+// Observes the window a local generation opens while it reads weights and
+// closes once they are in memory. A file that exists but is not a GGUF reaches
+// the load without needing weights, which is the only failure path where the
+// engine itself -- not the caller's fallback -- has to close the window.
+struct LoadWindowScenario final {
+  std::shared_ptr<LlamaLocalModelEngine> engine;
+  std::string path;
+  std::vector<int> percentages;
+  int finished{};
+  int activity_reports{};
+  bool done{};
+  std::optional<std::expected<LocalGenerationResult,
+                              linecode::application::CompletionError>>
+      result;
+};
+
+std::shared_ptr<LoadWindowScenario> load_window;
+
+huxerui::View LoadWindowProbe() {
+  const auto scenario = load_window;
+  const auto tasks = huxerui::UseTaskScope();
+  huxerui::Lifecycle([scenario, tasks] {
+    const auto handle = tasks.Launch([scenario]() -> huxerui::Task<void> {
+      LocalGenerationRequest request{
+          .model_path = scenario->path,
+          .messages = {LocalChatTurn{.role = "user", .content = "hello"}},
+          .context_size = 512,
+          .acceleration = LocalAcceleration::automatic,
+          .max_tokens = 0,
+          .chat_template = {},
+          .on_load_progress =
+              [scenario](int percent) {
+                scenario->percentages.push_back(percent);
+              },
+          .on_load_finished = [scenario] { scenario->finished += 1; },
+          .on_activity = [scenario] { scenario->activity_reports += 1; },
+      };
+      scenario->result =
+          co_await scenario->engine->Generate(std::move(request), {});
+      scenario->done = true;
+    });
+    return [handle] { handle.Cancel(); };
+  });
+  return huxerui::Text("llama-load-window-probe");
+}
+
+} // namespace
+
+TEST(llama_local_model_engine_tests, ClosesTheLoadWindowWhenLoadingFails) {
+  const auto path =
+      std::filesystem::temp_directory_path() / "linecode-not-a-model.gguf";
+  {
+    std::ofstream file(path, std::ios::binary);
+    file << "not a gguf file";
+  }
+
+  auto scenario = std::make_shared<LoadWindowScenario>();
+  scenario->engine = std::make_shared<LlamaLocalModelEngine>();
+  scenario->path = path.string();
+  load_window = scenario;
+
+  const huxerui::Application application(LoadWindowProbe,
+                                        {.show_debug_overlay = false});
+  huxerui::testing::UiTest ui(application);
+  // PumpUntil bounds virtual time only, so the predicate has to yield real time
+  // to the worker that is failing the load.
+  ui.PumpUntil(
+      [] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        return load_window->done;
+      },
+      {.timeout = std::chrono::seconds(60),
+       .step = std::chrono::milliseconds(16),
+       .maximum_frames = 5000});
+
+  EXPECT_EXPRESSION(scenario->result.has_value());
+  if (scenario->result.has_value()) {
+    EXPECT_EXPRESSION(!scenario->result->has_value());
+  }
+  // The load window closed exactly once, even though the weights never arrived:
+  // a status row keyed on this callback goes back to "working" instead of
+  // sitting on "loading the model" for the rest of the turn.
+  EXPECT_EXPRESSION(scenario->finished == 1);
+  // The failed load never decoded anything, so there is no slice to report.
+  EXPECT_EXPRESSION(scenario->activity_reports == 0);
+
+  std::error_code ignored;
+  std::filesystem::remove(path, ignored);
 }
