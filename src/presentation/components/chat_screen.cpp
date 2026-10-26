@@ -975,6 +975,7 @@ void ShowTextSelectionDialog(const DialogHandle &dialogs, std::string content) {
       .model_missing = UseString(app::strings::chat_error_model_missing),
       .skipped_writes = UseString(app::strings::chat_retry_skipped_writes),
       .idle_timeout = UseString(app::strings::chat_idle_timeout),
+      .load_timeout = UseString(app::strings::chat_local_model_load_stalled),
   };
   const CompactionLabels compaction_labels{
       .failed_prefix = UseString(app::strings::context_compact_failed, ""),

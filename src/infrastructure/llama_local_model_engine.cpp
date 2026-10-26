@@ -579,6 +579,14 @@ LlamaLocalModelEngine::Generate(LocalGenerationRequest request,
       [session, request, resolved, gpu_layers]() -> Preparation {
         return Prepare(session, request, resolved, gpu_layers);
       });
+  // The load window closes here, not when the turn does, and on the runtime
+  // thread so an observer can touch UI state without a lock. With mmap the
+  // weights are mapped without being read, so the first decode is what actually
+  // pulls them off disk: holding the label until the first token would keep
+  // "loading the model" on screen for the whole answer.
+  if (request.on_load_finished) {
+    request.on_load_finished();
+  }
   if (!preparation.failure.empty() || session->context == nullptr) {
     co_return std::unexpected(CompletionError{
         .code = CompletionErrorCode::invalid_configuration,
@@ -597,6 +605,12 @@ LlamaLocalModelEngine::Generate(LocalGenerationRequest request,
           .code = CompletionErrorCode::transport,
           .message = slice.failure,
       });
+    }
+    // One slice is done: the prompt got shorter or a few tokens were decoded.
+    // Nothing may have been produced either way, which is why the turn reports
+    // the slice itself as its sign of life.
+    if (request.on_activity) {
+      request.on_activity();
     }
     if (slice.produced.empty()) {
       continue;

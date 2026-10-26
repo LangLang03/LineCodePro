@@ -66,6 +66,8 @@ LocalModelCompletionGateway::CompleteLocal(CompletionRequest request,
       .max_tokens = 0,
       .chat_template = {},
       .on_load_progress = observer.on_load_progress,
+      .on_load_finished = observer.on_load_finished,
+      .on_activity = observer.on_activity,
   };
 
   // A tool-calling turn is buffered rather than streamed. The envelope has to be
