@@ -1,23 +1,21 @@
-![LineCode Pro](https://socialify.git.ci/LangLang03/LineCodePro/image?description=1&font=KoHo&forks=1&issues=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FLangLang03%2FLineCodePro%2Frefs%2Fheads%2Fmaster%2F.idea%2Ficon.svg&name=1&pulls=1&stargazers=1&pattern=Circuit%20Board&theme=Auto)
+![LineCode Pro](https://socialify.git.ci/LangLang03/LineCodePro/image?description=1&font=KoHo&forks=1&issues=1&name=1&pulls=1&stargazers=1&pattern=Circuit%20Board&theme=Auto)
 
 # LineCode Pro
 
-中文 · [English](README.md)
+[English](README.md) · 中文
 
 [![CI](https://img.shields.io/github/actions/workflow/status/LangLang03/LineCodePro/ci.yml?branch=master&style=flat-square&label=CI)](https://github.com/LangLang03/LineCodePro/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/actions/workflow/status/LangLang03/LineCodePro/release.yml?style=flat-square&label=Release)](https://github.com/LangLang03/LineCodePro/releases)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-663399?style=flat-square)](LICENSE)
-[![C++23](https://img.shields.io/badge/C%2B%2B-23-00599C?style=flat-square&logo=cplusplus)](CMakeLists.txt)
-[![HuxerUI](https://img.shields.io/badge/HuxerUI-0.3.0-ff6b6b?style=flat-square)](https://github.com/HuxerUI/HuxerUI)
-[![Android 6.0+](https://img.shields.io/badge/Android-6.0%2B-3DDC84?style=flat-square&logo=android)](platform/android/gradle.properties)
+[![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B%20(API%2026)-3DDC84?style=flat-square&logo=android)](app/build.gradle.kts)
+[![Java 11](https://img.shields.io/badge/Java-11-ED8B00?style=flat-square&logo=openjdk)](app/build.gradle.kts)
 
-**LineCode Pro 是一个使用现代 C++23 与 HuxerUI 构建的原生跨平台 AI 编程工作区。** 它把流式对话、项目工具、多 Agent 工作流、远程执行、扩展能力和本地数据管理放进一套专注的界面中。
+**LineCode Pro 是一个用纯手写 Java 11 构建的 Android AI 编程工作区。** 它把流式对话、项目感知工具、多 Agent 工作流、远程执行、扩展系统和本地数据管理放进一个可随身携带的界面。
 
-它不只是聊天客户端。模型可以检查选定的工作区、提出或应用文件修改、执行经过授权的命令、搜索网页、处理图片、把任务委派给 Agent，并完成多轮工具调用；整个执行时间线始终可见、可复查。
+它不只是聊天客户端。模型可以查看选中的工作区、提出或应用文件修改、执行经批准的命令、搜索网页、处理图片、把任务交给 Agent，并在多轮工具调用中持续工作；完整的执行时间线始终可见、可审查。
 
-> LineCode Pro 正在积极开发中。在重要环境中使用 AI 生成的代码或命令前，请务必自行审查。
+> LineCode Pro 仍在积极开发中。在重要环境中使用 AI 生成的代码和命令前，请先审查。
 
-## 界面预览
+## 截图
 
 <table>
   <tr>
@@ -27,132 +25,138 @@
   </tr>
 </table>
 
-## 核心能力
+## 功能
 
-- **多协议模型对话**：OpenAI 兼容 Chat Completions、OpenAI/Codex Responses、Anthropic Messages 与本地 GGUF 模型共用同一套流式交互。
-- **完整工具循环**：读取、创建、编辑、搜索和整理项目文件，执行 Shell，搜索与读取网页，理解或生成图片，维护任务清单与记忆。
-- **Agent 与流水线**：把工作委派给 coding/explore Agent，运行存在依赖关系的阶段，实时查看进度，并把结果带回主对话。
-- **多种工作区**：支持 Android 本地目录、SSH 工作区、Termux，以及兼容的 Android 终端提供者服务。
-- **可审查的修改**：文件操作生成差异记录；思考、重试、授权、工具调用、输出和最终回复按真实顺序保留在对话时间线中。
-- **可扩展能力**：连接 HTTP MCP 服务、定义自定义 Agent、安装项目级或全局 `SKILL.md`，并通过 SkillHub 发现社区 Skills。
-- **长任务支持**：上下文用量跟踪、自动压缩、对话检索、长期记忆和可恢复历史，让多轮任务保持连续。
-- **原生主题与布局**：HuxerUI 界面覆盖亮色、深色、跟随系统、咖啡纸、高对比度、自定义颜色，以及抽屉、底部面板、弹窗、Markdown 和代码展示。
+- **模型无关的对话**：OpenAI 兼容 Chat Completions、OpenAI/Codex Responses、Anthropic Messages 和可选的本地 GGUF 模型共用一套流式接口。
+- **完整工具循环**：读写、创建、编辑、搜索项目文件；执行 Shell；搜索网页；理解或生成图片；更新任务列表；在明确启用时通过无障碍服务控制手机。
+- **Agent 与 Skills**：自定义 Agent、安装 `SKILL.md`、通过 SkillHub 发现社区 Skills、连接 HTTP MCP 服务。
+- **多种工作区**：应用管理的项目、SSH 主机、Termux，或通过 AIDL 接入的 Android 终端提供者。
+- **可审查的修改**：文件操作生成 diff 记录并支持回滚；思考、重试、审批、工具调用、输出和最终答案按顺序保留。
+- **长会话支持**：上下文占用统计、软/硬压缩、长期记忆、项目记忆和聊天记录检索。
+- **主题化手写界面**：明暗、跟随系统、纸张、高对比度、自定义配色、抽屉、Sheet、弹窗、Markdown 与代码展示，全部由 Java View 绘制，不使用 XML 布局。
 
-## 平台状态
+## 架构
+
+项目刻意拆分模块，避免行为重新坍缩回单个 Activity：
+
+```text
+app/                    Activity 壳、Manifest、资源、本地模型可选测试集
+modules/
+  core-*                模型 DTO、依赖注入、MVI、路由、设置
+  engine-*              协议编解码、提示词、HTTP 客户端、工具循环、本地模型、SkillHub
+  data                  SQLite schema v12、归档、迁移
+  tool-*                工具契约、内置工具、MCP、媒体、Agent、手机控制
+  ui-*                  主题 Token、i18n、组件、Markdown
+  feature-*             聊天、设置、模型、扩展、工作区、终端
+  platform-android      无障碍、保活、链接策略、调度器
+  runtime               装配、页面工厂、SAF/归档操作
+build-logic/            约定插件与机械守卫
+modules/arch-test/      包归属、依赖、纯度和卫生测试
+```
+
+架构规则与禁止事项见 [AGENT.md](AGENT.md)。新增模块必须同时加入 `settings.gradle.kts` 和 `modules/arch-test/.../Modules.java`。
+
+## 平台
 
 | 平台 | 状态 | 说明 |
 | --- | --- | --- |
-| Android 6.0+（API 23+） | 主要平台 | 发布包为 arm64；模拟器验证可启用 x86_64。包含 Android 专用的后台保活与 Termux 集成。 |
-| Windows | 开发中 | 原生 HuxerUI 目标与安装包配置；Android 专属的后台保活选项不会显示。 |
+| Android 8.0+（API 26+） | 主要支持 | 默认 **精简版** 不含 llama.cpp 原生库和本地模型入口；本地版为 arm64-v8a。 |
+| Termux / Android 终端提供者 | 支持 | SSH 与 AIDL 终端提供者共用同一套工作区和文件树界面。 |
 
 ## 隐私与控制
 
-LineCode Pro 使用 SQLite 在本机保存对话、设置、记忆、扩展元数据和差异历史。只有当你明确配置或调用某项服务时，模型凭据及选中的项目内容才会发送给对应服务。工具执行支持自动、确认和只读策略，本地文件工具被限制在当前工作区内。
+会话、设置、记忆、扩展元数据和 diff 历史都保存在本地 SQLite。模型凭据和选中的项目内容只会发送到你明确配置或调用的服务。工具执行支持自动、确认、只读三种策略；除非用户明确关闭路径保护，文件工具被限制在当前工作区内。
 
-导出与诊断链路会尽量清除凭据，但分享归档或日志前仍应自行检查。第三方模型、MCP 端点、Skill、SSH 主机和网页服务分别受其自身的隐私与安全政策约束。
+导出和诊断路径会尽量脱敏，但分享归档或日志前仍应自行检查。第三方模型、MCP 端点、Skill、SSH 主机和 Web 服务都受其各自的隐私与安全策略约束。
 
-## 获取应用
+## 获取
 
-预编译产物和发行说明会发布在 [GitHub Releases](https://github.com/LangLang03/LineCodePro/releases)。Android 发布包继续使用 `cn.lineai` 包名，并延续原 LineCode 的签名和版本序列。
+预编译产物和发布说明见 [GitHub Releases](https://github.com/LangLang03/LineCodePro/releases)。Android 发布包保留 `cn.lineai` 应用 ID，并延续既有的 LineCode 签名与版本序列。
 
 ## 从源码构建
 
-当前版本固定使用 **HuxerUI SDK 0.3.0**。官方安装脚本支持 `--version`，请显式指定版本，让本机 SDK 与 CI 保持一致，避免 `latest` 将来变化后产生不兼容：
+需要：
+
+- JDK 17（应用目标 Java 11）
+- Android SDK platform 36
+- Android SDK build-tools 36.0.0
+- 仅在本地模型构建时需要 NDK `29.0.14206865` 和 CMake 3.22.1
+
+所有命令都通过 Gradle Wrapper 执行。`settings.gradle.kts` 强制 `FAIL_ON_PROJECT_REPOS` 并配置了腾讯云 Maven 镜像；添加仓库时请保留。
+
+### 精简版（默认）
+
+默认构建即精简版：没有 llama.cpp `.so`、没有 `engine-local` Java、没有本地模型 UI。
 
 ```sh
-curl -fsSL https://github.com/HuxerUI/HuxerUI/releases/latest/download/install.sh | sh -s -- --version 0.3.0 --yes
-export HUXERUI_HOME="$HOME/.local/share/HuxerUI"
-export PATH="$HUXERUI_HOME/bin:$PATH"
-huxerui doctor android
-```
+./gradlew clean :app:assembleDebug
+# → app/build/outputs/apk/debug/app-debug.apk
 
-Android 构建还需要 JDK 17、Android Platform 36、NDK `29.0.14206865`、CMake 3.22.1 和 Ninja。使用 8 路并行生成可安装的 Debug APK：
-
-```sh
-./platform/android/gradlew -p platform/android :app:assembleDebug --max-workers=8
-```
-
-使用 Ninja 运行原生 GoogleTest 测试：
-
-```sh
-cmake -S tests -B build/tests-ninja -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build/tests-ninja --parallel 8
-cmake --build build/tests-ninja --target run_tests
+./gradlew verifyAll :arch-test:test
+./gradlew test :app:testDebugUnitTest
+./gradlew :app:lintDebug
 ```
 
 ### 本地模型（llama.cpp）
 
-本地 GGUF 模型通过 llama.cpp 在本进程内推理。这套后端由构建参数决定，默认构建完全不含它：
-没有翻译单元包含 `llama.h`，没有链接运行时，界面里也没有任何本地模型入口，因此默认产物保持小体积。
-只在需要携带该功能的构建里打开。
+本地 GGUF 模型通过内置 llama.cpp JNI 在本进程运行。该后端是构建参数，默认构建完全不包含它。本地版是超集：包含精简版全部功能，并额外提供本地模型页面、协议入口、GGUF 导入和原生运行时。
 
 | 构建参数 | 默认值 | 作用 |
 | --- | --- | --- |
-| `linecodeEnableLocalModel` | `false` | 编译后端，并显示「加载本地模型」入口、本地协议标签和本地模型表单。关闭时三者都不显示。 |
-| `linecodeLocalModelBundle` | `false` | 把 llama.cpp 与 ggml 的动态库打进产物。只开后端不开打包时仍会链接，但动态库不会进入 APK。 |
-| `linecodeLocalModelGpuVulkan` | `true` | 请求 Vulkan GPU 后端。 |
-| `linecodeLocalModelGpuOpenCL` | `true` | 请求 OpenCL GPU 后端（Adreno）。 |
-| `linecodeLlamaCppSourceDir` | 空 | 使用已有的 llama.cpp 检出目录构建，不再联网拉取。离线构建必须设置它。 |
-| `linecodeLlamaCppGitTag` | 固定 | 未指定本地源码时拉取的 llama.cpp 版本。 |
-
-每个加速后端都是「先请求、再按 llama.cpp 实际提供的能力收窄」：源码树里没有实现的后端会被报告为
-不可用，而不是被谎称可用，因此本地表单只呈现当前链接的运行时真正能提供的选项。运行时还会再按实际
-枚举到的设备收窄一次，GPU 请求在没有对应设备时会回退到 CPU，并把最终生效的加速方式回报给调用方。
+| `linecodeEnableLocalModel` | `false` | 编译 `engine-local` 和本地 UI，显示“本地模型”入口与协议页；关闭时全部移除。 |
+| `linecodeLocalModelBundle` | 跟随 `linecodeEnableLocalModel` | 把 `libllama.so`、`libggml*.so`、`libc++_shared.so` 打进 APK。 |
+| `linecodeLocalModelGpu` | `true` | 在本地模型表单中提供 GPU 加速选项。 |
+| `linecodeLlamaCppSourceDir` | `../LineCodePro-C++/.../_deps/linecode_llama_cpp-src` | llama.cpp 头文件源码目录。 |
+| `linecodeLlamaPrebuiltDir` | `../LineCodePro-C++/.../bin` | arm64 预编译 llama.cpp 库目录。 |
 
 ```sh
-# 默认：小体积，不含本地模型支持。
-./platform/android/gradlew -p platform/android :app:assembleDebug --max-workers=8
+# 完整本地模型版，包含原生库。
+./gradlew clean :app:assembleDebug -PlinecodeEnableLocalModel=true
 
-# 完整本地模型支持，包含原生库。
-./platform/android/gradlew -p platform/android :app:assembleDebug --max-workers=8 \
-    -PlinecodeEnableLocalModel=true -PlinecodeLocalModelBundle=true
+# Release。
+./gradlew clean :app:assembleRelease -PlinecodeEnableLocalModel=true
 ```
 
-同一组开关在原生 CMake 构建里是
-`-DLINCODE_ENABLE_LOCAL_MODEL=ON -DLINCODE_LOCAL_MODEL_BUNDLE=ON`。开启后端的构建按
-`LINCODE_LLAMA_CPP_SOURCE_DIR`、已安装的 llama.cpp、固定版本的顺序解析依赖；既无网络又无本地检出时，
-配置阶段会直接失败并列出上述可选路径，而不是悄悄构建出一个不含该功能的产物。
+本地版需要同级目录中的 LineCodePro-C++ 预编译 arm64 运行库，或通过上述两个目录属性显式指定。只打开后端但不打包库的构建仍会链接它，但 APK 中不含共享库，仅用于开发。
 
-#### NPU 加速：暂不支持
+切换精简版/本地版必须先执行 `clean`，因为两个变体写入同一个 APK 路径；否则旧的增量打包可能残留 zipflinger 虚拟条目填充。
 
-NPU 加速是**明确不提供**的功能，本地模型表单里的加速项会直接说明，而不是给出一个只会降级的选项。
+导入的 GGUF 文件会复制到应用自己的 `models` 目录，因为系统选择器返回的是 URI 能力而不是运行库可直接打开的路径。NPU 加速刻意不提供；当前链接的运行时只暴露 CPU 与 GPU 后端。
 
-上游 llama.cpp 没有能脱离 SDK 构建的 NPU 后端：唯一的 `GGML_HEXAGON` 需要**高通 Hexagon SDK**
-——它的 HTP skel 要用 Hexagon 工具链编译，host 侧还要用无法随本项目再分发的 SDK 头文件。为一个
-自包含的构建引入厂商账号不是本项目愿意做的取舍，所以这项功能是**搁置**，而不是半接一半。几点影响：
+### Release 签名
 
-- 带了 NPU 加速标记的归档或手改配置会被读成 CPU 请求，因此仍能加载，而不会悄悄变成"自动"。
-- 任何设备都不会被判定为 NPU，因此 BLAS、AMX 这类库不会被误当成 NPU。
-- Vulkan 与 OpenCL 的 GPU 加速不受影响，且不需要任何 SDK。
+Release APK 需要仓库根目录的 `signing.properties`：
 
-导入的 GGUF 文件会被复制到应用自己的 `models` 目录：系统选择器返回的是一个访问能力，而不是运行时
-能直接打开的文件路径。
+```properties
+storeFile=/abs/path/to/your.keystore
+storePassword=…
+keyAlias=…
+keyPassword=…
+```
 
-Windows 上请安装相同版本的 HuxerUI SDK，然后执行 `huxerui package windows --project . --config Release`。签名 Android Release 还需要私有签名配置，并由发布工作流生成；任何签名材料都不能提交到仓库。
+不要提交签名材料。Release 构建会在 R8 之前校验这些属性，导出 `LineCode Pro <versionName>-slim.APK`（本地模型版为 `-local.APK`），并清理符号归档。
 
-## 讨论与反馈
+## 社区
 
-- QQ 交流群：**1023548832**
-- 一般问题与设计讨论：[GitHub Discussions](https://github.com/LangLang03/LineCodePro/discussions)
-- 可复现缺陷与边界明确的需求：[GitHub Issues](https://github.com/LangLang03/LineCodePro/issues)
+- QQ 讨论群：**1023548832**
+- [GitHub Discussions](https://github.com/LangLang03/LineCodePro/discussions)：设计讨论与一般问题
+- [GitHub Issues](https://github.com/LangLang03/LineCodePro/issues)：可复现缺陷和范围明确的功能请求
 
-QQ群仅用于社区讨论。商业许可、CLA 或其他法律相关问题请联系 **jiyu03@qq.com**。
+QQ 群仅用于社区讨论。商业许可或 CLA/法律问题请联系 **jiyu03@qq.com**。
 
-## 参与贡献
+## 贡献
 
-欢迎贡献。项目使用 C++23、HuxerUI、依赖倒置与单一职责边界，并由 GoogleTest 和 Android 自动检查守护。提交 PR 前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+欢迎贡献。提交 PR 前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。每个 PR 必须包含贡献者的 GitHub 用户名作为接受 [CLA.md](CLA.md) 的电子签名；必需的 `CLA / verify` 检查会拒绝未签署的 PR。
 
-每个拉取请求都必须填写贡献者的 GitHub 用户名，作为接受 [CLA.md](CLA.md) 的电子签名。必需的 `CLA / verify` CI 检查会拒绝未签署 CLA 的 PR。
+## 许可证
 
-## 许可
+LineCode Pro 采用双重许可：
 
-LineCode Pro 采用双许可模式：
+- 开源使用适用 **GNU AGPL v3 或更高版本**；见 [LICENSING.md](LICENSING.md) 与 [LICENSE](LICENSE)。
+- 无法满足 AGPL 义务的组织可以申请单独的商业许可；见 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)。
 
-- 开源使用遵循 **GNU AGPL v3 或任何更新版本**，详见 [LICENSING.md](LICENSING.md) 与 [LICENSE](LICENSE)。
-- 无法履行 AGPL 义务的组织可以申请单独的商业许可，详见 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)。
+除非有书面商业协议另行约定，获取或使用源码本身不授予商业许可例外。
 
-除非另有书面商业协议，仅获得或使用源代码并不自动获得商业许可例外。
+## 致谢
 
-## 特别鸣谢
-
-特别感谢 [HuxerUI](https://github.com/HuxerUI/HuxerUI) 为 LineCode Pro 提供原生跨平台 UI 框架。HuxerUI 使用 **MIT License** 开源，其版权声明与完整条款见 [HuxerUI LICENSE](https://github.com/HuxerUI/HuxerUI/blob/main/LICENSE)。HuxerUI 及其他第三方组件始终遵循各自的许可协议。
+LineCode Pro 受益于 [llama.cpp](https://github.com/ggml-org/llama.cpp)（MIT）、[commonmark-java](https://github.com/commonmark/commonmark-java)（BSD-2-Clause）、[JSch](https://github.com/mwiede/jsch)（BSD 风格）以及 Android Jetpack 等开源项目。所有第三方组件仍受其各自许可证约束；随 APK 分发的声明继续适用。

@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "templates": [
+    {"id": "systemPrompt", "file": "system-prompt-template.txt", "variables": ["TOOLS_CONTEXT","TONE_CONTEXT","CHAT_MODE_CONTEXT","WORK_DIRECTORY_CONTEXT","LEARNING_CONTEXT","MODEL_IDENTITY","TODO_STATE"]},
+    {"id": "workDirectory", "file": "work-directory-template.txt", "variables": ["HOME_PATH","LINECODE_ROOT","GLOBAL_SKILLS_ROOT","WORKSPACE_PRIVATE_ROOT","WORKSPACE_SKILLS_ROOT"]},
+    {"id": "toneCoding", "file": "tone-coding-template.txt"},
+    {"id": "toneChat", "file": "tone-chat-template.txt"},
+    {"id": "minimalPrompt", "file": "minimal-prompt-template.txt", "variables": ["CHAT_MODE_CONTEXT"]},
+    {"id": "learningContext", "file": "learning-context-template.txt", "variables": ["WORKING_MEMORY_SECTION","MEMORY_SECTION","HISTORY_SECTION","SKILL_PATHS_SECTION","SKILLS_SECTION","PRIVATE_BOUNDARY_SECTION"]},
+    {"id": "chatModeChat", "file": "chat-mode-chat.txt"},
+    {"id": "chatModePlan", "file": "chat-mode-plan.txt"},
+    {"id": "chatModeAgent", "file": "chat-mode-agent.txt"},
+    {"id": "chatModeControl", "file": "chat-mode-control.txt"},
+    {"id": "contextCompaction", "file": "context-compaction-template.txt"},
+    {"id": "modelIdentity", "file": "model-identity-template.txt", "variables": ["MODEL_ID","MODEL_NAME","MODEL_PROVIDER","MODEL_PROTOCOL"]},
+    {"id": "todoState", "file": "todo-state-template.txt", "variables": ["TODO_LIST"]},
+    {"id": "todoUsage", "file": "todo-usage-template.txt"},
+    {"id": "agentRoleExploreRemote", "file": "agent-role-explore-remote.txt"},
+    {"id": "agentRoleCodingRemote", "file": "agent-role-coding-remote.txt"},
+    {"id": "agentRoleExploreLocal", "file": "agent-role-explore-local.txt"},
+    {"id": "agentRoleCodingLocal", "file": "agent-role-coding-local.txt"},
+    {"id": "agentSystemPrompt", "file": "agent-system-prompt-template.txt", "variables": ["ROLE_PROMPT","TASK_DESCRIPTION","WORKSPACE_CONTEXT","SCOPE_CONTEXT","EXTENSIONS_CONTEXT","TOOLS_CONTEXT"]},
+    {"id": "imageUnderstandingToolSystem", "file": "image-understanding-tool-system.txt"},
+    {"id": "contextCompactionSummaryPrefix", "file": "context-compaction-summary-prefix.txt", "variables": ["SUMMARY"]},
+    {"id": "contextCompactionResponsesFallback", "file": "context-compaction-responses-fallback.txt"}
+  ]
+}

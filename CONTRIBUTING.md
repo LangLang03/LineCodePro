@@ -4,25 +4,33 @@ Thank you for improving LineCode Pro. Use an issue or discussion for substantial
 
 ## Project expectations
 
-- Write application code in modern C++23. Java is limited to the Android platform bridge where the NDK cannot provide the required API.
-- Keep domain, application, infrastructure, platform, and presentation responsibilities separated. Depend on ports at boundaries rather than concrete stores or transports.
-- Prefer small composable types, templates, concepts, and value semantics where they make contracts clearer. Avoid feature switches built from growing UI `if` chains; use data-driven descriptors or polymorphic behavior.
+- Application code is hand-written **Java 11**. Do not add Kotlin, Compose, XML layouts, or new runtime UI frameworks.
+- Keep the `modules/` boundaries from `settings.gradle.kts`: features never depend on other features, and core modules stay Android-free. Run `:arch-test` before opening a pull request.
+- Depend on ports and data-driven descriptors at boundaries. Do not add UI branches keyed by tool or domain names; `ToolPresentation`/`ToolIcon` own tool presentation metadata.
 - Preserve the established LineCode UI and behavior unless the change intentionally addresses an approved difference.
-- Add GoogleTest coverage for behavior changes and keep credentials, signing material, generated output, and user data out of commits.
+- Add unit coverage for behavior changes. Keep credentials, signing material, generated output, and user data out of commits.
+- Build tool arguments with `ToolSchemaBuilder`. Reuse `SkillStore.importSkill` / `RemoteSkillInstall` instead of creating a second install pipeline.
 
 ## Local verification
 
-Install the current HuxerUI SDK, then run the same checks as CI:
+Run the same checks as CI:
 
 ```sh
-cmake -S tests -B build/tests-ninja -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build/tests-ninja --parallel 8
-cmake --build build/tests-ninja --target run_tests
-(cd tools && python3 -m unittest test_fake_ai_server.py -v)
-./platform/android/gradlew -p platform/android :app:lintDebug :app:assembleDebug --max-workers=8
+./gradlew verifyAll :arch-test:test
+./gradlew test :app:testDebugUnitTest
+./gradlew :app:lintDebug
+./gradlew clean :app:assembleDebug
 ```
 
-Release builds require a local `platform/android/signing.properties`; never commit it.
+The default build is the **slim** variant: it contains no llama.cpp libraries, no local-model Java, and no local-model UI. Test the optional local variant separately:
+
+```sh
+./gradlew clean :app:assembleDebug -PlinecodeEnableLocalModel=true
+```
+
+The local build needs the NDK and the prebuilt llama.cpp runtime from a LineCodePro-C++ checkout. Switching between slim and local requires `clean`, because both variants share the APK output path.
+
+Release builds require a local `signing.properties`; never commit it.
 
 ## Pull requests and the CLA
 
@@ -33,6 +41,6 @@ Use the pull request template, describe observable behavior, list the checks you
 CLA Signature: @your-github-username
 ```
 
-The signature must match the pull request author's GitHub login. The `CLA / verify` status check fails when either line is missing or altered. Repository maintainers should configure branch protection to require this check and the main CI workflow before merge.
+The signature must match the pull request author's GitHub login. The `CLA / verify` status check fails when either line is missing or altered. Repository maintainers should configure branch protection to require this check before merge.
 
 By submitting a pull request, you also confirm that the contribution contains no unlicensed third-party code or confidential material.

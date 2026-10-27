@@ -14,11 +14,17 @@ Closes #
 
 ## Validation
 
-- [ ] GoogleTest suite passes with Ninja and `-j8`
-- [ ] Fake AI server tests pass
-- [ ] Android lint passes
-- [ ] Android debug build succeeds
+- [ ] `./gradlew verifyAll :arch-test:test` passes
+- [ ] `./gradlew test :app:testDebugUnitTest` passes
+- [ ] `./gradlew :app:lintDebug` passes
+- [ ] `./gradlew clean :app:assembleDebug` builds the slim APK
 - [ ] Verified on a device or emulator, or explained why this is not applicable
+
+Local-model changes additionally require:
+
+- [ ] `./gradlew clean :app:assembleDebug -PlinecodeEnableLocalModel=true` builds
+- [ ] The local APK contains `lib/arm64-v8a/libllama.so` and the local model UI
+- [ ] The default slim APK contains no `libllama*.so`, no `libggml*.so`, and no local-model classes
 
 Commands and environment used:
 
@@ -28,12 +34,14 @@ Commands and environment used:
 
 ## Design and safety checklist
 
-- [ ] The change keeps domain, application, infrastructure, platform, and presentation responsibilities separated.
-- [ ] New behavior is behind an abstraction or data-driven descriptor where extension is expected; it does not grow a UI `if` chain.
-- [ ] New or changed behavior has GoogleTest coverage.
+- [ ] The change respects the module boundaries in `settings.gradle.kts` and `:arch-test`.
+- [ ] New behavior is behind an abstraction or data-driven descriptor where extension is expected; it does not grow a UI `if` chain or branch on tool/domain names.
+- [ ] Tool arguments are built with `ToolSchemaBuilder`; no hand-concatenated JSON.
+- [ ] Skill/SkillHub/GitHub installs reuse `SkillStore.importSkill` or `RemoteSkillInstall` instead of a second pipeline.
+- [ ] New or changed behavior has unit coverage and stays within the 600-line budget.
 - [ ] No credential, signing key, personal data, generated build output, or incompatible third-party code is included.
-- [ ] User-facing text is available in both English and Chinese where applicable.
-- [ ] UI changes preserve the intended LineCode behavior and have been visually checked.
+- [ ] User-facing text is in `R.string` for English, Chinese and Russian where applicable.
+- [ ] UI changes preserve LineCode behavior and were visually checked.
 
 ## CLA — required
 

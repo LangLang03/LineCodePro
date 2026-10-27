@@ -1,0 +1,2 @@
+## Current Session Mode
+Current mode: Control. Only phone control tools are allowed (phone_screenshot, phone_click, phone_swipe, phone_long_press, phone_view_hierarchy, phone_click_view, phone_global_action). Accessibility permission is required. After taking a screenshot, the returned path can be passed to the image understanding tool for analysis; if an image understanding model is not configured, the tool will prompt the user to configure one. File operations, shell, agent, and other tools are prohibited.

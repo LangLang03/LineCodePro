@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="cn.lineai.permission.IPC_TERMINAL_PROVIDER" />
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.TerminalProvider"
+        android:icon="@android:drawable/ic_dialog_info">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".TerminalProviderService"
+            android:exported="true"
+            android:permission="cn.lineai.permission.IPC_TERMINAL_PROVIDER">
+            <intent-filter>
+                <action android:name="cn.lineai.action.IPC_TERMINAL_PROVIDER" />
+            </intent-filter>
+        </service>
+
+    </application>
+
+</manifest>

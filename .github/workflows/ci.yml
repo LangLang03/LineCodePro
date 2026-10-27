@@ -1,10 +1,10 @@
 name: CI
 
-# Pull requests to protected master are already checked on dev. The merge
-# commit starts Release when the version changes, so it does not need CI again.
 on:
-  push:
-    branches: [dev]
+  # Validate the pull request once. A merge to master is handled by Release,
+  # so it must not run CI a second time.
+  pull_request:
+    branches: [master, main]
   workflow_dispatch:
 
 permissions:
@@ -12,225 +12,80 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  native-tests:
-    name: C++23 / GoogleTest
-    runs-on: ubuntu-latest
-    env:
-      CCACHE_DIR: ${{ github.workspace }}/.ccache
-      CCACHE_BASEDIR: ${{ github.workspace }}
-      CCACHE_MAXSIZE: 500M
-    # Ubuntu 24.04 ships GCC 13 and the toolchain PPA only offers a March 2026
-    # GCC 16 snapshot; both mis-compile this codebase (a spurious
-    # -Wfree-nonheap-object, then an internal compiler error in gimplify). The
-    # released GCC 16.2 that compiles it cleanly is what the official image
-    # carries, so the job runs in that image rather than assembling a
-    # toolchain on the runner.
-    container: gcc:16.2
-    timeout-minutes: 60
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install native build dependencies
-        timeout-minutes: 15
-        run: |
-          set -euo pipefail
-          apt-get update
-          apt-get install --yes --no-install-recommends \
-            ninja-build ccache libgtest-dev libsqlite3-dev libssl-dev zlib1g-dev \
-            libcurl4-openssl-dev cmake curl git ca-certificates \
-            libgtk-4-1 libgraphene-1.0-0 libepoxy0 libsoup-3.0-0 \
-            libgstreamer-plugins-base1.0-0
-          # The SDK's GUI library is what those packages are for: eight test
-          # targets link it, and without its GTK/GStreamer stack every one of
-          # them fails at link time with undefined gtk_/gdk_/epoxy_ symbols.
-          g++ --version | head -1
-          cmake --version | head -1
-
-      - name: Restore C++ compilation cache
-        uses: actions/cache@v4
-        with:
-          path: .ccache
-          key: ccache-gcc16.2-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            ccache-gcc16.2-${{ runner.os }}-
-
-      - name: Reset C++ cache statistics
-        run: ccache --zero-stats
-
-      - name: Install HuxerUI SDK 0.3.0
-        timeout-minutes: 10
-        run: |
-          set -euo pipefail
-          curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors \
-            https://github.com/HuxerUI/HuxerUI/releases/latest/download/install.sh \
-            | sh -s -- --version 0.3.0 --yes
-
-      - name: Configure tests
-        env:
-          HUXERUI_HOME: ${{ github.workspace }}/.huxerui-sdk
-        run: |
-          set -euo pipefail
-          # The installer writes under $HOME; keep the SDK where later steps
-          # look for it rather than depending on the image's HOME.
-          if [ ! -d "$HUXERUI_HOME" ]; then
-            mkdir -p "$(dirname "$HUXERUI_HOME")"
-            cp -a "$HOME/.local/share/HuxerUI" "$HUXERUI_HOME"
-          fi
-          cmake -S tests -B build/tests-ninja -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
-      - name: Build tests
-        timeout-minutes: 30
-        env:
-          HUXERUI_HOME: ${{ github.workspace }}/.huxerui-sdk
-        run: cmake --build build/tests-ninja --parallel 8
-
-      - name: Report C++ cache statistics
-        run: ccache --show-stats
-
-      - name: Run GoogleTest suite
-        timeout-minutes: 15
-        run: cmake --build build/tests-ninja --target run_tests
-
-      - name: Run fake AI server tests
-        working-directory: tools
-        run: python3 -m unittest test_fake_ai_server.py -v
-
-  android:
-    name: Android / lint and debug APK
+  ci-checks:
+    name: CI checks (guards + tests + lint + slim APK)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle cache
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          # dev is not the default branch, so setup-gradle otherwise reads
-          # caches without writing the updated dependency/build cache back.
-          cache-read-only: false
 
-      - name: Install Android build dependencies
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Run architecture guards
+        run: ./gradlew verifyAll :app:verifyAll :arch-test:test
+
+      - name: Run unit tests
+        run: ./gradlew test :app:testDebugUnitTest
+
+      - name: Run lint
+        run: ./gradlew :app:lintDebug
+
+      - name: Build slim debug APK
+        run: ./gradlew clean :app:assembleDebug
+
+      - name: Verify the slim APK excludes the local model runtime
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-36" \
-            "build-tools;36.0.0" \
-            "ndk;29.0.14206865" \
-            "cmake;3.22.1"
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)"
+          test -n "$apk"
+          if unzip -l "$apk" | grep -qE 'libllama|libggml|liblinecode_local_model'; then
+            echo "::error::The slim APK contains llama.cpp native libraries."
+            exit 1
+          fi
+          for dex in $(unzip -Z1 "$apk" | grep -E '^classes[0-9]*\.dex$'); do
+            if unzip -p "$apk" "$dex" | strings | grep -qE 'NativeLlamaEngine|LocalModelPage'; then
+              echo "::error::The slim APK contains local-model classes."
+              exit 1
+            fi
+          done
 
-      - name: Install HuxerUI SDK 0.3.0
-        run: curl -fsSL https://github.com/HuxerUI/HuxerUI/releases/latest/download/install.sh | sh -s -- --version 0.3.0 --yes
+      - name: Build user-cert debug APK
+        run: ./gradlew :app:assembleDebugUserCert
 
-      - name: Generate HuxerUI Android library graph
-        env:
-          HUXERUI_HOME: /home/runner/.local/share/HuxerUI
-        run: bash tools/generate_android_library_graph.sh
-
-      - name: Make Gradle wrapper executable
-        run: chmod +x platform/android/gradlew
-
-      - name: Lint and build debug APK
-        env:
-          HUXERUI_HOME: /home/runner/.local/share/HuxerUI
-        run: ./platform/android/gradlew -p platform/android :app:lintDebug :app:assembleDebug --build-cache --max-workers=8 --console=plain
-
-      - name: Upload slim debug APK
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: LineCodePro-slim-debug-${{ github.sha }}
-          path: |
-            platform/android/dist/LineCodePro-*-slim-debug.apk
-            platform/android/dist/LineCodePro-*-slim-debug.apk.sha256
-          if-no-files-found: error
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload lint report on failure
+      - name: Upload user-cert debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-user-cert
+          path: app/build/outputs/apk/debugUserCert/export/*.apk
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload lint report
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: android-lint-report-${{ github.sha }}
-          path: platform/android/app/build/reports/lint-results-debug.html
-          if-no-files-found: ignore
-          retention-days: 14
-
-  android-local-model:
-    name: Android / local model debug APK
-    runs-on: ubuntu-latest
-    # The local-model build compiles llama.cpp for arm64 from source, which the
-    # slim job never pays for, so it runs as its own job with its own budget.
-    timeout-minutes: 90
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle cache
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-read-only: false
-
-      - name: Install Android build dependencies
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-36" \
-            "build-tools;36.0.0" \
-            "ndk;29.0.14206865" \
-            "cmake;3.22.1"
-
-      - name: Install HuxerUI SDK 0.3.0
-        run: curl -fsSL https://github.com/HuxerUI/HuxerUI/releases/latest/download/install.sh | sh -s -- --version 0.3.0 --yes
-
-      - name: Generate HuxerUI Android library graph
-        env:
-          HUXERUI_HOME: /home/runner/.local/share/HuxerUI
-        run: bash tools/generate_android_library_graph.sh
-
-      - name: Build local model debug APK
-        env:
-          HUXERUI_HOME: /home/runner/.local/share/HuxerUI
-        run: |
-          set -euo pipefail
-          chmod +x platform/android/gradlew
-          ./platform/android/gradlew -p platform/android :app:assembleDebug \
-            --build-cache --max-workers=8 --console=plain \
-            -PlinecodeEnableLocalModel=true \
-            -PlinecodeLocalModelBundle=true
-
-      - name: Verify the APK carries the runtime
-        run: |
-          set -euo pipefail
-          apk="$(ls platform/android/dist/*-localmodel-debug.apk)"
-          test -n "$apk"
-          unzip -l "$apk" | grep -q "lib/arm64-v8a/libllama.so"
-          # The packaged-libraries switch has to be observable in the artifact,
-          # otherwise a silent regression would ship a build with no backend.
-          unzip -l "$apk" | grep -q "lib/arm64-v8a/libggml"
-
-      - name: Upload local model debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: LineCodePro-localmodel-debug-${{ github.sha }}
-          path: |
-            platform/android/dist/LineCodePro-*-localmodel-debug.apk
-            platform/android/dist/LineCodePro-*-localmodel-debug.apk.sha256
-          if-no-files-found: error
+          name: lint-report
+          path: app/build/reports/lint-results-debug.html
+          if-no-files-found: warn
           retention-days: 14

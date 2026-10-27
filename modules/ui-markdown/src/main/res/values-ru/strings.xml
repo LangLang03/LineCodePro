@@ -1,0 +1,5 @@
+<resources>
+    <string name="markdown_code_copy_desc">Копировать код</string>
+    <string name="markdown_code_copied">Скопировано</string>
+    <string name="markdown_image_label">Изображение</string>
+</resources>

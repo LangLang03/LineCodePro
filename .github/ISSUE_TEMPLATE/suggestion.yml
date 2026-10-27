@@ -1,0 +1,51 @@
+name: Suggestion / 建议
+description: Share an idea for UX, performance, documentation, or project process / 提出体验、性能、文档或流程建议
+title: "[Suggestion]: "
+labels:
+  - suggestion
+body:
+  - type: input
+    id: topic
+    attributes:
+      label: Topic / 主题
+      placeholder: Composer spacing, release notes, build speed, documentation clarity
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current experience / 当前体验
+      description: What feels awkward, slow, unclear, or easy to misuse?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Suggestion / 建议内容
+      description: Describe the improvement and who benefits from it.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / 范围
+      options:
+        - User interface / 用户界面
+        - Performance and battery / 性能与耗电
+        - Documentation / 文档
+        - Build, CI, or developer tooling / 构建、CI 或开发工具
+        - Community or contribution process / 社区或贡献流程
+        - Other / 其他
+    validations:
+      required: true
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context / 补充信息
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks / 提交前检查
+      options:
+        - label: I searched existing issues and discussions for this suggestion. / 我已搜索现有 issue 和讨论。
+          required: true

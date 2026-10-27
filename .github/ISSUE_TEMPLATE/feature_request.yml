@@ -1,5 +1,5 @@
-name: Feature request
-description: Propose a scoped capability or behavior improvement
+name: Feature / 功能
+description: Propose a scoped capability or behavior improvement / 提出明确范围的新功能或行为改进
 title: "[Feature]: "
 labels:
   - enhancement
@@ -7,49 +7,49 @@ body:
   - type: textarea
     id: problem
     attributes:
-      label: Problem
-      description: What user problem cannot be solved well today?
+      label: Problem / 问题
+      description: What user problem cannot be solved well today? / 目前有什么用户问题无法很好解决？
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: Proposed behavior
-      description: Describe observable behavior, not only an implementation choice.
+      label: Proposed behavior / 期望行为
+      description: Describe observable behavior, not only an implementation choice. / 请描述可观察的行为，而不仅是实现方式。
     validations:
       required: true
   - type: dropdown
     id: scope
     attributes:
-      label: Area
+      label: Area / 涉及范围
       options:
-        - Conversation and timeline
-        - Tools and permissions
-        - Agent or Agent Pipeline
-        - Models and protocols
-        - Workspaces, SSH, Termux, or terminal provider
-        - MCP, Skills, or extensions
-        - Settings, storage, or import/export
-        - Android platform integration
-        - Windows platform integration
-        - Other
+        - Chat and timeline / 对话与时间线
+        - Tools and permissions / 工具与权限
+        - Agents / 智能体
+        - Models and protocols / 模型与协议
+        - Local models (llama.cpp) / 本地模型
+        - Workspaces, SSH, Termux, or terminal provider / 工作区、SSH、Termux 或终端提供者
+        - MCP, Skills, or extensions / MCP、Skills 或扩展
+        - Settings, storage, or import/export / 设置、存储或导入导出
+        - Android platform integration / Android 平台集成
+        - Other / 其他
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternatives considered
+      label: Alternatives considered / 备选方案
   - type: textarea
     id: ui
     attributes:
-      label: UI reference or interaction notes
-      description: Add sketches, screenshots, or legacy LineCode references if the request changes UI.
+      label: UI reference or interaction notes / UI 参考或交互说明
+      description: Add sketches, screenshots, or reference behavior if the request changes UI.
   - type: checkboxes
     id: checks
     attributes:
-      label: Pre-submission checks
+      label: Pre-submission checks / 提交前检查
       options:
-        - label: I searched existing issues and discussions for this request.
+        - label: I searched existing issues and discussions for this request. / 我已搜索现有 issue 和讨论。
           required: true
-        - label: This request does not depend on Android Accessibility Service device control.
+        - label: This request is scoped enough to implement and verify. / 该需求范围足够明确，可实现和验证。
           required: true
