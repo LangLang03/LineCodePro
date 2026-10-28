@@ -37,6 +37,8 @@ public interface PageHost {
 
     void updateKeepAliveService();
 
+    void openDrawer();
+
     void pickLocalModelFile();
 
     void pickSkillArchive();

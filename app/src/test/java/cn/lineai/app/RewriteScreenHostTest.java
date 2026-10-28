@@ -58,7 +58,7 @@ public class RewriteScreenHostTest {
         navigation.push(settings.key(Params.Empty.INSTANCE));
         View parent = frame.getChildAt(0);
         navigation.push(input.key(Params.Empty.INSTANCE));
-        assertEquals(View.GONE, parent.getVisibility());
+        assertEquals(View.VISIBLE, parent.getVisibility());
         navigation.back();
         assertEquals(1, disposed);
         assertSame(parent, frame.getChildAt(0));

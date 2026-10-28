@@ -96,6 +96,8 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
         graph = ((NextApp) getApplication()).graph();
         graph.setAgentRunner(new NestedAgentRunner(graph.modelClient(), graph.models(),
                 graph.agentBaseTools(), graph.agentToolContext(), graph.scheduler()));
+        showCrashIfNeeded();
+        importCrashLog();
         tokens = graph.theme().current();
         configureWindow();
         FrameLayout root = new FrameLayout(this);
@@ -235,6 +237,63 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
         navigation.push(ModelScreens.LIST.key(Params.Empty.INSTANCE));
     }
 
+    @Override public void onReasoning() {
+        hideKeyboard();
+        cn.lineai.runtime.DialogFactory.showReasoning(this);
+    }
+
+    @Override public void onMore() {
+        hideKeyboard();
+        cn.lineai.runtime.DialogFactory.showMore(this);
+    }
+
+    @Override public void openDrawer() {
+        chat.openDrawer();
+    }
+
+    @Override public String projectLabel() {
+        cn.lineai.core.model.Project project = graph.projects().selected();
+        return project == null ? "" : project.name;
+    }
+
+    @Override public String projectPath() {
+        cn.lineai.core.model.Project project = graph.projects().selected();
+        return project == null ? "" : project.path;
+    }
+
+    @Override public void openFile(String relativePath) {
+        cn.lineai.core.model.Project project = graph.projects().selected();
+        if (project == null) {
+            Toast.makeText(this, R.string.drawer_empty_files, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            java.io.File base = new java.io.File(project.path).getCanonicalFile();
+            java.io.File file = new java.io.File(base, relativePath == null ? "" : relativePath)
+                    .getCanonicalFile();
+            if (!file.equals(base) && !file.getPath().startsWith(base.getPath()
+                    + java.io.File.separator)) {
+                throw new SecurityException("File escapes the workspace");
+            }
+            if (!file.isFile()) {
+                Toast.makeText(this, R.string.drawer_empty_files, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            Uri uri = WorkspaceFileProvider.uriFor(this, file);
+            String extension = android.webkit.MimeTypeMap.getFileExtensionFromUrl(file.getName());
+            String mime = extension == null ? null
+                    : android.webkit.MimeTypeMap.getSingleton()
+                            .getMimeTypeFromExtension(extension.toLowerCase(java.util.Locale.ROOT));
+            Intent view = new Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(uri, mime == null ? "*/*" : mime)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            view.setClipData(android.content.ClipData.newRawUri("", uri));
+            startActivity(Intent.createChooser(view, getString(R.string.common_open_with)));
+        } catch (Exception error) {
+            Toast.makeText(this, R.string.browser_open_failed, Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private void hideKeyboard() {
         View focused = getCurrentFocus();
         if (focused != null) {
@@ -329,8 +388,20 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
-        if (cn.lineai.runtime.ArchiveActions.handleResult(this, requestCode, uri)) return;
-        cn.lineai.runtime.SafActions.handle(this, pages, requestCode, uri);
+        try {
+            if (cn.lineai.runtime.ArchiveActions.handleResult(this, requestCode, uri)) return;
+            cn.lineai.runtime.SafActions.handle(this, pages, requestCode, uri);
+        } catch (RuntimeException error) {
+            android.util.Log.e("LineCodeSAF", "SAF result failed", error);
+            try {
+                graph.errorLogs().record(getString(R.string.workspace_provider_open_failed),
+                        "SAF request " + requestCode, android.util.Log.getStackTraceString(error));
+            } catch (RuntimeException ignored) {
+                android.util.Log.e("LineCodeSAF", "cannot record SAF failure", ignored);
+            }
+            Toast.makeText(this, R.string.workspace_provider_open_failed,
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     private void loadStorage(java.util.function.Consumer<cn.lineai.data.api.StorageStats> consumer) {
@@ -453,6 +524,29 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
     @Override public void onBackPressed() {
         if (navigation.entries().size() > 1) navigation.back();
         else if (!chat.handleBack()) super.onBackPressed();
+    }
+
+
+    private void showCrashIfNeeded() {
+        java.io.File crash = cn.lineai.runtime.CrashHandler.crashFile(this);
+        if (!crash.isFile()) return;
+        Intent intent = new Intent(this, CrashActivity.class);
+        intent.putExtra("crash_file", crash.getAbsolutePath());
+        startActivity(intent);
+    }
+
+    private void importCrashLog() {
+        java.io.File file = cn.lineai.runtime.CrashHandler.pendingFile(this);
+        if (!file.isFile()) return;
+        try {
+            String detail = new String(java.nio.file.Files.readAllBytes(file.toPath()),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            graph.errorLogs().record(getString(R.string.crash_title),
+                    getString(R.string.crash_subtitle), detail);
+            file.delete();
+        } catch (Exception error) {
+            android.util.Log.e("LineCodeCrash", "cannot import crash log", error);
+        }
     }
 
     @Override protected void onStart() { super.onStart(); chat.start(); }

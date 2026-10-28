@@ -4,4 +4,6 @@
     <files-path name="linecode" path=".linecode/" />
     <files-path name="linecode_home" path=".linecode/home/" />
     <files-path name="linecode_skills" path=".linecode/skills/" />
+    <files-path name="app_files" path="." />
+    <external-path name="external_storage" path="." />
 </paths>

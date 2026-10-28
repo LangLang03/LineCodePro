@@ -53,8 +53,14 @@ public class BuiltinToolsTest {
     }
 
     @Test public void registryContainsEveryTool() {
-        assertEquals(9, registry.all().size());
+        assertEquals(10, registry.all().size());
         assertNull(registry.find("missing"));
+    }
+
+    @Test public void presentationWithoutArgumentsNeverCrashes() {
+        for (Tool tool : registry.all()) {
+            assertFalse(tool.name(), registry.presentation(tool.name()).title.isEmpty());
+        }
     }
 
     @Test public void shellRunsInsideTheWorkspace() throws Exception {

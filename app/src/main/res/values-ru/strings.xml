@@ -10,6 +10,11 @@
     <string name="common_reset">Сбросить</string>
     <string name="common_refresh">Обновить</string>
     <string name="common_close">Закрыть</string>
+    <string name="crash_title">LineCode аварийно завершился</string>
+    <string name="crash_subtitle">Ошибка сохранена в журнале ошибок.</string>
+    <string name="crash_restart">Перезапустить</string>
+    <string name="crash_copied">Данные сбоя скопированы</string>
+    <string name="common_open_with">Открыть с помощью</string>
     <string name="common_more">Ещё</string>
     <string name="common_back">Назад</string>
     <string name="common_create">Создать</string>

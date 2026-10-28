@@ -118,7 +118,7 @@ public class PromptCatalogTest {
                 "OPENAI_COMPATIBLE", "coding");
         assertTrue(coding.contains("Communication Tone: Coding Mode"));
         assertTrue(coding.contains("deepseek-chat"));
-        assertTrue(coding.contains("Current mode: Agent."));
+        assertTrue(coding.contains("Current mode: Agent"));
         assertFalse(coding.contains("{{"));
         String chat = assembler.assemble("m", "M", "p", "ANTHROPIC_MESSAGES", "chat");
         assertTrue(chat.contains("Communication Tone: Chat Mode"));

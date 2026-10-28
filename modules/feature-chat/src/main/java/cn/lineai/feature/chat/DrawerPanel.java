@@ -1,6 +1,7 @@
 package cn.lineai.feature.chat;
 
 import android.content.Context;
+import android.graphics.Color;
 import android.graphics.Typeface;
 import android.view.Gravity;
 import android.widget.FrameLayout;
@@ -28,7 +29,13 @@ public final class DrawerPanel extends FrameLayout {
 
         void onDelete(String conversationId);
 
+        void onOpenFile(String relativePath);
+
         List<WorkspaceNode> files(String path);
+
+        default String projectLabel() { return ""; }
+
+        default String projectPath() { return ""; }
     }
 
     private final android.view.View backdrop;
@@ -42,10 +49,14 @@ public final class DrawerPanel extends FrameLayout {
     private final TextView emptyFiles;
     private final TextView pathLabel;
     private final IconButton backButton;
+    private final TextView headerTitle;
+    private final IconButton filesRefresh;
+    private final TextView projectLabel;
+    private final TextView projectPath;
+    private final java.util.Set<String> expanded = new java.util.HashSet<>();
     private Listener listener;
     private Tokens tokens;
     private String currentId = "";
-    private String currentPath = "";
     private boolean filesMode;
 
     public DrawerPanel(Context context, Tokens tokens) {
@@ -70,9 +81,16 @@ public final class DrawerPanel extends FrameLayout {
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
         Ui.padding(header, 24, 40, 16, 24);
-        TextView title = Ui.bold(context, context.getString(R.string.drawer_title_conversations),
+        headerTitle = Ui.bold(context, context.getString(R.string.drawer_title_conversations),
                 Tokens.FONT_LG, tokens.text);
-        header.addView(title, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        header.addView(headerTitle, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        filesRefresh = new IconButton(context, Icons.REFRESH_CW);
+        filesRefresh.setIconColor(tokens.textSecondary);
+        filesRefresh.setIconSizeDp(32, 18);
+        filesRefresh.setContentDescription(context.getString(R.string.common_refresh));
+        filesRefresh.setVisibility(GONE);
+        filesRefresh.setOnClickListener(v -> renderFiles());
+        header.addView(filesRefresh, new LinearLayout.LayoutParams(Ui.dp(context, 32), Ui.dp(context, 32)));
         sidebar.addView(header, new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
@@ -151,6 +169,19 @@ public final class DrawerPanel extends FrameLayout {
         sidebar.addView(filesGroup, new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, 0, 1f));
 
+        LinearLayout project = new LinearLayout(context);
+        project.setOrientation(LinearLayout.VERTICAL);
+        Ui.padding(project, 16, 8, 16, 8);
+        projectLabel = Ui.bold(context, "LineCode", 13, tokens.text);
+        projectPath = Ui.text(context, "", 11, tokens.textTertiary, Typeface.NORMAL);
+        projectPath.setSingleLine(true);
+        projectPath.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        project.addView(projectLabel, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams projectPathParams = new LinearLayout.LayoutParams(-1, -2);
+        projectPathParams.topMargin = Ui.dp(context, 2);
+        project.addView(projectPath, projectPathParams);
+        filesGroup.addView(project, new LinearLayout.LayoutParams(-1, -2));
+
         LinearLayout breadcrumb = new LinearLayout(context);
         breadcrumb.setGravity(Gravity.CENTER_VERTICAL);
         Ui.padding(breadcrumb, 16, 4, 16, 8);
@@ -158,7 +189,7 @@ public final class DrawerPanel extends FrameLayout {
         backButton.setIconColor(tokens.textSecondary);
         backButton.setIconSizeDp(32, 18);
         backButton.setContentDescription(context.getString(R.string.common_back));
-        backButton.setOnClickListener(v -> loadFiles(parentOf(currentPath)));
+        backButton.setOnClickListener(v -> { expanded.clear(); renderFiles(); });
         breadcrumb.addView(backButton, new LinearLayout.LayoutParams(
                 Ui.dp(context, 32), Ui.dp(context, 32)));
         pathLabel = Ui.medium(context, "/", Tokens.FONT_SM, tokens.textSecondary);
@@ -176,7 +207,7 @@ public final class DrawerPanel extends FrameLayout {
         fileContent.setOrientation(LinearLayout.VERTICAL);
         fileList = new LinearLayout(context);
         fileList.setOrientation(LinearLayout.VERTICAL);
-        Ui.padding(fileList, 12, 4, 12, 32);
+        Ui.padding(fileList, 8, 8, 8, 32);
         fileContent.addView(fileList, new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         emptyFiles = Ui.text(context, context.getString(R.string.drawer_empty_files),
@@ -213,61 +244,84 @@ public final class DrawerPanel extends FrameLayout {
         renderTabs();
         conversationsGroup.setVisibility(files ? GONE : VISIBLE);
         filesGroup.setVisibility(files ? VISIBLE : GONE);
-        if (files) loadFiles(currentPath);
-    }
-
-    private void loadFiles(String path) {
-        currentPath = path == null ? "" : path;
-        pathLabel.setText(currentPath.isEmpty() ? "/" : currentPath);
-        backButton.setVisibility(currentPath.isEmpty() ? INVISIBLE : VISIBLE);
-        fileList.removeAllViews();
-        List<WorkspaceNode> nodes = listener == null
-                ? Collections.<WorkspaceNode>emptyList() : listener.files(currentPath);
-        if (nodes == null) nodes = Collections.emptyList();
-        emptyFiles.setVisibility(nodes.isEmpty() ? VISIBLE : GONE);
-        for (WorkspaceNode node : nodes) {
-            fileList.addView(fileRow(node), itemParams());
+        headerTitle.setText(getContext().getString(files
+                ? R.string.drawer_title_files : R.string.drawer_title_conversations));
+        filesRefresh.setVisibility(files ? VISIBLE : GONE);
+        if (files) {
+            String label = listener == null ? "" : listener.projectLabel();
+            String path = listener == null ? "" : listener.projectPath();
+            projectLabel.setText(label.isEmpty() ? "LineCode" : label);
+            projectPath.setText(path);
+            if (expanded.isEmpty()) expanded.add("");
+            renderFiles();
         }
     }
 
-    private LinearLayout fileRow(WorkspaceNode node) {
+    private void renderFiles() {
+        fileList.removeAllViews();
+        pathLabel.setText("/");
+        backButton.setVisibility(INVISIBLE);
+        List<WorkspaceNode> nodes = listener == null
+                ? Collections.<WorkspaceNode>emptyList() : listener.files("");
+        if (nodes == null) nodes = Collections.emptyList();
+        emptyFiles.setVisibility(nodes.isEmpty() ? VISIBLE : GONE);
+        for (WorkspaceNode node : nodes) addFileNode(node, 0);
+    }
+
+    private void addFileNode(WorkspaceNode node, int depth) {
+        fileList.addView(fileRow(node, depth), itemParams());
+        if (!node.directory || !expanded.contains(node.path)) return;
+        List<WorkspaceNode> children = listener == null
+                ? Collections.<WorkspaceNode>emptyList() : listener.files(node.path);
+        if (children == null) return;
+        for (WorkspaceNode child : children) addFileNode(child, depth + 1);
+    }
+
+    private LinearLayout fileRow(WorkspaceNode node, int depth) {
         Context context = getContext();
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setClickable(node.directory);
-        row.setFocusable(node.directory);
-        row.setBackground(Ui.roundedStroke(context, tokens.surfaceElevated, 10, tokens.borderLight));
-        Ui.padding(row, 10, 10, 10, 10);
-        row.setOnClickListener(v -> {
-            if (node.directory) loadFiles(node.path);
-        });
-        IconButton icon = new IconButton(context, node.directory ? Icons.FOLDER : Icons.FILE_TEXT);
-        icon.setIconColor(node.directory ? tokens.accent : tokens.textSecondary);
-        icon.setIconSizeDp(24, 16);
-        icon.setClickable(false);
-        row.addView(icon, new LinearLayout.LayoutParams(Ui.dp(context, 24), Ui.dp(context, 24)));
-        TextView name = Ui.medium(context, node.name, Tokens.FONT_SM, tokens.text);
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setBackgroundColor(Color.TRANSPARENT);
+        row.setMinimumHeight(Ui.dp(context, 48));
+        int left = 16 + Math.min(depth, 6) * 16;
+        Ui.padding(row, left, 12, 16, 12);
+        boolean open = node.directory && expanded.contains(node.path);
+        int icon = node.directory ? (open ? Icons.FOLDER_OPEN : Icons.FOLDER)
+                : fileIcon(node.name);
+        IconButton glyph = new IconButton(context, icon);
+        glyph.setIconColor(node.directory ? tokens.accent : tokens.textSecondary);
+        glyph.setIconSizeDp(24, 16);
+        glyph.setClickable(false);
+        row.addView(glyph, new LinearLayout.LayoutParams(Ui.dp(context, 24), Ui.dp(context, 24)));
+        TextView name = Ui.medium(context, node.name, 13, tokens.text);
         name.setSingleLine(true);
         name.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(0, -2, 1f);
         nameParams.leftMargin = Ui.dp(context, 8);
         row.addView(name, nameParams);
-        if (node.directory) {
-            IconButton chevron = new IconButton(context, Icons.CHEVRON_RIGHT);
-            chevron.setIconColor(tokens.textTertiary);
-            chevron.setIconSizeDp(18, 14);
-            chevron.setClickable(false);
-            row.addView(chevron, new LinearLayout.LayoutParams(
-                    Ui.dp(context, 18), Ui.dp(context, 18)));
-        }
+        row.setOnClickListener(v -> {
+            if (node.directory) {
+                if (!expanded.remove(node.path)) expanded.add(node.path);
+                renderFiles();
+            } else if (listener != null) {
+                listener.onOpenFile(node.path);
+            }
+        });
         return row;
     }
 
-    private static String parentOf(String path) {
-        if (path == null || path.isEmpty()) return "";
-        int index = path.lastIndexOf('/');
-        return index <= 0 ? "" : path.substring(0, index);
+    private static int fileIcon(String name) {
+        String lower = name == null ? "" : name.toLowerCase(java.util.Locale.ROOT);
+        if (lower.endsWith(".java") || lower.endsWith(".kt") || lower.endsWith(".js")
+                || lower.endsWith(".ts") || lower.endsWith(".py") || lower.endsWith(".c")
+                || lower.endsWith(".cc") || lower.endsWith(".cpp") || lower.endsWith(".h")
+                || lower.endsWith(".json") || lower.endsWith(".xml") || lower.endsWith(".gradle")) {
+            return Icons.FILE_CODE;
+        }
+        return Icons.FILE_TEXT;
     }
 
     private LinearLayout tab(Context context, int icon, int labelRes, boolean active) {
@@ -387,8 +441,11 @@ public final class DrawerPanel extends FrameLayout {
         emptyFiles.setTextColor(current.textTertiary);
         pathLabel.setTextColor(current.textSecondary);
         backButton.setIconColor(current.textSecondary);
+        projectLabel.setTextColor(current.text);
+        projectPath.setTextColor(current.textTertiary);
+        filesRefresh.setIconColor(current.textSecondary);
         renderTabs();
-        if (filesMode) loadFiles(currentPath);
+        if (filesMode) renderFiles();
     }
 
     public void open() {
@@ -399,7 +456,7 @@ public final class DrawerPanel extends FrameLayout {
         backdrop.setAlpha(0f);
         sidebar.animate().translationX(0f).setDuration(220).start();
         backdrop.animate().alpha(1f).setDuration(220).start();
-        if (filesMode) loadFiles(currentPath);
+        if (filesMode) renderFiles();
     }
 
     public void close() {

@@ -10,6 +10,11 @@
     <string name="common_reset">重置</string>
     <string name="common_refresh">刷新</string>
     <string name="common_close">关闭</string>
+    <string name="crash_title">LineCode 已崩溃</string>
+    <string name="crash_subtitle">错误已写入错误日志。</string>
+    <string name="crash_restart">重新启动</string>
+    <string name="crash_copied">崩溃信息已复制</string>
+    <string name="common_open_with">打开方式</string>
     <string name="common_more">更多</string>
     <string name="common_back">返回</string>
     <string name="common_create">创建</string>

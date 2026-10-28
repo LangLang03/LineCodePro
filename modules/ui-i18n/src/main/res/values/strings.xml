@@ -10,6 +10,11 @@
     <string name="common_reset">Reset</string>
     <string name="common_refresh">Refresh</string>
     <string name="common_close">Close</string>
+    <string name="crash_title">LineCode crashed</string>
+    <string name="crash_subtitle">The error was saved to the error log.</string>
+    <string name="crash_restart">Restart</string>
+    <string name="crash_copied">Crash details copied</string>
+    <string name="common_open_with">Open with</string>
     <string name="common_more">More</string>
     <string name="common_back">Back</string>
     <string name="common_create">Create</string>

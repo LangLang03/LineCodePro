@@ -24,6 +24,8 @@ import cn.lineai.data.api.ErrorLogStore;
 import cn.lineai.data.api.StorageStatsStore;
 import cn.lineai.data.api.TerminalProviderStore;
 import cn.lineai.data.api.SettingsStore;
+import cn.lineai.data.migration.LegacyFiles;
+import cn.lineai.data.migration.LegacyMigration;
 import cn.lineai.data.api.SkillStore;
 import cn.lineai.data.sqlite.LineCodeDatabase;
 import cn.lineai.data.sqlite.SqliteConversationStore;
@@ -107,6 +109,7 @@ public final class AppGraph implements AutoCloseable {
         scheduler = new AndroidScheduler();
         File dbFile = new File(context.getDatabasePath("linecode-v2.db").getAbsolutePath());
         database = new LineCodeDatabase(dbFile);
+        LegacyMigration.migrate(context.getDatabasePath("linecode.db"), database);
         Clock clock = Clock.system();
 
         final SettingsStore settingsStore = new SqliteSettingsStore(database, clock);
@@ -122,6 +125,8 @@ public final class AppGraph implements AutoCloseable {
         final AgentExtensionStore agentExtensionStore = new SqliteAgentExtensionStore(database, clock);
         final McpExtensionStore mcpExtensionStore = new SqliteMcpExtensionStore(database, clock);
         final File skillsRoot = new File(context.getFilesDir(), "skills");
+        LegacyFiles.copySkills(new File(context.getFilesDir(), ".linecode/skills"),
+                skillsRoot);
         final SkillStore skillStore = new FileSkillStore(
                 skillsRoot, settingsStore, clock);
         final TerminalProviderStore providerStore = new SqliteTerminalProviderStore(database, clock);
@@ -170,6 +175,15 @@ public final class AppGraph implements AutoCloseable {
         this.sessionTodos = todoStore;
         final ToolContext toolContext = new ToolContext() {
             @Override public cn.lineai.tool.api.TodoStore todos() { return todoStore; }
+            @Override public cn.lineai.tool.api.MemorySink memory() {
+                return (scope, title, content) -> {
+                    Project selected = projectStore.selected();
+                    String projectId = selected == null ? "" : selected.path;
+                    long now = clock.nowMs();
+                    memoryStore.save(new cn.lineai.core.model.MemoryItem("", scope, projectId,
+                            title, content, "manual", 1.0, now, now, 0, 0));
+                };
+            }
             @Override public DiffSink diffs() {
                 return (path, before, after, existedBefore) -> {
                     Project selected = projectStore.selected();

@@ -22,6 +22,9 @@ public final class ScreenHost implements AutoCloseable {
     private final Function<ScreenKey<?, ?>, View> factory;
     private final Map<ScreenKey<?, ?>, View> views = new LinkedHashMap<>();
     private final Cancellable observation;
+    private ScreenKey<?, ?> lastTop;
+    private int lastCount;
+    private boolean suppressAnimation;
 
     public ScreenHost(FrameLayout container, BackStack navigation, Function<ScreenKey<?, ?>, View> factory) {
         this.container = container;
@@ -31,6 +34,8 @@ public final class ScreenHost implements AutoCloseable {
     }
 
     private void render(List<ScreenKey<?, ?>> entries) {
+        ScreenKey<?, ?> previousTop = lastTop;
+        int previousCount = lastCount;
         for (ScreenKey<?, ?> key : new ArrayList<>(views.keySet())) {
             if (!entries.contains(key)) dispose(views.remove(key));
         }
@@ -38,15 +43,48 @@ public final class ScreenHost implements AutoCloseable {
         for (View view : views.values()) view.setVisibility(View.GONE);
         boolean overlay = entries.size() > 1;
         container.setVisibility(overlay ? View.VISIBLE : View.GONE);
-        if (!overlay) return;
+        if (!overlay) {
+            lastTop = null;
+            lastCount = 0;
+            return;
+        }
         View view = views.get(top);
+        boolean created = view == null;
         if (view == null) {
             view = factory.apply(top);
             views.put(top, view);
             container.addView(view, new FrameLayout.LayoutParams(-1, -1));
         }
+        boolean push = previousCount < entries.size()
+                && (previousTop == null || !previousTop.equals(top));
+        boolean pop = previousTop != null && previousCount > entries.size();
+        View previous = previousTop == null ? null : views.get(previousTop);
+        if (push && previous != null && previous != view) {
+            previous.setTranslationX(0f);
+            previous.setVisibility(View.VISIBLE);
+            previous.bringToFront();
+        }
         view.setVisibility(View.VISIBLE);
         view.bringToFront();
+        int width = container.getWidth() > 0 ? container.getWidth()
+                : container.getResources().getDisplayMetrics().widthPixels;
+        if (!suppressAnimation && (push || pop) && width > 0) {
+            if (push) {
+                view.setTranslationX(width);
+                view.animate().translationX(0f).setDuration(220).start();
+                if (previous != null) {
+                    previous.animate().translationX(-width * 0.22f).setDuration(220)
+                            .withEndAction(() -> previous.setVisibility(View.GONE)).start();
+                }
+            } else {
+                view.setTranslationX(-width * 0.22f);
+                view.animate().translationX(0f).setDuration(200).start();
+            }
+        } else {
+            view.setTranslationX(0f);
+        }
+        lastTop = top;
+        lastCount = entries.size();
         if (view instanceof cn.lineai.ui.kit.Refreshable) {
             ((cn.lineai.ui.kit.Refreshable) view).onShown();
         }
@@ -94,7 +132,9 @@ public final class ScreenHost implements AutoCloseable {
             ScreenKey<?, ?> screen = registry.require(entry.getString("route")).restore(new Params.Args(args));
             restored.add(screen.save());
         }
+        suppressAnimation = true;
         navigation.restore(restored);
+        suppressAnimation = false;
         for (int i = 0; i < entries.size(); i++) {
             ScreenKey<?, ?> key = navigation.entries().get(i);
             if (i == 0) continue;

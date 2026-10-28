@@ -15,5 +15,6 @@ public enum ToolIcon {
     SPARKLES,
     TODO,
     AGENT,
+    MEMORY,
     PHONE
 }

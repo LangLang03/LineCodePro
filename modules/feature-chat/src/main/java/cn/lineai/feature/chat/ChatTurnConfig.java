@@ -15,6 +15,8 @@ import cn.lineai.core.model.UiPreferences;
 import cn.lineai.data.api.SettingsStore;
 import cn.lineai.engine.protocol.ReasoningSpec;
 import cn.lineai.engine.prompt.SystemPromptAssembler;
+import cn.lineai.tool.api.Tool;
+import cn.lineai.tool.api.ToolRegistry;
 
 /** Reads per-turn prompt and reasoning settings. */
 final class ChatTurnConfig {
@@ -25,6 +27,14 @@ final class ChatTurnConfig {
     static String systemPrompt(SystemPromptAssembler prompts, SettingsStore settings,
                                ModelConfig model, String extensionSection,
                                String summarySection, String learningSection) {
+        return systemPrompt(prompts, settings, model, extensionSection, summarySection,
+                learningSection, null, null);
+    }
+
+    static String systemPrompt(SystemPromptAssembler prompts, SettingsStore settings,
+                               ModelConfig model, String extensionSection,
+                               String summarySection, String learningSection,
+                               ToolRegistry activeTools, ToolRegistry allTools) {
         String extensions = extensionSection == null ? "" : extensionSection;
         String summary = summarySection == null ? "" : summarySection;
         if (prompts == null) return extensions + summary;
@@ -32,13 +42,36 @@ final class ChatTurnConfig {
         String mode = ChatMode.normalize(settings.get(ToolModes.CHAT_MODE_KEY, ChatMode.AGENT));
         boolean minimal = Boolean.parseBoolean(
                 settings.get(UiPreferences.Field.MINIMAL_MODE.key, "false"));
+        String allowed = toolNames(activeTools);
+        String blocked = blockedToolNames(activeTools, allTools);
         String base = minimal
-                ? prompts.minimal(mode)
+                ? prompts.minimal(allowed)
                 : prompts.assemble(model.modelId, model.displayName(), model.providerId,
                         model.protocol.name(), tone, mode,
-                        learningSection == null ? "" : learningSection);
+                        learningSection == null ? "" : learningSection, allowed, blocked);
         String extra = minimal ? summary : extensions + summary;
         return extra.isEmpty() ? base : base + extra;
+    }
+
+    private static String toolNames(ToolRegistry registry) {
+        if (registry == null) return "none";
+        StringBuilder out = new StringBuilder();
+        for (Tool tool : registry.all()) {
+            if (out.length() > 0) out.append(", ");
+            out.append(tool.name());
+        }
+        return out.length() == 0 ? "none" : out.toString();
+    }
+
+    private static String blockedToolNames(ToolRegistry active, ToolRegistry all) {
+        if (all == null) return "none";
+        StringBuilder out = new StringBuilder();
+        for (Tool tool : all.all()) {
+            if (active != null && active.find(tool.name()) != null) continue;
+            if (out.length() > 0) out.append(", ");
+            out.append(tool.name());
+        }
+        return out.length() == 0 ? "none" : out.toString();
     }
 
     static List<ContentBlock> blocks(CharSequence text, CharSequence reasoning) {

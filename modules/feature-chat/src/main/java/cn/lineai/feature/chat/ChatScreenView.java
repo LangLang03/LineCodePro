@@ -31,6 +31,10 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
 
         void onOpenSettings();
 
+        void onReasoning();
+
+        void onMore();
+
         void onProject();
 
         void onPermission();
@@ -44,6 +48,12 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         void onChatMode();
 
         void setChatMode(String mode);
+
+        void openFile(String relativePath);
+
+        String projectLabel();
+
+        String projectPath();
 
         java.util.List<cn.lineai.core.model.WorkspaceNode> workspaceFiles(String path);
     }
@@ -140,7 +150,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
             @Override
             public void onMore() {
                 if (host != null) {
-                    host.onOpenSettings();
+                    host.onMore();
                 }
             }
 
@@ -188,7 +198,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
             @Override
             public void onReasoning() {
                 if (host != null) {
-                    host.onOpenSettings();
+                    host.onReasoning();
                 }
             }
 
@@ -257,6 +267,21 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
             @Override
             public void onDelete(String conversationId) {
                 controller.deleteConversation(conversationId);
+            }
+
+            @Override
+            public void onOpenFile(String relativePath) {
+                if (host != null) host.openFile(relativePath);
+            }
+
+            @Override
+            public String projectLabel() {
+                return host == null ? "" : host.projectLabel();
+            }
+
+            @Override
+            public String projectPath() {
+                return host == null ? "" : host.projectPath();
             }
 
             @Override
@@ -343,6 +368,10 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
 
     public boolean isDrawerOpen() {
         return drawer.getVisibility() == VISIBLE;
+    }
+
+    public void openDrawer() {
+        drawer.open();
     }
 
     public boolean closeDrawer() {
