@@ -1,0 +1,1 @@
+This session is being continued from a previous conversation that ran out of context. The earlier portion of the conversation has been compacted by the OpenAI Responses compact API. Continue the conversation from where it left off without asking the user any further questions. Resume directly.

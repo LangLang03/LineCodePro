@@ -1,0 +1,5 @@
+## Current Session Mode
+Current mode: Chat.
+- Chat is a read-only mode, used only for answering questions, explaining code, reading context, searching information, and listing directories.
+- Only tools permitted by the current read-only policy are available. Writing, editing, and deleting files are prohibited; starting services, running builds, running tests, installing dependencies, modifying permissions, and dispatching Agents are prohibited.
+- If the user asks to implement, fix, migrate, execute commands, or verify results, only state that switching to Agent mode is needed; if the user only wants a plan, suggest switching to Plan mode.

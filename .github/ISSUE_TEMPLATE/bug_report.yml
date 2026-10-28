@@ -1,5 +1,5 @@
-name: Bug report
-description: Report a reproducible LineCode Pro defect
+name: Bug / 缺陷
+description: Report a reproducible LineCode Pro defect / 报告可复现的缺陷
 title: "[Bug]: "
 labels:
   - bug
@@ -7,37 +7,48 @@ body:
   - type: markdown
     attributes:
       value: |
+        感谢反馈。请移除 API Key、SSH 凭据、私有源码和个人数据后再上传日志或截图。
         Thanks for reporting a bug. Remove API keys, SSH credentials, private source, and personal data from every attachment.
   - type: dropdown
     id: platform
     attributes:
-      label: Platform
+      label: Platform / 平台
       options:
-        - Android device
-        - Android emulator
-        - Windows
+        - Android device / Android 真机
+        - Android emulator / Android 模拟器
+        - Build or CI / 构建或 CI
+    validations:
+      required: true
+  - type: dropdown
+    id: variant
+    attributes:
+      label: Build variant / 构建版本
+      options:
+        - Slim (default) / 精简版（默认）
+        - Local model (llama.cpp) / 本地模型版
+        - Not sure / 不确定
     validations:
       required: true
   - type: input
     id: version
     attributes:
-      label: LineCode Pro version
-      description: Include version name, version code, or commit SHA.
+      label: LineCode Pro version / 版本
+      description: Include version name, version code, or commit SHA. 请附版本名、versionCode 或提交 SHA。
       placeholder: 1.2.8-max (32)
     validations:
       required: true
   - type: input
     id: environment
     attributes:
-      label: Environment
-      description: Device/OS, architecture, model protocol, and workspace mode when relevant.
-      placeholder: Android 16 emulator, x86_64, OpenAI-compatible, local workspace
+      label: Environment / 环境
+      description: Android version, ABI, model protocol, workspace mode, and whether the local backend is enabled.
+      placeholder: Android 16, arm64-v8a, OpenAI-compatible, local workspace, slim build
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: Steps to reproduce
+      label: Steps to reproduce / 复现步骤
       placeholder: |
         1. Open ...
         2. Tap ...
@@ -47,26 +58,26 @@ body:
   - type: textarea
     id: expected
     attributes:
-      label: Expected behavior
+      label: Expected behavior / 期望行为
     validations:
       required: true
   - type: textarea
     id: actual
     attributes:
-      label: Actual behavior
+      label: Actual behavior / 实际行为
     validations:
       required: true
   - type: textarea
     id: evidence
     attributes:
-      label: Screenshots, recordings, or sanitized logs
+      label: Screenshots, recordings, or sanitized logs / 截图、录屏或脱敏日志
       description: Drag files here. For UI mismatches, include both the affected state and the reference state when possible.
   - type: checkboxes
     id: checks
     attributes:
-      label: Pre-submission checks
+      label: Pre-submission checks / 提交前检查
       options:
-        - label: I searched existing issues and did not find the same report.
+        - label: I searched existing issues and did not find the same report. / 我已搜索现有 issue，未找到相同报告。
           required: true
-        - label: I removed secrets, private code, and personal data from this report.
+        - label: I removed secrets, private code, and personal data from this report. / 我已移除密钥、私有代码和个人数据。
           required: true

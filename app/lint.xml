@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- The app builds its custom views directly in Java; they are not inflated from XML. -->
+    <issue id="ViewConstructor" severity="ignore" />
+
+    <!-- Launcher and round launcher icons intentionally share the same bitmap asset. -->
+    <issue id="IconDuplicates" severity="ignore" />
+
+    <!-- Accessibility services legitimately require BIND_ACCESSIBILITY_SERVICE. -->
+    <issue id="ProtectedPermissions" severity="ignore" />
+</lint>

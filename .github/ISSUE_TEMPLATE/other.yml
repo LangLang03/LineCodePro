@@ -1,0 +1,34 @@
+name: Other / 其他
+description: Ask a question or open a topic that is not a bug, feature, or suggestion / 提问或讨论不属于缺陷、功能、建议的话题
+title: "[Other]: "
+labels:
+  - question
+body:
+  - type: textarea
+    id: topic
+    attributes:
+      label: Topic / 主题
+      description: What would you like to discuss?
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details / 详细说明
+      description: Add context, links, or the decision you need help with.
+    validations:
+      required: true
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Screenshots or sanitized logs / 截图或脱敏日志
+      description: Remove API keys, credentials, private source, and personal data before uploading.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks / 提交前检查
+      options:
+        - label: I removed secrets, private code, and personal data from this report. / 我已移除密钥、私有代码和个人数据。
+          required: true
+        - label: This is not a security vulnerability. / 这不是安全漏洞。
+          required: true

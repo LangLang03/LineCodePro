@@ -1,5 +1,5 @@
-name: UI or behavior parity report
-description: Report a specific mismatch with the reference LineCode application
+name: UI parity / 界面差异
+description: Report a mismatch with the reference LineCode UI or behavior / 报告与参考 LineCode 界面或行为的差异
 title: "[Parity]: "
 labels:
   - bug
@@ -8,37 +8,37 @@ body:
   - type: input
     id: location
     attributes:
-      label: Screen, dialog, or control
+      label: Screen, dialog, or control / 页面、弹窗或控件
       placeholder: Settings > Tools > Command execution
     validations:
       required: true
   - type: textarea
     id: difference
     attributes:
-      label: Observed difference
+      label: Observed difference / 观察到的差异
       description: Include position, spacing, size, typography, state, interaction, or functional differences.
     validations:
       required: true
   - type: textarea
     id: reference
     attributes:
-      label: Reference and current screenshots
+      label: Reference and current screenshots / 参考与当前截图
       description: Attach the same state at the same display size when possible.
     validations:
       required: true
   - type: input
     id: device
     attributes:
-      label: Device and display configuration
-      placeholder: Android 16 emulator, 1080 × 2400, font/display size default
+      label: Device and display configuration / 设备与显示配置
+      placeholder: Android 16 emulator, 1080 x 2400, font/display size default
     validations:
       required: true
   - type: checkboxes
     id: checks
     attributes:
-      label: Confirmation
+      label: Confirmation / 确认
       options:
-        - label: I reproduced this difference on the latest available build.
+        - label: I reproduced this difference on the latest available build. / 我已在最新可用构建上复现。
           required: true
-        - label: I removed credentials and private content from the screenshots.
+        - label: I removed credentials and private content from the screenshots. / 我已移除截图中的凭据和隐私内容。
           required: true

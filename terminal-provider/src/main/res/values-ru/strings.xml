@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name" translatable="false">Terminal Provider</string>
+    <string name="bind_service">Подключить локальный сервис</string>
+    <string name="test_identity">Выполнить whoami</string>
+    <string name="test_files">Выполнить ls /</string>
+    <string name="provider_info">Информация о провайдере</string>
+    <string name="logs">Вывод</string>
+    <string name="clear_logs">Очистить</string>
+</resources>

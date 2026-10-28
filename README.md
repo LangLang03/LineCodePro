@@ -1,17 +1,15 @@
-![LineCode Pro](https://socialify.git.ci/LangLang03/LineCodePro/image?description=1&font=KoHo&forks=1&issues=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FLangLang03%2FLineCodePro%2Frefs%2Fheads%2Fmaster%2F.idea%2Ficon.svg&name=1&pulls=1&stargazers=1&pattern=Circuit%20Board&theme=Auto)
+![LineCode Pro](https://socialify.git.ci/LangLang03/LineCodePro/image?description=1&font=KoHo&forks=1&issues=1&name=1&pulls=1&stargazers=1&pattern=Circuit%20Board&theme=Auto)
 
 # LineCode Pro
 
 [中文](README_CN.md) · English
 
 [![CI](https://img.shields.io/github/actions/workflow/status/LangLang03/LineCodePro/ci.yml?branch=master&style=flat-square&label=CI)](https://github.com/LangLang03/LineCodePro/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/actions/workflow/status/LangLang03/LineCodePro/release.yml?style=flat-square&label=Release)](https://github.com/LangLang03/LineCodePro/releases)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-663399?style=flat-square)](LICENSE)
-[![C++23](https://img.shields.io/badge/C%2B%2B-23-00599C?style=flat-square&logo=cplusplus)](CMakeLists.txt)
-[![HuxerUI](https://img.shields.io/badge/HuxerUI-0.3.0-ff6b6b?style=flat-square)](https://github.com/HuxerUI/HuxerUI)
-[![Android 6.0+](https://img.shields.io/badge/Android-6.0%2B-3DDC84?style=flat-square&logo=android)](platform/android/gradle.properties)
+[![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B%20(API%2026)-3DDC84?style=flat-square&logo=android)](app/build.gradle.kts)
+[![Java 11](https://img.shields.io/badge/Java-11-ED8B00?style=flat-square&logo=openjdk)](app/build.gradle.kts)
 
-**LineCode Pro is a native, cross-platform AI coding workspace built with modern C++23 and HuxerUI.** It combines streaming conversations, project-aware tools, multi-agent workflows, remote execution, extensibility, and local data management in one focused interface.
+**LineCode Pro is an Android AI coding workspace built in hand-written Java 11.** It combines streaming conversations, project-aware tools, multi-agent workflows, remote execution, extensions, and local data management in one portable interface.
 
 It is not just a chat client. A model can inspect a selected workspace, propose or apply file changes, run approved commands, search the web, work with images, delegate tasks to Agents, and continue through multi-step tool calls while the app keeps the complete execution timeline visible and reviewable.
 
@@ -29,27 +27,54 @@ It is not just a chat client. A model can inspect a selected workspace, propose 
 
 ## What it does
 
-- **Model-independent conversations** — OpenAI-compatible Chat Completions, OpenAI/Codex Responses, Anthropic Messages, and local GGUF models share one streaming interface.
-- **A complete tool loop** — read, create, edit, search, and organize project files; execute shell commands; search and fetch web content; understand or generate images; update task lists and memory.
-- **Agents and pipelines** — delegate focused work to coding or exploration Agents, run dependent stages, inspect live progress, and collect the result back into the parent conversation.
-- **Workspace choices** — operate on local Android storage, an SSH workspace, Termux, or a compatible Android terminal-provider service.
-- **Reviewable changes** — file operations produce diff records; reasoning, retries, approvals, tool calls, output, and final answers remain ordered in the conversation timeline.
-- **Extensible by design** — connect HTTP MCP servers, define custom Agents, install project or global `SKILL.md` packages, and discover community Skills through SkillHub.
-- **Long-session support** — context usage tracking, automatic compaction, conversation search, durable memories, and resumable histories keep larger tasks manageable.
-- **Native themes and layouts** — the HuxerUI interface includes light, dark, system, coffee-paper, high-contrast, custom-color, drawer, sheet, dialog, Markdown, and code presentation states.
+- **Model-independent conversations** — OpenAI-compatible Chat Completions, OpenAI/Codex Responses, Anthropic Messages, and optional local GGUF models share one streaming interface.
+- **A complete tool loop** — read, create, edit, search, and organize project files; execute shell commands; search the web; understand or generate images; update task lists; and drive the phone through the accessibility service when explicitly enabled.
+- **Agents and skills** — delegate focused work to custom Agents, install `SKILL.md` packages, discover community Skills through SkillHub, and connect HTTP MCP servers.
+- **Workspace choices** — operate on app-managed projects, an SSH host, Termux, or a compatible Android terminal provider over AIDL.
+- **Reviewable changes** — file operations produce diff records with rollback; reasoning, retries, approvals, tool calls, output, and final answers remain ordered in the timeline.
+- **Long-session support** — context usage tracking, soft/hard compaction, durable memories, project memory, and chat history keep larger tasks manageable.
+- **Themeable, hand-written UI** — light, dark, system, paper, high-contrast, custom palettes, drawer, sheets, dialogs, Markdown, and code presentation states are rendered without XML layouts.
+
+## Architecture
+
+The app is deliberately split so behavior cannot quietly collapse back into one Activity:
+
+```text
+app/                    Activity shell, manifest, resources, local-model opt-in test set
+modules/
+  core-model            DTOs, typed protocols, preferences, theme palette
+  core-kernel           Graph DI, Scheduler/Scope/Observable, errors, clocks
+  core-mvi              typed routes, back stack, state stores
+  engine-protocol       SSE parsing and OpenAI/Anthropic/Codex codecs
+  engine-prompt         prompt assets, strict renderer, system-prompt assembly
+  engine-ai             streaming HTTP model client, probes, MCP client
+  engine-agent          explicit tool-loop state machine
+  engine-local          optional llama.cpp JNI bridge
+  engine-skillhub       SkillHub API and session client
+  data                  SQLite schema v12 stores, archive, migrations
+  tool-*                tool contracts plus builtin, MCP, media, agent, phone tools
+  ui-*                  tokens, i18n, kit, Markdown renderer
+  feature-*             chat, settings, models, extensions, workspace, terminal
+  platform-android      accessibility, keep-alive, link policy, scheduler
+  runtime               composition, page factories, SAF/archive actions
+build-logic/            convention plugins and mechanical guards
+modules/arch-test/      package ownership, dependency, purity and hygiene tests
+```
+
+The reader-facing architecture rules live in [AGENT.md](AGENT.md). New modules must be added to `modules/arch-test/.../Modules.java` and to `settings.gradle.kts`.
 
 ## Platforms
 
 | Platform | Status | Notes |
 | --- | --- | --- |
-| Android 6.0+ (API 23+) | Primary | arm64 release; x86_64 is available for emulator verification. Android-only keep-alive and Termux integrations are included. |
-| Windows | In development | Native HuxerUI target and installer packaging. Android-only keep-alive controls are intentionally hidden. |
+| Android 8.0+ (API 26+) | Primary | The default **slim** APK has no native llama.cpp libraries and no local-model UI. The optional local build is arm64-v8a. |
+| Termux / Android terminal provider | Supported | SSH and AIDL terminal providers share the same workspace and file-tree UI. |
 
 ## Privacy and control
 
-LineCode Pro stores conversations, settings, memories, extension metadata, and diff history locally with SQLite. Your model credentials and selected project content are sent only to services that you explicitly configure or invoke. Tool execution supports automatic, confirmation, and read-only policies, and local file tools are constrained to the active workspace.
+Conversations, settings, memories, extension metadata, and diff history are stored locally in SQLite. Model credentials and selected project content are sent only to services you explicitly configure or invoke. Tool execution supports automatic, confirmation, and read-only policies, and file tools are constrained to the active workspace unless the user explicitly disables path protection.
 
-Export and diagnostic paths are designed to redact credentials, but you should still inspect archives and logs before sharing them. Treat every third-party model, MCP endpoint, Skill, SSH host, and web service according to its own privacy and security policy.
+Export and diagnostic paths are designed to redact credentials, but inspect archives and logs before sharing them. Treat every third-party model, MCP endpoint, Skill, SSH host, and web service according to its own privacy and security policy.
 
 ## Get LineCode Pro
 
@@ -57,91 +82,66 @@ Prebuilt artifacts and release notes are published on the [GitHub Releases](http
 
 ## Build from source
 
-This revision requires **HuxerUI SDK 0.3.0**. The official installer supports `--version`; use it explicitly so the local SDK matches CI instead of silently moving to a newer incompatible release:
+Requirements:
+
+- JDK 17 (the app targets Java 11)
+- Android SDK platform 36
+- Android SDK build-tools 36.0.0
+- NDK `29.0.14206865` and CMake 3.22.1 only for local-model builds
+
+All commands use the Gradle wrapper. The settings file forces `FAIL_ON_PROJECT_REPOS` and uses the Tencent Cloud Maven mirror; keep that in `settings.gradle.kts` when adding repositories.
+
+### Slim (default)
+
+The default build is the slim variant. It contains no llama.cpp `.so`, no `engine-local` Java, and no local-model UI.
 
 ```sh
-curl -fsSL https://github.com/HuxerUI/HuxerUI/releases/latest/download/install.sh | sh -s -- --version 0.3.0 --yes
-export HUXERUI_HOME="$HOME/.local/share/HuxerUI"
-export PATH="$HUXERUI_HOME/bin:$PATH"
-huxerui doctor android
-```
+./gradlew clean :app:assembleDebug
+# → app/build/outputs/apk/debug/app-debug.apk
 
-Android builds also require JDK 17, Android platform 36, NDK `29.0.14206865`, CMake 3.22.1, and Ninja. Build an installable debug APK with eight workers:
-
-```sh
-./platform/android/gradlew -p platform/android :app:assembleDebug --max-workers=8
-```
-
-Run the native GoogleTest suite with Ninja:
-
-```sh
-cmake -S tests -B build/tests-ninja -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build/tests-ninja --parallel 8
-cmake --build build/tests-ninja --target run_tests
+./gradlew verifyAll :arch-test:test
+./gradlew test :app:testDebugUnitTest
+./gradlew :app:lintDebug
 ```
 
 ### Local models (llama.cpp)
 
-Local GGUF models run in this process through llama.cpp. The backend is a build
-parameter, and the default build has none of it: nothing includes `llama.h`,
-nothing links the runtime, and the app compiles without any local-model entry
-point, so the default artifact stays small. Turn it on only for a build that
-should carry the feature.
+Local GGUF models run in-process through the bundled llama.cpp JNI library. The backend is a build parameter and the default build has none of it. The local build is a superset: it includes every slim feature plus the local model page, the local protocol entry, the `models` importer, and the native runtime.
 
 | Build parameter | Default | Effect |
 | --- | --- | --- |
-| `linecodeEnableLocalModel` | `false` | Compiles the backend and shows the "Load local model" entry, the local protocol tab and the local form. Off hides all three. |
-| `linecodeLocalModelBundle` | `false` | Packages the llama.cpp and ggml shared libraries into the artifact. A build that enables the backend without bundling still links it but keeps the libraries out of the APK. |
-| `linecodeLocalModelGpuVulkan` | `true` | Requests the Vulkan GPU backend. |
-| `linecodeLocalModelGpuOpenCL` | `true` | Requests the OpenCL GPU backend (Adreno). |
-| `linecodeLlamaCppSourceDir` | empty | Builds llama.cpp from an existing checkout instead of fetching it. Required for an offline build. |
-| `linecodeLlamaCppGitTag` | pinned | The llama.cpp revision fetched when no local source is given. |
-
-Each accelerator is requested and then narrowed to what the resolved llama.cpp
-actually provides: a backend the tree does not implement is reported as
-unavailable rather than claimed, so the local form only ever offers options the
-linked runtime can serve. At run time the choice is narrowed again to the devices
-the runtime enumerates, and a GPU request that no device satisfies falls back to
-the CPU with the effective accelerator reported to the caller.
-
-#### NPU acceleration: not supported yet
-
-NPU acceleration is deliberately absent, and the acceleration list in the model
-form says so instead of offering an option that could only degrade.
-
-Upstream llama.cpp has no NPU backend that can be built from the runtime alone:
-`GGML_HEXAGON` is the only one, and it needs the **Qualcomm Hexagon SDK** -- its
-HTP skels are compiled with the Hexagon toolchain and its host side compiles
-against SDK headers that this project cannot redistribute. Requiring a vendor
-account to build a release is not a trade this project makes, so the feature is
-parked rather than half-wired. Consequences worth knowing:
-
-- An archive or a hand-edited model that still names an NPU accelerator is read
-  as a CPU request, so it keeps loading instead of silently becoming "auto".
-- No device is ever classified as an NPU, so a BLAS or AMX library cannot be
-  mistaken for one.
-- GPU acceleration through Vulkan and OpenCL is unaffected and needs no SDK.
+| `linecodeEnableLocalModel` | `false` | Compiles `engine-local` and the local UI, and shows "Load local model" and the local protocol tab. Off removes both. |
+| `linecodeLocalModelBundle` | follows `linecodeEnableLocalModel` | Packages `libllama.so`, `libggml*.so` and `libc++_shared.so` into the APK. |
+| `linecodeLocalModelGpu` | `true` | Requests the GPU acceleration option in the local model form. |
+| `linecodeLlamaCppSourceDir` | `../LineCodePro-C++/.../_deps/linecode_llama_cpp-src` | llama.cpp headers source directory. |
+| `linecodeLlamaPrebuiltDir` | `../LineCodePro-C++/.../bin` | Directory with the prebuilt arm64 llama.cpp libraries. |
 
 ```sh
-# Default: small artifact, no local model support.
-./platform/android/gradlew -p platform/android :app:assembleDebug --max-workers=8
-
 # Full local model support, native libraries included.
-./platform/android/gradlew -p platform/android :app:assembleDebug --max-workers=8 \
-    -PlinecodeEnableLocalModel=true -PlinecodeLocalModelBundle=true
+./gradlew clean :app:assembleDebug -PlinecodeEnableLocalModel=true
+
+# Release.
+./gradlew clean :app:assembleRelease -PlinecodeEnableLocalModel=true
 ```
 
-The same switches exist for a native CMake build as
-`-DLINCODE_ENABLE_LOCAL_MODEL=ON -DLINCODE_LOCAL_MODEL_BUNDLE=ON`. Builds that
-enable the backend resolve llama.cpp from `LINCODE_LLAMA_CPP_SOURCE_DIR`, then a
-prebuilt installation, then the pinned revision; with no network and no local
-checkout, configure fails with that list instead of silently building without the
-feature.
+The local build needs a sibling LineCodePro-C++ checkout that contains the prebuilt arm64 llama.cpp runtime, or explicit paths via the two directory properties. A build that enables the backend without bundling still links it but leaves the shared libraries out of the APK; that is only useful for development.
 
-Imported GGUF files are copied into the app's own `models` directory, because the
-system picker returns a capability rather than a path the runtime can open.
+Switching between slim and local requires `clean` because both variants write the same APK path. A stale incremental APK can otherwise retain a zipflinger virtual-entry padding from the other variant.
 
-On Windows, install the same HuxerUI SDK version and create the native package with `huxerui package windows --project . --config Release`. Signed Android release builds additionally require private signing properties and are produced by the release workflow; signing material must never be committed.
+Imported GGUF files are copied into the app's own `models` directory, because the system picker returns a capability rather than a path the runtime can open. NPU acceleration is deliberately not offered; the linked runtime exposes CPU and GPU backends only.
+
+### Release signing
+
+A release APK needs a `signing.properties` file at the repo root with:
+
+```properties
+storeFile=/abs/path/to/your.keystore
+storePassword=…
+keyAlias=…
+keyPassword=…
+```
+
+Never commit signing material. The release build validates these properties before R8 runs, exports the APK as `LineCode Pro <versionName>-slim.APK` (or `-local.APK` when local models are enabled), and removes symbol archives.
 
 ## Community
 
@@ -153,9 +153,7 @@ The QQ group is for community discussion only. For commercial licensing or CLA/l
 
 ## Contributing
 
-Contributions are welcome. The project uses C++23, HuxerUI, dependency inversion, single-responsibility boundaries, and automated GoogleTest/Android checks. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
-
-Every pull request must include the contributor's GitHub username as an electronic signature accepting [CLA.md](CLA.md). The required `CLA / verify` CI check rejects unsigned pull requests.
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Every pull request must include the contributor's GitHub username as an electronic signature accepting [CLA.md](CLA.md). The required `CLA / verify` check rejects unsigned pull requests.
 
 ## License
 
@@ -168,4 +166,4 @@ Unless a written commercial agreement says otherwise, receiving or using the sou
 
 ## Acknowledgements
 
-Special thanks to [HuxerUI](https://github.com/HuxerUI/HuxerUI), the native cross-platform UI framework that powers LineCode Pro. HuxerUI is open source under the **MIT License**; its copyright and full terms are available in the [HuxerUI LICENSE](https://github.com/HuxerUI/HuxerUI/blob/main/LICENSE). HuxerUI and every other third-party component remain governed by their own licenses.
+LineCode Pro builds on the work of [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), [commonmark-java](https://github.com/commonmark/commonmark-java) (BSD-2-Clause), [JSch](https://github.com/mwiede/jsch) (BSD-style), and the Android Jetpack libraries. Every third-party component remains governed by its own license; notices shipped with the APK continue to apply.

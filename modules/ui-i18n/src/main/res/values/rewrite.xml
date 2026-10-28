@@ -1,0 +1,17 @@
+<resources>
+    <string name="rewrite_not_available">This screen has not been rewritten yet. It remains available in LineCode Pro.</string>
+    <string name="settings_save_failed">Settings could not be saved. Please try again.</string>
+    <string name="settings_load_failed">Settings could not be loaded. Reopen this screen to retry.</string>
+    <string name="browser_open_failed">This link cannot be opened.</string>
+    <string name="model_form_provider_value">Provider: %1$s</string>
+    <string name="screen_storage_count">%1$d items</string>
+    <string name="archive_exported">Exported %1$d conversations, %2$d models, %3$d settings.</string>
+    <string name="archive_imported">Imported %1$d conversations, %2$d models, %3$d settings.</string>
+    <string name="archive_failed">Archive operation failed.</string>
+    <string name="archive_import_title">Replace all data?</string>
+    <string name="archive_import_message">Importing replaces every conversation, model and setting in this app.</string>
+    <string name="tool_group_agent_name">Agent</string>
+    <string name="tool_group_shell_name">SSH Shell</string>
+    <string name="memory_section_count">%1$s (%2$d)</string>
+    <string name="memory_project_hint">Current project: %1$s</string>
+</resources>

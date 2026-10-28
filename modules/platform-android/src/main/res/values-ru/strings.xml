@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notification_keep_alive_title">LineCode</string>
+    <string name="notification_keep_alive_text">Выполняется кодинг</string>
+    <string name="notification_keep_alive_ticker">LineCode</string>
+    <string name="keep_alive_notification_title">Уведомление фонового удержания задачи кодинга LineCode</string>
+    <string name="workspace_provider_open_title">Рабочее пространство LineCode</string>
+    <string name="workspace_provider_open_failed">Не удалось открыть папку рабочего пространства</string>
+</resources>
