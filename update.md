@@ -23,6 +23,7 @@
 - **版本与发布** - 版本号升级到 `2.0.0-next`（versionCode 45）；Release 工作流只构建 slim，本地版按参数单独构建。
 - **许可证与协作** - 切换为 AGPL-3.0-or-later + 商业双重许可，补充 `CLA.md`、`CLA / verify` CI、`CONTRIBUTING.md`、PR 模板、Bug/Feature/Suggestion/Other/UI parity Issue 模板、README 与 `AGENT.md` 禁止事项。
 - **CI 去重** - CI 只在 PR 运行，合并到 master 由 Release 处理，避免 PR 与合并后重复执行同一套检查。
+- **发布修复** - Release 在旧 master 没有 Java `app/build.gradle.kts` 时不再跳过打包；新增 `force_release` 手动入口，迁移后的首个版本可以正常出包。
 
 ## v1.2.8-max
 

@@ -6,6 +6,11 @@ on:
     paths:
       - 'app/build.gradle.kts'
   workflow_dispatch:
+    inputs:
+      force_release:
+        description: Force build and release even when versionCode did not increase
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -28,36 +33,45 @@ jobs:
 
       - name: Check if versionCode changed
         id: check
+        env:
+          FORCE_RELEASE: ${{ github.event.inputs.force_release }}
         run: |
+          set -euo pipefail
           # 获取当前版本号和版本名
           CURRENT_VERSION_CODE=$(grep -E 'versionCode = ' app/build.gradle.kts | sed 's/.*versionCode = \([0-9]*\).*/\1/')
           CURRENT_VERSION_NAME=$(grep -E '^val releaseVersionName = "' app/build.gradle.kts | sed 's/.*"\([^"]*\)".*/\1/')
-          echo "new_version_code=$CURRENT_VERSION_CODE" >> $GITHUB_OUTPUT
-          echo "new_version_name=$CURRENT_VERSION_NAME" >> $GITHUB_OUTPUT
+          if [ -z "$CURRENT_VERSION_CODE" ] || [ -z "$CURRENT_VERSION_NAME" ]; then
+            echo "::error::Could not read versionCode/releaseVersionName from app/build.gradle.kts"
+            exit 1
+          fi
+          echo "new_version_code=$CURRENT_VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "new_version_name=$CURRENT_VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "Current version: $CURRENT_VERSION_NAME (code: $CURRENT_VERSION_CODE)"
 
-          # 检查是否有足够的提交历史
+          # 合并提交的第一父是 master。旧 master 没有 Java app/build.gradle.kts 时视为
+          # 首次/迁移发布，不能因为无法比较版本号就静默跳过打包。
+          PREV_VERSION_CODE=""
+          PREV_VERSION_NAME=""
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
-            # 获取上一个提交的版本号
-            PREV_VERSION_CODE=$(git show HEAD~1:app/build.gradle.kts 2>/dev/null | grep -E 'versionCode = ' | sed 's/.*versionCode = \([0-9]*\).*/\1/' || echo "")
-            PREV_VERSION_NAME=$(git show HEAD~1:app/build.gradle.kts 2>/dev/null | grep -E '^val releaseVersionName = "' | sed 's/.*"\([^"]*\)".*/\1/' || echo "")
-            echo "old_version_code=$PREV_VERSION_CODE" >> $GITHUB_OUTPUT
-            echo "old_version_name=$PREV_VERSION_NAME" >> $GITHUB_OUTPUT
-            echo "Previous version: $PREV_VERSION_NAME (code: $PREV_VERSION_CODE)"
+            PREV_VERSION_CODE=$(git show HEAD~1:app/build.gradle.kts 2>/dev/null | grep -E 'versionCode = ' | sed 's/.*versionCode = \([0-9]*\).*/\1/' || true)
+            PREV_VERSION_NAME=$(git show HEAD~1:app/build.gradle.kts 2>/dev/null | grep -E '^val releaseVersionName = "' | sed 's/.*"\([^"]*\)".*/\1/' || true)
+          fi
+          echo "old_version_code=$PREV_VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "old_version_name=$PREV_VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "Previous version: $PREV_VERSION_NAME (code: $PREV_VERSION_CODE)"
 
-            # 检查版本号是否增加
-            if [ -n "$PREV_VERSION_CODE" ] && [ "$CURRENT_VERSION_CODE" -gt "$PREV_VERSION_CODE" ]; then
-              echo "version_changed=true" >> $GITHUB_OUTPUT
-              echo "Version code increased from $PREV_VERSION_CODE to $CURRENT_VERSION_CODE"
-            else
-              echo "version_changed=false" >> $GITHUB_OUTPUT
-              echo "No version code increase detected"
-            fi
+          if [ "${FORCE_RELEASE:-false}" = "true" ]; then
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+            echo "Manual force release requested"
+          elif [ -z "$PREV_VERSION_CODE" ]; then
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+            echo "Previous master has no Java version; treating this as the initial release"
+          elif [ "$CURRENT_VERSION_CODE" -gt "$PREV_VERSION_CODE" ]; then
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+            echo "Version code increased from $PREV_VERSION_CODE to $CURRENT_VERSION_CODE"
           else
-            echo "old_version_code=" >> $GITHUB_OUTPUT
-            echo "old_version_name=" >> $GITHUB_OUTPUT
-            echo "version_changed=false" >> $GITHUB_OUTPUT
-            echo "First commit, skipping release"
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
+            echo "No version code increase detected"
           fi
 
   build-release:
