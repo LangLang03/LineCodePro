@@ -162,18 +162,32 @@ public final class SafActions {
     }
 
     private static void useExternalWorkspace(PageHost host, PageFactory pages, Uri uri) {
-        String path = cn.lineai.feature.workspace.SafPaths.toFileSystemPath(uri.toString());
-        File dir = path.isEmpty() ? null : new File(path);
-        if (dir == null || !dir.isDirectory()) {
-            Toast.makeText(host.activity(), R.string.permission_denied_manage_all,
+        try {
+            String path = cn.lineai.feature.workspace.SafPaths.toFileSystemPath(uri.toString());
+            File dir = path.isEmpty() ? null : new File(path);
+            if (dir == null || !dir.isDirectory()) {
+                Toast.makeText(host.activity(), R.string.permission_denied_manage_all,
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            cn.lineai.core.model.Project created =
+                    host.graph().projects().create(dir.getName(), dir.getAbsolutePath());
+            host.applyProjectLabel(created);
+            pages.features().reloadWorkspace();
+            Toast.makeText(host.activity(), R.string.workspace_created,
+                    Toast.LENGTH_SHORT).show();
+        } catch (RuntimeException error) {
+            android.util.Log.e("LineCodeSAF", "open workspace failed", error);
+            try {
+                host.graph().errorLogs().record(
+                        host.activity().getString(R.string.workspace_provider_open_failed),
+                        uri.toString(), android.util.Log.getStackTraceString(error));
+            } catch (RuntimeException ignored) {
+                android.util.Log.e("LineCodeSAF", "cannot record workspace failure", ignored);
+            }
+            Toast.makeText(host.activity(), R.string.workspace_provider_open_failed,
                     Toast.LENGTH_LONG).show();
-            return;
         }
-        cn.lineai.core.model.Project created =
-                host.graph().projects().create(dir.getName(), dir.getAbsolutePath());
-        host.applyProjectLabel(created);
-        pages.features().reloadWorkspace();
-        Toast.makeText(host.activity(), R.string.workspace_created, Toast.LENGTH_SHORT).show();
     }
 
     private static Scheduler scheduler(PageHost host) {

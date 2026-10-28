@@ -28,6 +28,11 @@ public interface ToolContext {
         return null;
     }
 
+    /** Durable memory sink; may be null in tests and headless contexts. */
+    default MemorySink memory() {
+        return null;
+    }
+
     /** File-change recorder; may be null when diffs are not persisted. */
     default DiffSink diffs() {
         return null;

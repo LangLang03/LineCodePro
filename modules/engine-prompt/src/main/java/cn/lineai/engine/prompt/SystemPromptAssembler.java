@@ -19,16 +19,23 @@ public final class SystemPromptAssembler {
 
     public String assemble(String modelId, String modelName, String provider, String protocol,
                            String tone) {
-        return assemble(modelId, modelName, provider, protocol, tone, "agent");
+        return assemble(modelId, modelName, provider, protocol, tone, "agent", "", "none", "none");
     }
 
     public String assemble(String modelId, String modelName, String provider, String protocol,
                            String tone, String chatMode) {
-        return assemble(modelId, modelName, provider, protocol, tone, chatMode, "");
+        return assemble(modelId, modelName, provider, protocol, tone, chatMode, "", "none", "none");
     }
 
     public String assemble(String modelId, String modelName, String provider, String protocol,
                            String tone, String chatMode, String learningContext) {
+        return assemble(modelId, modelName, provider, protocol, tone, chatMode, learningContext,
+                "none", "none");
+    }
+
+    public String assemble(String modelId, String modelName, String provider, String protocol,
+                           String tone, String chatMode, String learningContext,
+                           String modeToolsAllowed, String modeToolsBlocked) {
         String toneContext = prompts.current("chat".equals(tone)
                 ? PromptId.TONE_CHAT : PromptId.TONE_CODING);
         Map<String, String> identity = new LinkedHashMap<>();
@@ -38,10 +45,18 @@ public final class SystemPromptAssembler {
         identity.put("MODEL_PROTOCOL", safe(protocol));
         String modelIdentity = PromptRenderer.render(PromptId.MODEL_IDENTITY,
                 prompts.current(PromptId.MODEL_IDENTITY), identity);
+        Map<String, String> modeValues = new LinkedHashMap<>();
+        modeValues.put("MODE_TOOLS_ALLOWED", safe(modeToolsAllowed));
+        modeValues.put("MODE_TOOLS_BLOCKED", safe(modeToolsBlocked));
+        String modeContext = PromptRenderer.render(modePrompt(chatMode),
+                prompts.current(modePrompt(chatMode)), modeValues);
+        String toolContext = "## Available tools\nOnly these tools are injected for this request "
+                + "(parameter protocol and constraints are in the tool definitions): "
+                + (safe(modeToolsAllowed).isEmpty() ? "none" : safe(modeToolsAllowed));
         Map<String, String> contexts = new LinkedHashMap<>();
-        contexts.put("TOOLS_CONTEXT", "");
+        contexts.put("TOOLS_CONTEXT", toolContext);
         contexts.put("TONE_CONTEXT", toneContext);
-        contexts.put("CHAT_MODE_CONTEXT", prompts.current(modePrompt(chatMode)));
+        contexts.put("CHAT_MODE_CONTEXT", modeContext);
         contexts.put("WORK_DIRECTORY_CONTEXT", "");
         contexts.put("LEARNING_CONTEXT", safe(learningContext));
         contexts.put("MODEL_IDENTITY", modelIdentity);
@@ -51,9 +66,10 @@ public final class SystemPromptAssembler {
     }
 
     /** One-sentence role prompt used by minimal mode; custom sections are skipped by the caller. */
-    public String minimal(String chatMode) {
+    public String minimal(String toolNames) {
         Map<String, String> values = new LinkedHashMap<>();
-        values.put("CHAT_MODE_CONTEXT", prompts.current(modePrompt(chatMode)));
+        String names = safe(toolNames);
+        values.put("TOOL_NAMES", names.isEmpty() ? "none." : names);
         return PromptRenderer.render(PromptId.MINIMAL_PROMPT,
                 prompts.current(PromptId.MINIMAL_PROMPT), values);
     }

@@ -135,7 +135,6 @@ public final class ChatController {
             open(loaded.get(0).id);
         });
     }
-
     public void open(String id) {
         scheduler.io(() -> {
             List<Message> loaded = messages.load(id);
@@ -252,7 +251,8 @@ public final class ChatController {
         scheduler.main(() -> loop.start(model, history, conversationId,
                 ChatTurnConfig.systemPrompt(prompts, settings, model,
                         extensions == null ? "" : extensions.section(), summarySection,
-                        extensions == null ? "" : extensions.learningSection()),
+                        extensions == null ? "" : extensions.learningSection(),
+                        registry, toolCatalog.registry()),
                 ChatTurnConfig.reasoningSpec(settings, model)));
     }
 

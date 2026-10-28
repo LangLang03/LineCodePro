@@ -17,6 +17,16 @@
 - **构建隔离** - 本地源码通过 `src/local/java` 与 `androidComponents` 注入，反射桥接只在本地版存在；R8 仅保留 JNI 入口、回调方法名和反射桥接类名，其余本地类继续混淆以缩小体积。
 - **产物命名** - Release 产物改为 `LineCode Pro <version>-slim.APK` / `-local.APK`，两个变体不会互相覆盖；切换变体需先 `clean`，避免 zipflinger 虚拟条目残留。
 
+### 迁移与交互修复
+
+- **旧数据迁移** - 启动时读取旧 `linecode.db`（v4），先备份为 `linecode.db.v4.bak`，再合并会话、消息、工具结果、模型、项目、记忆、设置、扩展、diff 和旧 Skills 文件到 `linecode-v2.db`；重复启动不会重复导入。
+- **C++ 提示词** - `systemPrompt`、语气、Chat/Plan 模式、工作目录、模型身份、TODO、上下文压缩、Agent 角色、图片理解等模板逐字迁移到 `engine-prompt`，Chat/Plan 模式恢复 `MODE_TOOLS_ALLOWED` / `MODE_TOOLS_BLOCKED` 动态工具列表。
+- **聊天交互** - 思考强度胶囊打开底部等级选择面板；右上角三点打开 C++ 更菜单（含打开会话抽屉、教程、设置、清空对话），不再直接跳设置。
+- **设置转场** - 页面 push/pop 使用水平平移动画，保留父页面和滚动位置。
+- **崩溃与 SAF** - 全局未捕获异常写入崩溃页和错误日志；SAF 目录/归档/文件选择回调增加异常捕获、提示与日志，避免直接闪退。
+- **文件管理** - 抽屉 Files 页改为可展开文件树，显示项目名称/路径和刷新入口；点击文件通过系统“打开方式”选择器打开。
+- **记忆工具** - 恢复 `memory_update` 工具和记忆卡片标题，支持 user/project/environment 作用域与敏感内容拒绝。
+
 ### 工程质量与协作
 
 - **机械守卫** - 新增/收紧 CJK、UI 文案拼接、raw thread、size budget、字符串中英俄键一致、提示词目录一致性和架构测试；`:app` 源码也纳入扫描（`NestedAgentRunner` 是唯一明确允许的同步 Agent 桥）。

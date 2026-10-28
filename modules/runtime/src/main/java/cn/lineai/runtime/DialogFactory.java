@@ -10,6 +10,7 @@ import android.widget.TextView;
 
 import cn.lineai.feature.chat.ToolModes;
 import cn.lineai.ui.i18n.R;
+import cn.lineai.ui.kit.Icons;
 import cn.lineai.ui.kit.Sheets;
 import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
@@ -68,6 +69,131 @@ public final class DialogFactory {
             panel.addView(row, rowParams);
         }
         holder[0] = Sheets.showBottom(host.activity(), tokens, panel);
+    }
+
+    public static void showReasoning(PageHost host) {
+        Tokens tokens = host.tokens();
+        LinearLayout panel = new LinearLayout(host.activity());
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackgroundColor(tokens.bg);
+        Ui.padding(panel, 20, 20, 20, 28);
+        panel.addView(Ui.bold(host.activity(),
+                host.activity().getString(R.string.composer_reasoning_title), 18, tokens.text),
+                new LinearLayout.LayoutParams(-1, -2));
+        TextView subtitle = Ui.text(host.activity(),
+                host.activity().getString(R.string.composer_reasoning_picker_subtitle), 12,
+                tokens.textTertiary, Typeface.NORMAL);
+        LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(-1, -2);
+        subtitleParams.topMargin = Ui.dp(host.activity(), 4);
+        subtitleParams.bottomMargin = Ui.dp(host.activity(), 8);
+        panel.addView(subtitle, subtitleParams);
+
+        String[] levels = {"off", "auto", "low", "medium", "high", "max"};
+        int[] labels = {R.string.screen_llm_thinking_off_label,
+                R.string.screen_llm_thinking_auto_label, R.string.screen_llm_thinking_low_label,
+                R.string.screen_llm_thinking_medium_label, R.string.screen_llm_thinking_high_label,
+                R.string.screen_llm_thinking_max_label};
+        int[] descriptions = {R.string.screen_llm_thinking_off_desc,
+                R.string.screen_llm_thinking_auto, R.string.screen_llm_thinking_low,
+                R.string.screen_llm_thinking_medium, R.string.screen_llm_thinking_high,
+                R.string.screen_llm_thinking_max};
+        final Dialog[] holder = new Dialog[1];
+        String current = host.graph().settings().get(
+                cn.lineai.core.model.UiPreferences.Field.REASONING.key, "medium");
+        for (int i = 0; i < levels.length; i++) {
+            final String level = levels[i];
+            boolean active = level.equals(current);
+            LinearLayout row = sheetRow(host, 0, host.activity().getString(labels[i]),
+                    host.activity().getString(descriptions[i]), active);
+            row.setOnClickListener(v -> {
+                host.graph().settings().put(
+                        cn.lineai.core.model.UiPreferences.Field.REASONING.key, level);
+                host.graph().preferences().dispatch(
+                        new cn.lineai.feature.settings.SettingsAction.Change(
+                                cn.lineai.core.model.UiPreferences.Field.REASONING, level));
+                if (holder[0] != null) holder[0].dismiss();
+            });
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+            params.topMargin = Ui.dp(host.activity(), 8);
+            panel.addView(row, params);
+        }
+        holder[0] = Sheets.showBottom(host.activity(), tokens, panel);
+    }
+
+    public static void showMore(PageHost host) {
+        Tokens tokens = host.tokens();
+        LinearLayout panel = new LinearLayout(host.activity());
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackgroundColor(tokens.bg);
+        Ui.padding(panel, 20, 20, 20, 28);
+        panel.addView(Ui.bold(host.activity(),
+                host.activity().getString(R.string.common_more), 18, tokens.text),
+                new LinearLayout.LayoutParams(-1, -2));
+        final Dialog[] holder = new Dialog[1];
+        addMoreRow(host, panel, holder, Icons.MESSAGE_SQUARE,
+                R.string.drawer_title_conversations, R.string.drawer_tab_conversations,
+                () -> host.openDrawer());
+        addMoreRow(host, panel, holder, Icons.SPARKLES,
+                R.string.sheet_more_tutorial, R.string.sheet_more_tutorial_desc,
+                () -> host.navigation().push(cn.lineai.feature.settings.SettingsScreens.TUTORIAL
+                        .key(cn.lineai.core.mvi.nav.Params.Empty.INSTANCE)));
+        addMoreRow(host, panel, holder, Icons.SETTINGS,
+                R.string.screen_settings_title, R.string.sheet_more_settings_desc,
+                () -> host.navigation().push(cn.lineai.feature.settings.SettingsScreens.HOME
+                        .key(cn.lineai.core.mvi.nav.Params.Empty.INSTANCE)));
+        addMoreRow(host, panel, holder, Icons.TRASH_2,
+                R.string.sheet_more_clear, R.string.sheet_more_clear_desc,
+                () -> {
+                    String id = host.graph().chat().conversationId();
+                    if (!id.isEmpty()) host.graph().chat().deleteConversation(id);
+                    host.graph().chat().newConversation();
+                });
+        holder[0] = Sheets.showBottom(host.activity(), tokens, panel);
+    }
+
+    private static void addMoreRow(PageHost host, LinearLayout panel, Dialog[] holder,
+                                   int icon, int title, int description, Runnable action) {
+        LinearLayout row = sheetRow(host, icon, host.activity().getString(title),
+                host.activity().getString(description), false);
+        row.setOnClickListener(v -> {
+            action.run();
+            if (holder[0] != null) holder[0].dismiss();
+        });
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.topMargin = Ui.dp(host.activity(), 8);
+        panel.addView(row, params);
+    }
+
+    private static LinearLayout sheetRow(PageHost host, int icon, String title,
+                                         String description, boolean active) {
+        Tokens tokens = host.tokens();
+        LinearLayout row = new LinearLayout(host.activity());
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setClickable(true);
+        row.setBackground(Ui.roundedStroke(host.activity(),
+                active ? tokens.inputBg : tokens.surfaceElevated, 12,
+                active ? tokens.accent : tokens.border));
+        Ui.padding(row, 14, 12, 14, 12);
+        if (icon != 0) {
+            android.widget.ImageView image = new android.widget.ImageView(host.activity());
+            image.setImageResource(cn.lineai.ui.kit.Icons.drawable(icon));
+            image.setColorFilter(tokens.textSecondary);
+            row.addView(image, new LinearLayout.LayoutParams(
+                    Ui.dp(host.activity(), 20), Ui.dp(host.activity(), 20)));
+        }
+        LinearLayout labels = new LinearLayout(host.activity());
+        labels.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams labelsParams = new LinearLayout.LayoutParams(0, -2, 1f);
+        if (icon != 0) labelsParams.leftMargin = Ui.dp(host.activity(), 12);
+        row.addView(labels, labelsParams);
+        labels.addView(Ui.bold(host.activity(), title, 15, tokens.text),
+                new LinearLayout.LayoutParams(-1, -2));
+        TextView desc = Ui.text(host.activity(), description, 12, tokens.textTertiary,
+                Typeface.NORMAL);
+        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(-1, -2);
+        descParams.topMargin = Ui.dp(host.activity(), 3);
+        labels.addView(desc, descParams);
+        return row;
     }
 
     public static void showChatMode(PageHost host) {
