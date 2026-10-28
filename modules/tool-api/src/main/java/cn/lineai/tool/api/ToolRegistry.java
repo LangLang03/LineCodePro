@@ -39,10 +39,11 @@ public final class ToolRegistry {
     }
 
     public ToolPresentation presentation(String name, JSONObject arguments) {
+        JSONObject safeArguments = arguments == null ? new JSONObject() : arguments;
         Tool tool = find(name);
         return tool == null
-                ? ToolPresentation.generic(name, arguments)
-                : tool.presentation(arguments);
+                ? ToolPresentation.generic(name, safeArguments)
+                : tool.presentation(safeArguments);
     }
 
     public Collection<Tool> all() {

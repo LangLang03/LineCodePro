@@ -57,6 +57,12 @@ public class BuiltinToolsTest {
         assertNull(registry.find("missing"));
     }
 
+    @Test public void presentationWithoutArgumentsNeverCrashes() {
+        for (Tool tool : registry.all()) {
+            assertFalse(tool.name(), registry.presentation(tool.name()).title.isEmpty());
+        }
+    }
+
     @Test public void shellRunsInsideTheWorkspace() throws Exception {
         Files.write(new File(root, "note.txt").toPath(), "content".getBytes(StandardCharsets.UTF_8));
         ToolResult result = run("shell_execute", "{\"command\":\"cat note.txt\"}");
