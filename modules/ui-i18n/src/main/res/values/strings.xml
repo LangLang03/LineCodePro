@@ -974,6 +974,7 @@
     <string name="sheet_title_project">Project</string>
     <string name="workspace_open_folder">Open local folder</string>
     <string name="workspace_open_folder_desc">Pick an existing folder on this device and use it as the workspace.</string>
+    <string name="workspace_share">Share with other apps</string>
     <string name="workspace_open_local">Open local project</string>
     <string name="workspace_open_local_desc">Choose a writable local directory with the system picker</string>
     <string name="workspace_create_desc">Create a managed project under .linecode/project</string>

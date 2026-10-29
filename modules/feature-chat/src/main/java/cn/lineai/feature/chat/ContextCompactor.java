@@ -40,7 +40,7 @@ final class ContextCompactor {
 
     static Result prepare(ModelConfig model, ModelStore models, SettingsStore settings,
                           String conversationId, List<Message> loaded, boolean softCompaction,
-                          Summarizer summarizer) {
+                          String instruction, Summarizer summarizer) {
         String summary = settings.get(key(conversationId), "");
         int tailStart = Math.max(0, loaded.size() - TAIL_MESSAGES);
         int threshold = softCompaction ? SOFT_THRESHOLD_PERCENT : HARD_THRESHOLD_PERCENT;
@@ -55,7 +55,7 @@ final class ContextCompactor {
             }
             try {
                 String text = summarizer.summarize(compressor,
-                        prompt(summary, loaded.subList(0, tailStart)));
+                        prompt(instruction, summary, loaded.subList(0, tailStart)));
                 if (text != null && !text.trim().isEmpty()) {
                     summary = text.trim();
                     settings.put(key(conversationId), summary);
@@ -75,7 +75,8 @@ final class ContextCompactor {
      * automatic thresholds. Returns false when the conversation is too short to compact.
      */
     static boolean compactNow(ModelConfig model, ModelStore models, SettingsStore settings,
-                              String conversationId, List<Message> loaded, Summarizer summarizer)
+                              String conversationId, List<Message> loaded, String instruction,
+                              Summarizer summarizer)
             throws Exception {
         if (model == null || loaded.size() <= TAIL_MESSAGES) {
             return false;
@@ -88,7 +89,7 @@ final class ContextCompactor {
             if (custom != null) compressor = custom;
         }
         String text = summarizer.summarize(compressor,
-                prompt(summary, loaded.subList(0, tailStart)));
+                prompt(instruction, summary, loaded.subList(0, tailStart)));
         if (text == null || text.trim().isEmpty()) {
             return false;
         }
@@ -96,11 +97,12 @@ final class ContextCompactor {
         return true;
     }
 
-    private static String prompt(String previous, List<Message> messages) {
+    private static String prompt(String instruction, String previous, List<Message> messages) {
         StringBuilder out = new StringBuilder();
-        out.append("Summarize the older part of this coding conversation. Keep decisions, ")
-                .append("files and paths touched, commands run, errors, constraints and TODO state. ")
-                .append("Reply with the summary only.\n\n");
+        String template = instruction == null ? "" : instruction.trim();
+        if (!template.isEmpty()) {
+            out.append(template).append("\n\n");
+        }
         if (!previous.isEmpty()) {
             out.append("Previous summary:\n").append(previous).append("\n\n");
         }

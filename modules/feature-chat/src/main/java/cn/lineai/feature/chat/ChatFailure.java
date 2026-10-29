@@ -2,7 +2,6 @@ package cn.lineai.feature.chat;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
 
 import cn.lineai.core.kernel.error.DomainException;
 import cn.lineai.core.kernel.util.Ids;
@@ -23,14 +22,8 @@ final class ChatFailure {
     private ChatFailure() {
     }
 
-    /** Localized failure text (formatter supplied by the composition root) or the raw detail. */
-    static String detail(DomainException error, Function<DomainException, String> formatter) {
-        if (formatter != null) {
-            String formatted = formatter.apply(error);
-            if (formatted != null && !formatted.trim().isEmpty()) {
-                return formatted.trim();
-            }
-        }
+    /** Raw provider/transport detail; never prettified, so the real response body survives. */
+    static String detail(DomainException error) {
         String raw = error.detail();
         return raw == null || raw.trim().isEmpty() ? error.code().name() : raw.trim();
     }
@@ -49,12 +42,12 @@ final class ChatFailure {
                     .model(model.modelId, model.providerId)
                     .error(error.code().name())
                     .finishReason("error")
-                    .addBlock(ContentBlock.text(text))
+                    .addBlock(ContentBlock.error(text))
                     .times(now, now)
                     .build();
         }
         List<ContentBlock> blocks = new ArrayList<>(partial);
-        blocks.add(ContentBlock.text(text));
+        blocks.add(ContentBlock.error(text));
         return streaming.toBuilder()
                 .blocks(blocks)
                 .status(Message.Status.FAILED)

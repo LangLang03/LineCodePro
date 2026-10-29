@@ -121,6 +121,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
     private java.util.List<cn.lineai.core.model.Conversation> conversations =
             java.util.Collections.emptyList();
     private String drawerConversationId = "";
+    private String drawerProject = "";
 
     public ChatScreenView(Context context, ChatController controller, Tokens tokens) {
         super(context);
@@ -474,6 +475,10 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         if (!currentId.equals(drawerConversationId)) {
             drawerConversationId = currentId;
             drawer.setConversations(conversations, currentId);
+        }
+        if (!state.projectLabel.equals(drawerProject)) {
+            drawerProject = state.projectLabel;
+            drawer.refreshProject();
         }
         header.render(state, tokens);
         timeline.render(state, tokens);

@@ -85,7 +85,6 @@ public final class ChatController {
     private volatile boolean starting;
     private boolean started;
     ErrorLogStore errorLogs;
-    java.util.function.Function<DomainException, String> failureText;
 
     public ChatController(ConversationStore conversations, MessageStore messages,
                           ModelStore models, SettingsStore settings, ModelClient client,
@@ -106,11 +105,6 @@ public final class ChatController {
         this.writes = new SerialWrites(scheduler);
         this.events = new SerialEvents(scheduler);
     }
-    /** Localized failure formatter supplied by the composition root. */
-    public void setFailureText(java.util.function.Function<DomainException, String> formatter) {
-        failureText = formatter;
-    }
-
     public void setErrorLogStore(ErrorLogStore store) {
         this.errorLogs = store;
     }
@@ -233,7 +227,7 @@ public final class ChatController {
             try {
                 List<Message> loaded = messages.load(id);
                 boolean done = ContextCompactor.compactNow(model, models, settings, id, loaded,
-                        new ModelProbe()::complete);
+                        prompts.compactionTemplate(), new ModelProbe()::complete);
                 final int percent = ChatTurnConfig.percent(loaded,
                         ChatContextLimits.of(model, settings));
                 events.post(() -> {
@@ -338,7 +332,8 @@ public final class ChatController {
         boolean softCompaction = Boolean.parseBoolean(
                 settings.get(UiPreferences.Field.SOFT_COMPACTION.key, "true"));
         final ContextCompactor.Result context = ContextCompactor.prepare(model, models,
-                settings, target, loaded, softCompaction, new ModelProbe()::complete);
+                settings, target, loaded, softCompaction, prompts.compactionTemplate(),
+                new ModelProbe()::complete);
         final List<Message> history = context.history;
         final String summarySection = prompts == null || context.summary.isEmpty()
                 ? "" : prompts.summary(context.summary);
@@ -429,6 +424,10 @@ public final class ChatController {
 
         @Override public void onFailed(DomainException error) {
             events.post(() -> draft.failTurn(error));
+        }
+
+        @Override public void onRetry(int attempt, int max, DomainException error) {
+            events.post(() -> draft.retry(attempt, max, error));
         }
 
         @Override public void onBudgetExceeded(int requested, int used, int max) {

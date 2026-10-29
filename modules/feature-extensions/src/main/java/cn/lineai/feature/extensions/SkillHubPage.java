@@ -379,28 +379,44 @@ public final class SkillHubPage extends SettingsPage {
         row.setBackground(Ui.roundedStroke(context, current.surfaceElevated, 12,
                 current.border));
         row.setOnClickListener(v -> openDetail.accept(entry.slug));
+        FrameLayout artwork = cardArtwork(context, entry);
+        row.addView(artwork, new LinearLayout.LayoutParams(
+                Ui.dp(context, 48), Ui.dp(context, 48)));
+        LinearLayout labels = cardLabels(context, entry);
+        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(0, -2, 1f);
+        labelParams.leftMargin = Ui.dp(context, 12);
+        labelParams.rightMargin = Ui.dp(context, 4);
+        row.addView(labels, labelParams);
+        IconButton chevron = iconView(Icons.CHEVRON_RIGHT, 16);
+        chevron.setIconColor(current.textTertiary);
+        theme.bind(t -> chevron.setIconColor(t.textTertiary));
+        row.addView(chevron, new LinearLayout.LayoutParams(
+                Ui.dp(context, 24), Ui.dp(context, 24)));
+        theme.bind(t -> {
+            artwork.setBackground(Ui.rounded(context, t.accentMuted, 12));
+            row.setBackground(Ui.roundedStroke(context, t.surfaceElevated, 12, t.border));
+        });
+        return row;
+    }
 
+    private FrameLayout cardArtwork(Context context, SkillHubEntry entry) {
         FrameLayout artwork = new FrameLayout(context);
         artwork.setClipToOutline(true);
-        artwork.setBackground(Ui.rounded(context, current.accentMuted, 12));
-        IconButton glyph = iconView(Icons.PACKAGE, 25);
-        artwork.addView(glyph, new FrameLayout.LayoutParams(
+        artwork.setBackground(Ui.rounded(context, theme.current().accentMuted, 12));
+        artwork.addView(iconView(Icons.PACKAGE, 25), new FrameLayout.LayoutParams(
                 Ui.dp(context, 48), Ui.dp(context, 48), Gravity.CENTER));
         ImageView icon = new ImageView(context);
         icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
         artwork.addView(icon, new FrameLayout.LayoutParams(
                 Ui.dp(context, 48), Ui.dp(context, 48)));
-        row.addView(artwork, new LinearLayout.LayoutParams(
-                Ui.dp(context, 48), Ui.dp(context, 48)));
         icons.load(entry.meta.iconUrl, icon);
+        return artwork;
+    }
 
+    private LinearLayout cardLabels(Context context, SkillHubEntry entry) {
+        Tokens current = theme.current();
         LinearLayout labels = new LinearLayout(context);
         labels.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(0, -2, 1f);
-        labelParams.leftMargin = Ui.dp(context, 12);
-        labelParams.rightMargin = Ui.dp(context, 4);
-        row.addView(labels, labelParams);
-
         LinearLayout titleRow = new LinearLayout(context);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = Ui.medium(context, entry.name, Tokens.FONT_MD, current.text);
@@ -415,34 +431,17 @@ public final class SkillHubPage extends SettingsPage {
             titleRow.addView(verified, verifiedParams);
         }
         labels.addView(titleRow, new LinearLayout.LayoutParams(-1, -2));
-
         TextView author = Ui.text(context, entry.author, Tokens.FONT_XS,
                 current.textTertiary, Typeface.NORMAL);
         LinearLayout.LayoutParams authorParams = new LinearLayout.LayoutParams(-1, -2);
         authorParams.topMargin = Ui.dp(context, 3);
         labels.addView(author, authorParams);
-
-        LinearLayout tags = new LinearLayout(context);
-        tags.setOrientation(LinearLayout.HORIZONTAL);
-        int tagCount = 0;
-        if (!entry.meta.category.isEmpty() && tagCount < 2) {
-            tags.addView(ExtensionKit.tag(context, theme, entry.meta.category, false));
-            tagCount++;
-        }
-        if (entry.meta.requiresApiKey && tagCount < 2) {
-            TextView apiKey = ExtensionKit.tag(context, theme,
-                    context.getString(R.string.skillhub_requires_api_key), false);
-            LinearLayout.LayoutParams apiParams = new LinearLayout.LayoutParams(-2, -2);
-            if (tagCount > 0) apiParams.leftMargin = Ui.dp(context, 4);
-            tags.addView(apiKey, apiParams);
-            tagCount++;
-        }
-        if (tagCount > 0) {
+        LinearLayout tags = cardTags(context, entry);
+        if (tags.getChildCount() > 0) {
             LinearLayout.LayoutParams tagsParams = new LinearLayout.LayoutParams(-1, -2);
             tagsParams.topMargin = Ui.dp(context, 5);
             labels.addView(tags, tagsParams);
         }
-
         TextView description = Ui.text(context, entry.description, Tokens.FONT_SM,
                 current.textSecondary, Typeface.NORMAL);
         description.setMaxLines(2);
@@ -450,28 +449,37 @@ public final class SkillHubPage extends SettingsPage {
         LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(-1, -2);
         descParams.topMargin = Ui.dp(context, 5);
         labels.addView(description, descParams);
-
         TextView meta = Ui.text(context, context.getString(R.string.skillhub_card_stats,
                         formatCount(entry.downloads), formatCount(entry.meta.stars), entry.version),
                 Tokens.FONT_XS, current.textTertiary, Typeface.NORMAL);
         LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(-1, -2);
         metaParams.topMargin = Ui.dp(context, 5);
         labels.addView(meta, metaParams);
-
-        IconButton chevron = iconView(Icons.CHEVRON_RIGHT, 16);
-        chevron.setIconColor(current.textTertiary);
-        theme.bind(t -> chevron.setIconColor(t.textTertiary));
-        row.addView(chevron, new LinearLayout.LayoutParams(
-                Ui.dp(context, 24), Ui.dp(context, 24)));
         theme.bind(t -> {
-            artwork.setBackground(Ui.rounded(context, t.accentMuted, 12));
             title.setTextColor(t.text);
             author.setTextColor(t.textTertiary);
             description.setTextColor(t.textSecondary);
             meta.setTextColor(t.textTertiary);
-            row.setBackground(Ui.roundedStroke(context, t.surfaceElevated, 12, t.border));
         });
-        return row;
+        return labels;
+    }
+
+    private LinearLayout cardTags(Context context, SkillHubEntry entry) {
+        LinearLayout tags = new LinearLayout(context);
+        tags.setOrientation(LinearLayout.HORIZONTAL);
+        int count = 0;
+        if (!entry.meta.category.isEmpty() && count < 2) {
+            tags.addView(ExtensionKit.tag(context, theme, entry.meta.category, false));
+            count++;
+        }
+        if (entry.meta.requiresApiKey && count < 2) {
+            TextView apiKey = ExtensionKit.tag(context, theme,
+                    context.getString(R.string.skillhub_requires_api_key), false);
+            LinearLayout.LayoutParams apiParams = new LinearLayout.LayoutParams(-2, -2);
+            if (count > 0) apiParams.leftMargin = Ui.dp(context, 4);
+            tags.addView(apiKey, apiParams);
+        }
+        return tags;
     }
 
     private String formatCount(long value) {

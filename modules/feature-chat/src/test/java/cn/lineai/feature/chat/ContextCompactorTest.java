@@ -62,7 +62,7 @@ public class ContextCompactorTest {
     @Test public void compressesOldMessagesAndKeepsTail() {
         final List<String> prompts = new ArrayList<>();
         ContextCompactor.Result result = ContextCompactor.prepare(model(true), null, settings(),
-                "c", messages(20), true, (model, prompt) -> {
+                "c", messages(20), true, "Summarize.", (model, prompt) -> {
                     prompts.add(prompt);
                     return "SUMMARY";
                 });
@@ -74,18 +74,18 @@ public class ContextCompactorTest {
 
     @Test public void softCompactionUsesHalfContextThreshold() {
         ContextCompactor.Result soft = ContextCompactor.prepare(model(true), null, settings(),
-                "c", messages(17, 120), true, (model, prompt) -> "SUMMARY");
+                "c", messages(17, 120), true, "Summarize.", (model, prompt) -> "SUMMARY");
         assertEquals("SUMMARY", soft.summary);
         values.clear();
         ContextCompactor.Result hard = ContextCompactor.prepare(model(true), null, settings(),
-                "c", messages(17, 120), false, (model, prompt) -> "SUMMARY");
+                "c", messages(17, 120), false, "Summarize.", (model, prompt) -> "SUMMARY");
         assertEquals("", hard.summary);
         assertEquals(17, hard.history.size());
     }
 
     @Test public void disabledCompressionKeepsEverything() {
         ContextCompactor.Result result = ContextCompactor.prepare(model(false), null, settings(),
-                "c", messages(20), true, (model, prompt) -> "SUMMARY");
+                "c", messages(20), true, "Summarize.", (model, prompt) -> "SUMMARY");
         assertEquals("", result.summary);
         assertEquals(20, result.history.size());
         assertTrue(values.isEmpty());
@@ -93,7 +93,7 @@ public class ContextCompactorTest {
 
     @Test public void compressorFailureFallsBackToFullHistory() {
         ContextCompactor.Result result = ContextCompactor.prepare(model(true), null, settings(),
-                "c", messages(20), true, (model, prompt) -> {
+                "c", messages(20), true, "Summarize.", (model, prompt) -> {
                     throw new IllegalStateException("offline");
                 });
         assertEquals("", result.summary);
@@ -103,20 +103,20 @@ public class ContextCompactorTest {
     @Test public void shortHistoryIgnoresStoredSummary() {
         values.put(ContextCompactor.key("c"), "OLD");
         ContextCompactor.Result result = ContextCompactor.prepare(model(true), null, settings(),
-                "c", messages(3), true, (model, prompt) -> "NEW");
+                "c", messages(3), true, "Summarize.", (model, prompt) -> "NEW");
         assertEquals(3, result.history.size());
         assertEquals("", result.summary);
     }
 
     @Test public void manualCompactionIgnoresAutomaticThresholds() throws Exception {
         assertTrue(ContextCompactor.compactNow(model(false), null, settings(), "c", messages(20),
-                (compressor, prompt) -> "MANUAL"));
+                "Summarize.", (compressor, prompt) -> "MANUAL"));
         assertEquals("MANUAL", values.get(ContextCompactor.key("c")));
     }
 
     @Test public void manualCompactionSkipsShortConversations() throws Exception {
         assertFalse(ContextCompactor.compactNow(model(false), null, settings(), "c", messages(5),
-                (compressor, prompt) -> "NEVER"));
+                "Summarize.", (compressor, prompt) -> "NEVER"));
         assertTrue(values.isEmpty());
     }
 }

@@ -975,6 +975,7 @@
     <string name="sheet_title_project">项目</string>
     <string name="workspace_open_folder">打开本地文件夹</string>
     <string name="workspace_open_folder_desc">选择设备上的现有目录并作为工作区使用。</string>
+    <string name="workspace_share">共享给其他应用</string>
     <string name="workspace_open_local">打开本地项目</string>
     <string name="workspace_open_local_desc">通过系统选择器选择可写的本地目录</string>
     <string name="workspace_create_desc">在 .linecode/project 下创建托管项目</string>

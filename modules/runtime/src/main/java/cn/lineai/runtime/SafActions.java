@@ -78,13 +78,7 @@ public final class SafActions {
 
     private static void copyFileAttachment(PageHost host, Uri uri) {
         Scheduler scheduler = scheduler(host);
-        String name = "attachment.bin";
-        String last = uri.getLastPathSegment();
-        if (last != null && !last.isEmpty()) {
-            int slash = last.lastIndexOf('/');
-            name = slash >= 0 ? last.substring(slash + 1) : last;
-        }
-        final String fileName = name;
+        final String fileName = attachmentName(host, uri);
         scheduler.io(() -> {
             File target = new File(attachmentsDir(host),
                     System.currentTimeMillis() + "-" + fileName);
@@ -99,6 +93,54 @@ public final class SafActions {
                         R.string.screen_model_add_local_import_failed, Toast.LENGTH_SHORT).show());
             }
         });
+    }
+
+    /**
+     * Photo Picker URIs are opaque media ids, so the last path segment has no extension. Prefer
+     * the provider's DISPLAY_NAME and fall back to the MIME suffix.
+     */
+    private static String attachmentName(PageHost host, Uri uri) {
+        String name = "";
+        try (android.database.Cursor cursor = host.activity().getContentResolver().query(uri,
+                new String[] {android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                name = cursor.getString(0);
+            }
+        } catch (RuntimeException error) {
+            // Some providers reject DISPLAY_NAME; the path/MIME fallback below still works.
+            android.util.Log.w("SafActions", "display name unavailable", error);
+        }
+        if (name == null) {
+            name = "";
+        }
+        name = name.trim();
+        if (name.isEmpty()) {
+            String last = uri.getLastPathSegment();
+            if (last != null) {
+                int slash = last.lastIndexOf('/');
+                name = slash >= 0 ? last.substring(slash + 1) : last;
+            }
+        }
+        if (!name.contains(".")) {
+            String extension = extension(host.activity().getContentResolver().getType(uri));
+            if (!extension.isEmpty()) {
+                name = name + "." + extension;
+            }
+        }
+        return name.isEmpty() ? "attachment.bin" : name;
+    }
+
+    private static String extension(String mime) {
+        if (mime == null || !mime.contains("/")) {
+            return "";
+        }
+        String suffix = mime.substring(mime.indexOf('/') + 1)
+                .toLowerCase(java.util.Locale.ROOT);
+        if (suffix.equals("jpeg")) return "jpg";
+        if (suffix.equals("quicktime")) return "mov";
+        if (suffix.equals("mpeg")) return "mpg";
+        if (suffix.equals("x-matroska")) return "mkv";
+        return suffix.matches("[a-z0-9]{2,5}") ? suffix : "";
     }
 
     private static void importSkill(PageHost host, PageFactory pages, Uri uri) {

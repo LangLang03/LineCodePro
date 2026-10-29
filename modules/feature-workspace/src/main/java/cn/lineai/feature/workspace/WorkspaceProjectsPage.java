@@ -34,6 +34,10 @@ public final class WorkspaceProjectsPage extends SettingsPage {
 
         void openExternal();
 
+        /** Opens the system picker so another app can read/write this workspace. */
+        default void shareWorkspace() {
+        }
+
         void onChanges();
 
         /** Address {@code user@host:port} shown for SSH projects instead of their path. */
@@ -205,6 +209,17 @@ public final class WorkspaceProjectsPage extends SettingsPage {
         LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(-1, Ui.dp(context, 42));
         buttonParams.topMargin = Ui.dp(context, 10);
         card.addView(button, buttonParams);
+
+        LinearLayout share = new LinearLayout(context);
+        share.setGravity(Gravity.CENTER);
+        share.setClickable(true);
+        share.setBackground(Ui.roundedStroke(context, tokens.accentMuted, 10, tokens.accent));
+        share.addView(Ui.bold(context, context.getString(R.string.workspace_share),
+                Tokens.FONT_SM, tokens.accent), new LinearLayout.LayoutParams(-2, -2));
+        share.setOnClickListener(v -> listener.shareWorkspace());
+        LinearLayout.LayoutParams shareParams = new LinearLayout.LayoutParams(-1, Ui.dp(context, 42));
+        shareParams.topMargin = Ui.dp(context, 8);
+        card.addView(share, shareParams);
         theme.bind(t -> card.setBackground(Ui.rounded(context, t.surfaceElevated, 12)));
         return card;
     }

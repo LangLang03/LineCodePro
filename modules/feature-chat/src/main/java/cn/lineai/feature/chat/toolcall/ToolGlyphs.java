@@ -26,6 +26,8 @@ final class ToolGlyphs {
                 return Icons.FOLDER;
             case SEARCH:
                 return Icons.SEARCH;
+            case FETCH:
+                return Icons.GLOBE;
             case TERMINAL:
                 return Icons.TERMINAL;
             case MCP:

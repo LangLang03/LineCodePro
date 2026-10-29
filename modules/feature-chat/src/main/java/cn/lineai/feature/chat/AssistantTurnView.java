@@ -3,6 +3,7 @@ package cn.lineai.feature.chat;
 import android.content.Context;
 import android.view.View;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import cn.lineai.core.model.Message;
 import cn.lineai.ui.kit.Ui;
@@ -16,6 +17,7 @@ import cn.lineai.ui.tokens.Tokens;
 final class AssistantTurnView extends LinearLayout {
 
     private final ProcessPanel process;
+    private final TextView error;
     private final MarkdownLite answer;
     private final WorkingStatusView working;
     private final ChangedFilesBlock changes;
@@ -41,6 +43,15 @@ final class AssistantTurnView extends LinearLayout {
         answer = new MarkdownLite(context, tokens);
         addView(answer, new LayoutParams(LayoutParams.MATCH_PARENT,
                 LayoutParams.WRAP_CONTENT));
+
+        error = Ui.text(context, "", Tokens.FONT_MD, tokens.text,
+                android.graphics.Typeface.NORMAL);
+        error.setLineSpacing(Ui.dp(context, 7), 1f);
+        error.setVisibility(GONE);
+        LayoutParams errorParams = new LayoutParams(LayoutParams.MATCH_PARENT,
+                LayoutParams.WRAP_CONTENT);
+        errorParams.topMargin = Ui.dp(context, 6);
+        addView(error, errorParams);
 
         working = new WorkingStatusView(context, tokens);
         working.setVisibility(GONE);
@@ -91,6 +102,8 @@ final class AssistantTurnView extends LinearLayout {
         if (hasProcess) {
             process.bind(row, current, rowEnv, row.key);
         }
+        error.setText(row.error);
+        error.setVisibility(row.error.isEmpty() ? GONE : VISIBLE);
         Message answerMessage = row.answer;
         String text = answerMessage == null ? "" : answerMessage.plainText();
         answer.setVisibility(text.isEmpty() ? GONE : VISIBLE);
@@ -123,6 +136,7 @@ final class AssistantTurnView extends LinearLayout {
     void applyTokens(Tokens current) {
         tokens = current;
         process.applyTokens(current);
+        error.setTextColor(current.text);
         answer.render(lastAnswer, current);
         working.applyTokens(current);
         changes.applyTokens(current);

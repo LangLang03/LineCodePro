@@ -261,6 +261,8 @@ public final class DrawerPanel extends FrameLayout {
     private static IconButton inlineIcon(Context context, int icon, int sizeDp) {
         IconButton button = new IconButton(context, icon);
         button.setIconSizeDp(sizeDp, sizeDp);
+        button.setMinimumWidth(0);
+        button.setMinimumHeight(0);
         button.setClickable(false);
         return button;
     }
@@ -410,13 +412,13 @@ public final class DrawerPanel extends FrameLayout {
             setClickable(true);
             setFocusable(true);
             Ui.padding(this, 0, 8, 0, 8);
-            glyph = inlineIcon(context, icon, 20);
-            addView(glyph, lp(20, 20));
+            glyph = inlineIcon(context, icon, 24);
+            addView(glyph, lp(24, 24));
             label = Ui.text(context, context.getString(labelRes), Tokens.FONT_SM,
                     tokens.textTertiary, Typeface.NORMAL);
             label.setSingleLine(true);
             label.setMaxHeight(dp(18));
-            addView(label, margins(-2, -2, 6, 0, 0, 0));
+            addView(label, margins(-2, -2, 8, 0, 0, 0));
             restyle();
         }
 
@@ -472,8 +474,17 @@ public final class DrawerPanel extends FrameLayout {
     }
 
     public void open() {
+        refreshProject();
         setVisibility(VISIBLE);
         animateSidebar(-width(), 0f, 180L, true);
+    }
+
+    /** Rebinds the project header and reloads the tree after the selected workspace changes. */
+    public void refreshProject() {
+        bindProject();
+        if (filesMode) {
+            loadTree();
+        }
     }
 
     public void close() {

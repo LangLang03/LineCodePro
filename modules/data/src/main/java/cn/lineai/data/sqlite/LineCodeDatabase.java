@@ -111,6 +111,15 @@ public final class LineCodeDatabase {
 
     private static List<String> schemaStatements() {
         List<String> statements = new ArrayList<>();
+        statements.addAll(conversationSchema());
+        statements.addAll(settingsAndModelSchema());
+        statements.addAll(extensionSchema());
+        statements.addAll(projectSchema());
+        return statements;
+    }
+
+    private static List<String> conversationSchema() {
+        List<String> statements = new ArrayList<>();
         statements.add("CREATE TABLE IF NOT EXISTS conversations ("
                 + "id TEXT PRIMARY KEY,"
                 + "title TEXT NOT NULL DEFAULT '',"
@@ -157,6 +166,11 @@ public final class LineCodeDatabase {
                 + "name TEXT NOT NULL DEFAULT '',"
                 + "arguments TEXT NOT NULL DEFAULT '',"
                 + "PRIMARY KEY(message_id, idx))");
+        return statements;
+    }
+
+    private static List<String> settingsAndModelSchema() {
+        List<String> statements = new ArrayList<>();
         statements.add("CREATE TABLE IF NOT EXISTS settings ("
                 + "key TEXT PRIMARY KEY,"
                 + "value TEXT NOT NULL DEFAULT '',"
@@ -207,6 +221,11 @@ public final class LineCodeDatabase {
                 + "last_used_at INTEGER NOT NULL DEFAULT 0,"
                 + "use_count INTEGER NOT NULL DEFAULT 0)");
         statements.add("CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope, project_id)");
+        return statements;
+    }
+
+    private static List<String> extensionSchema() {
+        List<String> statements = new ArrayList<>();
         statements.add("CREATE TABLE IF NOT EXISTS extension_agents ("
                 + "id TEXT PRIMARY KEY,"
                 + "enabled INTEGER NOT NULL DEFAULT 1,"
@@ -241,6 +260,11 @@ public final class LineCodeDatabase {
                 + "created_at INTEGER NOT NULL DEFAULT 0)");
         statements.add("CREATE INDEX IF NOT EXISTS idx_file_diffs_created "
                 + "ON file_diffs(created_at DESC)");
+        return statements;
+    }
+
+    private static List<String> projectSchema() {
+        List<String> statements = new ArrayList<>();
         statements.add("CREATE TABLE IF NOT EXISTS projects ("
                 + "id TEXT PRIMARY KEY,"
                 + "name TEXT NOT NULL DEFAULT '',"

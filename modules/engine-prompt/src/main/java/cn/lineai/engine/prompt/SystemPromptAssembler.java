@@ -74,6 +74,11 @@ public final class SystemPromptAssembler {
                 prompts.current(PromptId.MINIMAL_PROMPT), values);
     }
 
+    /** The editable compaction instruction; the asset is the only copy. */
+    public String compactionTemplate() {
+        return prompts.current(PromptId.CONTEXT_COMPACTION);
+    }
+
     /** Wraps a stored compaction summary with the editable provider-facing prefix. */
     public String summary(String summary) {
         Map<String, String> values = new LinkedHashMap<>();

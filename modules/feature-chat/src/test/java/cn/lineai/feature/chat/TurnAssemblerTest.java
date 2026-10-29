@@ -154,7 +154,7 @@ public class TurnAssemblerTest {
     }
 
     @Test
-    public void failedAnswerBecomesProcessProseInsteadOfAnAnswer() {
+    public void failedAnswerKeepsThePartialBodyInTheAnswerArea() {
         Message user = message("u1", Role.USER, Message.Status.COMPLETE, 1L, "go");
         Message failed = message("a1", Role.ASSISTANT, Message.Status.FAILED, 2L,
                 "Generation failed: timeout");
@@ -162,10 +162,38 @@ public class TurnAssemblerTest {
                 Arrays.asList(user, failed), Collections.<String>emptySet(), false);
 
         TurnAssembler.Row turn = rows.get(1);
+        assertEquals("Generation failed: timeout", turn.answer.plainText());
+        assertTrue(turn.process.isEmpty());
+    }
+
+    @Test
+    public void errorBlockStaysVisibleOutsideTheProcessPanel() {
+        Message user = message("u1", Role.USER, Message.Status.COMPLETE, 1L, "go");
+        Message failed = Message.builder().id("a1").role(Role.ASSISTANT)
+                .status(Message.Status.FAILED).seq(2L)
+                .addBlock(ContentBlock.error("Connection timed out"))
+                .times(2L, 2L).build();
+        TurnAssembler.Row turn = TurnAssembler.assemble(
+                Arrays.asList(user, failed), Collections.<String>emptySet(), false).get(1);
+
+        assertEquals("Connection timed out", turn.error);
         assertNull(turn.answer);
-        assertEquals(1, turn.process.size());
-        assertEquals(TurnAssembler.ITEM_MARKDOWN, turn.process.get(0).kind);
-        assertEquals("Generation failed: timeout", turn.process.get(0).text);
+        assertTrue(turn.visible());
+    }
+
+    @Test
+    public void failureBodyAndPlainErrorCanCoexist() {
+        Message user = message("u1", Role.USER, Message.Status.COMPLETE, 1L, "go");
+        Message failed = Message.builder().id("a1").role(Role.ASSISTANT)
+                .status(Message.Status.FAILED).seq(2L)
+                .addBlock(ContentBlock.text("Partial **body**"))
+                .addBlock(ContentBlock.error("Connection timed out"))
+                .times(2L, 2L).build();
+        TurnAssembler.Row turn = TurnAssembler.assemble(
+                Arrays.asList(user, failed), Collections.<String>emptySet(), false).get(1);
+
+        assertEquals("Partial **body**", turn.answer.plainText());
+        assertEquals("Connection timed out", turn.error);
     }
 
     @Test

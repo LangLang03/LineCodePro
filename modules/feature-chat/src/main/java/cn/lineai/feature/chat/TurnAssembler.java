@@ -59,6 +59,8 @@ public final class TurnAssembler {
         public final Message subject;
         public final Message userMessage;
         public final Message answer;
+        /** Visible failure reason from an ERROR block on a failed turn. */
+        public final String error;
         public final List<Item> process;
         public final List<ToolCallEntry> tools;
         public final boolean live;
@@ -77,6 +79,7 @@ public final class TurnAssembler {
             this.subject = draft.subject;
             this.userMessage = draft.userMessage;
             this.answer = draft.answer;
+            this.error = draft.error == null ? "" : draft.error;
             this.process = Collections.unmodifiableList(new ArrayList<>(draft.process));
             this.tools = Collections.unmodifiableList(new ArrayList<>(draft.tools));
             this.live = draft.live;
@@ -95,6 +98,7 @@ public final class TurnAssembler {
             Message subject;
             Message userMessage;
             Message answer;
+            String error = "";
             final List<Item> process = new ArrayList<>();
             final List<ToolCallEntry> tools = new ArrayList<>();
             boolean live;
@@ -120,6 +124,9 @@ public final class TurnAssembler {
                 value.append('\u0001').append(answer.id).append('\u0001')
                         .append(answer.plainText());
             }
+            if (!error.isEmpty()) {
+                value.append('\u0001').append(error);
+            }
             for (Item item : process) {
                 value.append('\u0002').append(item.kind).append(':').append(item.key)
                         .append(':').append(item.text).append(':').append(item.status);
@@ -140,7 +147,7 @@ public final class TurnAssembler {
 
         /** True when the row has something to draw at all. */
         public boolean visible() {
-            return user || answer != null || hasProcess() || live;
+            return user || answer != null || hasProcess() || live || !error.isEmpty();
         }
     }
 
@@ -246,6 +253,14 @@ public final class TurnAssembler {
             }
         }
         flushGroup(process, group);
+        String error = "";
+        for (Message message : turn) {
+            for (ContentBlock block : message.blocks) {
+                if (block.type == ContentBlock.Type.ERROR && !block.text.trim().isEmpty()) {
+                    error = block.text.trim();
+                }
+            }
+        }
         long startedAt = turn.get(0).createdAt;
         long finishedAt = 0L;
         boolean failed = false;
@@ -262,6 +277,7 @@ public final class TurnAssembler {
         draft.key = "t:" + turn.get(0).id;
         draft.subject = answer == null ? turn.get(0) : answer;
         draft.answer = answer;
+        draft.error = error;
         draft.process.addAll(process);
         draft.tools.addAll(all);
         draft.live = live;
@@ -303,16 +319,12 @@ public final class TurnAssembler {
     }
 
     /**
-     * Only a completed message can be the final answer.
-     *
-     * <p>A streaming message may still turn out to be interstitial prose followed by tool calls,
-     * so treating it as the answer would flash it into the answer area (and reveal the review
-     * block) only to fold it back into the process a moment later. Live prose therefore stays in
-     * the process panel until the model finishes the message.</p>
+     * A stopped stream is not an answer yet; a failed message may still carry the partial body
+     * the user already saw, and that body belongs in the answer area (the plain-text error block
+     * is rendered separately).
      */
     private static boolean isAnswer(Message message) {
-        if (message.status == Message.Status.FAILED
-                || message.status == Message.Status.STREAMING) {
+        if (message.status == Message.Status.STREAMING) {
             return false;
         }
         if (!message.toolCalls.isEmpty()) {

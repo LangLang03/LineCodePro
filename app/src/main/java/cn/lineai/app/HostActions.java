@@ -4,6 +4,9 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
+import android.provider.DocumentsContract;
+import android.provider.MediaStore;
 import android.widget.Toast;
 
 import java.io.File;
@@ -120,6 +123,49 @@ final class HostActions {
             activity.startActivityForResult(intent, requestCode);
         } catch (ActivityNotFoundException error) {
             Toast.makeText(activity, R.string.rewrite_not_available, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * Picks an image or video through the system Photo Picker when the platform has one.
+     *
+     * <p>{@code ACTION_OPEN_DOCUMENT} opens DocumentsUI, which is a file browser: the user has to
+     * navigate folders to reach a picture. Android 13's Photo Picker is the media surface users
+     * expect (recent photos, albums, no storage permission). Older devices and OEMs without the
+     * picker keep the SAF fallback.</p>
+     */
+    static void pickVisualMedia(Activity activity, String mime, int requestCode) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Intent picker = new Intent(MediaStore.ACTION_PICK_IMAGES);
+            picker.setType(mime);
+            picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            try {
+                activity.startActivityForResult(picker, requestCode);
+                return;
+            } catch (ActivityNotFoundException | SecurityException ignored) {
+                // No Photo Picker on this build; DocumentsUI still works.
+            }
+        }
+        pickDocument(activity, mime, null, requestCode);
+    }
+
+    /** Hands the workspace root to another app with read/write grants. */
+    static void shareWorkspace(Activity activity) {
+        Uri root = DocumentsContract.buildDocumentUri(
+                activity.getPackageName() + ".workspace.documents", "/");
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(root, DocumentsContract.Document.MIME_TYPE_DIR);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            Intent chooser = Intent.createChooser(intent,
+                    activity.getString(R.string.workspace_provider_open_title));
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            activity.startActivity(chooser);
+        } catch (ActivityNotFoundException error) {
+            Toast.makeText(activity, R.string.workspace_provider_open_failed,
+                    Toast.LENGTH_LONG).show();
         }
     }
 

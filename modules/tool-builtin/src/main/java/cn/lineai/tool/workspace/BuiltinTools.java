@@ -23,6 +23,7 @@ public final class BuiltinTools {
                 .register(new DeleteFileTool())
                 .register(new ShellTool())
                 .register(new WebSearchTool(webSearch))
+                .register(new WebFetchTool())
                 .register(new TodoUpdateTool())
                 .register(new MemoryUpdateTool());
     }

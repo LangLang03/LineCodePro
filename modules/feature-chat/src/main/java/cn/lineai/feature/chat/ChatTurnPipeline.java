@@ -44,6 +44,26 @@ final class ChatTurnPipeline {
         return chat.pipeline != this;
     }
 
+    /** Clears the draft before a transient model failure is retried in place. */
+    void retry(int attempt, int max, DomainException error) {
+        if (stale()) {
+            return;
+        }
+        streamText.setLength(0);
+        streamReasoning.setLength(0);
+        if (streamingMessage == null) {
+            return;
+        }
+        streamingMessage = streamingMessage.toBuilder()
+                .blocks(ChatTurnConfig.blocks("", ""))
+                .times(streamingMessage.createdAt, chat.clock.nowMs())
+                .build();
+        chat.publish(chat.state.value().toBuilder()
+                .replace(streamingMessage)
+                .revision(System.nanoTime())
+                .build());
+    }
+
     /** A new model turn starts and owns a fresh streaming draft. */
     void beginTurn() {
         if (stale()) {
@@ -189,7 +209,7 @@ final class ChatTurnPipeline {
         }
         chat.engine = null;
         pendingApprovals = new ArrayList<>();
-        String detail = ChatFailure.detail(error, chat.failureText);
+        String detail = ChatFailure.detail(error);
         if (chat.errorLogs != null) {
             chat.errorLogs.record(model.displayName(),
                     error.code().name() + " · " + error.detail(), detail);

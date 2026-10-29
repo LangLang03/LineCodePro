@@ -371,7 +371,7 @@ public final class FeaturePageFactory {
                     public cn.lineai.core.model.Project create(String name) {
                         java.io.File root = new java.io.File(host.activity().getFilesDir(),
                                 "workspace");
-                        String safe = name.trim().replaceAll("[^a-zA-Z0-9._-]+", "-");
+                        String safe = cn.lineai.feature.workspace.WorkspaceNames.folder(name);
                         if (safe.isEmpty()) safe = "project";
                         java.io.File dir = new java.io.File(root, safe);
                         int index = 2;
@@ -386,6 +386,7 @@ public final class FeaturePageFactory {
                         return created;
                     }
                     public void openExternal() { host.openExternalWorkspace(); }
+                    public void shareWorkspace() { host.shareWorkspace(); }
                     public String sshAddress() {
                         cn.lineai.core.model.SshConfig config =
                                 new cn.lineai.feature.terminal.SshPreferences(

@@ -38,6 +38,8 @@ public class HttpModelClientProtocolTest {
     private final AtomicReference<String> originator = new AtomicReference<>();
     private final List<String> failures = new ArrayList<>();
     private String sse;
+    private int errorStatus = 200;
+    private String errorBody = "";
 
     @Before public void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -61,12 +63,30 @@ public class HttpModelClientProtocolTest {
             while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
             body.set(output.toString(StandardCharsets.UTF_8.name()));
         }
+        if (errorStatus != 200) {
+            byte[] failure = errorBody.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(errorStatus, failure.length);
+            try (OutputStream output = exchange.getResponseBody()) {
+                output.write(failure);
+            }
+            return;
+        }
         byte[] payload = sse.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
         exchange.sendResponseHeaders(200, payload.length);
         try (OutputStream output = exchange.getResponseBody()) {
             output.write(payload);
         }
+    }
+
+    @Test public void httpFailureKeepsTheProviderResponseBody() {
+        errorStatus = 500;
+        errorBody = "{\"error\":{\"message\":\"quota exceeded\"}}";
+        Result result = stream(ModelConfig.Protocol.OPENAI_COMPATIBLE, "k");
+        assertEquals(1, result.failures.size());
+        assertTrue(result.detail.contains("HTTP 500"));
+        assertTrue(result.detail.contains("{\"error\":{\"message\":\"quota exceeded\"}}"));
     }
 
     @Test public void openAiProtocolPostsToChatCompletions() {
@@ -133,7 +153,10 @@ public class HttpModelClientProtocolTest {
                 result.reasoning.append(event.reasoning);
             }
             public void onComplete() { result.completed = true; }
-            public void onError(DomainException error) { result.failures.add(error.code().name()); }
+            public void onError(DomainException error) {
+                result.failures.add(error.code().name());
+                result.detail = error.detail();
+            }
         });
         return result;
     }
@@ -142,6 +165,7 @@ public class HttpModelClientProtocolTest {
         final StringBuilder text = new StringBuilder();
         final StringBuilder reasoning = new StringBuilder();
         final List<String> failures = new ArrayList<>();
+        String detail = "";
         boolean completed;
     }
 }
