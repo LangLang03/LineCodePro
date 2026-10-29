@@ -25,7 +25,8 @@ public final class PhoneTools {
     public static ToolRegistry augment(ToolRegistry base, Supplier<PhoneControl> control) {
         ToolRegistry registry = new ToolRegistry();
         if (base != null) {
-            for (Tool tool : base.all()) registry.register(tool);
+            for (Tool tool : base.all())
+                registry.register(tool);
         }
         registry.register(new Hierarchy(control))
                 .register(new Click(control))
@@ -48,18 +49,36 @@ public final class PhoneTools {
         return new ToolPresentation(title, ToolIcon.PHONE, action, "");
     }
 
-    private static ToolKind phoneKind() { return ToolKind.PHONE; }
+    private static ToolKind phoneKind() {
+        return ToolKind.PHONE;
+    }
 
     private static final class Hierarchy implements Tool {
         private final Supplier<PhoneControl> supplier;
 
-        Hierarchy(Supplier<PhoneControl> supplier) { this.supplier = supplier; }
+        Hierarchy(Supplier<PhoneControl> supplier) {
+            this.supplier = supplier;
+        }
 
-        public String name() { return "phone_view_hierarchy"; }
-        public String description() { return "Dump the accessibility tree of the current screen."; }
-        public String parametersJson() { return cn.lineai.tool.api.ToolSchemaBuilder.object().build(); }
-        public boolean mutating() { return false; }
-        public ToolKind kind() { return phoneKind(); }
+        public String name() {
+            return "phone_view_hierarchy";
+        }
+
+        public String description() {
+            return "Dump the accessibility tree of the current screen.";
+        }
+
+        public String parametersJson() {
+            return cn.lineai.tool.api.ToolSchemaBuilder.object().build();
+        }
+
+        public boolean mutating() {
+            return false;
+        }
+
+        public ToolKind kind() {
+            return phoneKind();
+        }
 
         public ToolPresentation presentation(JSONObject arguments) {
             return toolPresentation("Phone hierarchy", "");
@@ -67,28 +86,44 @@ public final class PhoneTools {
 
         public ToolResult execute(ToolContext context, JSONObject arguments) {
             PhoneControl control = control(supplier);
-            if (control == null) return missing();
+            if (control == null)
+                return missing();
             String text = control.viewHierarchy();
             return text == null || text.isEmpty()
-                    ? ToolResult.failure("", "No active window") : ToolResult.success("", text);
+                    ? ToolResult.failure("", "No active window")
+                    : ToolResult.success("", text);
         }
     }
 
     private static final class Click implements Tool {
         private final Supplier<PhoneControl> supplier;
 
-        Click(Supplier<PhoneControl> supplier) { this.supplier = supplier; }
+        Click(Supplier<PhoneControl> supplier) {
+            this.supplier = supplier;
+        }
 
-        public String name() { return "phone_click"; }
-        public String description() { return "Tap screen coordinates (pixels)."; }
+        public String name() {
+            return "phone_click";
+        }
+
+        public String description() {
+            return "Tap screen coordinates (pixels).";
+        }
+
         public String parametersJson() {
             return cn.lineai.tool.api.ToolSchemaBuilder.object()
                     .number("x", "Screen X coordinate")
                     .number("y", "Screen Y coordinate")
                     .required("x").required("y").build();
         }
-        public boolean mutating() { return true; }
-        public ToolKind kind() { return phoneKind(); }
+
+        public boolean mutating() {
+            return true;
+        }
+
+        public ToolKind kind() {
+            return phoneKind();
+        }
 
         public ToolPresentation presentation(JSONObject arguments) {
             return toolPresentation("Phone click", "x=" + arguments.optInt("x")
@@ -97,19 +132,29 @@ public final class PhoneTools {
 
         public ToolResult execute(ToolContext context, JSONObject arguments) {
             PhoneControl control = control(supplier);
-            if (control == null) return missing();
+            if (control == null)
+                return missing();
             return control.click(arguments.optInt("x"), arguments.optInt("y"))
-                    ? ToolResult.success("", "Clicked") : ToolResult.failure("", "Click failed");
+                    ? ToolResult.success("", "Clicked")
+                    : ToolResult.failure("", "Click failed");
         }
     }
 
     private static final class LongPress implements Tool {
         private final Supplier<PhoneControl> supplier;
 
-        LongPress(Supplier<PhoneControl> supplier) { this.supplier = supplier; }
+        LongPress(Supplier<PhoneControl> supplier) {
+            this.supplier = supplier;
+        }
 
-        public String name() { return "phone_long_press"; }
-        public String description() { return "Long-press screen coordinates (pixels)."; }
+        public String name() {
+            return "phone_long_press";
+        }
+
+        public String description() {
+            return "Long-press screen coordinates (pixels).";
+        }
+
         public String parametersJson() {
             return cn.lineai.tool.api.ToolSchemaBuilder.object()
                     .number("x", "Screen X coordinate")
@@ -117,8 +162,14 @@ public final class PhoneTools {
                     .number("duration_ms", "Press duration in milliseconds")
                     .required("x").required("y").build();
         }
-        public boolean mutating() { return true; }
-        public ToolKind kind() { return phoneKind(); }
+
+        public boolean mutating() {
+            return true;
+        }
+
+        public ToolKind kind() {
+            return phoneKind();
+        }
 
         public ToolPresentation presentation(JSONObject arguments) {
             return toolPresentation("Phone long press", "x=" + arguments.optInt("x")
@@ -127,7 +178,8 @@ public final class PhoneTools {
 
         public ToolResult execute(ToolContext context, JSONObject arguments) {
             PhoneControl control = control(supplier);
-            if (control == null) return missing();
+            if (control == null)
+                return missing();
             int duration = arguments.optInt("duration_ms", 800);
             return control.longPress(arguments.optInt("x"), arguments.optInt("y"), duration)
                     ? ToolResult.success("", "Long-pressed")
@@ -138,10 +190,18 @@ public final class PhoneTools {
     private static final class Swipe implements Tool {
         private final Supplier<PhoneControl> supplier;
 
-        Swipe(Supplier<PhoneControl> supplier) { this.supplier = supplier; }
+        Swipe(Supplier<PhoneControl> supplier) {
+            this.supplier = supplier;
+        }
 
-        public String name() { return "phone_swipe"; }
-        public String description() { return "Swipe between two screen points."; }
+        public String name() {
+            return "phone_swipe";
+        }
+
+        public String description() {
+            return "Swipe between two screen points.";
+        }
+
         public String parametersJson() {
             return cn.lineai.tool.api.ToolSchemaBuilder.object()
                     .number("x1", "Start X")
@@ -151,8 +211,14 @@ public final class PhoneTools {
                     .number("duration_ms", "Swipe duration in milliseconds")
                     .required("x1").required("y1").required("x2").required("y2").build();
         }
-        public boolean mutating() { return true; }
-        public ToolKind kind() { return phoneKind(); }
+
+        public boolean mutating() {
+            return true;
+        }
+
+        public ToolKind kind() {
+            return phoneKind();
+        }
 
         public ToolPresentation presentation(JSONObject arguments) {
             return toolPresentation("Phone swipe", arguments.optInt("x1") + ","
@@ -162,33 +228,46 @@ public final class PhoneTools {
 
         public ToolResult execute(ToolContext context, JSONObject arguments) {
             PhoneControl control = control(supplier);
-            if (control == null) return missing();
+            if (control == null)
+                return missing();
             int duration = arguments.optInt("duration_ms", 350);
             return control.swipe(arguments.optInt("x1"), arguments.optInt("y1"),
                     arguments.optInt("x2"), arguments.optInt("y2"), duration)
-                    ? ToolResult.success("", "Swiped")
-                    : ToolResult.failure("", "Swipe failed");
+                            ? ToolResult.success("", "Swiped")
+                            : ToolResult.failure("", "Swipe failed");
         }
     }
 
     private static final class GlobalAction implements Tool {
         private final Supplier<PhoneControl> supplier;
 
-        GlobalAction(Supplier<PhoneControl> supplier) { this.supplier = supplier; }
+        GlobalAction(Supplier<PhoneControl> supplier) {
+            this.supplier = supplier;
+        }
 
-        public String name() { return "phone_global_action"; }
+        public String name() {
+            return "phone_global_action";
+        }
+
         public String description() {
             return "Run a global action: back, home, recents, notifications, "
                     + "quick_settings, power_dialog, lock_screen.";
         }
+
         public String parametersJson() {
             return cn.lineai.tool.api.ToolSchemaBuilder.object()
                     .enumString("action", "Global action", "back", "home", "recents",
                             "notifications", "quick_settings", "power_dialog", "lock_screen")
                     .required("action").build();
         }
-        public boolean mutating() { return true; }
-        public ToolKind kind() { return phoneKind(); }
+
+        public boolean mutating() {
+            return true;
+        }
+
+        public ToolKind kind() {
+            return phoneKind();
+        }
 
         public ToolPresentation presentation(JSONObject arguments) {
             return toolPresentation("Phone action", arguments.optString("action", ""));
@@ -196,7 +275,8 @@ public final class PhoneTools {
 
         public ToolResult execute(ToolContext context, JSONObject arguments) {
             PhoneControl control = control(supplier);
-            if (control == null) return missing();
+            if (control == null)
+                return missing();
             String action = arguments.optString("action", "");
             return control.action(action)
                     ? ToolResult.success("", "Performed " + action)
@@ -207,13 +287,29 @@ public final class PhoneTools {
     private static final class Screenshot implements Tool {
         private final Supplier<PhoneControl> supplier;
 
-        Screenshot(Supplier<PhoneControl> supplier) { this.supplier = supplier; }
+        Screenshot(Supplier<PhoneControl> supplier) {
+            this.supplier = supplier;
+        }
 
-        public String name() { return "phone_screenshot"; }
-        public String description() { return "Capture the screen and save a PNG in the workspace."; }
-        public String parametersJson() { return cn.lineai.tool.api.ToolSchemaBuilder.object().build(); }
-        public boolean mutating() { return true; }
-        public ToolKind kind() { return phoneKind(); }
+        public String name() {
+            return "phone_screenshot";
+        }
+
+        public String description() {
+            return "Capture the screen and save a PNG in the workspace.";
+        }
+
+        public String parametersJson() {
+            return cn.lineai.tool.api.ToolSchemaBuilder.object().build();
+        }
+
+        public boolean mutating() {
+            return true;
+        }
+
+        public ToolKind kind() {
+            return phoneKind();
+        }
 
         public ToolPresentation presentation(JSONObject arguments) {
             return toolPresentation("Phone screenshot", "");
@@ -221,7 +317,8 @@ public final class PhoneTools {
 
         public ToolResult execute(ToolContext context, JSONObject arguments) {
             PhoneControl control = control(supplier);
-            if (control == null) return missing();
+            if (control == null)
+                return missing();
             byte[] bytes = control.screenshot();
             if (bytes == null || bytes.length == 0) {
                 return ToolResult.failure("", "Screenshot unavailable");
@@ -236,7 +333,8 @@ public final class PhoneTools {
                 return ToolResult.success("", "Screenshot saved to screenshots/" + name);
             } catch (IOException error) {
                 return ToolResult.failure("", error.getMessage() == null
-                        ? "Cannot save screenshot" : error.getMessage());
+                        ? "Cannot save screenshot"
+                        : error.getMessage());
             }
         }
     }

@@ -21,28 +21,33 @@ public final class ExtensionsPage extends SettingsPage {
 
     public ExtensionsPage(Context context, Tokens tokens, Runnable back, Consumer<String> open) {
         super(context, R.string.screen_extensions_title, tokens, back);
-        Ui.padding(content, 16, 16, 16, 100);
-        card("agent", R.string.screen_extensions_section_agent, R.string.screen_extensions_desc_agent,
-                R.string.screen_extensions_badge_can_add, Icons.BRAIN, open);
-        card("mcp", R.string.screen_extensions_section_mcp, R.string.screen_extensions_desc_mcp,
-                R.string.screen_extensions_badge_https, Icons.MCP, open);
-        card("skills", R.string.screen_extensions_section_skills, R.string.screen_extensions_desc_skills,
-                R.string.screen_extensions_badge_zip, Icons.ARCHIVE, open);
+        Ui.padding(content, 16, 16, 16, 108);
+        card("agent", R.string.screen_extensions_section_agent,
+                R.string.screen_extensions_desc_agent,
+                R.string.screen_extensions_badge_can_add, Icons.BRAIN, 90, open);
+        card("mcp", R.string.screen_extensions_section_mcp,
+                R.string.screen_extensions_desc_mcp,
+                R.string.screen_extensions_badge_https, Icons.MCP, 72, open);
+        card("skills", R.string.screen_extensions_section_skills,
+                R.string.screen_extensions_desc_skills,
+                R.string.screen_extensions_badge_zip, Icons.ARCHIVE, 72, open);
         card("linecode", R.string.screen_extensions_section_linecode,
                 R.string.screen_extensions_desc_linecode, R.string.screen_extensions_badge_lip,
-                Icons.PACKAGE, open);
+                Icons.PACKAGE, 72, open);
         card("terminalProvider", R.string.screen_extensions_section_terminal_provider,
                 R.string.screen_extensions_desc_terminal_provider,
-                R.string.screen_extensions_badge_terminal_provider, Icons.TERMINAL, open);
+                R.string.screen_extensions_badge_terminal_provider, Icons.TERMINAL, 93, open);
     }
 
     private void card(String id, int title, int description, int badge, int icon,
-                      Consumer<String> open) {
+                      int minimumHeightDp, Consumer<String> open) {
         Context context = getContext();
         Tokens tokens = theme.current();
         LinearLayout card = new LinearLayout(context);
         card.setGravity(Gravity.CENTER_VERTICAL);
         card.setClickable(true);
+        card.setFocusable(true);
+        card.setMinimumHeight(Ui.dp(context, minimumHeightDp));
         card.setOnClickListener(v -> open.accept(id));
         card.setBackground(Ui.roundedStroke(context, tokens.surfaceElevated, 12, tokens.border));
         Ui.padding(card, 16, 12, 12, 12);
@@ -63,14 +68,17 @@ public final class ExtensionsPage extends SettingsPage {
         LinearLayout text = new LinearLayout(context);
         text.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, -2, 1f);
-        textParams.leftMargin = textParams.rightMargin = Ui.dp(context, 12);
+        textParams.leftMargin = Ui.dp(context, 12);
+        textParams.rightMargin = Ui.dp(context, 12);
         card.addView(text, textParams);
         LinearLayout titleRow = new LinearLayout(context);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
         text.addView(titleRow, new LinearLayout.LayoutParams(-1, -2));
-        titleRow.addView(Ui.bold(context, context.getString(title), Tokens.FONT_LG, tokens.text),
-                new LinearLayout.LayoutParams(-2, -2));
-        TextView badgeView = Ui.bold(context, context.getString(badge), Tokens.FONT_XS, tokens.accent);
+        TextView titleView = Ui.bold(context, context.getString(title), Tokens.FONT_LG,
+                tokens.text);
+        titleRow.addView(titleView, new LinearLayout.LayoutParams(-2, -2));
+        TextView badgeView = Ui.bold(context, context.getString(badge), Tokens.FONT_XS,
+                tokens.accent);
         badgeView.setBackground(Ui.rounded(context, tokens.accentMuted, 999));
         Ui.padding(badgeView, 8, 3, 8, 3);
         LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(-2, -2);
@@ -93,6 +101,10 @@ public final class ExtensionsPage extends SettingsPage {
             iconBox.setBackground(Ui.rounded(context, t.accentMuted, 12));
             glyph.setIconColor(t.accent);
             badgeView.setBackground(Ui.rounded(context, t.accentMuted, 999));
+            badgeView.setTextColor(t.accent);
+            titleView.setTextColor(t.text);
+            desc.setTextColor(t.textTertiary);
+            chevron.setIconColor(t.textTertiary);
         });
     }
 }

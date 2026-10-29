@@ -33,7 +33,8 @@ public final class SkillHubPublishPage extends SettingsPage {
     private final FormField slug;
     private final FormField displayName;
     private final FormField version;
-    private final TextView publish;
+    private final LinearLayout publish;
+    private final TextView publishLabel;
     private int index;
 
     public SkillHubPublishPage(Context context, Tokens tokens, Runnable back, Scheduler scheduler,
@@ -44,22 +45,22 @@ public final class SkillHubPublishPage extends SettingsPage {
         this.skills = new ArrayList<>(store.list());
         Ui.padding(content, 16, 16, 16, 100);
 
-        TextView notice = Ui.text(context,
-                context.getString(R.string.skillhub_publish_notice),
-                Tokens.FONT_XS, tokens.textSecondary, Typeface.NORMAL);
-        notice.setLineSpacing(Ui.dp(context, 3), 1f);
-        notice.setBackground(Ui.rounded(context, tokens.surfaceElevated, 10));
-        Ui.padding(notice, 12, 10, 12, 10);
-        content.addView(notice, new LinearLayout.LayoutParams(-1, -2));
+        content.addView(ExtensionKit.notice(context, theme, cn.lineai.ui.kit.Icons.SHIELD_CHECK,
+                R.string.skillhub_publish_notice), new LinearLayout.LayoutParams(-1, -2));
 
-        selected = Ui.medium(context, "", Tokens.FONT_SM, tokens.text);
-        selected.setBackground(Ui.roundedStroke(context, tokens.inputBg, 10, tokens.border));
-        Ui.padding(selected, 12, 10, 12, 10);
+        selected = Ui.medium(context, "", Tokens.FONT_MD, tokens.text);
+        selected.setGravity(Gravity.CENTER_VERTICAL);
+        selected.setMinimumHeight(Ui.dp(context, 48));
+        Ui.padding(selected, 12, 12, 12, 12);
         selected.setClickable(true);
         selected.setOnClickListener(v -> selectNext());
         LinearLayout.LayoutParams selectedParams = new LinearLayout.LayoutParams(-1, -2);
-        selectedParams.topMargin = Ui.dp(context, 12);
+        selectedParams.topMargin = Ui.dp(context, 16);
         content.addView(selected, selectedParams);
+        theme.bind(t -> {
+            selected.setTextColor(t.text);
+            selected.setBackground(Ui.roundedStroke(context, t.inputBg, 12, t.borderLight));
+        });
 
         slug = field(R.string.skillhub_slug_label, R.string.skillhub_slug_hint);
         displayName = field(R.string.skillhub_display_name_label,
@@ -69,21 +70,29 @@ public final class SkillHubPublishPage extends SettingsPage {
         content.addView(displayName, formParams());
         content.addView(version, formParams());
 
-        publish = Ui.bold(context, context.getString(R.string.skillhub_publish_to_hub),
-                Tokens.FONT_MD, tokens.textOnColor);
+        publishLabel = Ui.medium(context,
+                context.getString(R.string.skillhub_publish_to_hub), Tokens.FONT_MD,
+                tokens.textOnColor);
+        publishLabel.setGravity(Gravity.CENTER);
+        publish = new LinearLayout(context);
         publish.setGravity(Gravity.CENTER);
         publish.setClickable(true);
-        publish.setBackground(Ui.rounded(context, tokens.accent, 12));
+        publish.setMinimumHeight(Ui.dp(context, 48));
+        Ui.padding(publish, 12, 12, 12, 12);
+        publish.addView(publishLabel, new LinearLayout.LayoutParams(-2, -2));
+        theme.bind(t -> {
+            publishLabel.setTextColor(t.textOnColor);
+            publish.setBackground(Ui.rounded(context, t.accent, 12));
+        });
         publish.setOnClickListener(v -> publish());
-        LinearLayout.LayoutParams publishParams = new LinearLayout.LayoutParams(-1, Ui.dp(context, 46));
+        LinearLayout.LayoutParams publishParams = new LinearLayout.LayoutParams(-1, -2);
         publishParams.topMargin = Ui.dp(context, 16);
         content.addView(publish, publishParams);
         select(0);
     }
 
     private FormField field(int label, int hint) {
-        return new FormField(getContext(), theme, label, "",
-                getContext().getString(hint), false);
+        return ExtensionKit.field(getContext(), theme, label, "", hint, false);
     }
 
     private LinearLayout.LayoutParams formParams() {
@@ -101,7 +110,6 @@ public final class SkillHubPublishPage extends SettingsPage {
         index = value;
         if (skills.isEmpty()) {
             selected.setText(getContext().getString(R.string.skillhub_no_publishable_skills));
-            selected.setEnabled(false);
             publish.setEnabled(false);
             publish.setAlpha(0.45f);
             return;
@@ -116,8 +124,8 @@ public final class SkillHubPublishPage extends SettingsPage {
     private static String defaultSlug(Skill skill) {
         String source = skill.name.toLowerCase(java.util.Locale.ROOT);
         StringBuilder out = new StringBuilder();
-        for (int i = 0; i < source.length(); i++) {
-            char ch = source.charAt(i);
+        for (int index = 0; index < source.length(); index++) {
+            char ch = source.charAt(index);
             if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) {
                 out.append(ch);
             } else if ((ch == ' ' || ch == '_' || ch == '-') && out.length() > 0
@@ -139,7 +147,7 @@ public final class SkillHubPublishPage extends SettingsPage {
             return;
         }
         publish.setEnabled(false);
-        publish.setText(getContext().getString(R.string.skillhub_publishing));
+        publishLabel.setText(getContext().getString(R.string.skillhub_publishing));
         Skill skill = skills.get(index);
         scheduler.io(() -> {
             try {
@@ -159,7 +167,7 @@ public final class SkillHubPublishPage extends SettingsPage {
                         ? error.getClass().getSimpleName() : error.getMessage();
                 scheduler.main(() -> {
                     publish.setEnabled(true);
-                    publish.setText(getContext().getString(R.string.skillhub_publish_to_hub));
+                    publishLabel.setText(getContext().getString(R.string.skillhub_publish_to_hub));
                     Toast.makeText(getContext(), getContext().getString(
                             R.string.skill_github_failed, message), Toast.LENGTH_LONG).show();
                 });

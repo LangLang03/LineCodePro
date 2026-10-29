@@ -12,14 +12,10 @@ val gpuLocalModel =
     (providers.gradleProperty("linecodeLocalModelGpu").orNull ?: "true").toBoolean()
 val llamaSourceDir =
     providers.gradleProperty("linecodeLlamaCppSourceDir").orNull
-        ?: rootProject.file(
-            "../LineCodePro-C++/platform/android/app/.cxx/RelWithDebInfo/1j5k4fd5/arm64-v8a/_deps/linecode_llama_cpp-src"
-        ).absolutePath
+        ?: rootProject.file("third_party/llama-cpp").absolutePath
 val llamaPrebuiltDir =
     providers.gradleProperty("linecodeLlamaPrebuiltDir").orNull
-        ?: rootProject.file(
-            "../LineCodePro-C++/platform/android/app/.cxx/RelWithDebInfo/1j5k4fd5/arm64-v8a/bin"
-        ).absolutePath
+        ?: rootProject.file("third_party/llama-cpp/prebuilt/arm64-v8a").absolutePath
 
 android {
     namespace = "cn.lineai.engine.local"

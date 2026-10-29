@@ -170,6 +170,8 @@ public final class SqliteModelStore implements ModelStore {
         values.put("enabled", model.enabled ? 1 : 0);
         values.put("is_default", isDefault ? 1 : 0);
         values.put("supports_vision", model.supportsVision ? 1 : 0);
+        values.put("supports_reasoning", model.supportsReasoning ? 1 : 0);
+        values.put("supports_video", model.supportsVideo ? 1 : 0);
         values.put("supports_tools", model.supportsTools ? 1 : 0);
         values.put("tool_call_limit", model.toolCallLimit);
         values.put("compression_enabled", model.compressionEnabled ? 1 : 0);
@@ -205,6 +207,9 @@ public final class SqliteModelStore implements ModelStore {
                         cursor.getInt(cursor.getColumnIndexOrThrow("enabled")) == 1)
                 .capabilities(cursor.getInt(cursor.getColumnIndexOrThrow("supports_vision")) == 1,
                         cursor.getInt(cursor.getColumnIndexOrThrow("supports_tools")) == 1)
+                .multimodal(cursor.getInt(cursor.getColumnIndexOrThrow("supports_reasoning")) == 1,
+                        cursor.getInt(cursor.getColumnIndexOrThrow("supports_vision")) == 1,
+                        cursor.getInt(cursor.getColumnIndexOrThrow("supports_video")) == 1)
                 .build();
     }
 

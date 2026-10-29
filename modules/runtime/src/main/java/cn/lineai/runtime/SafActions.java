@@ -21,6 +21,7 @@ public final class SafActions {
     public static final int REQUEST_TREE = 7405;
     public static final int REQUEST_MODEL_FILE = 7406;
     public static final int REQUEST_ATTACH_FILE = 7407;
+    public static final int REQUEST_VIDEO = 7408;
 
     private SafActions() {
     }
@@ -30,7 +31,7 @@ public final class SafActions {
             copyAttachment(host, uri);
             return true;
         }
-        if (requestCode == REQUEST_ATTACH_FILE) {
+        if (requestCode == REQUEST_ATTACH_FILE || requestCode == REQUEST_VIDEO) {
             copyFileAttachment(host, uri);
             return true;
         }

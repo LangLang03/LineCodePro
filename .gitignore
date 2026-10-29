@@ -38,3 +38,5 @@ ui-theme/build/*
 tool-ui/build/*
 .omo/
 .workbuddy
+# IDE compiler output directories
+bin/

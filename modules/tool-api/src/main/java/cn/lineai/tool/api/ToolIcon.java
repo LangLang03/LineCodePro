@@ -16,5 +16,7 @@ public enum ToolIcon {
     TODO,
     AGENT,
     MEMORY,
-    PHONE
+    PHONE,
+    DIFF,
+    PIPELINE
 }

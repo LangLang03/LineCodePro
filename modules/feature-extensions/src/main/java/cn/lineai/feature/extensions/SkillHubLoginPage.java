@@ -48,17 +48,15 @@ public final class SkillHubLoginPage extends SettingsPage {
         this.scheduler = scheduler;
         this.listener = listener;
         Ui.padding(content, 16, 8, 16, 24);
-        TextView notice = Ui.text(context,
-                context.getString(R.string.skillhub_credential_notice),
-                Tokens.FONT_XS, tokens.textSecondary, android.graphics.Typeface.NORMAL);
-        notice.setBackground(Ui.rounded(context, tokens.accentMuted, 10));
-        Ui.padding(notice, 12, 8, 12, 8);
-        content.addView(notice, new LinearLayout.LayoutParams(-1, -2));
+        content.addView(ExtensionKit.notice(context, theme, cn.lineai.ui.kit.Icons.SHIELD_CHECK,
+                R.string.skillhub_credential_notice), new LinearLayout.LayoutParams(-1, -2));
         TextView status = Ui.text(context,
                 context.getString(R.string.skillhub_auto_return_notice),
                 Tokens.FONT_XS, tokens.textTertiary, android.graphics.Typeface.NORMAL);
-        Ui.padding(status, 0, 8, 0, 8);
+        status.setGravity(android.view.Gravity.CENTER);
+        Ui.padding(status, 16, 8, 16, 8);
         content.addView(status, new LinearLayout.LayoutParams(-1, -2));
+        theme.bind(t -> status.setTextColor(t.textTertiary));
 
         webView = new WebView(context);
         harden(webView);

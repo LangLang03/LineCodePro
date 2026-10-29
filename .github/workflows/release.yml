@@ -88,10 +88,17 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
+          # Deliberately no `cache: gradle` here: it would restore ~/.gradle/caches before
+          # setup-gradle runs, and setup-gradle then skips its own deduplicated cache
+          # (wrapper distributions, dependencies and the local build cache) as "pre-existing".
 
+      # Restores/saves the Gradle User Home cache (wrapper distribution, dependencies, compiled
+      # build scripts and the local build cache). Entries written on master are visible to pull
+      # request runs, so this job keeps the shared Gradle cache warm for CI.
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-cleanup: on-success
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
@@ -127,8 +134,25 @@ jobs:
       - name: Run lint
         run: ./gradlew :app:lintDebug
 
-      - name: Build release APK
-        run: ./gradlew :app:assembleRelease
+      # The local model variant compiles the JNI bridge against the vendored llama.cpp headers
+      # and links the prebuilt arm64 runtime in third_party/llama-cpp, so it needs the NDK and
+      # CMake versions pinned in modules/engine-local/build.gradle.kts (keep the values below in
+      # sync with that file). The runner image usually ships both; sdkmanager keeps the job
+      # deterministic when it does not.
+      - name: Install Android NDK and CMake
+        run: |
+          set -euo pipefail
+          sdkmanager="$(command -v sdkmanager || echo "${ANDROID_HOME:?}/cmdline-tools/latest/bin/sdkmanager")"
+          "$sdkmanager" --install "ndk;29.0.14206865" "cmake;3.22.1"
+
+      # Both variants are released. They need separate `clean` builds because they share the
+      # intermediate output directories (see AGENT.md); the slim APK is already copied to
+      # app/release, so the second build only adds the -local APK next to it.
+      - name: Build slim release APK
+        run: ./gradlew clean :app:assembleRelease
+
+      - name: Build local model release APK
+        run: ./gradlew clean :app:assembleRelease -PlinecodeEnableLocalModel=true
 
       - name: Get version info
         id: version
@@ -193,7 +217,6 @@ jobs:
             echo "### 下载说明"
             echo "- \`LineCode Pro ${NEW_VERSION_NAME}-slim.APK\` - 默认精简版 Release APK"
             echo "- \`LineCode Pro ${NEW_VERSION_NAME}-slim.APK.idsig\` - APK 签名文件"
-            echo "- 本地模型版使用 \`-PlinecodeEnableLocalModel=true\` 单独构建，文件名带 \`-local\`，不会覆盖精简版。"
           } > release_notes.md
 
           echo "release_notes_file=release_notes.md" >> $GITHUB_OUTPUT

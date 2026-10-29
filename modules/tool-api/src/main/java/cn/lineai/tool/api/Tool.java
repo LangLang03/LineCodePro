@@ -21,6 +21,16 @@ public interface Tool {
         return ToolKind.GENERAL;
     }
 
+    /**
+     * True when the tool can only work on the on-device filesystem.
+     *
+     * <p>An SSH workspace runs commands on a remote host; these tools are excluded from the
+     * catalog there instead of silently operating on the phone's storage.</p>
+     */
+    default boolean needsLocalWorkspace() {
+        return false;
+    }
+
     /** Presentation metadata for one call; the UI never hard-codes tool names. */
     default ToolPresentation presentation(JSONObject arguments) {
         return ToolPresentation.generic(name(), arguments);

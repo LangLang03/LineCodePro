@@ -192,6 +192,10 @@ public final class ChatApprovalView extends LinearLayout {
                 return Icons.BOOK_OPEN;
             case PHONE:
                 return Icons.SMARTPHONE;
+            case DIFF:
+                return Icons.GIT_COMPARE;
+            case PIPELINE:
+                return Icons.GIT_BRANCH;
             case GENERIC:
             default:
                 return Icons.WRENCH;

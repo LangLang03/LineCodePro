@@ -132,8 +132,16 @@ final class ChatTurnConfig {
     static void addAttachments(Message.Builder builder, List<String> images, List<String> files) {
         for (String image : images) builder.addBlock(ContentBlock.image(image));
         for (String file : files) {
-            builder.addBlock(ContentBlock.file(file, readAttachment(file)));
+            builder.addBlock(ContentBlock.file(file, isVideo(file)
+                    ? "Video attachment: " + new java.io.File(file).getName()
+                    : readAttachment(file)));
         }
+    }
+
+    static boolean isVideo(String path) {
+        String lower = path == null ? "" : path.toLowerCase(java.util.Locale.ROOT);
+        return lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".webm")
+                || lower.endsWith(".mkv") || lower.endsWith(".3gp") || lower.endsWith(".m4v");
     }
 
     static String readAttachment(String path) {
@@ -165,7 +173,9 @@ final class ChatTurnConfig {
     }
 
     static ReasoningSpec reasoningSpec(SettingsStore settings, ModelConfig model) {
-        String effort = settings.get(UiPreferences.Field.REASONING.key, "medium");
+        // A model without reasoning support is locked to "off" regardless of the stored level.
+        String effort = model != null && !model.supportsReasoning ? "off"
+                : settings.get(UiPreferences.Field.REASONING.key, "medium");
         boolean preserve = Boolean.parseBoolean(
                 settings.get(UiPreferences.Field.PRESERVE_REASONING.key, "false"));
         String provider = model.providerLabel.isEmpty() ? model.providerId : model.providerLabel;

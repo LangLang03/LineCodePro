@@ -1298,7 +1298,7 @@
     <string name="skillhub_loading_page">Загрузка страницы %d…</string>
     <string name="skillhub_load_failed_retry">Загрузка не удалась, нажмите здесь, чтобы повторить</string>
     <string name="skillhub_no_matching_skills">Подходящие Skills не найдены</string>
-    <string name="skillhub_page_count">Страница %d · Всего %s Skills</string>
+    <string name="skillhub_page_count">Страница %1$d · Всего %2$s Skills</string>
     <string name="skillhub_verified">Подтверждено</string>
     <string name="skillhub_requires_api_key">Требуется API Key</string>
     <string name="skillhub_view_details">, посмотреть детали</string>

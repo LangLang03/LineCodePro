@@ -36,6 +36,8 @@ public final class GlobTool implements Tool {
                 arguments.optString("pattern", ""), ToolPresentation.reason(arguments));
     }
 
+    @Override public boolean needsLocalWorkspace() { return true; }
+
     @Override public boolean mutating() { return false; }
 
     @Override public ToolResult execute(ToolContext context, JSONObject arguments) {

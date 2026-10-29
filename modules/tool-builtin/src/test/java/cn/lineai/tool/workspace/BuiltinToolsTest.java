@@ -57,6 +57,52 @@ public class BuiltinToolsTest {
         assertNull(registry.find("missing"));
     }
 
+    @Test public void remoteShellRunsThroughTheSshContext() throws Exception {
+        final java.util.List<String> commands = new java.util.ArrayList<>();
+        ToolContext ssh = new ToolContext() {
+            @Override public File workspaceRoot() { return root; }
+            @Override public String modelId() { return null; }
+            @Override public boolean mutationAllowed() { return true; }
+            @Override public boolean remoteWorkspace() { return true; }
+            @Override public String remoteDirectory() { return "/remote/dir"; }
+            @Override public String remoteExecute(String command, int timeoutMs) {
+                commands.add(command);
+                return "remote-output";
+            }
+        };
+        ToolResult result = registry.find("shell_execute")
+                .execute(ssh, new JSONObject("{\"command\":\"pwd\"}"));
+        assertFalse(result.error);
+        assertEquals("remote-output", result.content.trim());
+        assertEquals("cd '/remote/dir' && pwd", commands.get(0));
+    }
+
+    @Test public void remoteShellHonoursCwd() throws Exception {
+        final java.util.List<String> commands = new java.util.ArrayList<>();
+        ToolContext ssh = new ToolContext() {
+            @Override public File workspaceRoot() { return root; }
+            @Override public String modelId() { return null; }
+            @Override public boolean mutationAllowed() { return true; }
+            @Override public boolean remoteWorkspace() { return true; }
+            @Override public String remoteDirectory() { return "/remote/dir"; }
+            @Override public String remoteExecute(String command, int timeoutMs) {
+                commands.add(command);
+                return "";
+            }
+        };
+        registry.find("shell_execute")
+                .execute(ssh, new JSONObject("{\"command\":\"ls\",\"cwd\":\"/tmp\"}"));
+        assertEquals("cd '/tmp' && ls", commands.get(0));
+    }
+
+    @Test public void localFileToolsDeclareALocalWorkspace() {
+        for (String name : new String[] {"read_file", "write_file", "edit_file", "delete_file",
+                "glob", "list_dir"}) {
+            assertTrue(name, registry.find(name).needsLocalWorkspace());
+        }
+        assertFalse(registry.find("shell_execute").needsLocalWorkspace());
+    }
+
     @Test public void presentationWithoutArgumentsNeverCrashes() {
         for (Tool tool : registry.all()) {
             assertFalse(tool.name(), registry.presentation(tool.name()).title.isEmpty());

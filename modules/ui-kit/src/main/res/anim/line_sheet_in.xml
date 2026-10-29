@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Legacy bottom-sheet entrance: 180 ms EaseOut slide up. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:fillAfter="true">
+    <translate
+        android:duration="180"
+        android:fromYDelta="100%p"
+        android:interpolator="@android:interpolator/decelerate_quad"
+        android:toYDelta="0" />
+    <alpha
+        android:duration="180"
+        android:fromAlpha="0.35"
+        android:toAlpha="1.0" />
+</set>

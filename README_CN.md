@@ -106,8 +106,8 @@ modules/arch-test/      包归属、依赖、纯度和卫生测试
 | `linecodeEnableLocalModel` | `false` | 编译 `engine-local` 和本地 UI，显示“本地模型”入口与协议页；关闭时全部移除。 |
 | `linecodeLocalModelBundle` | 跟随 `linecodeEnableLocalModel` | 把 `libllama.so`、`libggml*.so`、`libc++_shared.so` 打进 APK。 |
 | `linecodeLocalModelGpu` | `true` | 在本地模型表单中提供 GPU 加速选项。 |
-| `linecodeLlamaCppSourceDir` | `../LineCodePro-C++/.../_deps/linecode_llama_cpp-src` | llama.cpp 头文件源码目录。 |
-| `linecodeLlamaPrebuiltDir` | `../LineCodePro-C++/.../bin` | arm64 预编译 llama.cpp 库目录。 |
+| `linecodeLlamaCppSourceDir` | `third_party/llama-cpp` | llama.cpp 头文件目录。 |
+| `linecodeLlamaPrebuiltDir` | `third_party/llama-cpp/prebuilt/arm64-v8a` | arm64 预编译 llama.cpp 库目录。 |
 
 ```sh
 # 完整本地模型版，包含原生库。
@@ -117,7 +117,7 @@ modules/arch-test/      包归属、依赖、纯度和卫生测试
 ./gradlew clean :app:assembleRelease -PlinecodeEnableLocalModel=true
 ```
 
-本地版需要同级目录中的 LineCodePro-C++ 预编译 arm64 运行库，或通过上述两个目录属性显式指定。只打开后端但不打包库的构建仍会链接它，但 APK 中不含共享库，仅用于开发。
+本地版链接仓库内置的 `third_party/llama-cpp` 头文件与 arm64 预编译运行库（见该目录 README）；也可以通过上述两个目录属性指向独立的 llama.cpp 检出。只打开后端但不打包库的构建仍会链接它，但 APK 中不含共享库，仅用于开发。
 
 切换精简版/本地版必须先执行 `clean`，因为两个变体写入同一个 APK 路径；否则旧的增量打包可能残留 zipflinger 虚拟条目填充。
 

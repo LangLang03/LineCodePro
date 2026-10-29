@@ -179,7 +179,7 @@ final class AstBlockRenderer {
     }
 
     private View table(Node node) {
-        HorizontalScrollView scroll = new HorizontalScrollView(context);
+        TableScrollView scroll = new TableScrollView(context);
         scroll.setFillViewport(true);
         scroll.setHorizontalScrollBarEnabled(true);
         scroll.setHorizontalFadingEdgeEnabled(false);
@@ -187,37 +187,44 @@ final class AstBlockRenderer {
         scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         scroll.setBackground(Ui.rounded(context, Color.TRANSPARENT, 12));
         scroll.setClipToOutline(true);
+        scroll.configure(dp(84), dp(196), dp(12));
         TableLayout grid = new TableLayout(context);
         grid.setShrinkAllColumns(false);
         grid.setStretchAllColumns(true);
         scroll.addView(grid, new HorizontalScrollView.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
         int bodyIndex = 0;
+        int columns = 0;
         for (Node section = node.getFirstChild(); section != null; section = section.getNext()) {
             boolean header = section instanceof TableHead;
             for (Node row = section.getFirstChild(); row != null; row = row.getNext()) {
-                tableRow(grid, row, header, bodyIndex);
+                columns = Math.max(columns, tableRow(scroll, grid, row, header, bodyIndex));
                 if (!header) {
                     bodyIndex++;
                 }
             }
         }
+        scroll.setColumns(columns);
         return scroll;
     }
 
-    private void tableRow(TableLayout grid, Node rowNode, boolean header, int index) {
+    private int tableRow(TableScrollView scroll, TableLayout grid, Node rowNode,
+                         boolean header, int index) {
         TableRow row = new TableRow(context);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setBaselineAligned(false);
         grid.addView(row, new TableLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+        int columns = 0;
         for (Node node = rowNode.getFirstChild(); node != null; node = node.getNext()) {
             if (node instanceof TableCell) {
-                row.addView(cell((TableCell) node, header, index),
+                row.addView(cell(scroll, (TableCell) node, header, index),
                         new TableRow.LayoutParams(WRAP_CONTENT, MATCH_PARENT));
+                columns++;
             }
         }
+        return columns;
     }
 
-    private View cell(TableCell node, boolean header, int row) {
+    private View cell(TableScrollView scroll, TableCell node, boolean header, int row) {
         LinearLayout cell = column();
         cell.setGravity(Gravity.CENTER_VERTICAL);
         cell.setMinimumWidth(dp(84));
@@ -231,8 +238,64 @@ final class AstBlockRenderer {
         text.setMaxWidth(dp(196));
         text.setSingleLine(false);
         inline.bind(text, node);
+        scroll.addCell(text);
         cell.addView(text, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
         return cell;
+    }
+
+    /**
+     * Horizontal scroll host that stretches table columns to the available width.
+     *
+     * <p>The legacy table capped every cell at 196dp, which on wide screens left large empty
+     * column gaps. The cap now grows with the viewport (viewport / columns - cell padding) while
+     * never dropping below the legacy 196dp, so long cells still wrap instead of being clipped
+     * and narrow viewports keep horizontal scrolling exactly like the legacy renderer.</p>
+     */
+    static final class TableScrollView extends HorizontalScrollView {
+
+        private final List<TextView> cells = new ArrayList<>();
+        private int columns;
+        private int minCellWidth;
+        private int baseMaxWidth;
+        private int cellPadding;
+
+        TableScrollView(Context context) {
+            super(context);
+        }
+
+        void configure(int minCellWidth, int baseMaxWidth, int cellPadding) {
+            this.minCellWidth = minCellWidth;
+            this.baseMaxWidth = baseMaxWidth;
+            this.cellPadding = cellPadding;
+        }
+
+        void addCell(TextView cell) {
+            cells.add(cell);
+            cell.setMaxWidth(baseMaxWidth);
+        }
+
+        void setColumns(int value) {
+            columns = Math.max(0, value);
+            requestLayout();
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            int available = MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.UNSPECIFIED
+                    ? getResources().getDisplayMetrics().widthPixels
+                    : MeasureSpec.getSize(widthMeasureSpec);
+            int cap = baseMaxWidth;
+            if (columns > 0) {
+                cap = Math.max(baseMaxWidth, available / columns - cellPadding * 2);
+                cap = Math.max(cap, minCellWidth - cellPadding * 2);
+            }
+            for (TextView cell : cells) {
+                if (cell.getMaxWidth() != cap) {
+                    cell.setMaxWidth(cap);
+                }
+            }
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        }
     }
 
     private TextView text(int size, ToIntFunction<Tokens> foreground, boolean bold) {

@@ -32,6 +32,8 @@ public final class WriteFileTool implements Tool {
                 arguments.optString("path", ""), ToolPresentation.reason(arguments));
     }
 
+    @Override public boolean needsLocalWorkspace() { return true; }
+
     @Override public boolean mutating() { return true; }
 
     @Override public ToolResult execute(ToolContext context, JSONObject arguments) {

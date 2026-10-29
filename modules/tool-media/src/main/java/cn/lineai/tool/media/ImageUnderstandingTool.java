@@ -36,6 +36,8 @@ final class ImageUnderstandingTool implements Tool {
                 .required("path").required("prompt").build();
     }
 
+    @Override public boolean needsLocalWorkspace() { return true; }
+
     @Override public boolean mutating() { return false; }
 
     @Override public ToolPresentation presentation(JSONObject arguments) {
