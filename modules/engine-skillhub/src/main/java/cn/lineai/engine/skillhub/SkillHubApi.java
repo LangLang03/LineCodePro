@@ -24,9 +24,17 @@ public final class SkillHubApi {
     private static final int MAX_ZIP_BYTES = 20 * 1024 * 1024;
 
     public List<SkillHubEntry> list(String keyword, int page) throws IOException {
+        return list(keyword, page, "");
+    }
+
+    /** Lists one page ordered by {@code sort} ({@code downloads}, {@code stars}, {@code updated_at}). */
+    public List<SkillHubEntry> list(String keyword, int page, String sort) throws IOException {
         int safePage = Math.max(1, page);
         StringBuilder url = new StringBuilder(ROOT + "/api/skills?page=")
                 .append(safePage).append("&pageSize=20");
+        if (sort != null && !sort.trim().isEmpty()) {
+            url.append("&sort=").append(encode(sort.trim()));
+        }
         if (keyword != null && !keyword.trim().isEmpty()) {
             url.append("&keyword=").append(encode(keyword.trim()));
         }

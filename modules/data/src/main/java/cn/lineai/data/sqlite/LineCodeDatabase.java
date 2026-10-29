@@ -19,7 +19,7 @@ import cn.lineai.core.kernel.error.ErrorCode;
  */
 public final class LineCodeDatabase {
 
-    public static final int VERSION = 12;
+    public static final int VERSION = 13;
 
     private final File file;
     private SQLiteDatabase database;
@@ -76,7 +76,8 @@ public final class LineCodeDatabase {
         // Every statement is CREATE ... IF NOT EXISTS, so replaying the schema adds new tables
         // without touching existing rows.
         List<String> statements = new ArrayList<>(schemaStatements());
-        if (fromVersion == 3) statements.addAll(modelColumnStatements());
+        // Idempotent: replayed on every upgrade so newly added model columns land on old rows.
+        statements.addAll(modelColumnStatements());
         db.beginTransaction();
         try {
             for (String statement : statements) {
@@ -175,6 +176,8 @@ public final class LineCodeDatabase {
                 + "enabled INTEGER NOT NULL DEFAULT 1,"
                 + "is_default INTEGER NOT NULL DEFAULT 0,"
                 + "supports_vision INTEGER NOT NULL DEFAULT 0,"
+                + "supports_reasoning INTEGER NOT NULL DEFAULT 1,"
+                + "supports_video INTEGER NOT NULL DEFAULT 0,"
                 + "supports_tools INTEGER NOT NULL DEFAULT 1,"
                 + "provider_label TEXT NOT NULL DEFAULT '',"
                 + "tool_call_limit INTEGER NOT NULL DEFAULT 200,"
@@ -267,6 +270,8 @@ public final class LineCodeDatabase {
         statements.add("ALTER TABLE models ADD COLUMN compression_model_id TEXT NOT NULL DEFAULT ''");
         statements.add("ALTER TABLE models ADD COLUMN local_model_path TEXT NOT NULL DEFAULT ''");
         statements.add("ALTER TABLE models ADD COLUMN local_acceleration TEXT NOT NULL DEFAULT 'automatic'");
+        statements.add("ALTER TABLE models ADD COLUMN supports_reasoning INTEGER NOT NULL DEFAULT 1");
+        statements.add("ALTER TABLE models ADD COLUMN supports_video INTEGER NOT NULL DEFAULT 0");
         return statements;
     }
 }

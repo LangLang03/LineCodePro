@@ -49,12 +49,15 @@ public final class SettingsScreens {
             new ScreenId<>("settings.about", HOME, true, Params.Empty::fromArgs);
     public static final ScreenId<SettingsState, Params.Empty> LICENSES =
             new ScreenId<>("settings.licenses", ABOUT, true, Params.Empty::fromArgs);
+    /** Tool-call card gallery opened from the output settings screen. */
+    public static final ScreenId<SettingsState, Params.Empty> TOOL_PREVIEW =
+            new ScreenId<>("settings.toolPreview", OUTPUT, true, Params.Empty::fromArgs);
 
     private SettingsScreens() { }
 
     public static void register(ScreenRegistry registry) {
         registry.register(HOME).register(INPUT).register(OUTPUT)
                 .register(BEHAVIOR).register(THEME).register(ABOUT).register(LICENSES)
-                .register(PROMPTS).register(SECURITY).register(ADVANCED).register(KEEP_ALIVE).register(STORAGE).register(ERROR_LOGS).register(DATA).register(MCP).register(TOOL_SETTINGS).register(SSH).register(TERMUX).register(TUTORIAL).register(MEMORY).register(PHONE_CONTROL).register(EXTENSIONS);
+                .register(PROMPTS).register(SECURITY).register(ADVANCED).register(KEEP_ALIVE).register(STORAGE).register(ERROR_LOGS).register(DATA).register(MCP).register(TOOL_SETTINGS).register(SSH).register(TERMUX).register(TUTORIAL).register(MEMORY).register(PHONE_CONTROL).register(EXTENSIONS).register(TOOL_PREVIEW);
     }
 }

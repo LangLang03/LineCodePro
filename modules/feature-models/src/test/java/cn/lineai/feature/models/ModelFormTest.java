@@ -32,6 +32,34 @@ public class ModelFormTest {
         assertEquals(ModelForm.Error.TOOL_RANGE, form.validateForSave());
     }
 
+    @Test public void rejectsUnparseableContextInsteadOfSavingZero() {
+        ModelForm form = validForm();
+        assertTrue(form.contextValid());
+        form.contextSize = "lots";
+        assertFalse(form.contextValid());
+        assertEquals(ModelForm.Error.CONTEXT_RANGE, form.validateForSave());
+        assertFalse(form.canSave());
+        form.contextSize = "1m";
+        assertTrue(form.contextValid());
+        assertEquals(ModelForm.Error.NONE, form.validateForSave());
+        assertEquals(1000000, form.build().contextSize);
+    }
+
+    @Test public void emptyContextFallsBackToTheAppDefault() {
+        ModelForm form = validForm();
+        form.contextSize = "";
+        assertTrue(form.contextValid());
+        assertEquals(ContextSizes.UNSET, form.contextTokens());
+        assertEquals(ContextSizes.UNSET, form.build().contextSize);
+    }
+
+    @Test public void formatsContextForEditingWithoutLosingPrecision() {
+        ModelForm form = validForm();
+        form.contextSize = "131072";
+        assertEquals("131.072K", ModelForm.from(form.build()).contextSize);
+        assertEquals(131072, ModelForm.from(form.build()).contextTokens());
+    }
+
     @Test public void compressionRequiresModelIdWhenNotAutomatic() {
         ModelForm form = validForm();
         form.compressionEnabled = true;
@@ -58,6 +86,7 @@ public class ModelFormTest {
         assertEquals("deepseek", model.providerId);
         assertEquals("DeepSeek", model.providerLabel);
         assertEquals(128000, model.contextSize);
+        assertEquals(4096, model.maxTokens);
         assertEquals(250, model.toolCallLimit);
     }
 

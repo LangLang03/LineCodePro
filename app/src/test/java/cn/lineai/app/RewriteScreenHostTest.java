@@ -37,6 +37,11 @@ public class RewriteScreenHostTest {
     private ScreenHost host;
     private int disposed;
 
+    /** Runs pending page-transition work so deferred view disposal completes. */
+    private void settle() {
+        org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
+    }
+
     @Before public void setup() {
         activity = Robolectric.buildActivity(Activity.class).setup().get();
         registry = new ScreenRegistry().register(root).register(settings).register(input);
@@ -60,6 +65,7 @@ public class RewriteScreenHostTest {
         navigation.push(input.key(Params.Empty.INSTANCE));
         assertEquals(View.VISIBLE, parent.getVisibility());
         navigation.back();
+        settle();
         assertEquals(1, disposed);
         assertSame(parent, frame.getChildAt(0));
         assertEquals(View.VISIBLE, parent.getVisibility());
@@ -75,6 +81,7 @@ public class RewriteScreenHostTest {
         assertEquals(3, navigation.entries().size());
         assertSame(input, navigation.current().id());
         navigation.back();
+        settle();
         assertSame(settings, navigation.current().id());
         assertEquals(View.VISIBLE, frame.getChildAt(0).getVisibility());
     }
@@ -90,6 +97,7 @@ public class RewriteScreenHostTest {
     @Test public void backToRootHidesOverlayAndCloseReleasesSubscriptions() {
         navigation.push(settings.key(Params.Empty.INSTANCE));
         navigation.back();
+        settle();
         assertEquals(View.GONE, frame.getVisibility());
         assertEquals(0, frame.getChildCount());
         host.close();

@@ -7,7 +7,19 @@ import cn.lineai.core.mvi.present.UiState;
 import java.util.List;
 
 public interface Navigator extends AutoCloseable {
-    <S extends UiState, P extends Params> void push(ScreenKey<S, P> key);
+    /** Pushes with the default page transition (slide in from the right). */
+    default <S extends UiState, P extends Params> void push(ScreenKey<S, P> key) {
+        push(key, true);
+    }
+
+    /**
+     * Pushes a screen and chooses whether the page transition runs.
+     *
+     * <p>Utility surfaces such as the workspace picker appear over the chat without a page
+     * slide, exactly like their legacy bottom-sheet presentation. Passing {@code false} shows
+     * the page immediately.</p>
+     */
+    <S extends UiState, P extends Params> void push(ScreenKey<S, P> key, boolean animate);
 
     /** Pop/back preserve the root; empty and root-only stacks are no-ops. */
     void pop();

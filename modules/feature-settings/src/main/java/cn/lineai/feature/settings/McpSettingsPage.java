@@ -121,7 +121,7 @@ public final class McpSettingsPage extends SettingsPage {
         actions.addView(ssh, sshParams);
         actions.addView(termux, new LinearLayout.LayoutParams(0, Ui.dp(context, 42), 1f));
         LinearLayout.LayoutParams actionsParams = new LayoutParams(-1, -2);
-        actionsParams.topMargin = Ui.dp(context, 12);
+        actionsParams.topMargin = Ui.dp(context, 8);
         card.addView(actions, actionsParams);
         addCard(card);
     }
@@ -158,7 +158,7 @@ public final class McpSettingsPage extends SettingsPage {
         toggle.setChecked(enabled);
         toggle.setOnCheckedChangeListener((button, checked) -> {
             preferences.setEnabled(group.id, checked);
-            icon.setIconColor(checked ? tokens.accent : tokens.textTertiary);
+            icon.setIconColor(checked ? theme.current().accent : theme.current().textTertiary);
         });
         row.addView(toggle, new LayoutParams(-2, -2));
         card.addView(row, new LayoutParams(-1, -2));

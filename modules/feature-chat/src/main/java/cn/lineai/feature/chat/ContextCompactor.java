@@ -44,9 +44,10 @@ final class ContextCompactor {
         String summary = settings.get(key(conversationId), "");
         int tailStart = Math.max(0, loaded.size() - TAIL_MESSAGES);
         int threshold = softCompaction ? SOFT_THRESHOLD_PERCENT : HARD_THRESHOLD_PERCENT;
+        int contextSize = ChatContextLimits.of(model, settings);
         if (model.compressionEnabled && model.compressionAuto
                 && tailStart > 0
-                && ChatTurnConfig.percent(loaded, model.contextSize) >= threshold) {
+                && ChatTurnConfig.percent(loaded, contextSize) >= threshold) {
             ModelConfig compressor = model;
             if (!model.compressionModelId.isEmpty() && models != null) {
                 ModelConfig custom = models.find(model.compressionModelId);

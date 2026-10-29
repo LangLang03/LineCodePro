@@ -84,6 +84,7 @@ public final class ChatController {
     private int seq;
     private boolean started;
     private ErrorLogStore errorLogs;
+    private java.util.function.Function<DomainException, String> failureText;
 
     public ChatController(ConversationStore conversations, MessageStore messages,
                           ModelStore models, SettingsStore settings, ModelClient client,
@@ -103,6 +104,11 @@ public final class ChatController {
         this.extensions = extensions;
         this.writes = new SerialWrites(scheduler);
     }
+    /** Localized failure formatter supplied by the composition root. */
+    public void setFailureText(java.util.function.Function<DomainException, String> formatter) {
+        failureText = formatter;
+    }
+
     public void setErrorLogStore(ErrorLogStore store) {
         this.errorLogs = store;
     }
@@ -143,7 +149,8 @@ public final class ChatController {
             ChatState snapshot = ChatState.builder()
                     .messages(loaded)
                     .project("")
-                    .contextPercent(ChatTurnConfig.percent(loaded, settings.getInt(KEY_CONTEXT_SIZE, 128000)))
+                    .contextPercent(ChatTurnConfig.percent(loaded,
+                            ChatContextLimits.of(modelConfig(), settings)))
                     .model(modelLabel())
                     .revision(System.nanoTime())
                     .build();
@@ -380,36 +387,28 @@ public final class ChatController {
         @Override public void onFailed(DomainException error) {
             engine = null;
             pendingApprovals = new ArrayList<>();
+            String detail = ChatFailure.detail(error, failureText);
             if (errorLogs != null) {
                 errorLogs.record(model.displayName(),
-                        error.code().name() + " · " + error.detail(),
-                        error.getMessage() == null ? "" : error.getMessage());
+                        error.code().name() + " · " + error.detail(), detail);
             }
-            if (streamingMessage != null) {
-                final Message failed = streamingMessage.toBuilder()
-                        .blocks(ChatTurnConfig.blocks(streamText, streamReasoning))
-                        .status(Message.Status.FAILED)
-                        .error(error.code().name())
-                        .finishReason("error")
-                        .times(streamingMessage.createdAt, clock.nowMs())
-                        .build();
-                streamingMessage = null;
-                publish(state.value().toBuilder()
-                        .replace(failed)
-                        .streaming(false)
-                        .status(error.code().name())
-                        .pendingApprovals(Collections.<ToolApprovalItem>emptyList())
-                        .revision(System.nanoTime())
-                        .build());
-                writes.submit(() -> messages.append(failed));
-            } else {
-                publish(state.value().toBuilder()
-                        .streaming(false)
-                        .status(error.code().name())
-                        .pendingApprovals(Collections.<ToolApprovalItem>emptyList())
-                        .revision(System.nanoTime())
-                        .build());
+            android.util.Log.e("LineCodeChat", "generation failed: " + detail);
+            boolean created = streamingMessage == null;
+            final Message failed = ChatFailure.message(streamingMessage, error, conversationId,
+                    seq, detail, clock.nowMs(), model,
+                    ChatTurnConfig.blocks(streamText, streamReasoning));
+            if (created) {
+                seq++;
             }
+            streamingMessage = null;
+            publish(state.value().toBuilder()
+                    .replace(failed)
+                    .streaming(false)
+                    .status(error.code().name())
+                    .pendingApprovals(Collections.<ToolApprovalItem>emptyList())
+                    .revision(System.nanoTime())
+                    .build());
+            writes.submit(() -> messages.append(failed));
             writes.submit(() -> {
                 conversations.touch(conversationId, clock.nowMs(),
                         messages.count(conversationId));
@@ -445,6 +444,7 @@ public final class ChatController {
     public ToolPresentation presentationFor(String toolName) {
         return toolsForLookup().presentation(toolName);
     }
+
 
     private ToolRegistry toolsForLookup() {
         return activeTools == null ? toolCatalog.registry() : activeTools;
@@ -497,7 +497,7 @@ public final class ChatController {
                 .streaming(true)
                 .model(model.displayName())
                 .contextPercent(ChatTurnConfig.percent(state.value().messages,
-                        settings.getInt(KEY_CONTEXT_SIZE, 128000)))
+                        ChatContextLimits.of(model, settings)))
                 .revision(System.nanoTime())
                 .build());
     }
@@ -556,11 +556,11 @@ public final class ChatController {
     }
 
     public int maxTokens() {
-        ModelConfig model = modelConfig();
-        return Math.max(1, model == null ? settings.getInt(KEY_CONTEXT_SIZE, 128000)
-                : model.contextSize);
+        return Math.max(1, ChatContextLimits.of(modelConfig(), settings));
     }
 
+    /** True when the current conversation already contains messages. */
+    public boolean hasMessages() { return !state.value().messages.isEmpty(); }
     /** Reloads conversations and the selected model after an external data restore. */
     public void reload() {
         started = false;

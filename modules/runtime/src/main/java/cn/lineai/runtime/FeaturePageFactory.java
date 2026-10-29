@@ -49,9 +49,14 @@ public final class FeaturePageFactory {
         if (key.id() == ExtensionScreens.SKILL_HUB) {
             return new SkillHubPage(host.activity(), host.tokens(), host.navigation()::back,
                     host.graph().graph().get(cn.lineai.core.kernel.time.Scheduler.class),
-                    host.graph().skills(), slug -> host.navigation().push(
+                    host.graph().skills(),
+                    slug -> host.navigation().push(
                             ExtensionScreens.SKILL_DETAIL.key(cn.lineai.core.mvi.nav.Params.Args.of(
-                                    "slug", slug))));
+                                    "slug", slug))),
+                    () -> host.navigation().push(ExtensionScreens.SKILL_LOGIN.key(
+                            Params.Empty.INSTANCE)),
+                    () -> host.navigation().push(ExtensionScreens.SKILL_PUBLISH.key(
+                            Params.Empty.INSTANCE)));
         }
         if (key.id() == ExtensionScreens.SKILL_DETAIL) {
             String slug = key.args().get("slug") instanceof String
@@ -312,9 +317,8 @@ public final class FeaturePageFactory {
                 });
     }
 
-    private WorkspaceProjectsPage workspaceProjectsPage() {
-        workspacePage = new WorkspaceProjectsPage(host.activity(), host.tokens(),
-                host.navigation()::back, new WorkspaceProjectsPage.Listener() {
+    private WorkspaceProjectsPage.Listener workspaceListener() {
+        return new WorkspaceProjectsPage.Listener() {
                     public java.util.List<cn.lineai.core.model.Project> list() {
                         return host.graph().projects().list();
                     }
@@ -344,10 +348,26 @@ public final class FeaturePageFactory {
                         return created;
                     }
                     public void openExternal() { host.openExternalWorkspace(); }
-                    public void onChanges() {
-                        host.navigation().push(WorkspaceScreens.CHANGES.key(Params.Empty.INSTANCE));
+                    public String sshAddress() {
+                        cn.lineai.core.model.SshConfig config =
+                                new cn.lineai.feature.terminal.SshPreferences(
+                                        host.graph().settings()).config();
+                        if (config.host == null || config.host.isEmpty()) return "";
+                        return (config.username.isEmpty() ? "" : config.username + "@")
+                                + config.host + ":" + config.port;
                     }
-                });
+                    public boolean conversationActive() {
+                        return host.graph().chat().hasMessages();
+                    }
+            public void onChanges() {
+                host.navigation().push(WorkspaceScreens.CHANGES.key(Params.Empty.INSTANCE));
+            }
+        };
+    }
+
+    private View workspaceProjectsPage() {
+        workspacePage = new WorkspaceProjectsPage(host.activity(), host.tokens(),
+                host.navigation()::back, workspaceListener());
         return workspacePage;
     }
 

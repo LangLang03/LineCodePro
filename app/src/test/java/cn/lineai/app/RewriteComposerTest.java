@@ -46,8 +46,9 @@ public class RewriteComposerTest {
                 sentFiles.add(files);
             }
             public void onStop() { stopped++; }
-            public void onAttach() { }
-            public void onAttachFile() { }
+            public void onAttachFiles() { }
+            public void onAttachImage() { }
+            public void onVideoPicker() { }
             public void onModel() { modelClicks++; }
             public void onReasoning() { }
             public void onMode() { }

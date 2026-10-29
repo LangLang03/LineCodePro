@@ -7,11 +7,15 @@ import cn.lineai.core.model.ModelPreset;
 /** Pure form state and validation shared by save and test. */
 final class ModelForm {
 
+    /** Default output-token cap; matches the model builder and the setup screen defaults. */
+    private static final int DEFAULT_MAX_TOKENS = 4096;
+
     enum Error {
         NONE,
         MISSING_ID,
         MISSING_KEY,
         TOOL_RANGE,
+        CONTEXT_RANGE,
         COMPRESSION_ID
     }
 
@@ -25,6 +29,9 @@ final class ModelForm {
     String modelId = "";
     String toolCallLimit = String.valueOf(ModelConfig.DEFAULT_TOOL_CALL_LIMIT);
     String contextSize = "";
+    boolean supportsReasoning = true;
+    boolean supportsVision;
+    boolean supportsVideo;
     boolean compressionEnabled;
     boolean compressionAuto = true;
     String compressionModelId = "";
@@ -42,6 +49,9 @@ final class ModelForm {
         form.modelId = model.modelId;
         form.toolCallLimit = String.valueOf(model.toolCallLimit);
         form.contextSize = model.contextSize > 0 ? ContextSizes.format(model.contextSize) : "";
+        form.supportsReasoning = model.supportsReasoning;
+        form.supportsVision = model.supportsVision;
+        form.supportsVideo = model.supportsVideo;
         form.compressionEnabled = model.compressionEnabled;
         form.compressionAuto = model.compressionAuto;
         form.compressionModelId = model.compressionModelId;
@@ -62,6 +72,7 @@ final class ModelForm {
         if (modelId.isEmpty()) return Error.MISSING_ID;
         if (apiKey.isEmpty()) return Error.MISSING_KEY;
         if (toolCallLimit() == null) return Error.TOOL_RANGE;
+        if (!contextValid()) return Error.CONTEXT_RANGE;
         if (needsCompressionId()) return Error.COMPRESSION_ID;
         return Error.NONE;
     }
@@ -76,6 +87,7 @@ final class ModelForm {
                 && !modelId.isEmpty()
                 && !apiKey.isEmpty()
                 && toolCallLimit() != null
+                && contextValid()
                 && !needsCompressionId();
     }
 
@@ -87,9 +99,10 @@ final class ModelForm {
                 .providerLabel(providerLabel)
                 .secret(apiKey)
                 .protocol(protocol)
-                .context(contextTokens(), ModelConfig.DEFAULT_TOOL_CALL_LIMIT)
+                .context(contextTokens(), DEFAULT_MAX_TOKENS)
                 .toolCalls(toolCallLimit())
                 .compression(compressionEnabled, compressionAuto, compressionModelId)
+                .multimodal(supportsReasoning, supportsVision, supportsVideo)
                 .build();
     }
 
@@ -99,6 +112,12 @@ final class ModelForm {
 
     int contextTokens() {
         return ContextSizes.parse(contextSize);
+    }
+
+    /** Empty means "use the app default"; anything else must parse to a positive token count. */
+    boolean contextValid() {
+        String value = contextSize == null ? "" : contextSize.trim();
+        return value.isEmpty() || contextTokens() > ContextSizes.UNSET;
     }
 
     Integer toolCallLimit() {

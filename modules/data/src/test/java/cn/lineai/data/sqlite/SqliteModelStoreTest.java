@@ -76,6 +76,20 @@ public class SqliteModelStoreTest {
         assertTrue(stored.supportsVision);
     }
 
+    @Test public void multimodalCapabilitiesRoundTrip() {
+        models.save(model("m1", "DeepSeek", false));
+        ModelConfig initial = models.find("m1");
+        assertTrue("reasoning is on by default", initial.supportsReasoning);
+        assertFalse(initial.supportsVision);
+        assertFalse(initial.supportsVideo);
+
+        models.save(initial.toBuilder().multimodal(false, true, true).build());
+        ModelConfig updated = models.find("m1");
+        assertFalse(updated.supportsReasoning);
+        assertTrue(updated.supportsVision);
+        assertTrue(updated.supportsVideo);
+    }
+
     @Test public void seedsOnceFromLegacySettings() {
         SqliteSettingsStore settings = new SqliteSettingsStore(database, Clock.fixed(1));
         settings.put(SqliteModelStore.KEY_BASE_URL, "https://api.deepseek.com");

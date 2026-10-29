@@ -70,6 +70,7 @@ public final class ModelEditPage extends LinearLayout {
     private final EditText modelIdInput;
     private final EditText toolLimitInput;
     private final EditText contextInput;
+    private final TextView contextError;
     private final LinearLayout modelInputHost;
     private final TextView pickLabel;
     private final LinearLayout queryButton;
@@ -78,6 +79,12 @@ public final class ModelEditPage extends LinearLayout {
     private Switch customIdSwitch;
     private final TextView baseUrlHint;
     private final CompressionSection compression;
+    private final TextView capReasoning;
+    private final TextView capVision;
+    private final TextView capVideo;
+    private boolean reasoningCap;
+    private boolean visionCap;
+    private boolean videoCap;
     private final ArrayList<String> fetched = new ArrayList<>();
     private boolean fetching;
     private String selectedId;
@@ -196,8 +203,30 @@ public final class ModelEditPage extends LinearLayout {
         contextInput = FormFields.input(context, t0, form.contextSize,
                 context.getString(R.string.model_field_context_size_hint), false, false);
         content.addView(contextInput, new LayoutParams(-1, -2));
+        contextError = hintText(context, t0, R.string.model_field_context_invalid);
+        contextError.setTextColor(t0.danger);
+        contextError.setVisibility(GONE);
+        content.addView(contextError, FormFields.labelParams(context, 8, 0));
         content.addView(hintText(context, t0, R.string.model_field_context_size_hint_desc),
                 FormFields.labelParams(context, 8, 0));
+
+        reasoningCap = form.supportsReasoning;
+        visionCap = form.supportsVision;
+        videoCap = form.supportsVideo;
+        content.addView(FormFields.label(context, t0,
+                        context.getString(R.string.model_capability_label)),
+                FormFields.labelParams(context, 16, 8));
+        LinearLayout capabilities = new LinearLayout(context);
+        capabilities.setOrientation(HORIZONTAL);
+        capReasoning = capabilityPill(context, t0, R.string.model_capability_reasoning, 0);
+        capVision = capabilityPill(context, t0, R.string.model_capability_vision, 1);
+        capVideo = capabilityPill(context, t0, R.string.model_capability_video, 2);
+        capabilities.addView(capReasoning, capabilityParams(0));
+        capabilities.addView(capVision, capabilityParams(1));
+        capabilities.addView(capVideo, capabilityParams(2));
+        content.addView(capabilities, new LayoutParams(-1, -2));
+        restyleCapabilities();
+        theme.bind(t -> restyleCapabilities());
 
         ModelConfig.Protocol[] protocol = {form.protocol};
         compression = new CompressionSection(context, t0, protocol, form.compressionEnabled,
@@ -250,6 +279,47 @@ public final class ModelEditPage extends LinearLayout {
                 tokens.textTertiary, Typeface.NORMAL);
         hint.setLineSpacing(Ui.dp(context, 3), 1f);
         return hint;
+    }
+
+    private TextView capabilityPill(Context context, Tokens tokens, int label, final int index) {
+        TextView pill = Ui.medium(context, context.getString(label), Tokens.FONT_SM,
+                tokens.textSecondary);
+        pill.setGravity(Gravity.CENTER);
+        pill.setClickable(true);
+        pill.setFocusable(true);
+        Ui.padding(pill, 8, 0, 8, 0);
+        pill.setOnClickListener(v -> {
+            if (index == 0) reasoningCap = !reasoningCap;
+            else if (index == 1) visionCap = !visionCap;
+            else videoCap = !videoCap;
+            restyleCapabilities();
+            updateSaveState();
+        });
+        return pill;
+    }
+
+    private LinearLayout.LayoutParams capabilityParams(int index) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0,
+                Ui.dp(getContext(), 38), 1f);
+        if (index > 0) params.leftMargin = Ui.dp(getContext(), 8);
+        return params;
+    }
+
+    /** Hollow = disabled, solid accent = enabled (legacy capability switches). */
+    private void restyleCapabilities() {
+        Tokens tokens = theme.current();
+        restyleCapability(capReasoning, reasoningCap, tokens);
+        restyleCapability(capVision, visionCap, tokens);
+        restyleCapability(capVideo, videoCap, tokens);
+    }
+
+    private void restyleCapability(TextView pill, boolean active, Tokens tokens) {
+        if (pill == null) return;
+        pill.setTextColor(active ? tokens.textOnColor : tokens.textSecondary);
+        pill.setBackground(active
+                ? Ui.rounded(getContext(), tokens.accent, 12)
+                : Ui.roundedStroke(getContext(), android.graphics.Color.TRANSPARENT, 12,
+                        tokens.border));
     }
 
     private LinearLayout queryButton(Context context, Tokens tokens) {
@@ -475,6 +545,9 @@ public final class ModelEditPage extends LinearLayout {
         form.modelId = customIdSwitch.isChecked() ? FormFields.value(modelIdInput) : selectedId;
         form.toolCallLimit = FormFields.value(toolLimitInput);
         form.contextSize = FormFields.value(contextInput);
+        form.supportsReasoning = reasoningCap;
+        form.supportsVision = visionCap;
+        form.supportsVideo = videoCap;
         form.compressionEnabled = compression.compressionEnabled();
         form.compressionAuto = compression.isAuto();
         form.compressionModelId = compression.modelId();
@@ -485,6 +558,7 @@ public final class ModelEditPage extends LinearLayout {
     private void updateSaveState() {
         syncForm();
         boolean can = form.canSave();
+        contextError.setVisibility(form.contextValid() ? GONE : VISIBLE);
         saveAction.setTextColor(can ? theme.current().accent : theme.current().textTertiary);
         saveAction.setAlpha(can ? 1f : 0.45f);
     }
@@ -512,6 +586,7 @@ public final class ModelEditPage extends LinearLayout {
         switch (error) {
             case MISSING_KEY: return R.string.screen_model_add_require_api_key;
             case TOOL_RANGE: return R.string.screen_model_add_tool_call_range_invalid;
+            case CONTEXT_RANGE: return R.string.model_field_context_invalid;
             case COMPRESSION_ID: return R.string.screen_model_add_require_compaction_id;
             case MISSING_ID:
             default: return R.string.screen_model_add_require_name_id;

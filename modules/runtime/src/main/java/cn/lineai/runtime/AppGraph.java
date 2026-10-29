@@ -205,11 +205,25 @@ public final class AppGraph implements AutoCloseable {
                         cn.lineai.core.model.UiPreferences.Field.BYPASS_PATH_PROTECTION.key,
                         "false"));
             }
+            @Override public boolean remoteWorkspace() {
+                return SshWorkspace.isSsh(projectStore.selected());
+            }
+            @Override public String remoteDirectory() {
+                return SshWorkspace.directory(projectStore.selected());
+            }
+            @Override public String remoteExecute(String command, int timeoutMs) {
+                return SshWorkspace.execute(context, settingsStore, command, timeoutMs);
+            }
         };
         final ToolCatalog baseCatalog = new McpToolCatalog(baseTools,
                 mcpExtensionStore::list, new McpClient()::callTool);
-        final ToolCatalog toolCatalog = () -> AgentTools.augment(baseCatalog.registry(),
-                agentExtensionStore::list, agentRunner);
+        final ToolCatalog toolCatalog = () -> {
+            cn.lineai.tool.api.ToolRegistry registry = AgentTools.augment(baseCatalog.registry(),
+                    agentExtensionStore::list, agentRunner);
+            // An SSH workspace must not receive local file/shell tools.
+            return SshWorkspace.isSsh(projectStore.selected())
+                    ? SshWorkspace.remoteOnly(registry) : registry;
+        };
         this.toolCatalog = toolCatalog;
         this.baseCatalogForAgents = baseCatalog;
         this.modelClient = client;
@@ -222,6 +236,9 @@ public final class AppGraph implements AutoCloseable {
                         new LearningContextProvider(settingsStore, memoryStore, conversations,
                                 skillStore, projectStore, promptStore, skillsRoot)::build));
         this.chat.setErrorLogStore(errorLogStore);
+        this.chat.setFailureText(error -> context.getString(
+                cn.lineai.ui.i18n.R.string.model_retry_failed,
+                error.detail().isEmpty() ? error.code().name() : error.detail()));
         this.themePreferences = new cn.lineai.feature.settings.ThemePreferences(settingsStore, scheduler);
         this.theme = new ThemeController(themePreferences.initial(isNight(context)));
         this.preferences = new Store<>(new SettingsPresenter(settingsStore), scheduler);
