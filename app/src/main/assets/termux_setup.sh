@@ -13,6 +13,13 @@ fi
 pkg update -y
 pkg install -y openssh
 
+known_hosts="$HOME/.ssh/known_hosts"
+if [ -f "$known_hosts" ]; then
+  sed -i '/^\[127.0.0.1\]:8022/d' "$known_hosts" 2>/dev/null || true
+  sed -i '/^127.0.0.1/d' "$known_hosts" 2>/dev/null || true
+  sed -i '/^\[::1\]:8022/d' "$known_hosts" 2>/dev/null || true
+fi
+
 user_name="$(whoami 2>/dev/null || id -un 2>/dev/null || echo "")"
 shell_path="${SHELL:-}"
 if [ -z "$shell_path" ] && command -v getent >/dev/null 2>&1; then

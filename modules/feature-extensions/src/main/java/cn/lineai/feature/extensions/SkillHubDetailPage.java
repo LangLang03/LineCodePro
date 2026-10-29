@@ -3,11 +3,17 @@ package cn.lineai.feature.extensions;
 import android.content.Context;
 import android.graphics.Typeface;
 import android.view.Gravity;
+import android.view.View;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.ByteArrayInputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 import cn.lineai.core.kernel.time.Scheduler;
 import cn.lineai.core.model.SkillHubComment;
@@ -15,165 +21,336 @@ import cn.lineai.core.model.SkillHubDetail;
 import cn.lineai.data.api.SkillStore;
 import cn.lineai.engine.skillhub.SkillHubApi;
 import cn.lineai.ui.i18n.R;
-import cn.lineai.ui.kit.FormField;
+import cn.lineai.ui.kit.IconButton;
+import cn.lineai.ui.kit.Icons;
 import cn.lineai.ui.kit.SettingsPage;
 import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.markdown.MarkdownLite;
 import cn.lineai.ui.tokens.Tokens;
 
-/** SkillHub detail: metadata, SKILL.md and install. */
+/** SkillHub detail: hero, metadata, safety, SKILL.md body, install and comments. */
 public final class SkillHubDetailPage extends SettingsPage {
 
     private final Scheduler scheduler;
     private final SkillStore store;
     private final SkillHubApi api = new SkillHubApi();
+    private final SkillIconLoader icons;
     private final String slug;
     private final LinearLayout body;
-    private final LinearLayout commentsBox;
-    private final FormField commentInput;
+    private final LinearLayout commentsHost;
+    private final EditText commentInput;
+    private SkillHubDetail detail;
+    private LinearLayout installButton;
+    private TextView installLabel;
 
     public SkillHubDetailPage(Context context, Tokens tokens, Runnable back, Scheduler scheduler,
                               SkillStore store, String slug) {
         super(context, R.string.skillhub_title_detail, tokens, back);
         this.scheduler = scheduler;
         this.store = store;
+        this.icons = new SkillIconLoader(scheduler);
         this.slug = slug == null ? "" : slug;
-        Ui.padding(content, 16, 16, 16, 100);
+        Ui.padding(content, 16, 12, 16, 100);
         body = new LinearLayout(context);
         body.setOrientation(LinearLayout.VERTICAL);
         content.addView(body, new LinearLayout.LayoutParams(-1, -2));
-        commentInput = new FormField(context, theme, R.string.skillhub_comments_title, "",
-                context.getString(R.string.skillhub_comment_hint), false);
-        commentsBox = new LinearLayout(context);
-        commentsBox.setOrientation(LinearLayout.VERTICAL);
+        commentsHost = new LinearLayout(context);
+        commentsHost.setOrientation(LinearLayout.VERTICAL);
+        commentInput = new EditText(context);
+        commentInput.setHint(R.string.skillhub_comment_hint);
+        commentInput.setTextSize(Tokens.FONT_SM);
+        commentInput.setSingleLine(true);
+        commentInput.setIncludeFontPadding(false);
+        commentInput.setMinHeight(Ui.dp(context, 44));
+        Ui.padding(commentInput, 12, 10, 12, 10);
+        theme.bind(t -> {
+            commentInput.setTextColor(t.text);
+            commentInput.setHintTextColor(t.textTertiary);
+            commentInput.setBackground(Ui.roundedStroke(context, t.inputBg, 12, t.borderLight));
+        });
         load();
     }
 
     private void load() {
+        body.removeAllViews();
+        addBody(spinner(), 16);
         scheduler.io(() -> {
             try {
-                SkillHubDetail detail = api.detail(slug);
-                scheduler.main(() -> render(detail));
+                SkillHubDetail loaded = api.detail(slug);
+                scheduler.main(() -> render(loaded));
             } catch (Exception error) {
-                scheduler.main(() -> Toast.makeText(getContext(),
-                        getContext().getString(R.string.skillhub_load_failed,
-                                error.getMessage() == null
-                                        ? error.getClass().getSimpleName() : error.getMessage()),
-                        Toast.LENGTH_LONG).show());
+                String message = error.getMessage() == null
+                        ? error.getClass().getSimpleName() : error.getMessage();
+                scheduler.main(() -> renderError(message));
             }
         });
     }
 
-    private void render(SkillHubDetail detail) {
+    private void renderError(String message) {
         body.removeAllViews();
-        Tokens tokens = theme.current();
-        LinearLayout header = new LinearLayout(getContext());
-        header.setOrientation(LinearLayout.VERTICAL);
-        header.setBackground(Ui.rounded(getContext(), tokens.surfaceElevated, 12));
-        Ui.padding(header, 16, 16, 16, 16);
-        header.addView(Ui.bold(getContext(), detail.name, Tokens.FONT_XL, tokens.text),
-                new LinearLayout.LayoutParams(-1, -2));
-        TextView meta = Ui.text(getContext(), detail.author + " · v" + detail.version
-                + " · " + detail.downloads, Tokens.FONT_XS, tokens.textTertiary, Typeface.NORMAL);
-        LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(-1, -2);
-        metaParams.topMargin = Ui.dp(getContext(), 4);
-        header.addView(meta, metaParams);
-        TextView desc = Ui.text(getContext(), detail.description, Tokens.FONT_SM,
-                tokens.textSecondary, Typeface.NORMAL);
-        desc.setLineSpacing(Ui.dp(getContext(), 3), 1f);
-        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(-1, -2);
-        descParams.topMargin = Ui.dp(getContext(), 8);
-        header.addView(desc, descParams);
-        if (!detail.securityStatus.isEmpty()) {
-            TextView security = Ui.text(getContext(), detail.securityStatus, Tokens.FONT_XS,
-                    tokens.success, Typeface.NORMAL);
-            LinearLayout.LayoutParams securityParams = new LinearLayout.LayoutParams(-1, -2);
-            securityParams.topMargin = Ui.dp(getContext(), 6);
-            header.addView(security, securityParams);
-        }
-        TextView install = Ui.bold(getContext(),
-                getContext().getString(R.string.skillhub_install_skill, detail.name),
-                Tokens.FONT_MD, tokens.textOnColor);
-        install.setGravity(Gravity.CENTER);
-        install.setClickable(true);
-        install.setBackground(Ui.rounded(getContext(), tokens.accent, 12));
-        LinearLayout.LayoutParams installParams = new LinearLayout.LayoutParams(-1, Ui.dp(getContext(), 44));
-        installParams.topMargin = Ui.dp(getContext(), 12);
-        header.addView(install, installParams);
-        install.setOnClickListener(v -> install(detail, install));
-        body.addView(header, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout section = ExtensionKit.card(getContext(), theme, false);
+        TextView text = Ui.text(getContext(), getContext().getString(
+                R.string.skillhub_load_failed, message), Tokens.FONT_SM,
+                theme.current().danger, Typeface.NORMAL);
+        section.addView(text, new LinearLayout.LayoutParams(-1, -2));
+        TextView retry = Ui.medium(getContext(),
+                getContext().getString(R.string.skillhub_retry_here), Tokens.FONT_SM,
+                theme.current().accent);
+        retry.setOnClickListener(v -> load());
+        section.addView(retry, new LinearLayout.LayoutParams(-1, -2));
+        addBody(section, 16);
+    }
 
-        MarkdownLite markdown = new MarkdownLite(getContext(), tokens);
-        markdown.render(detail.markdown, tokens);
-        LinearLayout.LayoutParams markdownParams = new LinearLayout.LayoutParams(-1, -2);
-        markdownParams.topMargin = Ui.dp(getContext(), 16);
-        body.addView(markdown, markdownParams);
-        addComments();
+    private void render(SkillHubDetail loaded) {
+        detail = loaded;
+        body.removeAllViews();
+        addBody(hero(loaded), 0);
+        installLabel = Ui.medium(getContext(),
+                getContext().getString(R.string.skillhub_select_location_install),
+                Tokens.FONT_MD, theme.current().textOnColor);
+        installLabel.setGravity(Gravity.CENTER);
+        installButton = new LinearLayout(getContext());
+        installButton.setGravity(Gravity.CENTER);
+        installButton.setClickable(true);
+        installButton.setMinimumHeight(Ui.dp(getContext(), 48));
+        installButton.setElevation(Ui.dp(getContext(), 2));
+        Ui.padding(installButton, 12, 12, 12, 12);
+        installButton.addView(installLabel, new LinearLayout.LayoutParams(-2, -2));
+        theme.bind(t -> {
+            installLabel.setTextColor(t.textOnColor);
+            installButton.setBackground(Ui.rounded(getContext(), t.accent, 12));
+        });
+        installButton.setOnClickListener(v -> install(loaded));
+        addBody(installButton, 16);
+        addBody(hubInfo(loaded), 12);
+        addBody(hubSafety(loaded), 12);
+        addBody(hubMarkdown(loaded), 12);
+        addBody(hubComments(loaded), 12);
         loadComments();
     }
 
-    private void addComments() {
-        Tokens tokens = theme.current();
-        TextView title = Ui.bold(getContext(),
-                getContext().getString(R.string.skillhub_comments_title), Tokens.FONT_MD,
-                tokens.text);
-        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-1, -2);
-        titleParams.topMargin = Ui.dp(getContext(), 22);
-        body.addView(title, titleParams);
-        body.addView(commentsBox, new LinearLayout.LayoutParams(-1, -2));
-        body.addView(commentInput, new LinearLayout.LayoutParams(-1, -2));
-        TextView post = Ui.bold(getContext(),
-                getContext().getString(R.string.skillhub_comment_post), Tokens.FONT_MD,
-                tokens.textOnColor);
-        post.setGravity(Gravity.CENTER);
-        post.setClickable(true);
-        post.setBackground(Ui.rounded(getContext(), tokens.accent, 12));
-        post.setOnClickListener(v -> postComment(post));
-        LinearLayout.LayoutParams postParams = new LinearLayout.LayoutParams(-1, Ui.dp(getContext(), 42));
-        postParams.topMargin = Ui.dp(getContext(), 8);
-        body.addView(post, postParams);
+    private View hero(SkillHubDetail value) {
+        LinearLayout card = new LinearLayout(getContext());
+        card.setOrientation(LinearLayout.VERTICAL);
+        Ui.padding(card, 16, 16, 16, 16);
+        LinearLayout head = new LinearLayout(getContext());
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        FrameLayout artwork = new FrameLayout(getContext());
+        artwork.setClipToOutline(true);
+        IconButton glyph = new IconButton(getContext(), Icons.PACKAGE);
+        glyph.setIconSizeDp(64, 32);
+        glyph.setClickable(false);
+        artwork.addView(glyph, new FrameLayout.LayoutParams(
+                Ui.dp(getContext(), 64), Ui.dp(getContext(), 64), Gravity.CENTER));
+        ImageView icon = new ImageView(getContext());
+        icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        artwork.addView(icon, new FrameLayout.LayoutParams(
+                Ui.dp(getContext(), 64), Ui.dp(getContext(), 64)));
+        icons.load(value.meta.iconUrl, icon);
+        head.addView(artwork, new LinearLayout.LayoutParams(
+                Ui.dp(getContext(), 64), Ui.dp(getContext(), 64)));
+        LinearLayout copy = new LinearLayout(getContext());
+        copy.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1f);
+        copyParams.leftMargin = Ui.dp(getContext(), 16);
+        head.addView(copy, copyParams);
+        TextView title = Ui.medium(getContext(), value.name, Tokens.FONT_XL,
+                theme.current().text);
+        copy.addView(title, new LinearLayout.LayoutParams(-1, -2));
+        TextView author = Ui.text(getContext(), value.author, Tokens.FONT_SM,
+                theme.current().textTertiary, Typeface.NORMAL);
+        LinearLayout.LayoutParams authorParams = new LinearLayout.LayoutParams(-1, -2);
+        authorParams.topMargin = Ui.dp(getContext(), 4);
+        copy.addView(author, authorParams);
+        card.addView(head, new LinearLayout.LayoutParams(-1, -2));
+        TextView description = Ui.text(getContext(), value.description, Tokens.FONT_MD,
+                theme.current().textSecondary, Typeface.NORMAL);
+        description.setLineSpacing(Ui.dp(getContext(), 3), 1f);
+        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(-1, -2);
+        descParams.topMargin = Ui.dp(getContext(), 12);
+        card.addView(description, descParams);
+        LinearLayout tags = new LinearLayout(getContext());
+        tags.setOrientation(LinearLayout.HORIZONTAL);
+        tags.addView(ExtensionKit.tag(getContext(), theme,
+                getContext().getString(R.string.skillhub_card_meta,
+                        String.valueOf(value.downloads), value.version), false),
+                new LinearLayout.LayoutParams(-2, -2));
+        if (!value.securityStatus.isEmpty()) {
+                TextView safe = ExtensionKit.tag(getContext(), theme,
+                    "benign".equals(value.securityStatus)
+                            ? getContext().getString(R.string.skillhub_safe)
+                            : value.securityStatus, "benign".equals(value.securityStatus));
+            LinearLayout.LayoutParams safeParams = new LinearLayout.LayoutParams(-2, -2);
+            safeParams.leftMargin = Ui.dp(getContext(), 4);
+            tags.addView(safe, safeParams);
+        }
+        LinearLayout.LayoutParams tagParams = new LinearLayout.LayoutParams(-1, -2);
+        tagParams.topMargin = Ui.dp(getContext(), 12);
+        card.addView(tags, tagParams);
+        theme.bind(t -> {
+            card.setBackground(Ui.roundedStroke(getContext(), t.surfaceElevated, 14, t.border));
+            artwork.setBackground(Ui.rounded(getContext(), t.accentMuted, 14));
+            glyph.setIconColor(t.accent);
+            title.setTextColor(t.text);
+            author.setTextColor(t.textTertiary);
+            description.setTextColor(t.textSecondary);
+        });
+        return card;
+    }
+
+    private View hubInfo(SkillHubDetail value) {
+        LinearLayout cards = new LinearLayout(getContext());
+        cards.setOrientation(LinearLayout.HORIZONTAL);
+        cards.addView(metadata(R.string.skillhub_version_label, "v" + value.version),
+                new LinearLayout.LayoutParams(0, -2, 1f));
+        LinearLayout.LayoutParams countParams = new LinearLayout.LayoutParams(0, -2, 1f);
+        countParams.leftMargin = Ui.dp(getContext(), 8);
+        cards.addView(metadata(R.string.skillhub_downloads, String.valueOf(value.downloads)),
+                countParams);
+        List<View> content = new ArrayList<>();
+        content.add(cards);
+        if (!value.tags.isEmpty()) content.add(tagRow(value.tags));
+        return ExtensionKit.hubSection(getContext(), theme, R.string.skillhub_skill_info,
+                Icons.BOXES, content);
+    }
+
+    private View tagRow(List<String> values) {
+        LinearLayout row = new LinearLayout(getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        int count = 0;
+        for (String value : values) {
+            if (count++ >= 4) break;
+            TextView tag = ExtensionKit.tag(getContext(), theme, value, false);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, -2);
+            if (count > 1) params.leftMargin = Ui.dp(getContext(), 4);
+            row.addView(tag, params);
+        }
+        return row;
+    }
+
+    private View metadata(int label, String value) {
+        LinearLayout card = new LinearLayout(getContext());
+        card.setOrientation(LinearLayout.VERTICAL);
+        Ui.padding(card, 12, 8, 12, 8);
+        TextView name = Ui.text(getContext(), getContext().getString(label), Tokens.FONT_XS,
+                theme.current().textTertiary, Typeface.NORMAL);
+        card.addView(name, new LinearLayout.LayoutParams(-1, -2));
+        TextView content = Ui.medium(getContext(), value, Tokens.FONT_SM, theme.current().text);
+        LinearLayout.LayoutParams contentParams = new LinearLayout.LayoutParams(-1, -2);
+        contentParams.topMargin = Ui.dp(getContext(), 3);
+        card.addView(content, contentParams);
+        theme.bind(t -> {
+            name.setTextColor(t.textTertiary);
+            content.setTextColor(t.text);
+            card.setBackground(Ui.rounded(getContext(), t.surfaceLight, 8));
+        });
+        return card;
+    }
+
+    private View hubSafety(SkillHubDetail value) {
+        boolean unsafe = !value.securityStatus.isEmpty()
+                && !"benign".equals(value.securityStatus);
+        String message;
+        if ("benign".equals(value.securityStatus)) {
+            message = getContext().getString(R.string.skillhub_no_obvious_risk);
+        } else if (value.securityStatus.isEmpty()) {
+            message = getContext().getString(R.string.skillhub_no_obvious_risk);
+        } else {
+            message = value.securityStatus;
+        }
+        TextView text = Ui.text(getContext(), message, Tokens.FONT_SM,
+                theme.current().textSecondary, Typeface.NORMAL);
+        text.setLineSpacing(Ui.dp(getContext(), 3), 1f);
+        theme.bind(t -> text.setTextColor(unsafe ? t.warning : t.textSecondary));
+        List<View> content = new ArrayList<>();
+        content.add(text);
+        return ExtensionKit.hubSection(getContext(), theme, R.string.skillhub_safety_check,
+                unsafe ? Icons.CIRCLE_ALERT : Icons.SHIELD_CHECK,
+                content);
+    }
+
+    private View hubMarkdown(SkillHubDetail value) {
+        List<View> content = new ArrayList<>();
+        if (value.markdown.isEmpty()) {
+            content.add(ExtensionKit.empty(getContext(), theme,
+                    R.string.skillhub_no_public_doc));
+        } else {
+            MarkdownLite markdown = new MarkdownLite(getContext(), theme.current());
+            markdown.render(value.markdown, theme.current());
+            LinearLayout holder = new LinearLayout(getContext());
+            holder.setOrientation(LinearLayout.VERTICAL);
+            Ui.padding(holder, 12, 12, 12, 12);
+            holder.addView(markdown, new LinearLayout.LayoutParams(-1, -2));
+            theme.bind(t -> {
+                holder.setBackground(Ui.rounded(getContext(), t.surfaceLight, 10));
+                markdown.render(value.markdown, t);
+            });
+            content.add(holder);
+        }
+        return ExtensionKit.hubSection(getContext(), theme, R.string.skillhub_skill_md,
+                Icons.FILE_TEXT, content);
+    }
+
+    private View hubComments(SkillHubDetail value) {
+        if (commentsHost.getParent() instanceof android.view.ViewGroup) {
+            ((android.view.ViewGroup) commentsHost.getParent()).removeView(commentsHost);
+        }
+        List<View> content = new ArrayList<>();
+        content.add(ExtensionKit.primaryButton(getContext(), theme,
+                R.string.skillhub_comment_post, 44, this::postComment));
+        content.add(commentsHost);
+        content.add(commentInput);
+        return ExtensionKit.hubSection(getContext(), theme, R.string.skillhub_comments_title,
+                Icons.MESSAGE_CIRCLE, content);
     }
 
     private void loadComments() {
         scheduler.io(() -> {
+            List<SkillHubComment> comments;
             try {
-                java.util.List<SkillHubComment> comments = api.comments(slug);
-                scheduler.main(() -> renderComments(comments));
-            } catch (Exception ignored) {
-                scheduler.main(() -> renderComments(java.util.Collections.emptyList()));
+                comments = api.comments(slug);
+            } catch (Exception error) {
+                comments = new ArrayList<>();
             }
+            final List<SkillHubComment> result = comments;
+            scheduler.main(() -> renderComments(result));
         });
     }
 
-    private void renderComments(java.util.List<SkillHubComment> comments) {
-        commentsBox.removeAllViews();
-        Tokens tokens = theme.current();
-        if (comments.isEmpty()) {
-            commentsBox.addView(Ui.text(getContext(),
-                    getContext().getString(R.string.skillhub_comments_empty), Tokens.FONT_XS,
-                    tokens.textTertiary, Typeface.NORMAL),
+    private void renderComments(List<SkillHubComment> comments) {
+        commentsHost.removeAllViews();
+        if (comments == null || comments.isEmpty()) {
+            commentsHost.addView(ExtensionKit.empty(getContext(), theme,
+                    R.string.skillhub_no_comments_login_first),
                     new LinearLayout.LayoutParams(-1, -2));
             return;
         }
         for (SkillHubComment comment : comments) {
             LinearLayout row = new LinearLayout(getContext());
             row.setOrientation(LinearLayout.VERTICAL);
-            row.setBackground(Ui.rounded(getContext(), tokens.surfaceElevated, 10));
             Ui.padding(row, 12, 8, 12, 8);
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, -2);
             rowParams.topMargin = Ui.dp(getContext(), 6);
-            commentsBox.addView(row, rowParams);
-            row.addView(Ui.medium(getContext(), comment.author, Tokens.FONT_XS,
-                    tokens.textSecondary), new LinearLayout.LayoutParams(-1, -2));
-            row.addView(Ui.text(getContext(), comment.content, Tokens.FONT_SM, tokens.text,
-                    Typeface.NORMAL), new LinearLayout.LayoutParams(-1, -2));
+            commentsHost.addView(row, rowParams);
+            TextView author = Ui.medium(getContext(), comment.author, Tokens.FONT_XS,
+                    theme.current().textSecondary);
+            row.addView(author, new LinearLayout.LayoutParams(-1, -2));
+            TextView content = Ui.text(getContext(), comment.content, Tokens.FONT_SM,
+                    theme.current().text, Typeface.NORMAL);
+            LinearLayout.LayoutParams contentParams = new LinearLayout.LayoutParams(-1, -2);
+            contentParams.topMargin = Ui.dp(getContext(), 2);
+            row.addView(content, contentParams);
+            theme.bind(t -> {
+                author.setTextColor(t.textSecondary);
+                content.setTextColor(t.text);
+                row.setBackground(Ui.rounded(getContext(), t.surfaceLight, 10));
+            });
         }
     }
 
-    private void postComment(TextView button) {
-        String content = commentInput.value();
+    private void postComment() {
+        String content = commentInput.getText() == null ? "" : commentInput.getText().toString();
         if (content.isEmpty() || content.length() > 500) return;
-        button.setEnabled(false);
         scheduler.io(() -> {
             try {
                 SkillHubSession session = new SkillHubSession();
@@ -183,8 +360,7 @@ public final class SkillHubDetailPage extends SettingsPage {
                 }
                 session.postComment(slug, content);
                 scheduler.main(() -> {
-                    button.setEnabled(true);
-                    commentInput.input().setText("");
+                    commentInput.setText("");
                     Toast.makeText(getContext(), R.string.skillhub_comment_submitted,
                             Toast.LENGTH_SHORT).show();
                     loadComments();
@@ -192,32 +368,43 @@ public final class SkillHubDetailPage extends SettingsPage {
             } catch (Exception error) {
                 String message = error.getMessage() == null
                         ? error.getClass().getSimpleName() : error.getMessage();
-                scheduler.main(() -> {
-                    button.setEnabled(true);
-                    Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
-                });
+                scheduler.main(() -> Toast.makeText(getContext(), message,
+                        Toast.LENGTH_LONG).show());
             }
         });
     }
 
-    private void install(SkillHubDetail detail, TextView button) {
-        button.setEnabled(false);
-        button.setText(getContext().getString(R.string.skillhub_installing));
+    private void install(SkillHubDetail value) {
         RemoteSkillInstall.run(scheduler, store,
-                () -> api.download(detail.slug, detail.version), detail.slug + ".zip",
+                () -> api.download(value.slug, value.version), value.slug + ".zip",
                 new RemoteSkillInstall.Callback() {
                     public void onSuccess() {
-                        button.setText(getContext().getString(R.string.skillhub_installed));
+                        installButton.setEnabled(false);
+                        installLabel.setText(getContext().getString(R.string.skillhub_installed));
                         Toast.makeText(getContext(), R.string.skillhub_install_success,
                                 Toast.LENGTH_SHORT).show();
                     }
+
                     public void onError(String message) {
-                        button.setEnabled(true);
-                        button.setText(getContext().getString(R.string.skillhub_install_skill,
-                                detail.name));
                         Toast.makeText(getContext(), getContext().getString(
-                                R.string.skillhub_load_failed, message), Toast.LENGTH_LONG).show();
+                                R.string.skillhub_load_failed, message),
+                                Toast.LENGTH_LONG).show();
                     }
                 });
+    }
+
+    private View spinner() {
+        FrameLayout frame = new FrameLayout(getContext());
+        Ui.padding(frame, 16, 16, 16, 16);
+        ProgressBar bar = new ProgressBar(getContext());
+        bar.setIndeterminate(true);
+        frame.addView(bar, new FrameLayout.LayoutParams(Ui.dp(getContext(), 24),
+                Ui.dp(getContext(), 24), Gravity.CENTER));
+        return frame;
+    }
+
+    private void addBody(View view, int topDp) {
+        ExtensionKit.topMargin(getContext(), view, topDp);
+        body.addView(view);
     }
 }

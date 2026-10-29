@@ -1,4 +1,38 @@
-# 更新日志
+# Changelog / 更新日志
+
+## v2.0.0
+
+### English
+
+#### UI parity and final polish
+
+- **Drawers and composer** - drawer, header, composer and overlays rebuilt against the C++/legacy design: 240-360dp drawer with tabs, per-extension file icons, three-pill composer, capability menu, fixed-height picker sheets and the attachment tree.
+- **Tool calls** - an assistant turn folds into one "Processed" row (spinner on the left while running, duration when done); consecutive tool calls collapse into "Used N tools"; per-tool cards for read/list/search, write/edit diffs, shell, delete, todo, agent, pipeline and MCP input/output; new tool-call card preview page.
+- **Timeline and thinking** - legacy `ConversationTimeline` folding restored (thinking shows with prose, intermediate thinking stays folded and is never replayed); the long-press action bar dismisses after every action; failures persist a localized error row, auto-expand and are written to the error log; error-log rows show date and reason and open the log file in another app.
+- **Workspace** - the card page is restored; SSH projects show their `user@host:port` address; switching is blocked until a new conversation starts; fixed the reload crash; the workspace surface opens without a page-slide animation.
+- **Extensions** - the Skills page only keeps the SkillHub store row; the store gains sort chips, account states and a feature center; MCP/Agent pages aligned with the legacy frames.
+- **Models** - multimodal switches (reasoning / image input / video input) above the compaction model; reasoning is locked to off when unsupported; the composer "+" menu shows image/video rows based on the model's capabilities (video currently attaches as a file placeholder).
+- **Navigation and data** - push slides right-to-left in 280 ms, back slides left-to-right in 220 ms; route-family dispatch removes missing-route crashes; schema v13 adds the model capability columns through an idempotent migration.
+
+#### Release
+
+- Version `2.0.0` (versionCode 46); the changelog is bilingual from this version on, and the release workflow builds and publishes both the slim and local variants.
+
+### 中文
+
+#### 界面对齐与收尾修复
+
+- **抽屉与输入器** - 按 C++/旧版重做抽屉、头部、输入器与浮层：240–360dp 抽屉、标签页、按扩展名着色的文件树、三胶囊输入器、能力菜单、固定高度选择面板与附件树。
+- **工具调用** - 整轮回合折叠为一行「已处理」（运行中左侧转圈、完成后显示耗时）；连续工具调用合并为「使用了 N 个工具」；读/列目录/搜索行、写入/编辑 diff、Shell、删除、TODO、Agent、流水线、MCP 输入输出卡片；新增工具调用卡片预览页。
+- **时间线与思考** - 恢复旧版 `ConversationTimeline` 折叠规则（思考随正文显示，工具间的思考折叠且不回放）；长按操作条执行后自动关闭；失败时持久化本地化错误行并自动展开，同时写入错误日志；错误日志显示日期与原因，点击在其它应用中打开。
+- **工作区** - 恢复卡片页；SSH 项目显示 `user@host:port` 地址；已有对话时切换工作区会提示先新建对话；修复切换时的崩溃；工作区入口不再播放页面滑入动画。
+- **扩展** - Skills 扩展页只保留 SkillHub 商店行；商店页增加排序筛选、账号状态与功能中心；MCP/Agent 页对齐旧版框架。
+- **模型** - 专用压缩模型上方新增多模态开关（推理 / 图片输入 / 视频输入）；不支持推理时锁定为 off；输入器「+」菜单按模型能力显示选择图片/选择视频（视频暂以文件占位形式附加）。
+- **导航与数据** - 进入页面右→左 280ms、返回左→右 220ms；按路由家族分发消除未注册页面崩溃；数据库升级到 v13，新增模型能力列（幂等迁移）。
+
+#### 版本
+
+- 版本号 `2.0.0`（versionCode 46）；从该版本起更新日志为双语，Release 工作流同时构建并发布 slim 与本地版。
 
 ## v2.0.0-next
 
@@ -30,7 +64,8 @@
 ### 工程质量与协作
 
 - **机械守卫** - 新增/收紧 CJK、UI 文案拼接、raw thread、size budget、字符串中英俄键一致、提示词目录一致性和架构测试；`:app` 源码也纳入扫描（`NestedAgentRunner` 是唯一明确允许的同步 Agent 桥）。
-- **版本与发布** - 版本号升级到 `2.0.0-next`（versionCode 45）；Release 工作流只构建 slim，本地版按参数单独构建。
+- **版本与发布** - 版本号升级到 `2.0.0-next`（versionCode 45）；Release 工作流同时构建并发布 slim 与本地版。
+- **依赖内置** - llama.cpp 头文件与 arm64 预编译运行库内置到 `third_party/llama-cpp`，CI 不再依赖同级 `LineCodePro-C++` 目录，发布时精简版与本地版一并产出。
 - **许可证与协作** - 切换为 AGPL-3.0-or-later + 商业双重许可，补充 `CLA.md`、`CLA / verify` CI、`CONTRIBUTING.md`、PR 模板、Bug/Feature/Suggestion/Other/UI parity Issue 模板、README 与 `AGENT.md` 禁止事项。
 - **CI 去重** - CI 只在 PR 运行，合并到 master 由 Release 处理，避免 PR 与合并后重复执行同一套检查。
 - **发布修复** - Release 在旧 master 没有 Java `app/build.gradle.kts` 时不再跳过打包；新增 `force_release` 手动入口，迁移后的首个版本可以正常出包。

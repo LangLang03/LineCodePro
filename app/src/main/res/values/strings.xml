@@ -1318,7 +1318,7 @@
     <string name="skillhub_loading_page">Loading page %d…</string>
     <string name="skillhub_load_failed_retry">Load failed, click here to retry</string>
     <string name="skillhub_no_matching_skills">No matching Skills found</string>
-    <string name="skillhub_page_count">Page %d · %s Skills total</string>
+    <string name="skillhub_page_count">Page %1$d · %2$s Skills total</string>
     <string name="skillhub_verified">Verified</string>
     <string name="skillhub_requires_api_key">Requires API Key</string>
     <string name="skillhub_view_details">, view details</string>

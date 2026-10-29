@@ -134,9 +134,7 @@ public final class AppGraph implements AutoCloseable {
         final LocalModelBridge localBridge = LocalModelBridges.find();
         final ModelClient client = localBridge == null
                 ? httpClient : localBridge.wrap(httpClient, scheduler);
-        final PromptCatalog catalog = new AssetPromptCatalog(context.getAssets());
-        final PromptStore promptStore = new PromptStore(catalog,
-                new SettingsPromptOverrides(settingsStore));
+        final PromptStore promptStore = promptStore(context, settingsStore);
 
         this.settings = settingsStore;
         this.models = modelStore;
@@ -153,12 +151,10 @@ public final class AppGraph implements AutoCloseable {
         workspace.mkdirs();
         final ProjectStore projectStore = new SqliteProjectStore(database, clock);
         final DiffStore diffStore = new SqliteDiffStore(database, clock);
-        final Project defaultProject = projectStore.ensureDefault(workspace);
+        final Project defaultProject = defaultProject(projectStore, workspace, settingsStore);
         this.projects = projectStore;
         this.diffs = diffStore;
         this.conversationStore = conversations;
-        settingsStore.put(cn.lineai.feature.chat.ChatController.KEY_PROJECT_LABEL,
-                defaultProject.name);
         final cn.lineai.feature.settings.ToolPreferences toolPreferences =
                 new cn.lineai.feature.settings.ToolPreferences(settingsStore);
         final VisionClient visionClient = new VisionClient();
@@ -173,43 +169,11 @@ public final class AppGraph implements AutoCloseable {
                 () -> phoneControl);
         final MemoryTodoStore todoStore = new MemoryTodoStore();
         this.sessionTodos = todoStore;
-        final ToolContext toolContext = new ToolContext() {
-            @Override public cn.lineai.tool.api.TodoStore todos() { return todoStore; }
-            @Override public cn.lineai.tool.api.MemorySink memory() {
-                return (scope, title, content) -> {
-                    Project selected = projectStore.selected();
-                    String projectId = selected == null ? "" : selected.path;
-                    long now = clock.nowMs();
-                    memoryStore.save(new cn.lineai.core.model.MemoryItem("", scope, projectId,
-                            title, content, "manual", 1.0, now, now, 0, 0));
-                };
-            }
-            @Override public DiffSink diffs() {
-                return (path, before, after, existedBefore) -> {
-                    Project selected = projectStore.selected();
-                    diffStore.record(selected == null ? workspace.getAbsolutePath() : selected.path,
-                            path, before, after, existedBefore);
-                };
-            }
-            @Override public File workspaceRoot() {
-                Project selected = projectStore.selected();
-                return selected == null ? workspace : new File(selected.path);
-            }
-            @Override public String modelId() {
-                ModelConfig selected = modelStore.selected();
-                return selected == null ? "" : selected.modelId;
-            }
-            @Override public boolean mutationAllowed() { return true; }
-            @Override public boolean pathProtectionBypassed() {
-                return Boolean.parseBoolean(settingsStore.get(
-                        cn.lineai.core.model.UiPreferences.Field.BYPASS_PATH_PROTECTION.key,
-                        "false"));
-            }
-        };
+        final ToolContext toolContext = toolContext(context, clock, settingsStore, projectStore,
+                diffStore, memoryStore, modelStore, todoStore);
         final ToolCatalog baseCatalog = new McpToolCatalog(baseTools,
                 mcpExtensionStore::list, new McpClient()::callTool);
-        final ToolCatalog toolCatalog = () -> AgentTools.augment(baseCatalog.registry(),
-                agentExtensionStore::list, agentRunner);
+        final ToolCatalog toolCatalog = toolCatalog(baseCatalog, agentExtensionStore, projectStore);
         this.toolCatalog = toolCatalog;
         this.baseCatalogForAgents = baseCatalog;
         this.modelClient = client;
@@ -227,18 +191,95 @@ public final class AppGraph implements AutoCloseable {
         this.preferences = new Store<>(new SettingsPresenter(settingsStore), scheduler);
         preferences.dispatch(new SettingsAction.Load());
 
+        this.graph = buildGraph(clock, messages);
+    }
+
+    private Graph buildGraph(Clock clock, MessageStore messages) {
         Graph.Builder builder = new Graph.Builder();
         builder.instance(Scheduler.class, scheduler);
         builder.instance(Clock.class, clock);
         builder.instance(LineCodeDatabase.class, database);
-        builder.instance(SettingsStore.class, settingsStore);
-        builder.instance(ConversationStore.class, conversations);
+        builder.instance(SettingsStore.class, settings);
+        builder.instance(ConversationStore.class, conversationStore);
         builder.instance(MessageStore.class, messages);
-        builder.instance(ModelStore.class, modelStore);
-        builder.instance(ModelClient.class, client);
+        builder.instance(ModelStore.class, models);
+        builder.instance(ModelClient.class, modelClient);
         builder.instance(ChatController.class, chat);
         builder.instance(ThemeController.class, theme);
-        this.graph = builder.build();
+        return builder.build();
+    }
+
+    private static Project defaultProject(ProjectStore projects, File workspace,
+                                          SettingsStore settingsStore) {
+        Project project = projects.ensureDefault(workspace);
+        settingsStore.put(cn.lineai.feature.chat.ChatController.KEY_PROJECT_LABEL,
+                project.name);
+        return project;
+    }
+
+    private static PromptStore promptStore(Context context, SettingsStore settingsStore) {
+        PromptCatalog catalog = new AssetPromptCatalog(context.getAssets());
+        return new PromptStore(catalog, new SettingsPromptOverrides(settingsStore));
+    }
+
+    private ToolCatalog toolCatalog(ToolCatalog baseCatalog, AgentExtensionStore agents,
+                                    ProjectStore projects) {
+        return () -> {
+            cn.lineai.tool.api.ToolRegistry registry = AgentTools.augment(baseCatalog.registry(),
+                    agents::list, agentRunner);
+            // An SSH workspace must not receive local file/shell tools.
+            return SshWorkspace.isSsh(projects.selected())
+                    ? SshWorkspace.remoteOnly(registry) : registry;
+        };
+    }
+
+    private static ToolContext toolContext(Context context, Clock clock, SettingsStore settings,
+                                           ProjectStore projects, DiffStore diffs,
+                                           MemoryStore memories, ModelStore models,
+                                           MemoryTodoStore todoStore) {
+        File workspace = new File(context.getFilesDir(), "workspace");
+        return new ToolContext() {
+            @Override public cn.lineai.tool.api.TodoStore todos() { return todoStore; }
+            @Override public cn.lineai.tool.api.MemorySink memory() {
+                return (scope, title, content) -> {
+                    Project selected = projects.selected();
+                    String projectId = selected == null ? "" : selected.path;
+                    long now = clock.nowMs();
+                    memories.save(new cn.lineai.core.model.MemoryItem("", scope, projectId,
+                            title, content, "manual", 1.0, now, now, 0, 0));
+                };
+            }
+            @Override public DiffSink diffs() {
+                return (path, before, after, existedBefore) -> {
+                    Project selected = projects.selected();
+                    diffs.record(selected == null ? workspace.getAbsolutePath() : selected.path,
+                            path, before, after, existedBefore);
+                };
+            }
+            @Override public File workspaceRoot() {
+                Project selected = projects.selected();
+                return selected == null ? workspace : new File(selected.path);
+            }
+            @Override public String modelId() {
+                ModelConfig selected = models.selected();
+                return selected == null ? "" : selected.modelId;
+            }
+            @Override public boolean mutationAllowed() { return true; }
+            @Override public boolean pathProtectionBypassed() {
+                return Boolean.parseBoolean(settings.get(
+                        cn.lineai.core.model.UiPreferences.Field.BYPASS_PATH_PROTECTION.key,
+                        "false"));
+            }
+            @Override public boolean remoteWorkspace() {
+                return SshWorkspace.isSsh(projects.selected());
+            }
+            @Override public String remoteDirectory() {
+                return SshWorkspace.directory(projects.selected());
+            }
+            @Override public String remoteExecute(String command, int timeoutMs) {
+                return SshWorkspace.execute(context, settings, command, timeoutMs);
+            }
+        };
     }
 
     public static AppGraph create(Context context) {

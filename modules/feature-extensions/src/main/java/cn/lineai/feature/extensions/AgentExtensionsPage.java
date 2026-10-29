@@ -1,29 +1,20 @@
 package cn.lineai.feature.extensions;
 
 import android.content.Context;
-import android.content.res.ColorStateList;
-import android.graphics.Typeface;
-import android.view.Gravity;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.Switch;
-import android.widget.TextView;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
 
 import cn.lineai.core.model.AgentExtension;
 import cn.lineai.ui.i18n.R;
-import cn.lineai.ui.kit.Dialogs;
-import cn.lineai.ui.kit.IconButton;
 import cn.lineai.ui.kit.Icons;
 import cn.lineai.ui.kit.Refreshable;
-import cn.lineai.ui.kit.SettingsPage;
-import cn.lineai.ui.kit.Ui;
+import cn.lineai.ui.kit.SettingsSection;
 import cn.lineai.ui.tokens.Tokens;
 
-/** Agent extension list: enable, edit and delete custom agents. */
-public final class AgentExtensionsPage extends SettingsPage implements Refreshable {
+/** Agent extension detail: quick add, installed list, toggle and delete. */
+public final class AgentExtensionsPage extends ExtensionPage implements Refreshable {
 
     public interface Listener {
         List<AgentExtension> load();
@@ -38,114 +29,71 @@ public final class AgentExtensionsPage extends SettingsPage implements Refreshab
     }
 
     private final Listener listener;
+    private final LinearLayout installedHost;
 
     public AgentExtensionsPage(Context context, Tokens tokens, Runnable back, Listener listener) {
-        super(context, R.string.screen_extensions_section_agent, tokens, back,
-                Icons.PLUS, R.string.screen_extension_detail_inline_title_agent, listener::add);
+        super(context, tokens, back, R.string.screen_extensions_section_agent);
         this.listener = listener;
-        Ui.padding(content, 16, 16, 16, 100);
-        reload();
-    }
-
-    public void reload() {
-        content.removeAllViews();
-        List<AgentExtension> agents = listener.load();
-        if (agents.isEmpty()) {
-            TextView empty = Ui.text(getContext(),
-                    getContext().getString(R.string.screen_agent_list_empty),
-                    Tokens.FONT_MD, theme.current().textTertiary, Typeface.NORMAL);
-            empty.setGravity(Gravity.CENTER);
-            Ui.padding(empty, 16, 48, 16, 48);
-            content.addView(empty, new LayoutParams(-1, -2));
-            return;
-        }
-        for (AgentExtension agent : agents) {
-            content.addView(row(agent), rowParams());
-        }
+        this.installedHost = new LinearLayout(context);
+        installedHost.setOrientation(LinearLayout.VERTICAL);
+        header(R.string.screen_extensions_section_agent,
+                ExtensionKit.addAction(context, theme,
+                        R.string.screen_extension_detail_inline_title_agent, listener::add));
+        SettingsSection create = section(R.string.screen_extension_detail_section_install_other);
+        create.row(ExtensionKit.action(getContext(), theme, Icons.BRAIN,
+                R.string.screen_extension_detail_inline_title_agent,
+                R.string.screen_extension_detail_inline_desc_agent, 68, listener::add), false, 0);
+        content.addView(installedHost, new LinearLayout.LayoutParams(-1, -2));
+        renderInstalled();
     }
 
     @Override public void onShown() {
-        reload();
+        renderInstalled();
     }
 
-    private LinearLayout row(AgentExtension agent) {
-        Context context = getContext();
-        Tokens tokens = theme.current();
-        LinearLayout row = new LinearLayout(context);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setBackground(Ui.roundedStroke(context, tokens.surfaceElevated, 12, tokens.border));
-        Ui.padding(row, 14, 12, 12, 12);
-        row.setClickable(true);
-        row.setOnClickListener(v -> listener.edit(agent));
-        row.setOnLongClickListener(v -> {
-            Dialogs.confirm(context, theme.current(),
-                    context.getString(R.string.screen_agent_delete_title),
-                    context.getString(R.string.screen_agent_delete_message, agent.name),
-                    context.getString(R.string.common_cancel),
-                    context.getString(R.string.common_delete),
-                    confirmed -> {
-                        if (confirmed) {
+    public void reload() {
+        renderInstalled();
+    }
+
+    private void renderInstalled() {
+        installedHost.removeAllViews();
+        SettingsSection installed = ExtensionKit.section(getContext(), theme,
+                R.string.screen_extension_detail_section_installed);
+        installedHost.addView(installed, new LinearLayout.LayoutParams(-1, -2));
+        List<AgentExtension> agents = listener.load();
+        if (agents == null || agents.isEmpty()) {
+            installed.row(ExtensionKit.empty(getContext(), theme,
+                    R.string.screen_extension_detail_empty_agent), false, 0);
+            return;
+        }
+        for (AgentExtension agent : agents) {
+            String name = agent.name.isEmpty() ? agent.slug : agent.name;
+            String description = getContext().getString(
+                    R.string.screen_extension_agent_row_desc, agent.slug,
+                    agent.toolNames.size());
+            ExtensionRows.SwitchRow row = new ExtensionRows.SwitchRow(getContext(), theme,
+                    Icons.BRAIN, name, description);
+            row.checked(agent.enabled);
+            row.onToggle(enabled -> listener.setEnabled(agent.id, enabled));
+            row.onLongClick(() -> openItemMenu(agent));
+            installed.row(row, false, 0);
+        }
+    }
+
+    private void openItemMenu(AgentExtension agent) {
+        String name = agent.name.isEmpty() ? agent.slug : agent.name;
+        List<ExtensionKit.SheetItem> items = new ArrayList<>();
+        items.add(new ExtensionKit.SheetItem(R.string.screen_extension_detail_modify,
+                R.string.screen_extension_detail_modify_desc, false, () -> listener.edit(agent)));
+        items.add(new ExtensionKit.SheetItem(R.string.screen_extension_detail_delete,
+                R.string.screen_extension_detail_delete_desc, true,
+                () -> ExtensionKit.confirm(getContext(), theme,
+                        R.string.screen_agent_delete_title,
+                        getContext().getString(R.string.screen_agent_delete_message, name),
+                        () -> {
                             listener.delete(agent.id);
-                            reload();
-                        }
-                    });
-            return true;
-        });
-
-        FrameLayout iconBox = new FrameLayout(context);
-        iconBox.setBackground(Ui.rounded(context, tokens.accentMuted, 18));
-        IconButton icon = new IconButton(context, Icons.BRAIN);
-        icon.setIconColor(tokens.accent);
-        icon.setIconSizeDp(36, 18);
-        icon.setClickable(false);
-        iconBox.addView(icon, new FrameLayout.LayoutParams(
-                Ui.dp(context, 36), Ui.dp(context, 36), Gravity.CENTER));
-        row.addView(iconBox, new LinearLayout.LayoutParams(Ui.dp(context, 36), Ui.dp(context, 36)));
-
-        LinearLayout labels = new LinearLayout(context);
-        labels.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(0, -2, 1f);
-        labelParams.leftMargin = labelParams.rightMargin = Ui.dp(context, 12);
-        row.addView(labels, labelParams);
-        labels.addView(Ui.bold(context, agent.name.isEmpty() ? agent.slug : agent.name,
-                Tokens.FONT_MD, tokens.text), new LinearLayout.LayoutParams(-1, -2));
-        String description = agent.trigger.isEmpty() ? agent.slug : agent.trigger;
-        TextView desc = Ui.text(context, description, Tokens.FONT_XS, tokens.textTertiary,
-                Typeface.NORMAL);
-        desc.setSingleLine(true);
-        desc.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(-1, -2);
-        descParams.topMargin = Ui.dp(context, 2);
-        labels.addView(desc, descParams);
-
-        Switch toggle = new Switch(context);
-        toggle.setChecked(agent.enabled);
-        int[][] states = new int[][] {
-                new int[] {android.R.attr.state_checked},
-                new int[] {-android.R.attr.state_checked}
-        };
-        toggle.setThumbTintList(new ColorStateList(states,
-                new int[] {tokens.accent, tokens.textTertiary}));
-        toggle.setTrackTintList(new ColorStateList(states,
-                new int[] {tokens.accentDim, tokens.surfaceLight}));
-        toggle.setOnCheckedChangeListener((button, checked) -> listener.setEnabled(agent.id, checked));
-        row.addView(toggle, new LinearLayout.LayoutParams(-2, -2));
-
-        theme.bind(t -> {
-            row.setBackground(Ui.roundedStroke(context, t.surfaceElevated, 12, t.border));
-            iconBox.setBackground(Ui.rounded(context, t.accentMuted, 18));
-            icon.setIconColor(t.accent);
-            toggle.setThumbTintList(new ColorStateList(states,
-                    new int[] {t.accent, t.textTertiary}));
-            toggle.setTrackTintList(new ColorStateList(states,
-                    new int[] {t.accentDim, t.surfaceLight}));
-        });
-        return row;
-    }
-
-    private LinearLayout.LayoutParams rowParams() {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
-        params.bottomMargin = Ui.dp(getContext(), 8);
-        return params;
+                            renderInstalled();
+                        })));
+        ExtensionKit.sheet(getContext(), theme, name, items);
     }
 }

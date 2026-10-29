@@ -9,6 +9,7 @@ public enum ToolIcon {
     DELETE,
     LIST,
     SEARCH,
+    FETCH,
     TERMINAL,
     MCP,
     IMAGE,
@@ -16,5 +17,7 @@ public enum ToolIcon {
     TODO,
     AGENT,
     MEMORY,
-    PHONE
+    PHONE,
+    DIFF,
+    PIPELINE
 }

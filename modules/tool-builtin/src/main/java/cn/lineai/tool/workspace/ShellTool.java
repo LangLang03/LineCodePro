@@ -49,6 +49,9 @@ public final class ShellTool implements Tool {
         String command = arguments.optString("command", "").trim();
         if (command.isEmpty()) return ToolResult.failure("", "command must not be empty");
         if (!context.mutationAllowed()) return ToolResult.failure("", "Mutation not allowed");
+        if (context.remoteWorkspace()) {
+            return executeRemote(context, command, arguments.optString("cwd", "").trim());
+        }
         try {
             File cwd = context.resolvePath(arguments.optString("cwd", "."));
             if (!cwd.isDirectory()) return ToolResult.failure("", "Not a directory: " + cwd);
@@ -80,5 +83,25 @@ public final class ShellTool implements Tool {
         } catch (Exception error) {
             return ToolResult.failure("", ReadFileTool.message(error));
         }
+    }
+
+    /** SSH workspace: run the command on the remote host inside the project directory. */
+    private ToolResult executeRemote(ToolContext context, String command, String cwd) {
+        String directory = cwd.isEmpty() ? context.remoteDirectory() : cwd;
+        String full = directory.isEmpty() ? command
+                : "cd " + shellQuote(directory) + " && " + command;
+        try {
+            String output = context.remoteExecute(full, (int) (TIMEOUT_SECONDS * 1000L));
+            String text = output == null ? "" : output;
+            if (text.length() > MAX_CHARS) text = text.substring(0, MAX_CHARS) + "\n… truncated";
+            return text.trim().isEmpty() ? ToolResult.success("", "(no output)")
+                    : ToolResult.success("", text);
+        } catch (RuntimeException error) {
+            return ToolResult.failure("", ReadFileTool.message(error));
+        }
+    }
+
+    private static String shellQuote(String value) {
+        return "'" + value.replace("'", "'\\''") + "'";
     }
 }

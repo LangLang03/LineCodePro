@@ -34,7 +34,21 @@ public final class WorkspaceProjectsPage extends SettingsPage {
 
         void openExternal();
 
+        /** Opens the system picker so another app can read/write this workspace. */
+        default void shareWorkspace() {
+        }
+
         void onChanges();
+
+        /** Address {@code user@host:port} shown for SSH projects instead of their path. */
+        default String sshAddress() {
+            return "";
+        }
+
+        /** True when the current conversation already has messages. */
+        default boolean conversationActive() {
+            return false;
+        }
     }
 
     private final Listener listener;
@@ -72,6 +86,9 @@ public final class WorkspaceProjectsPage extends SettingsPage {
     private LinearLayout row(Project project) {
         Context context = getContext();
         Tokens tokens = theme.current();
+        boolean ssh = isSsh(project);
+        String address = listener.sshAddress();
+        String subtitle = ssh && !address.isEmpty() ? address : project.path;
         LinearLayout row = new LinearLayout(context);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setBackground(Ui.roundedStroke(context,
@@ -80,6 +97,13 @@ public final class WorkspaceProjectsPage extends SettingsPage {
         Ui.padding(row, 14, 12, 12, 12);
         row.setClickable(true);
         row.setOnClickListener(v -> {
+            if (project.selected) {
+                return;
+            }
+            if (listener.conversationActive()) {
+                showSwitchBlocked();
+                return;
+            }
             listener.select(project.id);
             reload();
         });
@@ -116,7 +140,7 @@ public final class WorkspaceProjectsPage extends SettingsPage {
         row.addView(labels, labelParams);
         labels.addView(Ui.bold(context, project.name, Tokens.FONT_MD, tokens.text),
                 new LinearLayout.LayoutParams(-1, -2));
-        TextView path = Ui.text(context, project.path, Tokens.FONT_XS,
+        TextView path = Ui.text(context, subtitle, Tokens.FONT_XS,
                 tokens.textTertiary, Typeface.NORMAL);
         path.setSingleLine(true);
         path.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
@@ -185,6 +209,17 @@ public final class WorkspaceProjectsPage extends SettingsPage {
         LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(-1, Ui.dp(context, 42));
         buttonParams.topMargin = Ui.dp(context, 10);
         card.addView(button, buttonParams);
+
+        LinearLayout share = new LinearLayout(context);
+        share.setGravity(Gravity.CENTER);
+        share.setClickable(true);
+        share.setBackground(Ui.roundedStroke(context, tokens.accentMuted, 10, tokens.accent));
+        share.addView(Ui.bold(context, context.getString(R.string.workspace_share),
+                Tokens.FONT_SM, tokens.accent), new LinearLayout.LayoutParams(-2, -2));
+        share.setOnClickListener(v -> listener.shareWorkspace());
+        LinearLayout.LayoutParams shareParams = new LinearLayout.LayoutParams(-1, Ui.dp(context, 42));
+        shareParams.topMargin = Ui.dp(context, 8);
+        card.addView(share, shareParams);
         theme.bind(t -> card.setBackground(Ui.rounded(context, t.surfaceElevated, 12)));
         return card;
     }
@@ -200,6 +235,11 @@ public final class WorkspaceProjectsPage extends SettingsPage {
                 Tokens.FONT_MD, tokens.text), new LinearLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams fieldParams = new LinearLayout.LayoutParams(-1, -2);
         fieldParams.topMargin = Ui.dp(context, 10);
+        // reload() rebuilds the cards, and the field instance is reused across reloads: it must be
+        // detached from the previous card or addView throws "child already has a parent".
+        if (nameField.getParent() instanceof android.view.ViewGroup) {
+            ((android.view.ViewGroup) nameField.getParent()).removeView(nameField);
+        }
         card.addView(nameField, fieldParams);
         LinearLayout button = new LinearLayout(context);
         button.setGravity(Gravity.CENTER);
@@ -216,6 +256,10 @@ public final class WorkspaceProjectsPage extends SettingsPage {
     }
 
     private void create() {
+        if (listener.conversationActive()) {
+            showSwitchBlocked();
+            return;
+        }
         String name = nameField.value();
         if (name.isEmpty()) {
             Toast.makeText(getContext(), R.string.workspace_create_require,
@@ -228,6 +272,21 @@ public final class WorkspaceProjectsPage extends SettingsPage {
             nameField.input().setText("");
             reload();
         }
+    }
+
+    private static boolean isSsh(Project project) {
+        String id = project.id == null ? "" : project.id;
+        String path = project.path == null ? "" : project.path;
+        return id.startsWith("ssh:") || path.startsWith("ssh://");
+    }
+
+    private void showSwitchBlocked() {
+        Dialogs.confirm(getContext(), theme.current(),
+                getContext().getString(R.string.workspace_switch_blocked_title),
+                getContext().getString(R.string.workspace_switch_blocked_message),
+                getContext().getString(R.string.common_cancel),
+                getContext().getString(R.string.common_confirm),
+                confirmed -> { });
     }
 
     private LinearLayout.LayoutParams rowParams() {

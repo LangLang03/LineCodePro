@@ -113,8 +113,8 @@ Local GGUF models run in-process through the bundled llama.cpp JNI library. The 
 | `linecodeEnableLocalModel` | `false` | Compiles `engine-local` and the local UI, and shows "Load local model" and the local protocol tab. Off removes both. |
 | `linecodeLocalModelBundle` | follows `linecodeEnableLocalModel` | Packages `libllama.so`, `libggml*.so` and `libc++_shared.so` into the APK. |
 | `linecodeLocalModelGpu` | `true` | Requests the GPU acceleration option in the local model form. |
-| `linecodeLlamaCppSourceDir` | `../LineCodePro-C++/.../_deps/linecode_llama_cpp-src` | llama.cpp headers source directory. |
-| `linecodeLlamaPrebuiltDir` | `../LineCodePro-C++/.../bin` | Directory with the prebuilt arm64 llama.cpp libraries. |
+| `linecodeLlamaCppSourceDir` | `third_party/llama-cpp` | llama.cpp headers directory. |
+| `linecodeLlamaPrebuiltDir` | `third_party/llama-cpp/prebuilt/arm64-v8a` | Directory with the prebuilt arm64 llama.cpp libraries. |
 
 ```sh
 # Full local model support, native libraries included.
@@ -124,7 +124,7 @@ Local GGUF models run in-process through the bundled llama.cpp JNI library. The 
 ./gradlew clean :app:assembleRelease -PlinecodeEnableLocalModel=true
 ```
 
-The local build needs a sibling LineCodePro-C++ checkout that contains the prebuilt arm64 llama.cpp runtime, or explicit paths via the two directory properties. A build that enables the backend without bundling still links it but leaves the shared libraries out of the APK; that is only useful for development.
+The local build links the llama.cpp headers and prebuilt arm64 runtime vendored in `third_party/llama-cpp` (see its README); pass the two directory properties to build against a separate checkout instead. A build that enables the backend without bundling still links it but leaves the shared libraries out of the APK; that is only useful for development.
 
 Switching between slim and local requires `clean` because both variants write the same APK path. A stale incremental APK can otherwise retain a zipflinger virtual-entry padding from the other variant.
 

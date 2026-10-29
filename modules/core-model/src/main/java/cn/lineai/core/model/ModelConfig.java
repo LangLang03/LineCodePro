@@ -40,7 +40,9 @@ public final class ModelConfig {
     public final ReasoningEffort reasoningEffort;
     public final boolean enabled;
     public final boolean isDefault;
+    public final boolean supportsReasoning;
     public final boolean supportsVision;
+    public final boolean supportsVideo;
     public final boolean supportsTools;
     public final int toolCallLimit;
     public final boolean compressionEnabled;
@@ -68,7 +70,9 @@ public final class ModelConfig {
         this.reasoningEffort = b.reasoningEffort;
         this.enabled = b.enabled;
         this.isDefault = b.isDefault;
+        this.supportsReasoning = b.supportsReasoning;
         this.supportsVision = b.supportsVision;
+        this.supportsVideo = b.supportsVideo;
         this.supportsTools = b.supportsTools;
         this.toolCallLimit = normalizeToolCalls(b.toolCallLimit);
         this.compressionEnabled = b.compressionEnabled;
@@ -104,7 +108,8 @@ public final class ModelConfig {
                 .context(contextSize, maxTokens)
                 .sampling(temperature, reasoningEffort)
                 .flags(isDefault, enabled)
-                .capabilities(supportsVision, supportsTools);
+                .capabilities(supportsVision, supportsTools)
+                .multimodal(supportsReasoning, supportsVision, supportsVideo);
     }
 
     public static Builder builder() {
@@ -127,7 +132,9 @@ public final class ModelConfig {
         private ReasoningEffort reasoningEffort = ReasoningEffort.MEDIUM;
         private boolean enabled = true;
         private boolean isDefault;
+        private boolean supportsReasoning = true;
         private boolean supportsVision;
+        private boolean supportsVideo;
         private boolean supportsTools = true;
         private int toolCallLimit = DEFAULT_TOOL_CALL_LIMIT;
         private boolean compressionEnabled;
@@ -203,6 +210,14 @@ public final class ModelConfig {
         public Builder capabilities(boolean vision, boolean tools) {
             supportsVision = vision;
             supportsTools = tools;
+            return this;
+        }
+
+        /** Native multimodal switches shown on the model form. */
+        public Builder multimodal(boolean reasoning, boolean vision, boolean video) {
+            supportsReasoning = reasoning;
+            supportsVision = vision;
+            supportsVideo = video;
             return this;
         }
 

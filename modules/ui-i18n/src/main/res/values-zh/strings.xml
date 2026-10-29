@@ -395,8 +395,9 @@
     <string name="screen_model_add_context_length_label">上下文长度</string>
     <string name="screen_model_add_context_length_hint">手机端建议从 4096 开始；保存后模型 ID 会自动带上上下文标记。</string>
     <string name="model_field_context_size">上下文大小</string>
-    <string name="model_field_context_size_hint">如 128K 或 128000</string>
+    <string name="model_field_context_size_hint">如 128K、1M 或 128000</string>
     <string name="model_field_context_size_hint_desc">支持 k / m 单位（大小写不敏感）。留空则使用模型默认上下文。</string>
+    <string name="model_field_context_invalid">请输入上下文大小，如 128K、1M 或 128000</string>
     <string name="screen_model_add_acceleration_label">加速</string>
     <string name="screen_model_add_acceleration_auto">自动</string>
     <string name="screen_model_add_acceleration_cpu">CPU</string>
@@ -974,6 +975,10 @@
     <string name="sheet_title_project">项目</string>
     <string name="workspace_open_folder">打开本地文件夹</string>
     <string name="workspace_open_folder_desc">选择设备上的现有目录并作为工作区使用。</string>
+    <string name="workspace_share">共享给其他应用</string>
+    <string name="workspace_open_local">打开本地项目</string>
+    <string name="workspace_open_local_desc">通过系统选择器选择可写的本地目录</string>
+    <string name="workspace_create_desc">在 .linecode/project 下创建托管项目</string>
     <string name="workspace_changes_title">文件变更</string>
     <string name="workspace_changes_empty">还没有文件变更。</string>
     <string name="workspace_changes_revert">回滚</string>
@@ -1192,7 +1197,10 @@
     <string name="screen_error_logs_title">错误日志</string>
     <string name="screen_error_logs_section_title">日志列表</string>
     <string name="screen_error_logs_empty">暂无错误日志</string>
+    <string name="screen_error_logs_loading">正在加载错误日志…</string>
+    <string name="screen_error_logs_load_failed">无法加载错误日志</string>
     <string name="screen_error_logs_cleared">错误日志已清除</string>
+    <string name="screen_error_logs_clear_failed">无法清除错误日志</string>
     <string name="screen_error_logs_open_with">打开日志</string>
     <string name="screen_error_logs_open_failed">无法打开日志</string>
 
@@ -1250,6 +1258,7 @@
     <string name="permission_mode_readonly_desc">仅允许读取、搜索和列目录，禁止写入与 Shell</string>
     <string name="permission_mode_manage_all_files">管理所有文件权限</string>
     <string name="permission_mode_storage_granted">已授权，可访问文件存储</string>
+    <string name="permission_mode_storage_settings_unavailable">无法打开权限设置</string>
 
     <!-- Context compaction sheet and notices -->
     <string name="context_compact_confirm">确认压缩</string>
@@ -1257,6 +1266,9 @@
     <string name="context_compact_cancel_desc">返回当前对话</string>
     <string name="context_compact_no_model">还没有可用模型。请先配置模型，再压缩上下文。</string>
     <string name="context_compact_insufficient">当前上下文不足，无需压缩。</string>
+    <string name="context_compact_success">上下文已压缩</string>
+    <string name="context_compact_failed">上下文压缩失败</string>
+    <string name="context_compact_busy">请先停止当前生成，再压缩上下文。</string>
 
     <!-- Attachment picker (composer + button) -->
     <string name="attachment_picker_title_ssh">选择 SSH 文件</string>
@@ -1391,7 +1403,7 @@
     <string name="skillhub_loading_page">正在加载第 %d 页…</string>
     <string name="skillhub_load_failed_retry">加载失败，点此重试</string>
     <string name="skillhub_no_matching_skills">没有找到匹配的 Skill</string>
-    <string name="skillhub_page_count">第 %d 页 · 共 %s 个 Skill</string>
+    <string name="skillhub_page_count">第 %1$d 页 · 共 %2$s 个 Skill</string>
     <string name="skillhub_verified">已认证</string>
     <string name="skillhub_requires_api_key">需要 API Key</string>
     <string name="skillhub_view_details">，查看详情</string>
@@ -1573,6 +1585,14 @@
     <string name="extension_online_store">在线商店</string>
     <string name="extension_skillhub_store">SkillHub Skill 商店</string>
     <string name="extension_skillhub_store_desc">浏览、搜索并安全安装社区 Skill</string>
+    <string name="screen_extension_agent_row_desc">%1$s · %2$d 个工具</string>
+    <string name="screen_extension_mcp_row_desc">%1$d 个工具 · %2$s</string>
+    <string name="screen_agent_ai_unavailable">当前版本暂不支持 AI 生成</string>
+    <string name="skillhub_downloads">下载量</string>
+    <string name="skillhub_card_meta">↓ %1$s · v%2$s</string>
+    <string name="skillhub_card_stats">↓ %1$s   ☆ %2$s · v%3$s</string>
+    <string name="skillhub_publish_row_desc">将本地 Skill 发布到 SkillHub</string>
+    <string name="screen_skill_form_title">Skill 文档</string>
     <string name="chat_context_title">添加到对话</string>
     <string name="chat_context_files">项目文件</string>
     <string name="chat_context_mode">模式 · %1$s</string>
@@ -1600,4 +1620,67 @@
     <string name="chat_collapse">收起</string>
     <string name="chat_context_more">更多操作</string>
     <string name="app_name_next">LineCode Next</string>
+    <!-- Chat shell parity: drawer, composer and picker sheets -->
+    <string name="composer_attach_desc">添加文件</string>
+    <string name="chat_context_image">添加图片</string>
+    <string name="chat_mode_title">对话模式</string>
+    <string name="chat_selection_count">已选 %1$d 项</string>
+    <string name="composer_menu_thinking">思考深度</string>
+    <string name="composer_menu_mode">模式</string>
+    <string name="composer_menu_files">选择文件</string>
+    <string name="permission_mode_storage_required">需要“管理所有文件”权限才能浏览存储</string>
+    <string name="tool_call_status_done">完成</string>
+    <string name="tool_call_status_running">运行中</string>
+    <string name="tool_call_status_failed">失败</string>
+    <string name="tool_call_status_pending_review">需要确认</string>
+    <string name="tool_call_agent_tool_count">%1$d 工具</string>
+    <string name="tool_call_agent_type_explore">探索</string>
+    <string name="tool_call_agent_type_coding">编程</string>
+    <string name="tool_call_agent_running">正在执行任务…</string>
+    <string name="tool_call_agent_done">任务完成</string>
+    <string name="tool_call_agent_failed">执行失败</string>
+    <string name="tool_call_pipeline_title">Agent Pipeline</string>
+    <string name="tool_call_pipeline_running">正在创建 Agent 流水线…</string>
+    <string name="tool_call_pipeline_completed">%1$d 完成</string>
+    <string name="tool_call_pipeline_summary_running">%1$d 运行</string>
+    <string name="tool_call_pipeline_summary_pending_review">%1$d 需要确认</string>
+    <string name="tool_call_pipeline_summary_waiting">%1$d 等待中</string>
+    <string name="tool_call_pipeline_summary_failed">%1$d 失败</string>
+    <string name="tool_call_pipeline_status_waiting">等待中</string>
+    <string name="tool_call_diff_truncated">… (diff 已截断，共 %1$d 行)</string>
+    <string name="tool_call_diff_no_newline">文件末尾没有换行符</string>
+    <string name="tool_call_diff_loading">正在加载变更…</string>
+    <string name="tool_call_diff_unavailable">暂无差异</string>
+    <string name="tool_call_copy_file">复制文件内容</string>
+    <string name="tool_call_write_done">已编辑</string>
+    <string name="tool_call_write_created">已创建</string>
+    <string name="tool_call_write_reverted">已还原</string>
+    <string name="tool_call_write_unnamed">未命名文件</string>
+    <string name="tool_call_todo_empty">暂无 TODO 项。可通过调用 todo_update 工具维护任务列表。</string>
+    <string name="toolcall_preview_category_read">READ</string>
+    <string name="toolcall_preview_category_write">WRITE</string>
+    <string name="toolcall_preview_category_edit">EDIT</string>
+    <string name="toolcall_preview_category_diff">DIFF</string>
+    <string name="toolcall_preview_category_delete">DELETE</string>
+    <string name="toolcall_preview_category_shell">SHELL</string>
+    <string name="toolcall_preview_category_todo">TODO</string>
+    <string name="toolcall_preview_category_memory">MEMORY</string>
+    <string name="toolcall_preview_category_image">IMAGE_GENERATION</string>
+    <string name="toolcall_preview_category_mcp">MCP</string>
+    <string name="toolcall_preview_category_agent">AGENT</string>
+    <string name="toolcall_preview_category_pipeline">AGENT_PIPELINE</string>
+    <string name="toolcall_preview_category_generic">GENERIC</string>
+    <string name="toolcall_preview_category_phone">PHONE_CONTROL</string>
+    <string name="tool_call_input">输入</string>
+    <string name="tool_call_output">输出</string>
+    <string name="tool_call_line_count">%1$d 行</string>
+    <string name="model_capability_label">多模态支持</string>
+    <string name="model_capability_reasoning">支持推理</string>
+    <string name="model_capability_vision">支持图片输入</string>
+    <string name="model_capability_video">支持视频输入</string>
+    <string name="composer_menu_image">选择图片</string>
+    <string name="composer_menu_video">选择视频</string>
+    <string name="model_reasoning_locked">该模型不支持推理</string>
+    <string name="workspace_switch_blocked_title">当前对话进行中</string>
+    <string name="workspace_switch_blocked_message">请先新建对话后再切换工作区。</string>
 </resources>

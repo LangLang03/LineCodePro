@@ -2,16 +2,15 @@ package cn.lineai.feature.extensions;
 
 import android.content.Context;
 import android.graphics.Typeface;
-import android.view.Gravity;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
-
 
 import cn.lineai.core.kernel.time.Scheduler;
 import cn.lineai.data.api.SkillStore;
 import cn.lineai.ui.i18n.R;
 import cn.lineai.ui.kit.FormField;
+import cn.lineai.ui.kit.Icons;
 import cn.lineai.ui.kit.SettingsPage;
 import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
@@ -30,33 +29,35 @@ public final class GitHubSkillPage extends SettingsPage {
         this.scheduler = scheduler;
         this.store = store;
         Ui.padding(content, 16, 16, 16, 100);
-        url = new FormField(context, theme, R.string.skill_github_title, "",
+        content.addView(ExtensionKit.notice(context, theme, Icons.GLOBE,
+                R.string.screen_extension_detail_install_github_desc),
+                new LinearLayout.LayoutParams(-1, -2));
+        url = new FormField(context, theme, R.string.screen_extension_detail_field_github_url, "",
                 context.getString(R.string.skill_github_hint), false);
-        content.addView(url, new LinearLayout.LayoutParams(-1, -2));
-        TextView install = Ui.bold(context, context.getString(R.string.skill_github_install),
-                Tokens.FONT_MD, tokens.textOnColor);
-        install.setGravity(Gravity.CENTER);
-        install.setClickable(true);
-        install.setBackground(Ui.rounded(context, tokens.accent, 12));
-        install.setOnClickListener(v -> install(install));
-        LinearLayout.LayoutParams installParams = new LinearLayout.LayoutParams(-1, Ui.dp(context, 44));
-        installParams.topMargin = Ui.dp(context, 10);
+        url.input().setTextSize(Tokens.FONT_SM);
+        LinearLayout.LayoutParams urlParams = new LinearLayout.LayoutParams(-1, -2);
+        urlParams.topMargin = Ui.dp(context, 16);
+        content.addView(url, urlParams);
+        LinearLayout install = ExtensionKit.primaryButton(context, theme,
+                R.string.skill_github_install, 48, this::install);
+        LinearLayout.LayoutParams installParams = new LinearLayout.LayoutParams(-1, -2);
+        installParams.topMargin = Ui.dp(context, 12);
         content.addView(install, installParams);
-        status = Ui.text(context, "", Tokens.FONT_XS, tokens.textTertiary, Typeface.NORMAL);
+        status = Ui.text(context, "", Tokens.FONT_SM, theme.current().textTertiary,
+                Typeface.NORMAL);
         status.setLineSpacing(Ui.dp(context, 3), 1f);
         LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(-1, -2);
-        statusParams.topMargin = Ui.dp(context, 10);
+        statusParams.topMargin = Ui.dp(context, 12);
         content.addView(status, statusParams);
+        theme.bind(t -> status.setTextColor(t.textTertiary));
     }
 
-    private void install(TextView button) {
+    private void install() {
         String value = url.value();
         if (!value.startsWith("https://")) {
-            status.setText(getContext().getString(R.string.skill_github_failed,
-                    getContext().getString(R.string.skill_github_hint)));
+            status.setText(getContext().getString(R.string.skill_github_invalid_url));
             return;
         }
-        button.setEnabled(false);
         status.setText(getContext().getString(R.string.skillhub_loading));
         RemoteSkillInstall.run(scheduler, store,
                 () -> GitHubSkillDownloader.download(value), "github.zip",
@@ -66,9 +67,10 @@ public final class GitHubSkillPage extends SettingsPage {
                         Toast.makeText(getContext(), R.string.screen_skill_imported,
                                 Toast.LENGTH_SHORT).show();
                     }
+
                     public void onError(String message) {
-                        button.setEnabled(true);
-                        status.setText(getContext().getString(R.string.skill_github_failed, message));
+                        status.setText(getContext().getString(R.string.skill_github_failed,
+                                message));
                     }
                 });
     }

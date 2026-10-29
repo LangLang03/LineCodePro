@@ -19,7 +19,7 @@ import cn.lineai.core.kernel.error.ErrorCode;
  */
 public final class LineCodeDatabase {
 
-    public static final int VERSION = 12;
+    public static final int VERSION = 13;
 
     private final File file;
     private SQLiteDatabase database;
@@ -76,7 +76,8 @@ public final class LineCodeDatabase {
         // Every statement is CREATE ... IF NOT EXISTS, so replaying the schema adds new tables
         // without touching existing rows.
         List<String> statements = new ArrayList<>(schemaStatements());
-        if (fromVersion == 3) statements.addAll(modelColumnStatements());
+        // Idempotent: replayed on every upgrade so newly added model columns land on old rows.
+        statements.addAll(modelColumnStatements());
         db.beginTransaction();
         try {
             for (String statement : statements) {
@@ -109,6 +110,15 @@ public final class LineCodeDatabase {
     }
 
     private static List<String> schemaStatements() {
+        List<String> statements = new ArrayList<>();
+        statements.addAll(conversationSchema());
+        statements.addAll(settingsAndModelSchema());
+        statements.addAll(extensionSchema());
+        statements.addAll(projectSchema());
+        return statements;
+    }
+
+    private static List<String> conversationSchema() {
         List<String> statements = new ArrayList<>();
         statements.add("CREATE TABLE IF NOT EXISTS conversations ("
                 + "id TEXT PRIMARY KEY,"
@@ -156,6 +166,11 @@ public final class LineCodeDatabase {
                 + "name TEXT NOT NULL DEFAULT '',"
                 + "arguments TEXT NOT NULL DEFAULT '',"
                 + "PRIMARY KEY(message_id, idx))");
+        return statements;
+    }
+
+    private static List<String> settingsAndModelSchema() {
+        List<String> statements = new ArrayList<>();
         statements.add("CREATE TABLE IF NOT EXISTS settings ("
                 + "key TEXT PRIMARY KEY,"
                 + "value TEXT NOT NULL DEFAULT '',"
@@ -175,6 +190,8 @@ public final class LineCodeDatabase {
                 + "enabled INTEGER NOT NULL DEFAULT 1,"
                 + "is_default INTEGER NOT NULL DEFAULT 0,"
                 + "supports_vision INTEGER NOT NULL DEFAULT 0,"
+                + "supports_reasoning INTEGER NOT NULL DEFAULT 1,"
+                + "supports_video INTEGER NOT NULL DEFAULT 0,"
                 + "supports_tools INTEGER NOT NULL DEFAULT 1,"
                 + "provider_label TEXT NOT NULL DEFAULT '',"
                 + "tool_call_limit INTEGER NOT NULL DEFAULT 200,"
@@ -204,6 +221,11 @@ public final class LineCodeDatabase {
                 + "last_used_at INTEGER NOT NULL DEFAULT 0,"
                 + "use_count INTEGER NOT NULL DEFAULT 0)");
         statements.add("CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope, project_id)");
+        return statements;
+    }
+
+    private static List<String> extensionSchema() {
+        List<String> statements = new ArrayList<>();
         statements.add("CREATE TABLE IF NOT EXISTS extension_agents ("
                 + "id TEXT PRIMARY KEY,"
                 + "enabled INTEGER NOT NULL DEFAULT 1,"
@@ -238,6 +260,11 @@ public final class LineCodeDatabase {
                 + "created_at INTEGER NOT NULL DEFAULT 0)");
         statements.add("CREATE INDEX IF NOT EXISTS idx_file_diffs_created "
                 + "ON file_diffs(created_at DESC)");
+        return statements;
+    }
+
+    private static List<String> projectSchema() {
+        List<String> statements = new ArrayList<>();
         statements.add("CREATE TABLE IF NOT EXISTS projects ("
                 + "id TEXT PRIMARY KEY,"
                 + "name TEXT NOT NULL DEFAULT '',"
@@ -267,6 +294,8 @@ public final class LineCodeDatabase {
         statements.add("ALTER TABLE models ADD COLUMN compression_model_id TEXT NOT NULL DEFAULT ''");
         statements.add("ALTER TABLE models ADD COLUMN local_model_path TEXT NOT NULL DEFAULT ''");
         statements.add("ALTER TABLE models ADD COLUMN local_acceleration TEXT NOT NULL DEFAULT 'automatic'");
+        statements.add("ALTER TABLE models ADD COLUMN supports_reasoning INTEGER NOT NULL DEFAULT 1");
+        statements.add("ALTER TABLE models ADD COLUMN supports_video INTEGER NOT NULL DEFAULT 0");
         return statements;
     }
 }

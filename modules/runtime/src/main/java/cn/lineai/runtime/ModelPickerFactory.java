@@ -131,10 +131,6 @@ public final class ModelPickerFactory {
     }
 
     static void dismiss(View panel) {
-        ViewParent parent = panel.getParent();
-        while (parent != null && !(parent instanceof Dialog)) {
-            parent = parent.getParent();
-        }
-        if (parent instanceof Dialog) ((Dialog) parent).dismiss();
+        cn.lineai.ui.kit.Sheets.dismiss(panel);
     }
 }

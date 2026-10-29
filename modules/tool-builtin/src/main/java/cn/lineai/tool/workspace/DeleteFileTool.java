@@ -27,6 +27,8 @@ public final class DeleteFileTool implements Tool {
                 .required("path").build();
     }
 
+    @Override public boolean needsLocalWorkspace() { return true; }
+
     @Override public boolean mutating() { return true; }
 
     @Override public ToolPresentation presentation(JSONObject arguments) {

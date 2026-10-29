@@ -3,6 +3,7 @@ package cn.lineai.feature.chat;
 import cn.lineai.core.model.ChatMode;
 import cn.lineai.data.api.SettingsStore;
 import cn.lineai.tool.api.Tool;
+import cn.lineai.tool.api.ToolKind;
 import cn.lineai.tool.api.ToolRegistry;
 
 /** Tool permission modes shared by the controller and the header sheet. */
@@ -25,14 +26,22 @@ public final class ToolModes {
         settings.put(CHAT_MODE_KEY, ChatMode.normalize(mode));
     }
 
+    /**
+     * Session-mode filter: control tools are injected only by the control mode.
+     *
+     * <p>Agent mode keeps every other family (including mutating workspace tools), chat/plan keep
+     * read-only families; phone tools belong exclusively to control.</p>
+     */
     public static ToolRegistry filterChatMode(String chatMode, ToolRegistry source) {
         String mode = ChatMode.normalize(chatMode);
-        if (ChatMode.AGENT.equals(mode)) return source;
         ToolRegistry result = new ToolRegistry();
         for (Tool tool : source.all()) {
+            boolean phone = tool.kind() == ToolKind.PHONE;
             if (ChatMode.CONTROL.equals(mode)) {
-                if (tool.kind() == cn.lineai.tool.api.ToolKind.PHONE) result.register(tool);
-            } else if (!tool.mutating() && tool.kind() != cn.lineai.tool.api.ToolKind.PHONE) {
+                if (phone) result.register(tool);
+            } else if (ChatMode.AGENT.equals(mode)) {
+                if (!phone) result.register(tool);
+            } else if (!tool.mutating() && !phone) {
                 result.register(tool);
             }
         }

@@ -15,6 +15,7 @@ import java.util.Objects;
 public final class BackStack implements Navigator {
     private final ScreenRegistry registry;
     private final MainMailbox<List<ScreenKey<?, ?>>> mailbox;
+    private boolean lastPushAnimated = true;
 
     public BackStack(ScreenRegistry registry, Scheduler scheduler) {
         this.registry = Objects.requireNonNull(registry, "registry");
@@ -22,7 +23,7 @@ public final class BackStack implements Navigator {
     }
 
     @Override
-    public <S extends UiState, P extends Params> void push(ScreenKey<S, P> key) {
+    public <S extends UiState, P extends Params> void push(ScreenKey<S, P> key, boolean animate) {
         Objects.requireNonNull(key, "key");
         if (mailbox.isClosed()) {
             return;
@@ -34,8 +35,19 @@ public final class BackStack implements Navigator {
             }
             List<ScreenKey<?, ?>> next = new ArrayList<>(entries());
             next.add(key);
+            lastPushAnimated = animate;
             publish(next);
         });
+    }
+
+    /**
+     * Whether the most recent published push asked for the page transition.
+     *
+     * <p>The screen host reads this synchronously from the navigation observer so a silent push
+     * never flickers a slide animation on its first frame.</p>
+     */
+    public boolean lastPushAnimated() {
+        return lastPushAnimated;
     }
 
     @Override

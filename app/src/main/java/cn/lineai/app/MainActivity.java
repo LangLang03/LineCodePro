@@ -237,6 +237,70 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
         navigation.push(ModelScreens.LIST.key(Params.Empty.INSTANCE));
     }
 
+    @Override public void onModelPicker() {
+        hideKeyboard();
+        cn.lineai.runtime.DialogFactory.showModelPicker(this);
+    }
+
+    @Override public cn.lineai.tool.api.ToolPresentation toolPresentation(String name,
+                                                                          String argumentsJson) {
+        return graph.tools().registry().presentation(name, argumentsJson);
+    }
+
+    @Override public void loadWorkspaceTree(
+            java.util.function.Consumer<cn.lineai.feature.chat.DrawerPanel.FileNode> callback) {
+        cn.lineai.runtime.ChatSheets.loadWorkspaceTree(this, callback);
+    }
+
+    @Override public cn.lineai.feature.chat.ChatCapabilities capabilities() {
+        return cn.lineai.feature.chat.ChatCapabilities.of(graph.models().selected());
+    }
+
+    @Override public void onVideoPicker() {
+        HostActions.pickVisualMedia(this, "video/*", cn.lineai.runtime.SafActions.REQUEST_VIDEO);
+    }
+
+    @Override public void onAttachmentPicker() {
+        hideKeyboard();
+        cn.lineai.runtime.ChatSheets.showAttachmentTree(this,
+                chat::fileAttachmentPaths, chat::toggleFileAttachment);
+    }
+
+    @Override public void onImagePicker() {
+        onAttach();
+    }
+
+    @Override public boolean projectRemovable() {
+        return graph.projects().list().size() > 1;
+    }
+
+    @Override public void onProjectRemoveRequested() {
+        cn.lineai.core.model.Project selected = graph.projects().selected();
+        if (selected == null || !projectRemovable()) {
+            return;
+        }
+        final cn.lineai.core.model.Project removing = selected;
+        Dialogs.confirm(this, tokens, getString(R.string.drawer_project_remove_title),
+                getString(R.string.drawer_project_remove_message, removing.name),
+                getString(R.string.common_cancel), getString(R.string.common_delete),
+                confirmed -> {
+                    if (!confirmed) {
+                        return;
+                    }
+                    graph.projects().delete(removing.id);
+                    applyProjectLabel(graph.projects().selected());
+                    graph.chat().refreshModel();
+                });
+    }
+
+    @Override public void showChatAttachmentPicker() {
+        onAttachmentPicker();
+    }
+
+    @Override public void pickChatImage() {
+        onAttach();
+    }
+
     @Override public void onReasoning() {
         hideKeyboard();
         cn.lineai.runtime.DialogFactory.showReasoning(this);
@@ -261,81 +325,32 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
         return project == null ? "" : project.path;
     }
 
+    @Override public cn.lineai.feature.chat.toolcall.ToolDiffLookup.Snapshot toolDiff(String diffId) {
+        return HostActions.toolDiff(graph, diffId);
+    }
+
     @Override public void openFile(String relativePath) {
-        cn.lineai.core.model.Project project = graph.projects().selected();
-        if (project == null) {
-            Toast.makeText(this, R.string.drawer_empty_files, Toast.LENGTH_SHORT).show();
-            return;
-        }
-        try {
-            java.io.File base = new java.io.File(project.path).getCanonicalFile();
-            java.io.File file = new java.io.File(base, relativePath == null ? "" : relativePath)
-                    .getCanonicalFile();
-            if (!file.equals(base) && !file.getPath().startsWith(base.getPath()
-                    + java.io.File.separator)) {
-                throw new SecurityException("File escapes the workspace");
-            }
-            if (!file.isFile()) {
-                Toast.makeText(this, R.string.drawer_empty_files, Toast.LENGTH_SHORT).show();
-                return;
-            }
-            Uri uri = WorkspaceFileProvider.uriFor(this, file);
-            String extension = android.webkit.MimeTypeMap.getFileExtensionFromUrl(file.getName());
-            String mime = extension == null ? null
-                    : android.webkit.MimeTypeMap.getSingleton()
-                            .getMimeTypeFromExtension(extension.toLowerCase(java.util.Locale.ROOT));
-            Intent view = new Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(uri, mime == null ? "*/*" : mime)
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            view.setClipData(android.content.ClipData.newRawUri("", uri));
-            startActivity(Intent.createChooser(view, getString(R.string.common_open_with)));
-        } catch (Exception error) {
-            Toast.makeText(this, R.string.browser_open_failed, Toast.LENGTH_SHORT).show();
-        }
+        HostActions.openWorkspaceFile(this, graph, relativePath);
     }
 
     private void hideKeyboard() {
         View focused = getCurrentFocus();
         if (focused != null) {
-            android.view.inputmethod.InputMethodManager input = getSystemService(android.view.inputmethod.InputMethodManager.class);
+            android.view.inputmethod.InputMethodManager input =
+                    getSystemService(android.view.inputmethod.InputMethodManager.class);
             input.hideSoftInputFromWindow(focused.getWindowToken(), 0);
             focused.clearFocus();
         }
     }
 
     @Override public void onProject() {
-        navigation.push(WorkspaceScreens.PROJECTS.key(Params.Empty.INSTANCE));
+        // The workspace page is a utility surface: it appears over the chat instantly instead
+        // of running the page slide transition.
+        navigation.push(WorkspaceScreens.PROJECTS.key(Params.Empty.INSTANCE), false);
     }
 
     @Override public java.util.List<cn.lineai.core.model.WorkspaceNode> workspaceFiles(String path) {
-        cn.lineai.core.model.Project project = graph.projects().selected();
-        if (project == null) return java.util.Collections.emptyList();
-        java.io.File baseDir = new java.io.File(project.path);
-        if (!baseDir.isDirectory()) return java.util.Collections.emptyList();
-        java.util.List<cn.lineai.core.model.WorkspaceNode> nodes = new java.util.ArrayList<>();
-        try {
-            java.io.File base = baseDir.getCanonicalFile();
-            java.io.File dir = path == null || path.isEmpty()
-                    ? base : new java.io.File(base, path).getCanonicalFile();
-            if (!dir.equals(base) && !dir.getPath().startsWith(base.getPath() + java.io.File.separator)) {
-                return nodes;
-            }
-            java.io.File[] children = dir.listFiles();
-            if (children == null) return nodes;
-            java.util.Arrays.sort(children, (a, b) -> {
-                if (a.isDirectory() != b.isDirectory()) return a.isDirectory() ? -1 : 1;
-                return a.getName().compareToIgnoreCase(b.getName());
-            });
-            for (java.io.File child : children) {
-                if (nodes.size() >= 300) break;
-                String relative = base.toPath().relativize(child.toPath()).toString();
-                nodes.add(new cn.lineai.core.model.WorkspaceNode(
-                        child.getName(), relative, child.isDirectory()));
-            }
-        } catch (java.io.IOException ignored) {
-            return java.util.Collections.emptyList();
-        }
-        return nodes;
+        return HostActions.workspaceFiles(graph, path);
     }
     @Override public void onPermission() {
         showPermissionSheet();
@@ -346,25 +361,11 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
     }
 
     @Override public void onAttachFile() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
-        try {
-            startActivityForResult(intent, cn.lineai.runtime.SafActions.REQUEST_ATTACH_FILE);
-        } catch (ActivityNotFoundException error) {
-            Toast.makeText(this, R.string.rewrite_not_available, Toast.LENGTH_SHORT).show();
-        }
+        HostActions.pickDocument(this, "*/*", null, cn.lineai.runtime.SafActions.REQUEST_ATTACH_FILE);
     }
 
     @Override public void onAttach() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("image/*");
-        try {
-            startActivityForResult(intent, cn.lineai.runtime.SafActions.REQUEST_ATTACH);
-        } catch (ActivityNotFoundException error) {
-            Toast.makeText(this, R.string.rewrite_not_available, Toast.LENGTH_SHORT).show();
-        }
+        HostActions.pickVisualMedia(this, "image/*", cn.lineai.runtime.SafActions.REQUEST_ATTACH);
     }
 
     @Override public void pickToolModel(boolean understanding) {
@@ -404,80 +405,36 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
         }
     }
 
-    private void loadStorage(java.util.function.Consumer<cn.lineai.data.api.StorageStats> consumer) {
-        graph.graph().get(Scheduler.class).io(() -> {
-            cn.lineai.data.api.StorageStats stats = graph.storageStats().load();
-            graph.graph().get(Scheduler.class).main(() -> consumer.accept(stats));
-        });
-    }
 
     @Override public void updateKeepAliveService() {
-        cn.lineai.core.model.UiPreferences values = graph.preferences().state().values;
-        boolean wake = values.keepAliveWakeLock();
-        boolean foreground = values.keepAliveForeground();
-        boolean audio = values.keepAliveFakeAudio();
-        cn.lineai.platform.KeepAliveService.start(this, wake, foreground, audio);
-        if ((foreground || audio) && Build.VERSION.SDK_INT >= 33
-                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
-                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[] {android.Manifest.permission.POST_NOTIFICATIONS}, 7301);
-        }
+        HostActions.updateKeepAlive(this, graph);
     }
 
     @Override public boolean isIgnoringBatteryOptimizations() {
-        android.os.PowerManager power = (android.os.PowerManager)
-                getSystemService(android.os.PowerManager.class);
-        return power == null || power.isIgnoringBatteryOptimizations(getPackageName());
+        return HostActions.isIgnoringBatteryOptimizations(this);
     }
 
     @Override public void requestBatteryOptimizationExemption() {
-        try {
-            Intent intent = new Intent(
-                    android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                    Uri.parse("package:" + getPackageName()));
-            startActivity(intent);
-        } catch (ActivityNotFoundException error) {
-            startActivity(new Intent(
-                    android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
-        }
+        HostActions.requestBatteryOptimizationExemption(this);
     }
 
     @Override public void probeModel(cn.lineai.core.model.ModelConfig model) {
         cn.lineai.runtime.ModelPickerFactory.probe(this, model);
     }
 
-    private boolean isNightMode() {
-        return (getResources().getConfiguration().uiMode
-                & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
-                == android.content.res.Configuration.UI_MODE_NIGHT_YES;
-    }
 
     @Override public Activity activity() { return this; }
     @Override public Tokens tokens() { return tokens; }
     @Override public AppGraph graph() { return graph; }
     @Override public BackStack navigation() { return navigation; }
     @Override public void pickSkillArchive() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
-        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {
-                "application/zip", "text/markdown", "text/plain"});
-        try {
-            startActivityForResult(intent, cn.lineai.runtime.SafActions.REQUEST_SKILL_IMPORT);
-        } catch (ActivityNotFoundException error) {
-            Toast.makeText(this, R.string.rewrite_not_available, Toast.LENGTH_SHORT).show();
-        }
+        HostActions.pickDocument(this, "*/*", new String[] {
+                "application/zip", "text/markdown", "text/plain"},
+                cn.lineai.runtime.SafActions.REQUEST_SKILL_IMPORT);
     }
 
     @Override public void pickLocalModelFile() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
-        try {
-            startActivityForResult(intent, cn.lineai.runtime.SafActions.REQUEST_MODEL_FILE);
-        } catch (ActivityNotFoundException error) {
-            Toast.makeText(this, R.string.rewrite_not_available, Toast.LENGTH_SHORT).show();
-        }
+        HostActions.pickDocument(this, "*/*", null, cn.lineai.runtime.SafActions.REQUEST_MODEL_FILE);
     }
 
     @Override public void addChatImage(String path) { chat.addAttachment(path); }
@@ -485,31 +442,11 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
     @Override public void addChatFile(String path) { chat.addFileAttachment(path); }
 
     @Override public void openExternalWorkspace() {
-        if (android.os.Build.VERSION.SDK_INT >= 30
-                && !android.os.Environment.isExternalStorageManager()) {
-            Dialogs.confirm(this, tokens, getString(R.string.header_permission_desc),
-                    getString(R.string.permission_denied_manage_all),
-                    getString(R.string.common_cancel), getString(R.string.common_confirm),
-                    confirmed -> {
-                        if (!confirmed) return;
-                        Intent intent = new Intent(
-                                android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                Uri.parse("package:" + getPackageName()));
-                        try {
-                            startActivity(intent);
-                        } catch (ActivityNotFoundException error) {
-                            Toast.makeText(this, R.string.rewrite_not_available,
-                                    Toast.LENGTH_SHORT).show();
-                        }
-                    });
-            return;
-        }
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-        try {
-            startActivityForResult(intent, cn.lineai.runtime.SafActions.REQUEST_TREE);
-        } catch (ActivityNotFoundException error) {
-            Toast.makeText(this, R.string.rewrite_not_available, Toast.LENGTH_SHORT).show();
-        }
+        HostActions.openExternalWorkspace(this, tokens, graph);
+    }
+
+    @Override public void shareWorkspace() {
+        HostActions.shareWorkspace(this);
     }
 
     @Override public void applyProjectLabel(cn.lineai.core.model.Project project) {
@@ -528,25 +465,11 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
 
 
     private void showCrashIfNeeded() {
-        java.io.File crash = cn.lineai.runtime.CrashHandler.crashFile(this);
-        if (!crash.isFile()) return;
-        Intent intent = new Intent(this, CrashActivity.class);
-        intent.putExtra("crash_file", crash.getAbsolutePath());
-        startActivity(intent);
+        HostActions.showCrashIfNeeded(this);
     }
 
     private void importCrashLog() {
-        java.io.File file = cn.lineai.runtime.CrashHandler.pendingFile(this);
-        if (!file.isFile()) return;
-        try {
-            String detail = new String(java.nio.file.Files.readAllBytes(file.toPath()),
-                    java.nio.charset.StandardCharsets.UTF_8);
-            graph.errorLogs().record(getString(R.string.crash_title),
-                    getString(R.string.crash_subtitle), detail);
-            file.delete();
-        } catch (Exception error) {
-            android.util.Log.e("LineCodeCrash", "cannot import crash log", error);
-        }
+        HostActions.importCrashLog(this, graph);
     }
 
     @Override protected void onStart() { super.onStart(); chat.start(); }

@@ -1319,7 +1319,7 @@
     <string name="skillhub_loading_page">正在加载第 %d 页…</string>
     <string name="skillhub_load_failed_retry">加载失败，点此重试</string>
     <string name="skillhub_no_matching_skills">没有找到匹配的 Skill</string>
-    <string name="skillhub_page_count">第 %d 页 · 共 %s 个 Skill</string>
+    <string name="skillhub_page_count">第 %1$d 页 · 共 %2$s 个 Skill</string>
     <string name="skillhub_verified">已认证</string>
     <string name="skillhub_requires_api_key">需要 API Key</string>
     <string name="skillhub_view_details">，查看详情</string>

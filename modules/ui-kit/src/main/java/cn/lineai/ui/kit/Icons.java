@@ -94,6 +94,7 @@ public final class Icons {
     public static final int TEXT_CURSOR = 82;
     public static final int CHECK_SQUARE = 83;
     public static final int IMAGE = 84;
+    public static final int VIDEO = 85;
 
     private Icons() {
     }
@@ -185,6 +186,7 @@ public final class Icons {
             case TEXT_CURSOR: return R.drawable.ic_lucide_text_cursor;
             case CHECK_SQUARE: return R.drawable.ic_lucide_check_square;
             case IMAGE: return R.drawable.ic_lucide_image;
+            case VIDEO: return R.drawable.ic_lucide_video;
             default: return R.drawable.ic_lucide_plus;
         }
     }

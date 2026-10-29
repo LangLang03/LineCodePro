@@ -79,9 +79,13 @@ public class ToolModesTest {
         assertEquals(1, control.all().size());
     }
 
-    @Test public void agentKeepsEverything() {
-        ToolRegistry source = new ToolRegistry().register(tool("write", true));
-        assertSame(source, ToolModes.filterChatMode("agent", source));
+    @Test public void agentKeepsWorkspaceToolsButDropsPhoneTools() {
+        ToolRegistry source = new ToolRegistry().register(tool("write", true))
+                .register(phone("phone_click"));
+        ToolRegistry agent = ToolModes.filterChatMode("agent", source);
+        assertTrue(agent.find("write") != null);
+        assertNull(agent.find("phone_click"));
+        assertEquals(1, agent.all().size());
     }
 
     @Test public void otherModesKeepTheSameRegistry() {

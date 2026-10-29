@@ -68,13 +68,29 @@ and process auto-expand preferences are applied by `MessageRow`/`ToolRow` withou
 - Debug: `./gradlew :app:assembleDebug`
 - Unit tests: `./gradlew test :app:testDebugUnitTest`
 - Guards: `./gradlew verifyAll :arch-test:test`
-- Release: `./gradlew clean :app:assembleRelease` (signing from `signing.properties`)
+- Release: `./gradlew clean :app:assembleRelease` (slim) and
+  `./gradlew clean :app:assembleRelease -PlinecodeEnableLocalModel=true` (local model); both
+  are signed from `signing.properties` and publish as `-slim.APK` / `-local.APK`.
 - Lint: `./gradlew :app:lintVitalRelease`
 
 Architecture guards: `linecode.java`, `linecode.android`, `linecode.verify`, `linecode.app`
 (build-logic); they enforce package ownership, dependency direction, file size, CJK-free code,
-no raw threads, no UI string concatenation, stringly-typed state, en/zh/ru string key parity, and
-prompt-catalog consistency (manifest ↔ `PromptId` ↔ placeholders, no duplicate or orphan assets).
+no raw threads, no UI string concatenation, stringly-typed state, en/zh/ru string key parity,
+prompt-catalog consistency (manifest ↔ `PromptId` ↔ placeholders, no duplicate or orphan assets),
+and no hand-written JSON object literals in main sources (`noHandWrittenJsonObjects`).
+
+## Agent environment
+
+- When a built-in file tool is available (`read` / `edit` / `write` / `glob` / `grep`), use it to
+  change files. Do not patch source files through `bash`, `python`, `sed` or heredocs; the shell is
+  for builds, tests and repository commands only.
+
+## Versioning and changelog
+
+- `releaseVersionName` in `app/build.gradle.kts` is the public version (e.g. `2.0.0`, no suffix);
+  `versionCode` increases by one for every release. Bump both in the same commit as the changelog.
+- `update.md` is the single changelog, newest version first. Every version section must be
+  bilingual: an English part first, then a Chinese part, describing the same changes.
 
 ## Do not / 禁止事项
 
@@ -87,7 +103,8 @@ prompt-catalog consistency (manifest ↔ `PromptId` ↔ placeholders, no duplica
 - Do not branch on tool names, tool families or domain names in UI code. Add metadata through
   `ToolPresentation` / `ToolIcon` and let `ToolRegistry.presentation(...)` resolve it.
 - Do not hand-concatenate JSON, tool schemas or prompts. Use `ToolSchemaBuilder`, the prompt assets
-  in `engine-prompt`, `PromptRenderer` and the manifest/PromptId guards.
+  in `engine-prompt`, `PromptRenderer` and the manifest/PromptId guards. A Java string literal that
+  starts with `{"` fails `noHandWrittenJsonObjects` (the tool-card preview samples are exempt).
 - Do not create a second Skill/SkillHub/GitHub install path. Reuse `SkillStore.importSkill` and
   `RemoteSkillInstall`.
 - Do not add `new Thread`, `Executors`, `Handler`, locks/latches, `Thread.sleep` or `while(true)` in
@@ -113,7 +130,9 @@ prompt-catalog consistency (manifest ↔ `PromptId` ↔ placeholders, no duplica
 - Do not bypass `PathPolicy` except through the explicit user switch, and never log or archive
   credentials, API keys, signing material or private source.
 - Do not commit `.workbuddy/`, `signing.properties`, build outputs, `local.properties`, generated
-  archives or native model binaries. They are intentionally ignored.
+  archives or GGUF model files. They are intentionally ignored. The vendored llama.cpp headers and
+  arm64 runtime in `third_party/llama-cpp` are a deliberate exception so CI can build the local
+  model APK without a sibling checkout.
 - Do not add CI on both pull requests and master merges. PRs are checked once; a master merge is
   handled by Release. Keep the CI trigger limited to pull requests.
 
@@ -124,4 +143,4 @@ prompt-catalog consistency (manifest ↔ `PromptId` ↔ placeholders, no duplica
 - SkillHub integration covers store search/install, detail with SKILL.md and comments, WebView login
   and publishing through the official API.
 - Local GGUF models require the arm64 native build (`linecodeEnableLocalModel=true` and the
-  `../LineCodePro-C++` llama.cpp source/prebuilt directories).
+  vendored `third_party/llama-cpp` headers/prebuilt runtime).

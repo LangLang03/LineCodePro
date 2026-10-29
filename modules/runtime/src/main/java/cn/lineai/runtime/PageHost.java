@@ -49,6 +49,21 @@ public interface PageHost {
 
     void openExternalWorkspace();
 
+    /** Opens the workspace attachment tree picker used by the composer plus button. */
+    default void showChatAttachmentPicker() {
+        unavailable();
+    }
+
+    /** Opens the system picker for another app to read/write the LineCode workspace. */
+    default void shareWorkspace() {
+        unavailable();
+    }
+
+    /** Opens the system image picker for the composer long-press action. */
+    default void pickChatImage() {
+        unavailable();
+    }
+
     void applyProjectLabel(Project project);
 
 

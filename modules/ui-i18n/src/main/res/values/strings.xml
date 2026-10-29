@@ -395,8 +395,9 @@
     <string name="screen_model_add_context_length_label">Context length</string>
     <string name="screen_model_add_context_length_hint">Recommended to start from 4096 on phones; model ID will auto-tag context after saving.</string>
     <string name="model_field_context_size">Context size</string>
-    <string name="model_field_context_size_hint">e.g. 128K or 128000</string>
+    <string name="model_field_context_size_hint">e.g. 128K, 1M or 128000</string>
     <string name="model_field_context_size_hint_desc">Supports k / m units (case-insensitive). Leave empty to fall back to the model default.</string>
+    <string name="model_field_context_invalid">Enter a context size such as 128K, 1M or 128000</string>
     <string name="screen_model_add_acceleration_label">Acceleration</string>
     <string name="screen_model_add_acceleration_auto">Auto</string>
     <string name="screen_model_add_acceleration_cpu">CPU</string>
@@ -973,6 +974,10 @@
     <string name="sheet_title_project">Project</string>
     <string name="workspace_open_folder">Open local folder</string>
     <string name="workspace_open_folder_desc">Pick an existing folder on this device and use it as the workspace.</string>
+    <string name="workspace_share">Share with other apps</string>
+    <string name="workspace_open_local">Open local project</string>
+    <string name="workspace_open_local_desc">Choose a writable local directory with the system picker</string>
+    <string name="workspace_create_desc">Create a managed project under .linecode/project</string>
     <string name="workspace_changes_title">Changes</string>
     <string name="workspace_changes_empty">No file changes yet.</string>
     <string name="workspace_changes_revert">Revert</string>
@@ -1191,7 +1196,10 @@
     <string name="screen_error_logs_title">Error logs</string>
     <string name="screen_error_logs_section_title">Logs</string>
     <string name="screen_error_logs_empty">No error logs</string>
+    <string name="screen_error_logs_loading">Loading error logs…</string>
+    <string name="screen_error_logs_load_failed">Unable to load error logs</string>
     <string name="screen_error_logs_cleared">Error logs cleared</string>
+    <string name="screen_error_logs_clear_failed">Unable to clear error logs</string>
     <string name="screen_error_logs_open_with">Open log with</string>
     <string name="screen_error_logs_open_failed">Unable to open log</string>
 
@@ -1249,6 +1257,7 @@
     <string name="permission_mode_readonly_desc">Only read, search and list directory are allowed; writing and shell are disabled</string>
     <string name="permission_mode_manage_all_files">Manage all files permission</string>
     <string name="permission_mode_storage_granted">Granted, can access file storage</string>
+    <string name="permission_mode_storage_settings_unavailable">Unable to open permission settings</string>
 
     <!-- Context compaction sheet and notices -->
     <string name="context_compact_confirm">Confirm compact</string>
@@ -1256,6 +1265,9 @@
     <string name="context_compact_cancel_desc">Return to current chat</string>
     <string name="context_compact_no_model">No model available. Please configure a model before compacting context.</string>
     <string name="context_compact_insufficient">Insufficient context, no compaction needed.</string>
+    <string name="context_compact_success">Context compacted</string>
+    <string name="context_compact_failed">Context compaction failed</string>
+    <string name="context_compact_busy">Stop the current generation before compacting context.</string>
 
     <!-- Attachment picker (composer + button) -->
     <string name="attachment_picker_title_ssh">Select SSH file</string>
@@ -1390,7 +1402,7 @@
     <string name="skillhub_loading_page">Loading page %d…</string>
     <string name="skillhub_load_failed_retry">Load failed, click here to retry</string>
     <string name="skillhub_no_matching_skills">No matching Skills found</string>
-    <string name="skillhub_page_count">Page %d · %s Skills total</string>
+    <string name="skillhub_page_count">Page %1$d · %2$s Skills total</string>
     <string name="skillhub_verified">Verified</string>
     <string name="skillhub_requires_api_key">Requires API Key</string>
     <string name="skillhub_view_details">, view details</string>
@@ -1572,6 +1584,14 @@
     <string name="extension_online_store">Online Store</string>
     <string name="extension_skillhub_store">SkillHub Skill Store</string>
     <string name="extension_skillhub_store_desc">Browse, search and safely install community Skills</string>
+    <string name="screen_extension_agent_row_desc">%1$s · %2$d tools</string>
+    <string name="screen_extension_mcp_row_desc">%1$d tools · %2$s</string>
+    <string name="screen_agent_ai_unavailable">AI writer is not available in this build</string>
+    <string name="skillhub_downloads">Downloads</string>
+    <string name="skillhub_card_meta">↓ %1$s · v%2$s</string>
+    <string name="skillhub_card_stats">↓ %1$s   ☆ %2$s · v%3$s</string>
+    <string name="skillhub_publish_row_desc">Upload a local Skill to SkillHub</string>
+    <string name="screen_skill_form_title">Skill document</string>
     <string name="chat_context_title">Add to conversation</string>
     <string name="chat_context_files">Project files</string>
     <string name="chat_context_mode">Mode · %1$s</string>
@@ -1599,4 +1619,67 @@
     <string name="chat_collapse">Collapse</string>
     <string name="chat_context_more">More actions</string>
     <string name="app_name_next">LineCode Next</string>
+    <!-- Chat shell parity: drawer, composer and picker sheets -->
+    <string name="composer_attach_desc">Attach files</string>
+    <string name="chat_context_image">Attach image</string>
+    <string name="chat_mode_title">Chat mode</string>
+    <string name="chat_selection_count">Selected %1$d</string>
+    <string name="composer_menu_thinking">Thinking depth</string>
+    <string name="composer_menu_mode">Mode</string>
+    <string name="composer_menu_files">Choose files</string>
+    <string name="permission_mode_storage_required">Manage all files permission is required to browse storage</string>
+    <string name="tool_call_status_done">Done</string>
+    <string name="tool_call_status_running">Running</string>
+    <string name="tool_call_status_failed">Failed</string>
+    <string name="tool_call_status_pending_review">Needs confirmation</string>
+    <string name="tool_call_agent_tool_count">%1$d tools</string>
+    <string name="tool_call_agent_type_explore">Explore</string>
+    <string name="tool_call_agent_type_coding">Coding</string>
+    <string name="tool_call_agent_running">Running task…</string>
+    <string name="tool_call_agent_done">Task completed</string>
+    <string name="tool_call_agent_failed">Task failed</string>
+    <string name="tool_call_pipeline_title">Agent Pipeline</string>
+    <string name="tool_call_pipeline_running">Building Agent pipeline…</string>
+    <string name="tool_call_pipeline_completed">%1$d done</string>
+    <string name="tool_call_pipeline_summary_running">%1$d running</string>
+    <string name="tool_call_pipeline_summary_pending_review">%1$d need confirmation</string>
+    <string name="tool_call_pipeline_summary_waiting">%1$d waiting</string>
+    <string name="tool_call_pipeline_summary_failed">%1$d failed</string>
+    <string name="tool_call_pipeline_status_waiting">Waiting</string>
+    <string name="tool_call_diff_truncated">… (diff truncated, total %1$d lines)</string>
+    <string name="tool_call_diff_no_newline">No newline at end of file</string>
+    <string name="tool_call_diff_loading">Loading changes…</string>
+    <string name="tool_call_diff_unavailable">No diff available</string>
+    <string name="tool_call_copy_file">Copy file contents</string>
+    <string name="tool_call_write_done">Edited</string>
+    <string name="tool_call_write_created">Created</string>
+    <string name="tool_call_write_reverted">Reverted</string>
+    <string name="tool_call_write_unnamed">Unnamed file</string>
+    <string name="tool_call_todo_empty">No TODO items yet. Use the todo_update tool to maintain the list.</string>
+    <string name="toolcall_preview_category_read">READ</string>
+    <string name="toolcall_preview_category_write">WRITE</string>
+    <string name="toolcall_preview_category_edit">EDIT</string>
+    <string name="toolcall_preview_category_diff">DIFF</string>
+    <string name="toolcall_preview_category_delete">DELETE</string>
+    <string name="toolcall_preview_category_shell">SHELL</string>
+    <string name="toolcall_preview_category_todo">TODO</string>
+    <string name="toolcall_preview_category_memory">MEMORY</string>
+    <string name="toolcall_preview_category_image">IMAGE_GENERATION</string>
+    <string name="toolcall_preview_category_mcp">MCP</string>
+    <string name="toolcall_preview_category_agent">AGENT</string>
+    <string name="toolcall_preview_category_pipeline">AGENT_PIPELINE</string>
+    <string name="toolcall_preview_category_generic">GENERIC</string>
+    <string name="toolcall_preview_category_phone">PHONE_CONTROL</string>
+    <string name="tool_call_input">Input</string>
+    <string name="tool_call_output">Output</string>
+    <string name="tool_call_line_count">%1$d lines</string>
+    <string name="model_capability_label">Multimodal support</string>
+    <string name="model_capability_reasoning">Supports reasoning</string>
+    <string name="model_capability_vision">Image input</string>
+    <string name="model_capability_video">Video input</string>
+    <string name="composer_menu_image">Choose image</string>
+    <string name="composer_menu_video">Choose video</string>
+    <string name="model_reasoning_locked">This model does not support reasoning</string>
+    <string name="workspace_switch_blocked_title">Conversation in progress</string>
+    <string name="workspace_switch_blocked_message">Start a new conversation before switching workspace.</string>
 </resources>

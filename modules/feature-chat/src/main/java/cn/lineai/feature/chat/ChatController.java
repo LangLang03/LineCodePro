@@ -55,35 +55,36 @@ public final class ChatController {
     public static final String KEY_MAX_TOKENS = "model.maxTokens";
     public static final String KEY_PROJECT_LABEL = "project.label";
 
-    private final ConversationStore conversations;
-    private final MessageStore messages;
+    // Package-private for ChatTurnPipeline, which owns the streaming draft on the same event queue.
+    final ConversationStore conversations;
+    final MessageStore messages;
     private final ModelStore models;
-    private final SettingsStore settings;
+    final SettingsStore settings;
     private final ModelClient client;
     private final Scheduler scheduler;
-    private final Clock clock;
+    final Clock clock;
     private final SystemPromptAssembler prompts;
     private final ToolCatalog toolCatalog;
     private final ToolContext toolContext;
     private ToolRegistry activeTools;
     private final PromptExtensions extensions;
 
-    private final Observable<ChatState> state = new Observable<>(ChatState.empty());
+    final Observable<ChatState> state = new Observable<>(ChatState.empty());
     private final Observable<List<Conversation>> conversationList =
             new Observable<>(Collections.<Conversation>emptyList());
     private final Set<String> alwaysAllowed = new HashSet<>();
-    private final SerialWrites writes;
+    final SerialWrites writes;
+    final SerialEvents events;
 
-    private String conversationId = "";
-    private ToolLoopEngine engine;
+    String conversationId = "";
+    ToolLoopEngine engine;
     private Runnable modelMissingHandler;
-    private StringBuilder streamText = new StringBuilder();
-    private StringBuilder streamReasoning = new StringBuilder();
-    private Message streamingMessage;
-    private List<ToolApprovalItem> pendingApprovals = new ArrayList<>();
-    private int seq;
+    ChatTurnPipeline pipeline;
+    int seq;
+    private volatile int generationSeq;
+    private volatile boolean starting;
     private boolean started;
-    private ErrorLogStore errorLogs;
+    ErrorLogStore errorLogs;
 
     public ChatController(ConversationStore conversations, MessageStore messages,
                           ModelStore models, SettingsStore settings, ModelClient client,
@@ -102,6 +103,7 @@ public final class ChatController {
         this.toolContext = toolContext;
         this.extensions = extensions;
         this.writes = new SerialWrites(scheduler);
+        this.events = new SerialEvents(scheduler);
     }
     public void setErrorLogStore(ErrorLogStore store) {
         this.errorLogs = store;
@@ -136,40 +138,131 @@ public final class ChatController {
         });
     }
     public void open(String id) {
+        // Switching conversations must not leave the previous loop writing into the new list.
+        if (engine != null) stop();
+        invalidatePendingGeneration();
         scheduler.io(() -> {
             List<Message> loaded = messages.load(id);
-            conversationId = id;
-            seq = loaded.isEmpty() ? 1 : (int) loaded.get(loaded.size() - 1).seq + 1;
-            ChatState snapshot = ChatState.builder()
+            final int nextSeq = loaded.isEmpty() ? 1 : (int) loaded.get(loaded.size() - 1).seq + 1;
+            final ChatState snapshot = ChatState.builder()
                     .messages(loaded)
                     .project("")
-                    .contextPercent(ChatTurnConfig.percent(loaded, settings.getInt(KEY_CONTEXT_SIZE, 128000)))
+                    .contextPercent(ChatTurnConfig.percent(loaded,
+                            ChatContextLimits.of(modelConfig(), settings)))
                     .model(modelLabel())
                     .revision(System.nanoTime())
                     .build();
-            publish(snapshot);
+            events.post(() -> {
+                conversationId = id;
+                seq = nextSeq;
+                discardPipeline();
+                publish(snapshot);
+            });
         });
     }
 
     public void newConversation() {
+        if (engine != null) stop();
+        invalidatePendingGeneration();
         scheduler.io(() -> {
-            conversationId = "";
-            seq = 1;
-            publish(ChatState.empty().toBuilder().model(modelLabel()).build());
+            final String label = modelLabel();
+            events.post(() -> {
+                conversationId = "";
+                seq = 1;
+                discardPipeline();
+                publish(ChatState.empty().toBuilder().model(label).build());
+            });
         });
     }
 
     public void deleteConversation(String id) {
+        if (id.equals(conversationId)) {
+            if (engine != null) stop();
+            invalidatePendingGeneration();
+        }
         scheduler.io(() -> {
             conversations.delete(id);
             settings.put(ContextCompactor.key(id), "");
-            if (id.equals(conversationId)) {
-                conversationId = "";
-                seq = 1;
-                publish(ChatState.empty().toBuilder().model(modelLabel()).build());
-            }
-            publishConversations(conversations.list());
+            final boolean active = id.equals(conversationId);
+            final String label = active ? modelLabel() : "";
+            final List<Conversation> remaining = conversations.list();
+            events.post(() -> {
+                if (active) {
+                    conversationId = "";
+                    seq = 1;
+                    discardPipeline();
+                    publish(ChatState.empty().toBuilder().model(label).build());
+                }
+                publishConversations(remaining);
+            });
         });
+    }
+
+    /** Outcome of a manual context compaction, mapped to localized copy by the caller. */
+    public enum CompactionResult {
+        DONE,
+        INSUFFICIENT,
+        NO_MODEL,
+        BUSY,
+        FAILED
+    }
+
+    /** Summarizes older messages now and shows a compact marker in the timeline. */
+    public void compactContext(java.util.function.Consumer<CompactionResult> callback) {
+        if (engine != null) {
+            events.post(() -> callback.accept(CompactionResult.BUSY));
+            return;
+        }
+        scheduler.io(() -> {
+            final String id = conversationId;
+            final ModelConfig model = modelConfig();
+            if (model == null) {
+                events.post(() -> callback.accept(CompactionResult.NO_MODEL));
+                return;
+            }
+            if (id.isEmpty()) {
+                events.post(() -> callback.accept(CompactionResult.INSUFFICIENT));
+                return;
+            }
+            try {
+                List<Message> loaded = messages.load(id);
+                boolean done = ContextCompactor.compactNow(model, models, settings, id, loaded,
+                        prompts.compactionTemplate(), new ModelProbe()::complete);
+                final int percent = ChatTurnConfig.percent(loaded,
+                        ChatContextLimits.of(model, settings));
+                events.post(() -> {
+                    if (!done) {
+                        callback.accept(CompactionResult.INSUFFICIENT);
+                        return;
+                    }
+                    appendCompactMarker(percent);
+                    callback.accept(CompactionResult.DONE);
+                });
+            } catch (Exception error) {
+                events.post(() -> callback.accept(CompactionResult.FAILED));
+            }
+        });
+    }
+
+    private void appendCompactMarker(int percent) {
+        long now = clock.nowMs();
+        Message marker = Message.builder()
+                .id(Ids.prefixed("msg"))
+                .conversationId(conversationId)
+                .seq(seq++)
+                .role(Role.ASSISTANT)
+                .status(Message.Status.COMPLETE)
+                .addBlock(ContentBlock.compact(
+                        Message.Status.COMPLETE.name().toLowerCase(java.util.Locale.ROOT)))
+                .finishReason("compact")
+                .times(now, now)
+                .build();
+        publish(state.value().toBuilder()
+                .add(marker)
+                .contextPercent(percent)
+                .revision(System.nanoTime())
+                .build());
+        writes.submit(() -> messages.append(marker));
     }
 
     public void send(String text) {
@@ -183,31 +276,47 @@ public final class ChatController {
         final List<String> images = imagePaths == null
                 ? Collections.<String>emptyList() : new ArrayList<>(imagePaths);
         final List<String> files = filePaths == null ? Collections.<String>emptyList() : new ArrayList<>(filePaths);
-        if ((prompt.isEmpty() && images.isEmpty() && files.isEmpty()) || engine != null) {
+        if ((prompt.isEmpty() && images.isEmpty() && files.isEmpty())
+                || engine != null || starting) {
             return;
         }
+        starting = true;
         ModelConfig model = modelConfig();
         if (model == null) {
+            starting = false;
             if (modelMissingHandler != null) {
                 modelMissingHandler.run();
             }
             return;
         }
-        scheduler.io(() -> startGeneration(prompt, images, files, model));
+        final int generation = ++generationSeq;
+        scheduler.io(() -> {
+            try {
+                startGeneration(prompt, images, files, model, generation);
+            } catch (RuntimeException error) {
+                events.post(() -> starting = false);
+                throw error;
+            }
+        });
     }
 
     private void startGeneration(String prompt, List<String> images, List<String> files,
-                                 ModelConfig model) {
+                                 ModelConfig model, int generation) {
+        if (generation != generationSeq) {
+            return;
+        }
         long now = clock.nowMs();
-        if (conversationId.isEmpty()) {
+        String target = conversationId;
+        if (target.isEmpty()) {
             String title = ChatTurnConfig.attachmentTitle(prompt, images, files);
             Conversation created = conversations.create(title);
+            target = created.id;
             conversationId = created.id;
             seq = 1;
         }
         Message.Builder userBuilder = Message.builder()
                 .id(Ids.prefixed("msg"))
-                .conversationId(conversationId)
+                .conversationId(target)
                 .seq(seq++)
                 .role(Role.USER)
                 .status(Message.Status.COMPLETE)
@@ -219,18 +328,29 @@ public final class ChatController {
         Message user = userBuilder.build();
         messages.append(user);
 
-        streamText = new StringBuilder();
-        streamReasoning = new StringBuilder();
-        streamingMessage = null;
-        pendingApprovals = new ArrayList<>();
-        List<Message> loaded = messages.load(conversationId);
+        List<Message> loaded = messages.load(target);
         boolean softCompaction = Boolean.parseBoolean(
                 settings.get(UiPreferences.Field.SOFT_COMPACTION.key, "true"));
         final ContextCompactor.Result context = ContextCompactor.prepare(model, models,
-                settings, conversationId, loaded, softCompaction, new ModelProbe()::complete);
-        List<Message> history = context.history;
+                settings, target, loaded, softCompaction, prompts.compactionTemplate(),
+                new ModelProbe()::complete);
+        final List<Message> history = context.history;
         final String summarySection = prompts == null || context.summary.isEmpty()
                 ? "" : prompts.summary(context.summary);
+        final String conversation = target;
+        events.post(() -> beginGeneration(user, history, summarySection, model, generation,
+                conversation));
+    }
+
+    /** Runs on the event queue: publishes the user row and starts the loop in one ordered step. */
+    private void beginGeneration(Message user, List<Message> history, String summarySection,
+                                 ModelConfig model, int generation, String conversation) {
+        starting = false;
+        if (generation != generationSeq) {
+            return;
+        }
+        conversationId = conversation;
+        pipeline = new ChatTurnPipeline(this, model);
         ChatState building = state.value().toBuilder()
                 .streaming(true)
                 .status("")
@@ -246,189 +366,83 @@ public final class ChatController {
         activeTools = registry;
         final ToolLoopEngine loop = new ToolLoopEngine(client, registry, toolContext,
                 scheduler, model.toolCallLimit);
-        loop.listener(new LoopListener(model, loop));
+        loop.listener(new LoopListener(pipeline));
         engine = loop;
-        scheduler.main(() -> loop.start(model, history, conversationId,
+        loop.start(model, history, conversationId,
                 ChatTurnConfig.systemPrompt(prompts, settings, model,
                         extensions == null ? "" : extensions.section(), summarySection,
                         extensions == null ? "" : extensions.learningSection(),
                         registry, toolCatalog.registry()),
-                ChatTurnConfig.reasoningSpec(settings, model)));
+                ChatTurnConfig.reasoningSpec(settings, model));
+    }
+
+    private void discardPipeline() {
+        // Dropping the reference makes every late callback from the old loop stale and ignored.
+        pipeline = null;
+    }
+
+    /** Abandons a send that is still preparing on the IO pool; its setup event becomes a no-op. */
+    private void invalidatePendingGeneration() {
+        generationSeq++;
+        starting = false;
     }
 
     private final class LoopListener implements ToolLoopEngine.Listener {
-        private final ModelConfig model;
-        private final ToolLoopEngine loop;
+        private final ChatTurnPipeline draft;
 
-        LoopListener(ModelConfig model, ToolLoopEngine loop) {
-            this.model = model;
-            this.loop = loop;
+        LoopListener(ChatTurnPipeline draft) {
+            this.draft = draft;
         }
 
         @Override public void onTurnStarted() {
-            streamText = new StringBuilder();
-            streamReasoning = new StringBuilder();
-            long now = clock.nowMs();
-            streamingMessage = Message.builder()
-                    .id(Ids.prefixed("msg"))
-                    .conversationId(conversationId)
-                    .seq(seq++)
-                    .role(Role.ASSISTANT)
-                    .status(Message.Status.STREAMING)
-                    .model(model.modelId, model.providerId)
-                    .times(now, now)
-                    .build();
-            publish(state.value().toBuilder()
-                    .add(streamingMessage)
-                    .streaming(true)
-                    .model(model.displayName())
-                    .revision(System.nanoTime())
-                    .build());
+            events.post(draft::beginTurn);
         }
 
         @Override public void onText(String delta) {
-            streamText.append(delta);
-            scheduler.main(() -> publishStreaming(model));
+            events.post(() -> draft.appendText(delta));
         }
 
         @Override public void onReasoning(String delta) {
-            streamReasoning.append(delta);
-            scheduler.main(() -> publishStreaming(model));
+            events.post(() -> draft.appendReasoning(delta));
         }
 
         @Override public void onAssistantMessage(Message message) {
-            Message current = streamingMessage;
-            if (current == null) {
-                current = Message.builder()
-                        .id(Ids.prefixed("msg"))
-                        .conversationId(conversationId)
-                        .seq(seq++)
-                        .role(Role.ASSISTANT)
-                        .status(Message.Status.STREAMING)
-                        .model(model.modelId, model.providerId)
-                        .times(clock.nowMs(), clock.nowMs())
-                        .build();
-            }
-            final Message finished = current.toBuilder()
-                    .blocks(ChatTurnConfig.blocks(streamText, streamReasoning))
-                    .toolCalls(message.toolCalls)
-                    .status(Message.Status.COMPLETE)
-                    .finishReason(message.toolCalls.isEmpty() ? "stop" : "tool_calls")
-                    .times(current.createdAt, clock.nowMs())
-                    .build();
-            streamingMessage = null;
-            publish(state.value().toBuilder()
-                    .replace(finished)
-                    .streaming(true)
-                    .revision(System.nanoTime())
-                    .build());
-            writes.submit(() -> messages.append(finished));
+            events.post(() -> draft.finishAssistant(message));
         }
 
         @Override public void onToolFinished(ToolCall call, ToolResult result) {
-            long now = clock.nowMs();
-            Message.Builder toolBuilder = Message.builder()
-                    .id(Ids.prefixed("msg"))
-                    .conversationId(conversationId)
-                    .seq(seq++)
-                    .role(Role.TOOL)
-                    .status(result.error ? Message.Status.FAILED : Message.Status.COMPLETE)
-                    .tool(call.id, call.name)
-                    .addBlock(ContentBlock.text(result.content))
-                    .times(now, now);
-            if (!result.imagePath.isEmpty()) toolBuilder.addBlock(ContentBlock.image(result.imagePath));
-            final Message tool = toolBuilder.build();
-            publish(state.value().toBuilder()
-                    .add(tool)
-                    .revision(System.nanoTime())
-                    .build());
-            writes.submit(() -> messages.append(tool));
+            events.post(() -> draft.appendTool(call, result));
         }
 
         @Override public void onConfirmationRequired(List<ToolCall> calls) {
-            if (autoApprove(calls)) {
-                loop.confirm(true);
-                return;
-            }
-            List<ToolApprovalItem> approvals = new ArrayList<>();
-            for (ToolCall call : calls) {
-                approvals.add(new ToolApprovalItem(call,
-                        toolsForLookup().presentation(call.name, call.arguments)));
-            }
-            pendingApprovals = approvals;
-            publish(state.value().toBuilder()
-                    .pendingApprovals(approvals)
-                    .revision(System.nanoTime())
-                    .build());
+            events.post(() -> draft.requestConfirmation(calls));
         }
 
         @Override public void onFinished(FinishReason reason) {
-            engine = null;
-            pendingApprovals = new ArrayList<>();
-            publish(state.value().toBuilder()
-                    .streaming(false)
-                    .pendingApprovals(Collections.<ToolApprovalItem>emptyList())
-                    .revision(System.nanoTime())
-                    .build());
-            writes.submit(() -> {
-                conversations.touch(conversationId, clock.nowMs(),
-                        messages.count(conversationId));
-                publishConversations(conversations.list());
-            });
+            events.post(draft::finishTurn);
         }
 
         @Override public void onFailed(DomainException error) {
-            engine = null;
-            pendingApprovals = new ArrayList<>();
-            if (errorLogs != null) {
-                errorLogs.record(model.displayName(),
-                        error.code().name() + " · " + error.detail(),
-                        error.getMessage() == null ? "" : error.getMessage());
-            }
-            if (streamingMessage != null) {
-                final Message failed = streamingMessage.toBuilder()
-                        .blocks(ChatTurnConfig.blocks(streamText, streamReasoning))
-                        .status(Message.Status.FAILED)
-                        .error(error.code().name())
-                        .finishReason("error")
-                        .times(streamingMessage.createdAt, clock.nowMs())
-                        .build();
-                streamingMessage = null;
-                publish(state.value().toBuilder()
-                        .replace(failed)
-                        .streaming(false)
-                        .status(error.code().name())
-                        .pendingApprovals(Collections.<ToolApprovalItem>emptyList())
-                        .revision(System.nanoTime())
-                        .build());
-                writes.submit(() -> messages.append(failed));
-            } else {
-                publish(state.value().toBuilder()
-                        .streaming(false)
-                        .status(error.code().name())
-                        .pendingApprovals(Collections.<ToolApprovalItem>emptyList())
-                        .revision(System.nanoTime())
-                        .build());
-            }
-            writes.submit(() -> {
-                conversations.touch(conversationId, clock.nowMs(),
-                        messages.count(conversationId));
-                publishConversations(conversations.list());
-            });
+            events.post(() -> draft.failTurn(error));
+        }
+
+        @Override public void onRetry(int attempt, int max, DomainException error) {
+            events.post(() -> draft.retry(attempt, max, error));
         }
 
         @Override public void onBudgetExceeded(int requested, int used, int max) {
-            engine = null;
-            pendingApprovals = new ArrayList<>();
-            publish(state.value().toBuilder()
-                    .streaming(false)
-                    .pendingApprovals(Collections.<ToolApprovalItem>emptyList())
-                    .revision(System.nanoTime())
-                    .build());
+            events.post(draft::budgetExceeded);
         }
     }
 
-    private boolean autoApprove(List<ToolCall> calls) {
+    void engineConfirm(boolean allowed) {
+        ToolLoopEngine active = engine;
+        if (active != null) {
+            active.confirm(allowed);
+        }
+    }
+
+    boolean autoApprove(List<ToolCall> calls) {
         if (calls.isEmpty() || ToolModes.AUTO.equals(ToolModes.mode(settings))) {
             return true;
         }
@@ -446,95 +460,73 @@ public final class ChatController {
         return toolsForLookup().presentation(toolName);
     }
 
-    private ToolRegistry toolsForLookup() {
+
+    ToolRegistry toolsForLookup() {
         return activeTools == null ? toolCatalog.registry() : activeTools;
     }
 
     public void approveOnce() {
-        if (engine == null || pendingApprovals.isEmpty()) {
+        events.post(this::approveOnceNow);
+    }
+
+    private void approveOnceNow() {
+        if (engine == null || pipeline == null || pipeline.pendingApprovals().isEmpty()) {
             return;
         }
-        pendingApprovals = new ArrayList<>();
+        pipeline.pendingApprovals().clear();
         publish(state.value().toBuilder()
                 .pendingApprovals(Collections.<ToolApprovalItem>emptyList())
                 .revision(System.nanoTime())
                 .build());
-        engine.confirm(true);
+        engineConfirm(true);
     }
 
     public void approveAlways() {
-        if (engine == null || pendingApprovals.isEmpty()) {
+        events.post(this::approveAlwaysNow);
+    }
+
+    private void approveAlwaysNow() {
+        if (engine == null || pipeline == null || pipeline.pendingApprovals().isEmpty()) {
             return;
         }
-        for (ToolApprovalItem item : pendingApprovals) {
+        for (ToolApprovalItem item : pipeline.pendingApprovals()) {
             alwaysAllowed.add(item.call.name);
         }
-        approveOnce();
+        approveOnceNow();
     }
 
     public void denyApproval() {
-        if (engine == null || pendingApprovals.isEmpty()) {
+        events.post(this::denyNow);
+    }
+
+    private void denyNow() {
+        if (engine == null || pipeline == null || pipeline.pendingApprovals().isEmpty()) {
             return;
         }
-        pendingApprovals = new ArrayList<>();
+        pipeline.pendingApprovals().clear();
         publish(state.value().toBuilder()
                 .pendingApprovals(Collections.<ToolApprovalItem>emptyList())
                 .revision(System.nanoTime())
                 .build());
-        engine.confirm(false);
-    }
-
-    private void publishStreaming(ModelConfig model) {
-        if (streamingMessage == null) {
-            return;
-        }
-        streamingMessage = streamingMessage.toBuilder()
-                .blocks(ChatTurnConfig.blocks(streamText, streamReasoning))
-                .times(streamingMessage.createdAt, clock.nowMs())
-                .build();
-        publish(state.value().toBuilder()
-                .replace(streamingMessage)
-                .streaming(true)
-                .model(model.displayName())
-                .contextPercent(ChatTurnConfig.percent(state.value().messages,
-                        settings.getInt(KEY_CONTEXT_SIZE, 128000)))
-                .revision(System.nanoTime())
-                .build());
+        engineConfirm(false);
     }
 
     public void stop() {
+        invalidatePendingGeneration();
         ToolLoopEngine active = engine;
         engine = null;
+        // Finalize the cancelled draft before the loop's own finish event lands.
+        events.post(() -> {
+            if (pipeline != null) {
+                pipeline.cancel();
+            }
+        });
         if (active != null) {
             active.cancel();
         }
-        scheduler.main(() -> {
-            pendingApprovals = new ArrayList<>();
-            if (streamingMessage == null) {
-                publish(state.value().toBuilder()
-                        .streaming(false)
-                        .pendingApprovals(Collections.<ToolApprovalItem>emptyList())
-                        .build());
-                return;
-            }
-            final Message stopped = streamingMessage.toBuilder()
-                    .blocks(ChatTurnConfig.blocks(streamText, streamReasoning))
-                    .status(Message.Status.CANCELLED)
-                    .finishReason(Message.Status.CANCELLED.name().toLowerCase(java.util.Locale.ROOT))
-                    .times(streamingMessage.createdAt, clock.nowMs())
-                    .build();
-            streamingMessage = null;
-            publish(state.value().toBuilder()
-                    .replace(stopped)
-                    .streaming(false)
-                    .pendingApprovals(Collections.<ToolApprovalItem>emptyList())
-                    .revision(System.nanoTime())
-                    .build());
-            writes.submit(() -> messages.append(stopped));
-        });
     }
 
-    private void publish(ChatState snapshot) {
+    void publish(ChatState snapshot) {
         boolean hasModel = modelConfig() != null;
         ChatState ready = snapshot.toBuilder().hasModel(hasModel)
                 .project(settings.get(KEY_PROJECT_LABEL, ""))
@@ -542,7 +534,7 @@ public final class ChatController {
         scheduler.main(() -> state.set(ready));
     }
 
-    private void publishConversations(List<Conversation> list) {
+    void publishConversations(List<Conversation> list) {
         scheduler.main(() -> conversationList.set(list));
     }
 
@@ -556,13 +548,15 @@ public final class ChatController {
     }
 
     public int maxTokens() {
-        ModelConfig model = modelConfig();
-        return Math.max(1, model == null ? settings.getInt(KEY_CONTEXT_SIZE, 128000)
-                : model.contextSize);
+        return Math.max(1, ChatContextLimits.of(modelConfig(), settings));
     }
 
+    /** True when the current conversation already contains messages. */
+    public boolean hasMessages() { return !state.value().messages.isEmpty(); }
     /** Reloads conversations and the selected model after an external data restore. */
     public void reload() {
+        invalidatePendingGeneration();
+        if (engine != null) stop();
         started = false;
         conversationId = "";
         seq = 1;

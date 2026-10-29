@@ -22,6 +22,14 @@ public final class ToolPresentation {
         this.reason = reason == null ? "" : reason;
     }
 
+    public static ToolPresentation generic(String name) {
+        return generic(name, (JSONObject) null);
+    }
+
+    public static ToolPresentation generic(String name, String argumentsJson) {
+        return generic(name, ToolJson.object(argumentsJson));
+    }
+
     public static ToolPresentation generic(String name, JSONObject arguments) {
         String title = name == null || name.isEmpty() ? "Tool" : name;
         String action = arguments == null ? "" : first(arguments,

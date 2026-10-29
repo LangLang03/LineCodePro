@@ -12,7 +12,9 @@ public final class ContentBlock {
         FILE,
         TOOL_CALL,
         TOOL_RESULT,
-        DIFF
+        DIFF,
+        COMPACT,
+        ERROR
     }
 
     public final Type type;
@@ -55,8 +57,22 @@ public final class ContentBlock {
         return new ContentBlock(Type.DIFF, "", diffId, "");
     }
 
+    /** Context-compaction marker; status is the compact row state (running/complete/error). */
+    public static ContentBlock compact(String status) {
+        return new ContentBlock(Type.COMPACT, "", "", status);
+    }
+
+    /** Visible failure reason for a failed assistant turn. */
+    public static ContentBlock error(String text) {
+        return new ContentBlock(Type.ERROR, text, "", "");
+    }
+
     public boolean isEmpty() {
+        if (type == Type.COMPACT) {
+            return status.isEmpty();
+        }
         return type == Type.TEXT || type == Type.REASONING || type == Type.FILE
+                || type == Type.ERROR
                 ? text.isEmpty() : refId.isEmpty();
     }
 

@@ -65,7 +65,8 @@ public final class SettingsPageFactory {
         if (key.id() == SettingsScreens.OUTPUT) {
             OutputSettingsPage page = new OutputSettingsPage(host.activity(), host.tokens(),
                     host.navigation()::back, host.graph().preferences()::dispatch,
-                    host::unavailable);
+                    () -> host.navigation().push(SettingsScreens.TOOL_PREVIEW.key(
+                            cn.lineai.core.mvi.nav.Params.Empty.INSTANCE)));
             page.render(host.graph().preferences().state());
             return page;
         }
@@ -132,6 +133,10 @@ public final class SettingsPageFactory {
             return new WebPage(host.activity(), host.tokens(),
                     key.args().requireString("url"), values.allowAnyHttp(),
                     values.browserJavaScript(), host.navigation()::back);
+        }
+        if (key.id() == SettingsScreens.TOOL_PREVIEW) {
+            return new ToolCallPreviewPage(host.activity(), host.tokens(),
+                    host.navigation()::back);
         }
         throw new IllegalArgumentException("Unregistered settings screen: " + key.id().route());
     }
@@ -258,6 +263,9 @@ public final class SettingsPageFactory {
                                 new TermuxClient.Callback() {
                                     public void onSuccess(TermuxClient.SetupResult result) {
                                         preferences.save(result.config);
+                                        // Termux may have regenerated its sshd host key during the
+                                        // setup; a stale pinned key would reject every connection.
+                                        service.clearKnownHosts();
                                         Scheduler scheduler = host.graph().graph().get(Scheduler.class);
                                         scheduler.io(() -> {
                                             try {
@@ -322,13 +330,9 @@ public final class SettingsPageFactory {
                 }
             }
         };
-        holder[0] = new ErrorLogsPage(host.activity(), host.tokens(), host.navigation()::back,
-                listener);
         Scheduler scheduler = host.graph().graph().get(Scheduler.class);
-        scheduler.io(() -> {
-            java.util.List<cn.lineai.data.api.ErrorLog> logs = listener.load();
-            scheduler.main(() -> holder[0].render(logs));
-        });
+        holder[0] = new ErrorLogsPage(host.activity(), host.tokens(), host.navigation()::back,
+                scheduler, listener);
         return holder[0];
     }
 

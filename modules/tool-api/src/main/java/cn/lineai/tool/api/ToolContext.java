@@ -42,4 +42,19 @@ public interface ToolContext {
     default PhoneControl phone() {
         return null;
     }
+
+    /** True when the selected workspace lives on a remote SSH host. */
+    default boolean remoteWorkspace() {
+        return false;
+    }
+
+    /** Remote working directory of the selected SSH workspace, or "" for the login directory. */
+    default String remoteDirectory() {
+        return "";
+    }
+
+    /** Runs one command on the remote host; only called when {@link #remoteWorkspace()}. */
+    default String remoteExecute(String command, int timeoutMs) {
+        throw new UnsupportedOperationException("remote execution is unavailable");
+    }
 }

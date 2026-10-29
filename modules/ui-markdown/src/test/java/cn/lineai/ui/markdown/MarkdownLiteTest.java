@@ -144,6 +144,24 @@ public class MarkdownLiteTest {
     }
 
     @Test
+    public void tableColumnsStretchWithViewportWhileLongCellsWrap() {
+        render("| left | middle | right |\n| :--- | :---: | ---: |\n"
+                + "| a long cell that must wrap inside its stretched column | b | c |");
+        measure(markdown, dp(720));
+        TextView header = text("left");
+        assertTrue("wide viewports grow the column cap past the legacy 196dp",
+                header.getMaxWidth() > dp(196));
+        TextView longCell = text("a long cell that must wrap inside its stretched column");
+        assertFalse(longCell.getMaxWidth() <= 0);
+        assertNull(longCell.getEllipsize());
+        assertEquals(3, ((ViewGroup) longCell.getParent().getParent()).getChildCount());
+        HorizontalScrollView scroll = (HorizontalScrollView) markdown.getChildAt(0);
+        assertTrue(scroll.isFillViewport());
+        assertTrue(scroll.canScrollHorizontally(-1) || !scroll.canScrollHorizontally(1)
+                || scroll.getChildAt(0).getMeasuredWidth() >= dp(720));
+    }
+
+    @Test
     public void tableCanBeNestedInListAndQuote() {
         render("- before\n\n  > | key | value |\n  > | --- | --- |\n  > | **nested** | yes |\n\n  after");
         assertEquals(1, descendants(markdown, TableLayout.class).size());

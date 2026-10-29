@@ -28,8 +28,19 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # Restores the Gradle User Home before the build: the Gradle wrapper distribution,
+      # downloaded dependencies, compiled build scripts/artifact transforms and the local
+      # build cache enabled by `org.gradle.caching=true` in gradle.properties. The cache is
+      # saved again at the end of the job, so later runs only re-run tasks whose inputs changed.
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          # Cache entries written on the default branch are visible to every pull request.
+          # Same-repository PRs may additionally write their own PR-scoped entries, so later
+          # pushes to the same PR reuse the build cache; fork PRs stay read-only.
+          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          # Drop stale files restored from the cache that this build never used before saving.
+          cache-cleanup: on-success
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew

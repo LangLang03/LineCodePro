@@ -15,12 +15,13 @@ import cn.lineai.ui.i18n.R;
 import cn.lineai.ui.kit.FormField;
 import cn.lineai.ui.kit.IconButton;
 import cn.lineai.ui.kit.Icons;
+import cn.lineai.ui.kit.Refreshable;
 import cn.lineai.ui.kit.SettingsPage;
 import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
 
 /** SSH server form with save and connection test. */
-public final class SshSettingsPage extends SettingsPage {
+public final class SshSettingsPage extends SettingsPage implements Refreshable {
 
     public interface Listener {
         SshConfig load();
@@ -121,6 +122,36 @@ public final class SshSettingsPage extends SettingsPage {
                 getContext().getString(hint), secure, multiline);
         theme.bind(t -> field.setVisibility(View.VISIBLE));
         return field;
+    }
+
+    /**
+     * Re-reads the persisted server settings into the form.
+     *
+     * <p>The one-tap Termux setup writes host/port/username/private key directly to the settings
+     * store; this page may already be in the back stack, so re-showing it must show the fresh
+     * credentials instead of the stale (usually empty) form.</p>
+     */
+    @Override public void onShown() {
+        SshConfig stored = listener.load();
+        if (matches(stored)) {
+            return;
+        }
+        host.input().setText(stored.host);
+        port.input().setText(String.valueOf(stored.port));
+        username.input().setText(stored.username);
+        password.input().setText(stored.password);
+        privateKey.input().setText(stored.privateKey);
+        passphrase.input().setText(stored.passphrase);
+        status.setVisibility(View.GONE);
+    }
+
+    private boolean matches(SshConfig stored) {
+        return stored.host.equals(host.value())
+                && String.valueOf(stored.port).equals(port.value())
+                && stored.username.equals(username.value())
+                && stored.password.equals(password.value())
+                && stored.privateKey.equals(privateKey.value())
+                && stored.passphrase.equals(passphrase.value());
     }
 
     public void setTesting(boolean testing) {

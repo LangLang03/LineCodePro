@@ -36,6 +36,8 @@ final class ImageGenerationTool implements Tool {
                 .required("prompt").build();
     }
 
+    @Override public boolean needsLocalWorkspace() { return true; }
+
     @Override public boolean mutating() { return true; }
 
     @Override public ToolPresentation presentation(JSONObject arguments) {

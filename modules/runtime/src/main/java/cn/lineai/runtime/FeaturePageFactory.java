@@ -49,9 +49,14 @@ public final class FeaturePageFactory {
         if (key.id() == ExtensionScreens.SKILL_HUB) {
             return new SkillHubPage(host.activity(), host.tokens(), host.navigation()::back,
                     host.graph().graph().get(cn.lineai.core.kernel.time.Scheduler.class),
-                    host.graph().skills(), slug -> host.navigation().push(
+                    host.graph().skills(),
+                    slug -> host.navigation().push(
                             ExtensionScreens.SKILL_DETAIL.key(cn.lineai.core.mvi.nav.Params.Args.of(
-                                    "slug", slug))));
+                                    "slug", slug))),
+                    () -> host.navigation().push(ExtensionScreens.SKILL_LOGIN.key(
+                            Params.Empty.INSTANCE)),
+                    () -> host.navigation().push(ExtensionScreens.SKILL_PUBLISH.key(
+                            Params.Empty.INSTANCE)));
         }
         if (key.id() == ExtensionScreens.SKILL_DETAIL) {
             String slug = key.args().get("slug") instanceof String
@@ -161,8 +166,14 @@ public final class FeaturePageFactory {
             }
         }
         final cn.lineai.core.model.AgentExtension target = editing;
+        java.util.List<cn.lineai.tool.api.Tool> agentTools = new java.util.ArrayList<>();
+        for (cn.lineai.tool.api.Tool tool : host.graph().tools().registry().all()) {
+            if (tool.kind() != cn.lineai.tool.api.ToolKind.PHONE) {
+                agentTools.add(tool);
+            }
+        }
         return new AgentExtensionEditPage(host.activity(), host.tokens(), host.navigation()::back,
-                target, new java.util.ArrayList<>(host.graph().tools().registry().all()),
+                host.graph().scheduler(), target, agentTools,
                 new AgentExtensionEditPage.Listener() {
                     public void onSave(cn.lineai.core.model.AgentExtension extension) {
                         host.graph().agentExtensions().save(extension);
@@ -172,7 +183,39 @@ public final class FeaturePageFactory {
                         host.graph().agentExtensions().delete(agentId);
                         host.navigation().back();
                     }
+                    public cn.lineai.core.model.AgentExtension generateDraft(String description)
+                            throws Exception {
+                        return agentDraft(description);
+                    }
                 });
+    }
+
+    /** Renders the draft prompt, calls the selected model and filters the tool names. */
+    private cn.lineai.core.model.AgentExtension agentDraft(String description) throws Exception {
+        cn.lineai.core.model.ModelConfig model = host.graph().models().selected();
+        if (model == null) {
+            throw new IllegalStateException("No model selected");
+        }
+        java.util.List<cn.lineai.tool.api.Tool> all =
+                new java.util.ArrayList<>(host.graph().tools().registry().all());
+        java.util.List<String> names = new java.util.ArrayList<>();
+        StringBuilder tools = new StringBuilder();
+        for (cn.lineai.tool.api.Tool tool : all) {
+            if (tool.kind() == cn.lineai.tool.api.ToolKind.PHONE) continue;
+            if (tools.length() > 0) tools.append('\n');
+            tools.append(tool.name()).append(": ").append(tool.description());
+            names.add(tool.name());
+        }
+        java.util.Map<String, String> values = new java.util.HashMap<>();
+        values.put("USER_NEED", description);
+        values.put("AVAILABLE_TOOLS", tools.toString());
+        String prompt = cn.lineai.engine.prompt.PromptRenderer.render(
+                cn.lineai.engine.prompt.PromptId.AGENT_DRAFT,
+                host.graph().prompts().current(cn.lineai.engine.prompt.PromptId.AGENT_DRAFT),
+                values);
+        return new cn.lineai.engine.ai.AgentDraftGenerator(
+                new cn.lineai.engine.ai.ModelProbe()::complete)
+                .generate(model, prompt, names);
     }
 
     private McpExtensionsPage mcpExtensionsPage() {
@@ -312,9 +355,8 @@ public final class FeaturePageFactory {
                 });
     }
 
-    private WorkspaceProjectsPage workspaceProjectsPage() {
-        workspacePage = new WorkspaceProjectsPage(host.activity(), host.tokens(),
-                host.navigation()::back, new WorkspaceProjectsPage.Listener() {
+    private WorkspaceProjectsPage.Listener workspaceListener() {
+        return new WorkspaceProjectsPage.Listener() {
                     public java.util.List<cn.lineai.core.model.Project> list() {
                         return host.graph().projects().list();
                     }
@@ -329,7 +371,7 @@ public final class FeaturePageFactory {
                     public cn.lineai.core.model.Project create(String name) {
                         java.io.File root = new java.io.File(host.activity().getFilesDir(),
                                 "workspace");
-                        String safe = name.trim().replaceAll("[^a-zA-Z0-9._-]+", "-");
+                        String safe = cn.lineai.feature.workspace.WorkspaceNames.folder(name);
                         if (safe.isEmpty()) safe = "project";
                         java.io.File dir = new java.io.File(root, safe);
                         int index = 2;
@@ -344,10 +386,27 @@ public final class FeaturePageFactory {
                         return created;
                     }
                     public void openExternal() { host.openExternalWorkspace(); }
-                    public void onChanges() {
-                        host.navigation().push(WorkspaceScreens.CHANGES.key(Params.Empty.INSTANCE));
+                    public void shareWorkspace() { host.shareWorkspace(); }
+                    public String sshAddress() {
+                        cn.lineai.core.model.SshConfig config =
+                                new cn.lineai.feature.terminal.SshPreferences(
+                                        host.graph().settings()).config();
+                        if (config.host == null || config.host.isEmpty()) return "";
+                        return (config.username.isEmpty() ? "" : config.username + "@")
+                                + config.host + ":" + config.port;
                     }
-                });
+                    public boolean conversationActive() {
+                        return host.graph().chat().hasMessages();
+                    }
+            public void onChanges() {
+                host.navigation().push(WorkspaceScreens.CHANGES.key(Params.Empty.INSTANCE));
+            }
+        };
+    }
+
+    private View workspaceProjectsPage() {
+        workspacePage = new WorkspaceProjectsPage(host.activity(), host.tokens(),
+                host.navigation()::back, workspaceListener());
         return workspacePage;
     }
 

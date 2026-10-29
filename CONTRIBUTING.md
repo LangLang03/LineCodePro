@@ -28,7 +28,7 @@ The default build is the **slim** variant: it contains no llama.cpp libraries, n
 ./gradlew clean :app:assembleDebug -PlinecodeEnableLocalModel=true
 ```
 
-The local build needs the NDK and the prebuilt llama.cpp runtime from a LineCodePro-C++ checkout. Switching between slim and local requires `clean`, because both variants share the APK output path.
+The local build needs the NDK and the llama.cpp runtime vendored in `third_party/llama-cpp`. Switching between slim and local requires `clean`, because both variants share the APK output path.
 
 Release builds require a local `signing.properties`; never commit it.
 

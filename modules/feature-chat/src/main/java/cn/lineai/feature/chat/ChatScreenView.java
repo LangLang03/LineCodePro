@@ -15,6 +15,7 @@ import cn.lineai.core.kernel.observe.Observable;
 import cn.lineai.core.kernel.time.Cancellable;
 import cn.lineai.core.kernel.time.Scope;
 import cn.lineai.ui.i18n.ErrorTextMapper;
+import cn.lineai.ui.i18n.R;
 import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
 
@@ -43,6 +44,15 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
 
         void onAttachFile();
 
+        /** Opens the model-picker sheet; falls back to the models page when no model is set. */
+        void onModelPicker();
+
+        /** Argument-aware tool presentation so cards show the real path/command/query. */
+        default cn.lineai.tool.api.ToolPresentation toolPresentation(String name,
+                                                                     String argumentsJson) {
+            return null;
+        }
+
         void onContextUsage();
 
         void onChatMode();
@@ -56,12 +66,51 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         String projectPath();
 
         java.util.List<cn.lineai.core.model.WorkspaceNode> workspaceFiles(String path);
+
+        /** Loads the whole workspace tree for the drawer and the attachment picker. */
+        default void loadWorkspaceTree(java.util.function.Consumer<DrawerPanel.FileNode> callback) {
+            callback.accept(null);
+        }
+
+        /** Opens the workspace attachment tree (composer plus menu row). */
+        default void onAttachmentPicker() {
+            onAttachFile();
+        }
+
+        /** Model capability switches for the composer menu and reasoning lock. */
+        default ChatCapabilities capabilities() {
+            return ChatCapabilities.of(null);
+        }
+
+        /** Opens the system video picker (only when the model supports video input). */
+        default void onVideoPicker() {
+            onAttach();
+        }
+
+        /** Long press on the plus button: opens the system image picker. */
+        default void onImagePicker() {
+            onAttach();
+        }
+
+        default boolean projectRemovable() {
+            return false;
+        }
+
+        default void onProjectRemoveRequested() {
+            onProject();
+        }
+
+        /** Optional persisted file-diff lookup for write cards; {@code null} falls back. */
+        default cn.lineai.feature.chat.toolcall.ToolDiffLookup.Snapshot toolDiff(String diffId) {
+            return null;
+        }
     }
 
     private final ChatController controller;
     private Scope scope;
     private final LinearLayout content;
     private final ChatHeaderView header;
+    private final SelectionBar selectionBar;
     private final TimelineView timeline;
     private final ChatApprovalView approval;
     private final TextView notice;
@@ -69,6 +118,10 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
     private final DrawerPanel drawer;
     private Host host;
     private Tokens tokens;
+    private java.util.List<cn.lineai.core.model.Conversation> conversations =
+            java.util.Collections.emptyList();
+    private String drawerConversationId = "";
+    private String drawerProject = "";
 
     public ChatScreenView(Context context, ChatController controller, Tokens tokens) {
         super(context);
@@ -100,6 +153,11 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         timeline = new TimelineView(context, tokens);
+
+        selectionBar = new SelectionBar(context, tokens, this::exitMultiSelect);
+        selectionBar.setVisibility(GONE);
+        content.addView(selectionBar, new LinearLayout.LayoutParams(
+                LayoutParams.MATCH_PARENT, Ui.dp(context, 48)));
         content.addView(timeline, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
 
         approval = new ChatApprovalView(context, tokens);
@@ -177,21 +235,37 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
             }
 
             @Override
-            public void onAttach() {
+            public void onAttachFiles() {
                 if (host != null) {
-                    host.onAttach();
+                    host.onAttachmentPicker();
                 }
             }
 
             @Override
-            public void onAttachFile() {
-                if (host != null) host.onAttachFile();
+            public void onAttachImage() {
+                if (host != null) {
+                    host.onImagePicker();
+                }
+            }
+
+            @Override
+            public void onVideoPicker() {
+                if (host != null) {
+                    host.onVideoPicker();
+                }
+            }
+
+            @Override
+            public void onMode() {
+                if (host != null) {
+                    host.onChatMode();
+                }
             }
 
             @Override
             public void onModel() {
                 if (host != null) {
-                    host.onOpenModelSettings();
+                    host.onModelPicker();
                 }
             }
 
@@ -203,11 +277,6 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
             }
 
             @Override
-            public void onMode() {
-                if (host != null) host.onChatMode();
-            }
-
-            @Override
             public void onChatMode(String mode) {
                 if (host != null) host.setChatMode(mode);
             }
@@ -215,7 +284,46 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
     }
 
     private void bindTimeline() {
-        timeline.toolPresentations(controller::presentationFor);
+        timeline.toolPresentations(new ToolPresentationProvider() {
+            @Override
+            public cn.lineai.tool.api.ToolPresentation presentation(String toolName) {
+                return controller.presentationFor(toolName);
+            }
+
+            @Override
+            public cn.lineai.tool.api.ToolPresentation presentation(String toolName,
+                                                                    String argumentsJson) {
+                cn.lineai.tool.api.ToolPresentation resolved =
+                        host == null ? null : host.toolPresentation(toolName, argumentsJson);
+                return resolved == null ? controller.presentationFor(toolName) : resolved;
+            }
+        });
+        timeline.toolDiffLookup(diffId -> host == null ? null : host.toolDiff(diffId));
+        timeline.messageActions(new MessageActions() {
+            @Override
+            public void onQuote(cn.lineai.core.model.Message message) {
+                String quoted = "> " + message.plainText().replace("\n", "\n> ") + "\n";
+                composer.setDraft(composer.draft() + quoted);
+            }
+
+            @Override
+            public boolean canRetry() {
+                return false;
+            }
+
+            @Override
+            public void onMultiSelect(cn.lineai.core.model.Message message) {
+                timeline.setMultiSelectMode(true);
+                timeline.toggleSelection(message.id, message);
+                selectionBar.setVisibility(VISIBLE);
+            }
+
+            @Override
+            public void onSelectionChanged(java.util.List<cn.lineai.core.model.Message> selected) {
+                selectionBar.setVisibility(timeline.isMultiSelectMode() ? VISIBLE : GONE);
+                selectionBar.setSelection(selected);
+            }
+        });
         timeline.setEmptyAction(new TimelineView.EmptyAction() {
             @Override
             public void onAddModel() {
@@ -254,14 +362,12 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
             @Override
             public void onNewConversation() {
                 controller.newConversation();
-                drawer.close();
                 composer.setDraft("");
             }
 
             @Override
             public void onSelect(String conversationId) {
                 controller.open(conversationId);
-                drawer.close();
             }
 
             @Override
@@ -270,8 +376,19 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
             }
 
             @Override
-            public void onOpenFile(String relativePath) {
-                if (host != null) host.openFile(relativePath);
+            public void onFileSelected(String path, String name) {
+                if (host != null) host.openFile(path);
+            }
+
+            @Override
+            public void onFileLongPressed(String path, String name,
+                                          boolean directory, boolean root) {
+                if (host != null && root) host.onAttachmentPicker();
+            }
+
+            @Override
+            public void onProjectRemoveRequested() {
+                if (host != null) host.onProjectRemoveRequested();
             }
 
             @Override
@@ -285,10 +402,17 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
             }
 
             @Override
-            public java.util.List<cn.lineai.core.model.WorkspaceNode> files(String path) {
-                return host == null ? java.util.Collections
-                        .<cn.lineai.core.model.WorkspaceNode>emptyList()
-                        : host.workspaceFiles(path);
+            public boolean projectRemovable() {
+                return host != null && host.projectRemovable();
+            }
+
+            @Override
+            public void loadFileTree(java.util.function.Consumer<DrawerPanel.FileNode> callback) {
+                if (host == null) {
+                    callback.accept(null);
+                } else {
+                    host.loadWorkspaceTree(callback);
+                }
             }
         });
     }
@@ -311,6 +435,16 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         composer.addFileAttachment(path);
     }
 
+    /** Paths currently attached to the composer, used by the attachment tree picker. */
+    public java.util.List<String> fileAttachmentPaths() {
+        return composer.fileAttachmentPaths();
+    }
+
+    /** Adds or removes one attachment path; the picker calls this for every tap. */
+    public void toggleFileAttachment(String path) {
+        composer.toggleFileAttachment(path);
+    }
+
     public android.os.Bundle saveComposer() { return composer.save(); }
     public void restoreComposer(android.os.Bundle saved) { composer.restore(saved); }
 
@@ -321,7 +455,10 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         }
         scope = new Scope();
         scope.track(controller.observe(this));
-        scope.track(controller.observeConversations(drawer::setConversations));
+        scope.track(controller.observeConversations(list -> {
+            conversations = list;
+            drawer.setConversations(list, controller.conversationId());
+        }));
         controller.start();
     }
 
@@ -334,9 +471,19 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
 
     @Override
     public void onChanged(ChatState state) {
+        String currentId = controller.conversationId();
+        if (!currentId.equals(drawerConversationId)) {
+            drawerConversationId = currentId;
+            drawer.setConversations(conversations, currentId);
+        }
+        if (!state.projectLabel.equals(drawerProject)) {
+            drawerProject = state.projectLabel;
+            drawer.refreshProject();
+        }
         header.render(state, tokens);
         timeline.render(state, tokens);
         approval.render(state.pendingApprovals, tokens);
+        composer.capabilities(host == null ? ChatCapabilities.of(null) : host.capabilities());
         composer.render(state, tokens);
         String status = state.statusText;
         if (status.isEmpty()) {
@@ -354,11 +501,17 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         }
     }
 
+    private void exitMultiSelect() {
+        timeline.setMultiSelectMode(false);
+        selectionBar.setVisibility(GONE);
+    }
+
     public void applyTokens(Tokens current) {
         tokens = current;
         setBackgroundColor(current.bg);
         content.setBackgroundColor(current.bg);
         notice.setTextColor(current.danger);
+        selectionBar.applyTokens(current);
         header.applyTokens(current);
         timeline.applyTokens(current);
         approval.applyTokens(current);

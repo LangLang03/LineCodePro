@@ -37,6 +37,8 @@ public class SqliteErrorLogStoreTest {
         assertEquals(2, list.size());
         assertEquals("second", list.get(0).title);
         assertEquals("detail-b", list.get(0).detail);
+        assertEquals(2L, list.get(0).createdAt);
+        assertEquals(1L, list.get(1).createdAt);
     }
 
     @Test public void keepsOnlyTheNewestEntries() {

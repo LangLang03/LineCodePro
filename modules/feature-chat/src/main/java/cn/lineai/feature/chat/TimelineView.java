@@ -9,13 +9,17 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
 import cn.lineai.core.model.Message;
+import cn.lineai.core.model.UiPreferences;
 import cn.lineai.ui.i18n.R;
 import cn.lineai.ui.kit.IconButton;
 import cn.lineai.ui.kit.Icons;
@@ -23,12 +27,14 @@ import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
 
 /**
- * Timelime of messages with row-level reconciliation.
+ * Timeline of conversation rows with row-level reconciliation.
  *
- * <p>Rows are keyed by message id. A new snapshot removes vanished rows, inserts/reorders the
- * rest, and rebinds only rows whose signature changed — never a wholesale adapter reset.</p>
+ * <p>Rows are keyed by turn (a user bubble or one folded assistant turn). A new snapshot removes
+ * vanished rows, inserts/reorders the rest, and only rebinds rows whose signature changed — never
+ * a wholesale reset, so disclosure state, markdown scroll and drafts survive streaming and theme
+ * changes.</p>
  */
-public final class TimelineView extends FrameLayout {
+public final class TimelineView extends FrameLayout implements SelectionHost {
 
     public interface EmptyAction {
         void onAddModel();
@@ -41,14 +47,23 @@ public final class TimelineView extends FrameLayout {
     private final LinearLayout emptyState;
     private final IconButton jumpToBottom;
     private final Map<String, MessageRow> rows = new LinkedHashMap<>();
+    private final DisclosureState disclosure = new DisclosureState();
+    private final Set<String> selectedIds = new LinkedHashSet<>();
     private EmptyAction emptyAction;
     private Tokens tokens;
     private boolean followTail = true;
     private boolean renderingEmpty;
     private Boolean emptyConfigure;
-    private cn.lineai.core.model.UiPreferences preferences = cn.lineai.core.model.UiPreferences.defaults();
-    private java.util.function.Consumer<String> links;
+    private TextView emptyTitle;
+    private TextView emptyDescription;
+    private TextView emptyActionButton;
+    private UiPreferences preferences = UiPreferences.defaults();
+    private Consumer<String> links;
+    private MessageActions actions;
     private ToolPresentationProvider presentationProvider;
+    private cn.lineai.feature.chat.toolcall.ToolDiffLookup diffLookup;
+    private boolean multiSelect;
+    private List<TurnAssembler.Row> current = new ArrayList<>();
 
     public TimelineView(Context context, Tokens tokens) {
         super(context);
@@ -66,6 +81,14 @@ public final class TimelineView extends FrameLayout {
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         addView(scroll, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         scroll.setOnScrollChangeListener((v, x, y, oldX, oldY) -> updateJumpButton());
+        scroll.setOnTouchListener((v, event) -> {
+            if (event.getActionMasked() == android.view.MotionEvent.ACTION_MOVE) {
+                dismissActions();
+            }
+            return false;
+        });
+        scroll.setOnClickListener(v -> dismissActions());
+        column.setOnClickListener(v -> dismissActions());
 
         emptyState = new LinearLayout(context);
         emptyState.setOrientation(LinearLayout.VERTICAL);
@@ -79,7 +102,10 @@ public final class TimelineView extends FrameLayout {
         jumpToBottom.setBackground(Ui.roundedStroke(context, tokens.accent, 22, tokens.accent));
         jumpToBottom.setElevation(Ui.dp(context, 8));
         jumpToBottom.setVisibility(GONE);
-        jumpToBottom.setOnClickListener(v -> scrollToBottom());
+        jumpToBottom.setOnClickListener(v -> {
+            dismissActions();
+            scrollToBottom();
+        });
         LayoutParams buttonParams = new LayoutParams(Ui.dp(context, 44), Ui.dp(context, 44),
                 Gravity.END | Gravity.BOTTOM);
         buttonParams.rightMargin = Ui.dp(context, 16);
@@ -93,30 +119,43 @@ public final class TimelineView extends FrameLayout {
 
     public void toolPresentations(ToolPresentationProvider provider) {
         presentationProvider = provider;
-        for (MessageRow row : rows.values()) {
-            row.presentationProvider(provider);
-        }
+        rebindAll();
     }
 
-    public void preferences(cn.lineai.core.model.UiPreferences values,
-                            java.util.function.Consumer<String> linkHandler) {
-        preferences = values;
+    /** Host actions for the long-press bar; copy and share work without a host. */
+    public void messageActions(MessageActions value) {
+        actions = value;
+        rebindAll();
+    }
+
+    /** Installs the optional persisted-diff bridge used by write cards and the review block. */
+    public void toolDiffLookup(cn.lineai.feature.chat.toolcall.ToolDiffLookup value) {
+        diffLookup = value;
+        rebindAll();
+    }
+
+    public void preferences(UiPreferences values, Consumer<String> linkHandler) {
+        preferences = values == null ? UiPreferences.defaults() : values;
         links = linkHandler;
-        for (MessageRow row : rows.values()) row.preferences(values, links);
+        rebindAll();
     }
 
     public void render(ChatState state, Tokens current) {
-        applyTokens(current);
-        List<Message> messages = state.messages;
-        renderingEmpty = messages.isEmpty();
+        if (current != tokens) {
+            applyTokens(current);
+        }
+        List<TurnAssembler.Row> next = TurnAssembler.assemble(state.messages,
+                pendingCallIds(state), state.streaming);
+        this.current = next;
+        renderingEmpty = next.isEmpty();
         emptyState.setVisibility(renderingEmpty ? VISIBLE : GONE);
         scroll.setVisibility(renderingEmpty ? GONE : VISIBLE);
         boolean configure = !state.hasModel;
         if (emptyConfigure == null || emptyConfigure != configure) {
-            rebuildEmptyState(configure, current);
+            rebuildEmptyState(configure, tokens);
         }
         if (!renderingEmpty) {
-            reconcile(messages, current);
+            reconcile(next);
         }
         if (followTail) {
             post(this::scrollToBottom);
@@ -126,43 +165,160 @@ public final class TimelineView extends FrameLayout {
     public void applyTokens(Tokens current) {
         tokens = current;
         setBackgroundColor(current.bg);
-        emptyState.setBackgroundColor(current.bg);
+        restyleEmptyState();
         jumpToBottom.setIconColor(current.textOnColor);
-        jumpToBottom.setBackground(Ui.roundedStroke(getContext(), current.accent, 22, current.accent));
+        jumpToBottom.setBackground(Ui.roundedStroke(getContext(), current.accent, 22,
+                current.accent));
         for (MessageRow row : rows.values()) {
             row.applyTokens(current);
         }
-        emptyConfigure = null;
     }
 
-    private void reconcile(List<Message> messages, Tokens current) {
-        Set<String> seen = new HashSet<>();
-        for (int i = 0; i < messages.size(); i++) {
-            Message message = messages.get(i);
-            seen.add(message.id);
-            MessageRow row = rows.get(message.id);
-            if (row == null) {
-                row = MessageRow.create(getContext(), message, current);
-                row.presentationProvider(presentationProvider);
-                rows.put(message.id, row);
-                row.preferences(preferences, links);
-            }
-            row.bind(message, current);
-            if (row.getParent() == null) {
-                column.addView(row, Math.min(i, column.getChildCount()));
-            } else if (column.indexOfChild(row) != i) {
-                column.removeView(row);
-                column.addView(row, Math.min(i, column.getChildCount()));
+    /** Closes the long-press action bar of every row. */
+    public void dismissMessageActions() {
+        dismissActions();
+    }
+
+    public void setMultiSelectMode(boolean enabled) {
+        dismissActions();
+        multiSelect = enabled;
+        if (!enabled) {
+            selectedIds.clear();
+        }
+        for (Map.Entry<String, MessageRow> entry : rows.entrySet()) {
+            TurnAssembler.Row data = dataFor(entry.getKey());
+            String id = data == null || data.subject == null ? "" : data.subject.id;
+            MessageRow row = entry.getValue();
+            row.setMultiSelect(enabled);
+            row.setRowSelected(enabled && selectedIds.contains(id));
+        }
+        notifySelection();
+    }
+
+    public boolean isMultiSelectMode() {
+        return multiSelect;
+    }
+
+    public List<Message> selectedMessages() {
+        List<Message> result = new ArrayList<>();
+        for (TurnAssembler.Row row : current) {
+            if (row.subject != null && selectedIds.contains(row.subject.id)) {
+                result.add(row.subject);
             }
         }
-        for (String id : new java.util.ArrayList<>(rows.keySet())) {
-            if (!seen.contains(id)) {
-                MessageRow row = rows.remove(id);
+        return result;
+    }
+
+    @Override
+    public boolean multiSelect() {
+        return multiSelect;
+    }
+
+    @Override
+    public boolean isSelected(String messageId) {
+        return selectedIds.contains(messageId);
+    }
+
+    @Override
+    public void dismissActions() {
+        for (MessageRow row : rows.values()) {
+            row.hideActions();
+        }
+    }
+
+    @Override
+    public void toggleSelection(String messageId, Message message) {
+        if (messageId == null || messageId.isEmpty()) {
+            return;
+        }
+        if (!selectedIds.remove(messageId)) {
+            selectedIds.add(messageId);
+        }
+        rowFor(messageId);
+        notifySelection();
+    }
+
+    private void rowFor(String messageId) {
+        for (TurnAssembler.Row row : current) {
+            if (row.subject != null && messageId.equals(row.subject.id)) {
+                MessageRow view = rows.get(row.key);
+                if (view != null) {
+                    view.setSelected(selectedIds.contains(messageId));
+                }
+            }
+        }
+    }
+
+    private void notifySelection() {
+        if (actions != null) {
+            actions.onSelectionChanged(selectedMessages());
+        }
+    }
+
+    private void reconcile(List<TurnAssembler.Row> next) {
+        Set<String> seen = new HashSet<>();
+        RowEnv env = env();
+        for (int index = 0; index < next.size(); index++) {
+            TurnAssembler.Row data = next.get(index);
+            seen.add(data.key);
+            MessageRow row = rows.get(data.key);
+            if (row == null) {
+                row = MessageRow.create(getContext(), data, tokens);
+                rows.put(data.key, row);
+            }
+            row.setMultiSelect(multiSelect);
+            row.setVisibility(data.visible() ? VISIBLE : GONE);
+            row.bind(data, tokens, env);
+            row.setRowSelected(multiSelect && data.subject != null
+                    && selectedIds.contains(data.subject.id));
+            if (row.getParent() == null) {
+                column.addView(row, Math.min(index, column.getChildCount()));
+            } else if (column.indexOfChild(row) != index) {
+                column.removeView(row);
+                column.addView(row, Math.min(index, column.getChildCount()));
+            }
+        }
+        for (String key : new ArrayList<>(rows.keySet())) {
+            if (!seen.contains(key)) {
+                MessageRow row = rows.remove(key);
                 if (row != null && row.getParent() == column) {
                     column.removeView(row);
                 }
             }
         }
+    }
+
+    private void rebindAll() {
+        for (Map.Entry<String, MessageRow> entry : rows.entrySet()) {
+            TurnAssembler.Row data = dataFor(entry.getKey());
+            if (data != null) {
+                entry.getValue().bind(data, tokens, env());
+            }
+        }
+    }
+
+    private TurnAssembler.Row dataFor(String key) {
+        for (TurnAssembler.Row data : current) {
+            if (data.key.equals(key)) {
+                return data;
+            }
+        }
+        return null;
+    }
+
+    private RowEnv env() {
+        return new RowEnv(disclosure, presentationProvider, preferences, actions, this,
+                diffLookup, links);
+    }
+
+    private static Set<String> pendingCallIds(ChatState state) {
+        Set<String> ids = new HashSet<>();
+        for (ToolApprovalItem item : state.pendingApprovals) {
+            if (item.call != null && !item.call.id.isEmpty()) {
+                ids.add(item.call.id);
+            }
+        }
+        return ids;
     }
 
     private void scrollToBottom() {
@@ -192,24 +348,25 @@ public final class TimelineView extends FrameLayout {
         emptyState.setBackgroundColor(current.bg);
         Ui.padding(emptyState, 28, 104, 28, 64);
 
-        TextView title = Ui.text(context, context.getString(R.string.chat_empty_title),
+        emptyTitle = Ui.text(context, context.getString(R.string.chat_empty_title),
                 28, current.text, Typeface.NORMAL);
-        emptyState.addView(title);
+        emptyState.addView(emptyTitle);
 
-        TextView description = Ui.text(context, context.getString(configure
+        emptyDescription = Ui.text(context, context.getString(configure
                         ? R.string.message_list_configure_desc : R.string.chat_empty_message),
                 15, current.textSecondary, Typeface.NORMAL);
-        description.setLineSpacing(Ui.dp(context, 6), 1f);
+        emptyDescription.setLineSpacing(Ui.dp(context, 6), 1f);
         LinearLayout.LayoutParams descriptionParams = new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         descriptionParams.topMargin = Ui.dp(context, 20);
-        emptyState.addView(description, descriptionParams);
+        emptyState.addView(emptyDescription, descriptionParams);
+        emptyActionButton = null;
 
         if (configure) {
-            TextView addModel = actionButton(context, current,
+            emptyActionButton = actionButton(context, current,
                     context.getString(R.string.empty_state_add_model), true);
-            addModel.setMinHeight(Ui.dp(context, 48));
-            addModel.setOnClickListener(v -> {
+            emptyActionButton.setMinHeight(Ui.dp(context, 48));
+            emptyActionButton.setOnClickListener(v -> {
                 if (emptyAction != null) {
                     emptyAction.onAddModel();
                 }
@@ -217,11 +374,22 @@ public final class TimelineView extends FrameLayout {
             LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(
                     LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
             buttonParams.topMargin = Ui.dp(context, 28);
-            emptyState.addView(addModel, buttonParams);
+            emptyState.addView(emptyActionButton, buttonParams);
+        }
+        restyleEmptyState();
+    }
+
+    private void restyleEmptyState() {
+        if (emptyTitle == null) {
             return;
         }
-
-        // With a model configured the legacy screen shows guidance only: no action buttons.
+        emptyTitle.setTextColor(tokens.text);
+        emptyDescription.setTextColor(tokens.textSecondary);
+        emptyState.setBackgroundColor(tokens.bg);
+        if (emptyActionButton != null) {
+            emptyActionButton.setTextColor(tokens.textOnColor);
+            emptyActionButton.setBackground(Ui.rounded(getContext(), tokens.accent, 22));
+        }
     }
 
     private TextView actionButton(Context context, Tokens tokens, String label, boolean primary) {

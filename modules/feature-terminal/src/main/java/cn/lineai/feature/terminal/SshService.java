@@ -59,7 +59,39 @@ public final class SshService {
         }
     }
 
+    /**
+     * Drops the remembered host keys.
+     *
+     * <p>The one-tap Termux setup may regenerate the sshd host key (reinstall, data restore),
+     * and a stale pinned key then fails every connection with "host key has changed". The setup
+     * flow clears this before its verification so the fresh key is trusted again.</p>
+     */
+    public void clearKnownHosts() {
+        File file = new File(knownHostsDirectory, "known_hosts");
+        if (file.isFile()) {
+            //noinspection ResultOfMethodCallIgnored
+            file.delete();
+        }
+    }
+
     private Session connect(SshConfig config, int timeoutMs) throws Exception {
+        try {
+            return openSession(config, timeoutMs);
+        } catch (Exception stale) {
+            String detail = stale.getMessage() == null ? ""
+                    : stale.getMessage().toLowerCase(java.util.Locale.ROOT);
+            boolean hostKeyChanged = detail.contains("hostkey") || detail.contains("host key")
+                    || detail.contains("has changed") || detail.contains("identification");
+            if (!hostKeyChanged) {
+                throw stale;
+            }
+            // Termux regenerated its sshd key: drop the pinned entry and trust it once more.
+            clearKnownHosts();
+            return openSession(config, timeoutMs);
+        }
+    }
+
+    private Session openSession(SshConfig config, int timeoutMs) throws Exception {
         JSch jsch = new JSch();
         jsch.setKnownHosts(knownHosts().getAbsolutePath());
         if (!config.privateKey.trim().isEmpty()) {

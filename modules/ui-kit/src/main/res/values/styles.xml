@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Legacy bottom-sheet motion: the panel slides up in 180 ms and back down in
+      150 ms, with the light in-app scrim instead of the Android dialog barrier.
+    -->
+    <style name="LineSheetAnimation">
+        <item name="android:windowEnterAnimation">@anim/line_sheet_in</item>
+        <item name="android:windowExitAnimation">@anim/line_sheet_out</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>
