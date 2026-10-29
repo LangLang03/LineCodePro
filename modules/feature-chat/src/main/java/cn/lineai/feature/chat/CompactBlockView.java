@@ -5,10 +5,10 @@ import android.graphics.Typeface;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
-import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import cn.lineai.ui.i18n.R;
+import cn.lineai.ui.kit.DotMatrixSpinner;
 import cn.lineai.ui.kit.IconButton;
 import cn.lineai.ui.kit.Icons;
 import cn.lineai.ui.kit.Ui;
@@ -18,14 +18,14 @@ import cn.lineai.ui.tokens.Tokens;
  * Context-compaction progress row (C++ {@code CompactProgressBlock}, legacy
  * {@code ContextCompactBlockView}).
  *
- * <p>[archive icon] [label] [spacer] [indeterminate progress] or [check/close icon], 48dp high
- * with 6dp vertical padding. An empty status means "running", exactly like {@code bind}.</p>
+ * <p>[archive icon] [label] [spacer] [dot matrix] or [check/close icon], 48dp high with 6dp
+ * vertical padding. An empty status means "running", exactly like {@code bind}.</p>
  */
 final class CompactBlockView extends LinearLayout {
 
     private final IconButton icon;
     private final TextView label;
-    private final ProgressBar progress;
+    private final DotMatrixSpinner progress;
     private final IconButton statusIcon;
     private Tokens tokens;
     private State state = State.RUNNING;
@@ -54,13 +54,14 @@ final class CompactBlockView extends LinearLayout {
 
         addView(new View(context), new LayoutParams(0, 1, 1f));
 
-        progress = new ProgressBar(context, null, android.R.attr.progressBarStyleSmall);
-        progress.setIndeterminate(true);
+        progress = new DotMatrixSpinner(context, 18f);
+        progress.start();
         addView(progress, new LayoutParams(Ui.dp(context, 18), Ui.dp(context, 18)));
 
         statusIcon = new IconButton(context, Icons.CHECK);
         statusIcon.setClickable(false);
         statusIcon.setIconSizeDp(18, 13);
+        statusIcon.setVisibility(GONE);
         addView(statusIcon, new LayoutParams(Ui.dp(context, 18), Ui.dp(context, 18)));
         applyTokens(tokens);
     }
@@ -74,6 +75,11 @@ final class CompactBlockView extends LinearLayout {
         running = state == State.RUNNING;
         failed = state == State.FAILED;
         progress.setVisibility(running ? VISIBLE : GONE);
+        if (running) {
+            progress.start();
+        } else {
+            progress.stop();
+        }
         statusIcon.setVisibility(running ? GONE : VISIBLE);
         statusIcon.setIconType(failed ? Icons.CLOSE : Icons.CHECK);
         applyTokens(tokens);
@@ -85,8 +91,7 @@ final class CompactBlockView extends LinearLayout {
         icon.setIconColor(tint);
         label.setTextColor(tint);
         statusIcon.setIconColor(failed ? current.danger : current.textTertiary);
-        progress.setIndeterminateTintList(
-                android.content.res.ColorStateList.valueOf(current.accent));
+        progress.setColor(current.accent);
     }
 
     /** Compact-status wire values; the raw strings live only inside this enum body. */

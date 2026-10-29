@@ -59,6 +59,7 @@ final class ExtensionRows {
             toggle = new Switch(context);
             toggle.setContentDescription(name);
             addView(toggle, new LayoutParams(-2, -2));
+            setOnClickListener(v -> toggle.setChecked(!toggle.isChecked()));
             theme.bind(t -> {
                 icon.setIconColor(t.textSecondary);
                 title.setTextColor(t.text);

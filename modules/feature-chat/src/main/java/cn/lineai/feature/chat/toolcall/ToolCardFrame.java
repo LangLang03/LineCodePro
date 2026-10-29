@@ -6,13 +6,13 @@ import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
-import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.util.List;
 
 import cn.lineai.feature.chat.ToolPresentationProvider;
+import cn.lineai.ui.kit.DotMatrixSpinner;
 import cn.lineai.ui.kit.IconButton;
 import cn.lineai.ui.kit.Icons;
 import cn.lineai.ui.kit.Ui;
@@ -192,15 +192,14 @@ final class ToolCardFrame {
         return line;
     }
 
-    ProgressBar spinner(int sizeDp, final Tint tint) {
-        final ProgressBar bar = new ProgressBar(context, null,
-                android.R.attr.progressBarStyleSmall);
-        bar.setIndeterminate(true);
-        bar.setLayoutParams(new LinearLayout.LayoutParams(Ui.dp(context, sizeDp),
+    /** Bare dot-matrix spinner, the same square walk as the working row, tinted by card status. */
+    DotMatrixSpinner spinner(int sizeDp, final Tint tint) {
+        final DotMatrixSpinner view = new DotMatrixSpinner(context, sizeDp);
+        view.setLayoutParams(new LinearLayout.LayoutParams(Ui.dp(context, sizeDp),
                 Ui.dp(context, sizeDp)));
-        addTokenApplier(() -> bar.setIndeterminateTintList(
-                android.content.res.ColorStateList.valueOf(tint.color(tokens))));
-        return bar;
+        view.start();
+        addTokenApplier(() -> view.setColor(tint.color(tokens)));
+        return view;
     }
 
     /**

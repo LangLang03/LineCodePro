@@ -27,6 +27,8 @@ public class SourceHygieneTest {
     private static final Pattern EMPTY_CATCH = Pattern.compile(
             "catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}");
     private static final Pattern RAW_JSON = Pattern.compile("rawJson|raw_json");
+    /** A Java string literal that starts with {@code {"} — i.e. a hand-written JSON object. */
+    private static final Pattern JSON_OBJECT_LITERAL = Pattern.compile("^\"\\{\\s*\\\\\"");
     private static final Pattern STATE_LITERAL =
             Pattern.compile("\"(pending|streaming|accepted|running|complete|failed|cancelled)\"");
     private static final Pattern ENUM_BODY = Pattern.compile("\\benum\\s+\\w+\\b[^;{]*\\{");
@@ -114,6 +116,28 @@ public class SourceHygieneTest {
             }
         }
         assertEquals("rawJson state leaked:\n" + violations, 0, violations.length());
+    }
+
+    @Test
+    public void noHandWrittenJsonObjects() {
+        StringBuilder violations = new StringBuilder();
+        for (String module : Modules.modules()) {
+            if (module.equals("arch-test")) continue;
+            for (File file : Modules.javaFiles(module)) {
+                // The preview page intentionally feeds fake wire payloads into the real cards.
+                if (file.getName().equals("ToolPreviewSamples.java")) continue;
+                String source = Modules.stripComments(Modules.read(file));
+                Matcher matcher = Modules.LITERAL.matcher(source);
+                while (matcher.find()) {
+                    if (JSON_OBJECT_LITERAL.matcher(matcher.group()).find()) {
+                        violations.append(Modules.location(file, source, matcher.start()))
+                                .append('\n');
+                    }
+                }
+            }
+        }
+        assertEquals("Hand-written JSON object literals (use ToolSchemaBuilder or org.json):\n"
+                + violations, 0, violations.length());
     }
 
     @Test

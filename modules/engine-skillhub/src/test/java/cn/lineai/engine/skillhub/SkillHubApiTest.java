@@ -31,6 +31,28 @@ public class SkillHubApiTest {
         assertEquals(42, entries.get(0).downloads);
     }
 
+    @Test public void parsesFlatListRowsFromTheLiveEndpoint() {
+        List<SkillHubEntry> entries = SkillHubApi.parseList(
+                "{\"code\":0,\"data\":{\"skills\":[{\"slug\":\"qwen-image\","
+                        + "\"displayName\":\"Qwen Image\",\"description\":\"Generate images\","
+                        + "\"description_zh\":\"生成图片\",\"downloads\":20652,"
+                        + "\"stars\":11,\"version\":\"1.0.0\",\"ownerName\":\"robin\","
+                        + "\"iconUrl\":\"https://cloudcache.tencent-cloud.com/a.png\","
+                        + "\"verified\":true,\"category\":\"design-media\","
+                        + "\"labels\":{\"requires_api_key\":\"true\"},\"stats\":{\"downloads\":1}}]}}");
+        assertEquals(1, entries.size());
+        SkillHubEntry entry = entries.get(0);
+        assertEquals("生成图片", entry.description);
+        assertEquals(20652, entry.downloads);
+        assertEquals("robin", entry.author);
+        assertEquals("1.0.0", entry.version);
+        assertEquals("https://cloudcache.tencent-cloud.com/a.png", entry.meta.iconUrl);
+        assertEquals(11, entry.meta.stars);
+        assertTrue(entry.meta.verified);
+        assertEquals("design-media", entry.meta.category);
+        assertTrue(entry.meta.requiresApiKey);
+    }
+
     @Test public void parsesDetail() {
         SkillHubDetail detail = SkillHubApi.parseDetail("repo-review",
                 "{\"skill\":{\"displayName\":\"Repo Review\",\"summary\":\"Reviews\","

@@ -6,6 +6,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -33,6 +34,7 @@ public final class SkillHubDetailPage extends SettingsPage {
     private final Scheduler scheduler;
     private final SkillStore store;
     private final SkillHubApi api = new SkillHubApi();
+    private final SkillIconLoader icons;
     private final String slug;
     private final LinearLayout body;
     private final LinearLayout commentsHost;
@@ -46,6 +48,7 @@ public final class SkillHubDetailPage extends SettingsPage {
         super(context, R.string.skillhub_title_detail, tokens, back);
         this.scheduler = scheduler;
         this.store = store;
+        this.icons = new SkillIconLoader(scheduler);
         this.slug = slug == null ? "" : slug;
         Ui.padding(content, 16, 12, 16, 100);
         body = new LinearLayout(context);
@@ -110,6 +113,7 @@ public final class SkillHubDetailPage extends SettingsPage {
         installButton.setGravity(Gravity.CENTER);
         installButton.setClickable(true);
         installButton.setMinimumHeight(Ui.dp(getContext(), 48));
+        installButton.setElevation(Ui.dp(getContext(), 2));
         Ui.padding(installButton, 12, 12, 12, 12);
         installButton.addView(installLabel, new LinearLayout.LayoutParams(-2, -2));
         theme.bind(t -> {
@@ -132,11 +136,17 @@ public final class SkillHubDetailPage extends SettingsPage {
         LinearLayout head = new LinearLayout(getContext());
         head.setGravity(Gravity.CENTER_VERTICAL);
         FrameLayout artwork = new FrameLayout(getContext());
+        artwork.setClipToOutline(true);
         IconButton glyph = new IconButton(getContext(), Icons.PACKAGE);
         glyph.setIconSizeDp(64, 32);
         glyph.setClickable(false);
         artwork.addView(glyph, new FrameLayout.LayoutParams(
                 Ui.dp(getContext(), 64), Ui.dp(getContext(), 64), Gravity.CENTER));
+        ImageView icon = new ImageView(getContext());
+        icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        artwork.addView(icon, new FrameLayout.LayoutParams(
+                Ui.dp(getContext(), 64), Ui.dp(getContext(), 64)));
+        icons.load(value.meta.iconUrl, icon);
         head.addView(artwork, new LinearLayout.LayoutParams(
                 Ui.dp(getContext(), 64), Ui.dp(getContext(), 64)));
         LinearLayout copy = new LinearLayout(getContext());

@@ -8,6 +8,7 @@ import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -34,6 +35,7 @@ public final class SkillHubPage extends SettingsPage {
     private final Scheduler scheduler;
     private final SkillStore store;
     private final SkillHubApi api = new SkillHubApi();
+    private final SkillIconLoader icons;
     private final Consumer<String> openDetail;
     private final Runnable openLogin;
     private final Runnable openPublish;
@@ -65,6 +67,7 @@ public final class SkillHubPage extends SettingsPage {
         super(context, R.string.skillhub_title_store, tokens, back);
         this.scheduler = scheduler;
         this.store = store;
+        this.icons = new SkillIconLoader(scheduler);
         this.openDetail = openDetail;
         this.openLogin = openLogin;
         this.openPublish = openPublish;
@@ -367,57 +370,115 @@ public final class SkillHubPage extends SettingsPage {
     }
 
     private View card(SkillHubEntry entry) {
-        LinearLayout row = new LinearLayout(getContext());
+        Context context = getContext();
+        Tokens current = theme.current();
+        LinearLayout row = new LinearLayout(context);
         row.setGravity(Gravity.CENTER_VERTICAL);
         Ui.padding(row, 12, 12, 8, 12);
         row.setClickable(true);
-        row.setBackground(Ui.roundedStroke(getContext(), theme.current().surfaceElevated, 12,
-                theme.current().border));
+        row.setBackground(Ui.roundedStroke(context, current.surfaceElevated, 12,
+                current.border));
         row.setOnClickListener(v -> openDetail.accept(entry.slug));
-        FrameLayout artwork = new FrameLayout(getContext());
-        artwork.addView(iconView(Icons.PACKAGE, 25), new FrameLayout.LayoutParams(
-                Ui.dp(getContext(), 48), Ui.dp(getContext(), 48), Gravity.CENTER));
-        row.addView(artwork, new LinearLayout.LayoutParams(Ui.dp(getContext(), 48), Ui.dp(getContext(), 48)));
-        LinearLayout labels = new LinearLayout(getContext());
+
+        FrameLayout artwork = new FrameLayout(context);
+        artwork.setClipToOutline(true);
+        artwork.setBackground(Ui.rounded(context, current.accentMuted, 12));
+        IconButton glyph = iconView(Icons.PACKAGE, 25);
+        artwork.addView(glyph, new FrameLayout.LayoutParams(
+                Ui.dp(context, 48), Ui.dp(context, 48), Gravity.CENTER));
+        ImageView icon = new ImageView(context);
+        icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        artwork.addView(icon, new FrameLayout.LayoutParams(
+                Ui.dp(context, 48), Ui.dp(context, 48)));
+        row.addView(artwork, new LinearLayout.LayoutParams(
+                Ui.dp(context, 48), Ui.dp(context, 48)));
+        icons.load(entry.meta.iconUrl, icon);
+
+        LinearLayout labels = new LinearLayout(context);
         labels.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(0, -2, 1f);
-        labelParams.leftMargin = Ui.dp(getContext(), 12);
-        labelParams.rightMargin = Ui.dp(getContext(), 4);
+        labelParams.leftMargin = Ui.dp(context, 12);
+        labelParams.rightMargin = Ui.dp(context, 4);
         row.addView(labels, labelParams);
-        TextView title = Ui.medium(getContext(), entry.name, Tokens.FONT_MD, theme.current().text);
-        labels.addView(title, new LinearLayout.LayoutParams(-1, -2));
-        TextView author = Ui.text(getContext(), entry.author, Tokens.FONT_XS,
-                theme.current().textTertiary, Typeface.NORMAL);
+
+        LinearLayout titleRow = new LinearLayout(context);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = Ui.medium(context, entry.name, Tokens.FONT_MD, current.text);
+        title.setSingleLine(true);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        titleRow.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
+        if (entry.meta.verified) {
+            TextView verified = ExtensionKit.tag(context, theme,
+                    context.getString(R.string.skillhub_verified), true);
+            LinearLayout.LayoutParams verifiedParams = new LinearLayout.LayoutParams(-2, -2);
+            verifiedParams.leftMargin = Ui.dp(context, 6);
+            titleRow.addView(verified, verifiedParams);
+        }
+        labels.addView(titleRow, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView author = Ui.text(context, entry.author, Tokens.FONT_XS,
+                current.textTertiary, Typeface.NORMAL);
         LinearLayout.LayoutParams authorParams = new LinearLayout.LayoutParams(-1, -2);
-        authorParams.topMargin = Ui.dp(getContext(), 4);
+        authorParams.topMargin = Ui.dp(context, 3);
         labels.addView(author, authorParams);
-        TextView description = Ui.text(getContext(), entry.description, Tokens.FONT_SM,
-                theme.current().textSecondary, Typeface.NORMAL);
+
+        LinearLayout tags = new LinearLayout(context);
+        tags.setOrientation(LinearLayout.HORIZONTAL);
+        int tagCount = 0;
+        if (!entry.meta.category.isEmpty() && tagCount < 2) {
+            tags.addView(ExtensionKit.tag(context, theme, entry.meta.category, false));
+            tagCount++;
+        }
+        if (entry.meta.requiresApiKey && tagCount < 2) {
+            TextView apiKey = ExtensionKit.tag(context, theme,
+                    context.getString(R.string.skillhub_requires_api_key), false);
+            LinearLayout.LayoutParams apiParams = new LinearLayout.LayoutParams(-2, -2);
+            if (tagCount > 0) apiParams.leftMargin = Ui.dp(context, 4);
+            tags.addView(apiKey, apiParams);
+            tagCount++;
+        }
+        if (tagCount > 0) {
+            LinearLayout.LayoutParams tagsParams = new LinearLayout.LayoutParams(-1, -2);
+            tagsParams.topMargin = Ui.dp(context, 5);
+            labels.addView(tags, tagsParams);
+        }
+
+        TextView description = Ui.text(context, entry.description, Tokens.FONT_SM,
+                current.textSecondary, Typeface.NORMAL);
         description.setMaxLines(2);
         description.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(-1, -2);
-        descParams.topMargin = Ui.dp(getContext(), 4);
+        descParams.topMargin = Ui.dp(context, 5);
         labels.addView(description, descParams);
-        TextView meta = Ui.text(getContext(), getContext().getString(
-                R.string.skillhub_card_meta, String.valueOf(entry.downloads), entry.version),
-                Tokens.FONT_XS, theme.current().textTertiary, Typeface.NORMAL);
+
+        TextView meta = Ui.text(context, context.getString(R.string.skillhub_card_stats,
+                        formatCount(entry.downloads), formatCount(entry.meta.stars), entry.version),
+                Tokens.FONT_XS, current.textTertiary, Typeface.NORMAL);
         LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(-1, -2);
-        metaParams.topMargin = Ui.dp(getContext(), 4);
+        metaParams.topMargin = Ui.dp(context, 5);
         labels.addView(meta, metaParams);
+
         IconButton chevron = iconView(Icons.CHEVRON_RIGHT, 16);
-        chevron.setIconColor(theme.current().textTertiary);
+        chevron.setIconColor(current.textTertiary);
         theme.bind(t -> chevron.setIconColor(t.textTertiary));
         row.addView(chevron, new LinearLayout.LayoutParams(
-                Ui.dp(getContext(), 24), Ui.dp(getContext(), 24)));
+                Ui.dp(context, 24), Ui.dp(context, 24)));
         theme.bind(t -> {
-            artwork.setBackground(Ui.rounded(getContext(), t.accentMuted, 12));
+            artwork.setBackground(Ui.rounded(context, t.accentMuted, 12));
             title.setTextColor(t.text);
             author.setTextColor(t.textTertiary);
             description.setTextColor(t.textSecondary);
             meta.setTextColor(t.textTertiary);
-            row.setBackground(Ui.roundedStroke(getContext(), t.surfaceElevated, 12, t.border));
+            row.setBackground(Ui.roundedStroke(context, t.surfaceElevated, 12, t.border));
         });
         return row;
+    }
+
+    private String formatCount(long value) {
+        if (value >= 10000) {
+            return getContext().getString(R.string.skillhub_count_wan, value / 10000d);
+        }
+        return String.valueOf(value);
     }
 
     private View pager() {

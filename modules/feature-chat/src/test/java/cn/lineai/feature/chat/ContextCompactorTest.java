@@ -14,6 +14,7 @@ import cn.lineai.data.api.SettingsStore;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class ContextCompactorTest {
@@ -105,5 +106,17 @@ public class ContextCompactorTest {
                 "c", messages(3), true, (model, prompt) -> "NEW");
         assertEquals(3, result.history.size());
         assertEquals("", result.summary);
+    }
+
+    @Test public void manualCompactionIgnoresAutomaticThresholds() throws Exception {
+        assertTrue(ContextCompactor.compactNow(model(false), null, settings(), "c", messages(20),
+                (compressor, prompt) -> "MANUAL"));
+        assertEquals("MANUAL", values.get(ContextCompactor.key("c")));
+    }
+
+    @Test public void manualCompactionSkipsShortConversations() throws Exception {
+        assertFalse(ContextCompactor.compactNow(model(false), null, settings(), "c", messages(5),
+                (compressor, prompt) -> "NEVER"));
+        assertTrue(values.isEmpty());
     }
 }

@@ -64,6 +64,8 @@ public final class TurnAssembler {
         public final boolean live;
         public final boolean running;
         public final boolean pending;
+        /** True when any message of the turn failed, so the process panel opens on the error. */
+        public final boolean failed;
         public final long processingStartedAt;
         public final long processingFinishedAt;
         /** Everything the row draws; identical signatures skip a rebind. */
@@ -80,6 +82,7 @@ public final class TurnAssembler {
             this.live = draft.live;
             this.running = draft.running;
             this.pending = draft.pending;
+            this.failed = draft.failed;
             this.processingStartedAt = draft.startedAt;
             this.processingFinishedAt = draft.finishedAt;
             this.signature = buildSignature();
@@ -97,13 +100,14 @@ public final class TurnAssembler {
             boolean live;
             boolean running;
             boolean pending;
+            boolean failed;
             long startedAt;
             long finishedAt;
         }
 
         private String buildSignature() {
             StringBuilder value = new StringBuilder(key).append('\u0001').append(user)
-                    .append('\u0001').append(live).append(running).append(pending)
+                    .append('\u0001').append(live).append(running).append(pending).append(failed)
                     .append('\u0001').append(processingStartedAt).append('/')
                     .append(processingFinishedAt);
             if (userMessage != null) {
@@ -184,8 +188,14 @@ public final class TurnAssembler {
         if (turn.isEmpty()) {
             return;
         }
-        Message last = turn.get(turn.size() - 1);
-        Message answer = isAnswer(last) ? last : null;
+        // Compaction markers may trail the final answer; keep looking backwards for the answer.
+        Message answer = null;
+        for (int index = turn.size() - 1; index >= 0; index--) {
+            if (isAnswer(turn.get(index))) {
+                answer = turn.get(index);
+                break;
+            }
+        }
         boolean live = streaming && lastTurn;
         boolean running = live;
         boolean awaiting = false;
@@ -211,6 +221,13 @@ public final class TurnAssembler {
             if (hasProse) {
                 process.add(new Item(ITEM_MARKDOWN, message.id + ":text", text, "", null));
             }
+            for (ContentBlock block : message.blocks) {
+                if (block.type == ContentBlock.Type.COMPACT) {
+                    flushGroup(process, group);
+                    process.add(new Item(ITEM_COMPACT, message.id + ":compact", "",
+                            block.status, null));
+                }
+            }
             for (ToolCallRecord call : message.toolCalls) {
                 Message result = results.get(call.id);
                 boolean missing = result == null;
@@ -231,7 +248,9 @@ public final class TurnAssembler {
         flushGroup(process, group);
         long startedAt = turn.get(0).createdAt;
         long finishedAt = 0L;
+        boolean failed = false;
         for (Message message : turn) {
+            failed |= message.status == Message.Status.FAILED;
             if (message.updatedAt > finishedAt) {
                 finishedAt = message.updatedAt;
             }
@@ -248,6 +267,7 @@ public final class TurnAssembler {
         draft.live = live;
         draft.running = running;
         draft.pending = awaiting;
+        draft.failed = failed;
         draft.startedAt = startedAt;
         draft.finishedAt = finishedAt;
         rows.add(new Row(draft));
@@ -282,8 +302,17 @@ public final class TurnAssembler {
         return "";
     }
 
+    /**
+     * Only a completed message can be the final answer.
+     *
+     * <p>A streaming message may still turn out to be interstitial prose followed by tool calls,
+     * so treating it as the answer would flash it into the answer area (and reveal the review
+     * block) only to fold it back into the process a moment later. Live prose therefore stays in
+     * the process panel until the model finishes the message.</p>
+     */
     private static boolean isAnswer(Message message) {
-        if (message.status == Message.Status.FAILED) {
+        if (message.status == Message.Status.FAILED
+                || message.status == Message.Status.STREAMING) {
             return false;
         }
         if (!message.toolCalls.isEmpty()) {

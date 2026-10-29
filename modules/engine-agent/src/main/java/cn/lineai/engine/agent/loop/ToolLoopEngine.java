@@ -1,7 +1,5 @@
 package cn.lineai.engine.agent.loop;
 
-import org.json.JSONObject;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,6 +24,7 @@ import cn.lineai.engine.protocol.ToolSchema;
 import cn.lineai.tool.api.Tool;
 import cn.lineai.tool.api.ToolCall;
 import cn.lineai.tool.api.ToolContext;
+import cn.lineai.tool.api.ToolJson;
 import cn.lineai.tool.api.ToolRegistry;
 import cn.lineai.tool.api.ToolResult;
 
@@ -251,9 +250,12 @@ public final class ToolLoopEngine implements Cancellable {
             return ToolResult.failure(call.id, "Tool requires confirmation: " + call.name);
         }
         try {
-            JSONObject arguments = call.arguments.trim().isEmpty()
-                    ? new JSONObject() : new JSONObject(call.arguments);
-            return tool.execute(toolContext, arguments);
+            // Lenient on purpose: models emit fenced, single-quoted or truncated argument JSON.
+            if (tool.mutating() && !ToolJson.complete(call.arguments)) {
+                return ToolResult.failure(call.id,
+                        "Tool arguments were truncated: " + call.name);
+            }
+            return tool.execute(toolContext, ToolJson.object(call.arguments));
         } catch (Exception error) {
             return ToolResult.failure(call.id, error.getMessage() == null
                     ? error.getClass().getSimpleName() : error.getMessage());

@@ -118,6 +118,42 @@ public class TurnAssemblerTest {
     }
 
     @Test
+    public void streamingProseStaysInProcessUntilTheMessageCompletes() {
+        Message user = message("u1", Role.USER, Message.Status.COMPLETE, 1L, "go");
+        Message streaming = message("a1", Role.ASSISTANT, Message.Status.STREAMING, 2L,
+                "Let me read the file first.");
+        TurnAssembler.Row live = TurnAssembler.assemble(
+                Arrays.asList(user, streaming), Collections.<String>emptySet(), true).get(1);
+
+        assertNull(live.answer);
+        assertEquals(1, live.process.size());
+        assertEquals(TurnAssembler.ITEM_MARKDOWN, live.process.get(0).kind);
+        assertEquals("Let me read the file first.", live.process.get(0).text);
+
+        Message complete = streaming.toBuilder().status(Message.Status.COMPLETE).build();
+        TurnAssembler.Row done = TurnAssembler.assemble(
+                Arrays.asList(user, complete), Collections.<String>emptySet(), true).get(1);
+        assertEquals("Let me read the file first.", done.answer.plainText());
+        assertTrue(done.process.isEmpty());
+    }
+
+    @Test
+    public void compactMarkerKeepsTheAnswerAndAddsACompactItem() {
+        Message user = message("u1", Role.USER, Message.Status.COMPLETE, 1L, "go");
+        Message answer = message("a1", Role.ASSISTANT, Message.Status.COMPLETE, 2L, "done");
+        Message marker = Message.builder().id("c1").role(Role.ASSISTANT)
+                .status(Message.Status.COMPLETE).seq(3L)
+                .addBlock(ContentBlock.compact("complete")).times(3L, 3L).build();
+
+        TurnAssembler.Row turn = TurnAssembler.assemble(
+                Arrays.asList(user, answer, marker), Collections.<String>emptySet(), false).get(1);
+        assertEquals("done", turn.answer.plainText());
+        assertEquals(1, turn.process.size());
+        assertEquals(TurnAssembler.ITEM_COMPACT, turn.process.get(0).kind);
+        assertEquals("complete", turn.process.get(0).status);
+    }
+
+    @Test
     public void failedAnswerBecomesProcessProseInsteadOfAnAnswer() {
         Message user = message("u1", Role.USER, Message.Status.COMPLETE, 1L, "go");
         Message failed = message("a1", Role.ASSISTANT, Message.Status.FAILED, 2L,

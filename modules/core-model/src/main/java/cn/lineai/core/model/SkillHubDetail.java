@@ -16,10 +16,18 @@ public final class SkillHubDetail {
     public final long downloads;
     public final String securityStatus;
     public final List<String> tags;
+    public final SkillHubMeta meta;
 
     public SkillHubDetail(String slug, String name, String description, String author,
                           String version, String markdown, long downloads,
                           String securityStatus, List<String> tags) {
+        this(slug, name, description, author, version, markdown, downloads, securityStatus, tags,
+                SkillHubMeta.empty());
+    }
+
+    public SkillHubDetail(String slug, String name, String description, String author,
+                          String version, String markdown, long downloads,
+                          String securityStatus, List<String> tags, SkillHubMeta meta) {
         this.slug = slug == null ? "" : slug;
         this.name = name == null ? "" : name;
         this.description = description == null ? "" : description;
@@ -30,5 +38,6 @@ public final class SkillHubDetail {
         this.securityStatus = securityStatus == null ? "" : securityStatus;
         this.tags = tags == null ? Collections.<String>emptyList()
                 : Collections.unmodifiableList(new ArrayList<>(tags));
+        this.meta = meta == null ? SkillHubMeta.empty() : meta;
     }
 }

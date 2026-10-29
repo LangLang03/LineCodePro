@@ -30,7 +30,7 @@ final class NestedToolCards {
             card.setDiffLookup(frame.diffLookup());
             card.bind(nested, frame.tokens());
             frame.addTokenApplier(() -> card.applyTokens(frame.tokens()));
-            parent.addView(card, frame.withTop(8));
+            parent.addView(card, frame.withTop(2));
         }
     }
 

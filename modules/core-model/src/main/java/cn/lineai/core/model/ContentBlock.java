@@ -12,7 +12,8 @@ public final class ContentBlock {
         FILE,
         TOOL_CALL,
         TOOL_RESULT,
-        DIFF
+        DIFF,
+        COMPACT
     }
 
     public final Type type;
@@ -55,7 +56,15 @@ public final class ContentBlock {
         return new ContentBlock(Type.DIFF, "", diffId, "");
     }
 
+    /** Context-compaction marker; status is the compact row state (running/complete/error). */
+    public static ContentBlock compact(String status) {
+        return new ContentBlock(Type.COMPACT, "", "", status);
+    }
+
     public boolean isEmpty() {
+        if (type == Type.COMPACT) {
+            return status.isEmpty();
+        }
         return type == Type.TEXT || type == Type.REASONING || type == Type.FILE
                 ? text.isEmpty() : refId.isEmpty();
     }

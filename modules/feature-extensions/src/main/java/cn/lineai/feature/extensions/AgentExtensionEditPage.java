@@ -1,7 +1,11 @@
 package cn.lineai.feature.extensions;
 
+import android.app.Dialog;
 import android.content.Context;
+import android.view.Gravity;
+import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
@@ -10,12 +14,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
+import cn.lineai.core.kernel.time.Scheduler;
 import cn.lineai.core.model.AgentExtension;
 import cn.lineai.tool.api.Tool;
 import cn.lineai.ui.i18n.R;
 import cn.lineai.ui.kit.FormField;
 import cn.lineai.ui.kit.Icons;
 import cn.lineai.ui.kit.SettingsSection;
+import cn.lineai.ui.kit.Sheets;
 import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
 
@@ -26,9 +32,13 @@ public final class AgentExtensionEditPage extends ExtensionPage {
         void onSave(AgentExtension extension);
 
         void onDelete(String id);
+
+        /** Blocking draft generation; the page calls it on the IO scheduler. */
+        AgentExtension generateDraft(String description) throws Exception;
     }
 
     private final Listener listener;
+    private final Scheduler scheduler;
     private final AgentExtension editing;
     private final List<Tool> tools;
     private final Set<String> selectedTools = new HashSet<>();
@@ -39,9 +49,11 @@ public final class AgentExtensionEditPage extends ExtensionPage {
     private final LinearLayout toolsHost;
 
     public AgentExtensionEditPage(Context context, Tokens tokens, Runnable back,
-                                  AgentExtension editing, List<Tool> tools, Listener listener) {
+                                  Scheduler scheduler, AgentExtension editing, List<Tool> tools,
+                                  Listener listener) {
         super(context, tokens, back, R.string.screen_agent_add_title);
         this.listener = listener;
+        this.scheduler = scheduler;
         this.editing = editing == null ? AgentExtension.builder().build() : editing;
         this.tools = tools == null ? new ArrayList<>() : new ArrayList<>(tools);
         this.selectedTools.addAll(this.editing.toolNames);
@@ -66,8 +78,7 @@ public final class AgentExtensionEditPage extends ExtensionPage {
         SettingsSection quick = section(R.string.screen_agent_quick_create);
         quick.row(ExtensionKit.action(getContext(), theme, Icons.SPARKLES,
                 R.string.screen_agent_let_ai_write, R.string.screen_agent_let_ai_write_desc, 68,
-                () -> Toast.makeText(getContext(), R.string.screen_agent_ai_unavailable,
-                        Toast.LENGTH_SHORT).show()), false, 0);
+                this::showAiWriter), false, 0);
 
         SettingsSection basic = section(R.string.screen_agent_form_basic);
         basic.row(form(name, 0, 16, 12), false, 0);
@@ -126,6 +137,107 @@ public final class AgentExtensionEditPage extends ExtensionPage {
                         getContext().getString(R.string.screen_agent_delete_message,
                                 editing.name.isEmpty() ? editing.slug : editing.name),
                         () -> listener.onDelete(editing.id))), false, 0);
+    }
+
+    private void showAiWriter() {
+        Context context = getContext();
+        Tokens current = theme.current();
+        LinearLayout panel = new LinearLayout(context);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackground(Ui.rounded(context, current.bg, 20));
+        Ui.padding(panel, 20, 20, 20, 20);
+
+        TextView title = Ui.bold(context,
+                context.getString(R.string.screen_agent_let_ai_dialog_title),
+                Tokens.FONT_LG, current.text);
+        panel.addView(title, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView description = Ui.text(context,
+                context.getString(R.string.screen_agent_let_ai_dialog_desc), Tokens.FONT_XS,
+                current.textTertiary, android.graphics.Typeface.NORMAL);
+        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(-1, -2);
+        descParams.topMargin = Ui.dp(context, 4);
+        panel.addView(description, descParams);
+
+        EditText input = new EditText(context);
+        input.setHint(R.string.screen_agent_let_ai_hint);
+        input.setTextSize(Tokens.FONT_MD);
+        input.setTextColor(current.text);
+        input.setHintTextColor(current.textTertiary);
+        input.setGravity(Gravity.TOP | Gravity.START);
+        input.setMinHeight(Ui.dp(context, 96));
+        input.setBackground(Ui.roundedStroke(context, current.inputBg, 12, current.border));
+        Ui.padding(input, 12, 12, 12, 12);
+        LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(-1, -2);
+        inputParams.topMargin = Ui.dp(context, 12);
+        panel.addView(input, inputParams);
+
+        TextView generate = Ui.medium(context,
+                context.getString(R.string.screen_agent_let_ai_button), Tokens.FONT_MD,
+                current.textOnColor);
+        generate.setGravity(Gravity.CENTER);
+        generate.setClickable(true);
+        generate.setFocusable(true);
+        generate.setBackground(Ui.rounded(context, current.accent, 12));
+        Ui.padding(generate, 12, 12, 12, 12);
+        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(-1, -2);
+        buttonParams.topMargin = Ui.dp(context, 12);
+        panel.addView(generate, buttonParams);
+
+        Dialog dialog = Sheets.showBottom(context, current, panel);
+        generate.setOnClickListener(v -> generateDraft(dialog, input, generate));
+    }
+
+    private void generateDraft(Dialog dialog, EditText input, TextView generate) {
+        String description = input.getText() == null ? "" : input.getText().toString().trim();
+        if (description.isEmpty()) {
+            Toast.makeText(getContext(), R.string.screen_agent_require_description,
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        generate.setEnabled(false);
+        generate.setText(R.string.message_assistant_generating);
+        scheduler.io(() -> {
+            try {
+                AgentExtension draft = listener.generateDraft(description);
+                scheduler.main(() -> {
+                    if (draft == null) {
+                        resetGenerate(generate);
+                        Toast.makeText(getContext(),
+                                R.string.toast_ai_generate_failed_no_result,
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    applyDraft(draft);
+                    dialog.dismiss();
+                    Toast.makeText(getContext(), R.string.screen_agent_ai_filled,
+                            Toast.LENGTH_SHORT).show();
+                });
+            } catch (Exception error) {
+                String message = error.getMessage() == null
+                        ? getContext().getString(R.string.toast_ai_generate_failed)
+                        : error.getMessage();
+                scheduler.main(() -> {
+                    resetGenerate(generate);
+                    Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
+                });
+            }
+        });
+    }
+
+    private void resetGenerate(TextView generate) {
+        generate.setEnabled(true);
+        generate.setText(R.string.screen_agent_let_ai_button);
+    }
+
+    private void applyDraft(AgentExtension draft) {
+        name.input().setText(draft.name);
+        slug.input().setText(draft.slug);
+        prompt.input().setText(draft.prompt);
+        trigger.input().setText(draft.trigger);
+        selectedTools.clear();
+        selectedTools.addAll(draft.toolNames);
+        renderTools();
     }
 
     private void save() {

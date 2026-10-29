@@ -13,6 +13,7 @@ import android.view.View;
 import android.view.animation.LinearInterpolator;
 
 import cn.lineai.ui.i18n.R;
+import cn.lineai.ui.kit.DotMatrix;
 import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
 
@@ -26,20 +27,12 @@ import cn.lineai.ui.tokens.Tokens;
  */
 final class WorkingStatusView extends View {
 
-    private static final int DOT_COLUMNS = 3;
-    private static final int DOT_ROWS = 3;
-    private static final int[] FRAME_OFFSETS = {1, 2, 5, 8, 7, 6, 3, 0};
-    private static final long FRAME_MS = 90L;
-    private static final long SHIMMER_MS = 1500L;
-    private static final float INACTIVE_DOT_ALPHA = 0.18f;
-    private static final float TRAILING_DOT_ALPHA = 0.52f;
+    private static final long SHIMMER_MS = DotMatrix.CYCLE_MS;
     private static final float SHIMMER_WIDTH_DP = 72f;
 
     private final Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final float matrixSize;
-    private final float dotRadius;
-    private final float dotStep;
     private final float summaryGap;
     private final float horizontalPadding;
     private final float shimmerWidth;
@@ -60,8 +53,6 @@ final class WorkingStatusView extends View {
         super(context);
         this.tokens = tokens;
         matrixSize = dp(16);
-        dotRadius = dp(1.35f);
-        dotStep = matrixSize / DOT_COLUMNS;
         summaryGap = dp(8);
         horizontalPadding = dp(1);
         shimmerWidth = dp(SHIMMER_WIDTH_DP);
@@ -142,24 +133,8 @@ final class WorkingStatusView extends View {
     }
 
     private void drawDotMatrix(Canvas canvas) {
-        int frame = (int) (progress * SHIMMER_MS / FRAME_MS);
-        int activeOffset = FRAME_OFFSETS[frame % FRAME_OFFSETS.length];
-        int trailingOffset = FRAME_OFFSETS[(frame + FRAME_OFFSETS.length - 1)
-                % FRAME_OFFSETS.length];
-        float top = (getHeight() - matrixSize) / 2f;
-        for (int row = 0; row < DOT_ROWS; row++) {
-            for (int column = 0; column < DOT_COLUMNS; column++) {
-                int offset = row * DOT_COLUMNS + column;
-                float alpha = offset == activeOffset ? 1f
-                        : offset == trailingOffset ? TRAILING_DOT_ALPHA : INACTIVE_DOT_ALPHA;
-                dotPaint.setColor(tokens.accent);
-                dotPaint.setAlpha(Math.round(255f * alpha));
-                float x = horizontalPadding + dotStep * (column + 0.5f);
-                float y = top + dotStep * (row + 0.5f);
-                canvas.drawCircle(x, y, dotRadius, dotPaint);
-            }
-        }
-        dotPaint.setAlpha(255);
+        DotMatrix.draw(canvas, dotPaint, progress, horizontalPadding,
+                (getHeight() - matrixSize) / 2f, matrixSize, tokens.accent);
     }
 
     private void drawLabel(Canvas canvas) {
@@ -206,7 +181,7 @@ final class WorkingStatusView extends View {
         if (animator != null && animator.isStarted()) {
             return;
         }
-        if (!animationsEnabled()) {
+        if (!Ui.animationsEnabled(getContext())) {
             progress = 0f;
             invalidate();
             return;
@@ -220,12 +195,6 @@ final class WorkingStatusView extends View {
             invalidate();
         });
         animator.start();
-    }
-
-    @SuppressWarnings("deprecation")
-    private boolean animationsEnabled() {
-        return android.provider.Settings.Global.getFloat(getContext().getContentResolver(),
-                android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f;
     }
 
     private void stopAnimator() {

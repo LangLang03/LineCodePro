@@ -75,8 +75,9 @@ and process auto-expand preferences are applied by `MessageRow`/`ToolRow` withou
 
 Architecture guards: `linecode.java`, `linecode.android`, `linecode.verify`, `linecode.app`
 (build-logic); they enforce package ownership, dependency direction, file size, CJK-free code,
-no raw threads, no UI string concatenation, stringly-typed state, en/zh/ru string key parity, and
-prompt-catalog consistency (manifest ↔ `PromptId` ↔ placeholders, no duplicate or orphan assets).
+no raw threads, no UI string concatenation, stringly-typed state, en/zh/ru string key parity,
+prompt-catalog consistency (manifest ↔ `PromptId` ↔ placeholders, no duplicate or orphan assets),
+and no hand-written JSON object literals in main sources (`noHandWrittenJsonObjects`).
 
 ## Agent environment
 
@@ -102,7 +103,8 @@ prompt-catalog consistency (manifest ↔ `PromptId` ↔ placeholders, no duplica
 - Do not branch on tool names, tool families or domain names in UI code. Add metadata through
   `ToolPresentation` / `ToolIcon` and let `ToolRegistry.presentation(...)` resolve it.
 - Do not hand-concatenate JSON, tool schemas or prompts. Use `ToolSchemaBuilder`, the prompt assets
-  in `engine-prompt`, `PromptRenderer` and the manifest/PromptId guards.
+  in `engine-prompt`, `PromptRenderer` and the manifest/PromptId guards. A Java string literal that
+  starts with `{"` fails `noHandWrittenJsonObjects` (the tool-card preview samples are exempt).
 - Do not create a second Skill/SkillHub/GitHub install path. Reuse `SkillStore.importSkill` and
   `RemoteSkillInstall`.
 - Do not add `new Thread`, `Executors`, `Handler`, locks/latches, `Thread.sleep` or `while(true)` in

@@ -24,8 +24,9 @@ import cn.lineai.ui.tokens.Tokens;
  * Collapsed group of consecutive tool calls (legacy {@code ToolTimelineGroup}).
  *
  * <p>Collapsed it is a single 48dp row: terminal glyph, {@code Used N tools} and a chevron.
- * Expanded it lists one {@link ToolCallCardView} per call with an 8dp gap. The timeline owns the
- * disclosure state so a rebind never loses what the user opened.</p>
+ * Expanded it lists one {@link ToolCallCardView} per call with a 2dp gap, so a run of calls reads
+ * as one continuous list instead of separate cards. The timeline owns the disclosure state so a
+ * rebind never loses what the user opened.</p>
  */
 public class ToolCallGroupView extends LinearLayout {
 
@@ -147,7 +148,7 @@ public class ToolCallGroupView extends LinearLayout {
                         LayoutParams.WRAP_CONTENT));
             }
             LayoutParams params = (LayoutParams) card.getLayoutParams();
-            params.bottomMargin = Ui.dp(getContext(), 8);
+            params.bottomMargin = Ui.dp(getContext(), 2);
             card.setLayoutParams(params);
             card.bind(entries.get(i), tokens);
         }

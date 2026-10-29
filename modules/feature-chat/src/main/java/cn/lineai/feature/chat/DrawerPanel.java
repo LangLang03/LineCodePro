@@ -410,13 +410,13 @@ public final class DrawerPanel extends FrameLayout {
             setClickable(true);
             setFocusable(true);
             Ui.padding(this, 0, 8, 0, 8);
-            glyph = inlineIcon(context, icon, 16);
-            addView(glyph, lp(16, 16));
+            glyph = inlineIcon(context, icon, 20);
+            addView(glyph, lp(20, 20));
             label = Ui.text(context, context.getString(labelRes), Tokens.FONT_SM,
                     tokens.textTertiary, Typeface.NORMAL);
             label.setSingleLine(true);
             label.setMaxHeight(dp(18));
-            addView(label, margins(-2, -2, 4, 0, 0, 0));
+            addView(label, margins(-2, -2, 6, 0, 0, 0));
             restyle();
         }
 

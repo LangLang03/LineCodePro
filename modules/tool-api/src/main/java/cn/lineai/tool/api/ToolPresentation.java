@@ -27,14 +27,7 @@ public final class ToolPresentation {
     }
 
     public static ToolPresentation generic(String name, String argumentsJson) {
-        JSONObject arguments;
-        try {
-            arguments = argumentsJson == null || argumentsJson.trim().isEmpty()
-                    ? new JSONObject() : new JSONObject(argumentsJson);
-        } catch (Exception ignored) {
-            arguments = new JSONObject();
-        }
-        return generic(name, arguments);
+        return generic(name, ToolJson.object(argumentsJson));
     }
 
     public static ToolPresentation generic(String name, JSONObject arguments) {

@@ -70,6 +70,32 @@ final class ContextCompactor {
         return new Result(new ArrayList<>(loaded.subList(tailStart, loaded.size())), summary);
     }
 
+    /**
+     * Manual compaction: summarizes everything except the recent tail regardless of the
+     * automatic thresholds. Returns false when the conversation is too short to compact.
+     */
+    static boolean compactNow(ModelConfig model, ModelStore models, SettingsStore settings,
+                              String conversationId, List<Message> loaded, Summarizer summarizer)
+            throws Exception {
+        if (model == null || loaded.size() <= TAIL_MESSAGES) {
+            return false;
+        }
+        int tailStart = loaded.size() - TAIL_MESSAGES;
+        String summary = settings.get(key(conversationId), "");
+        ModelConfig compressor = model;
+        if (!model.compressionModelId.isEmpty() && models != null) {
+            ModelConfig custom = models.find(model.compressionModelId);
+            if (custom != null) compressor = custom;
+        }
+        String text = summarizer.summarize(compressor,
+                prompt(summary, loaded.subList(0, tailStart)));
+        if (text == null || text.trim().isEmpty()) {
+            return false;
+        }
+        settings.put(key(conversationId), text.trim());
+        return true;
+    }
+
     private static String prompt(String previous, List<Message> messages) {
         StringBuilder out = new StringBuilder();
         out.append("Summarize the older part of this coding conversation. Keep decisions, ")

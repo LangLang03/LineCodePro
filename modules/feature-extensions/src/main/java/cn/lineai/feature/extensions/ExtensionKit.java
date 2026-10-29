@@ -398,10 +398,12 @@ final class ExtensionKit {
                 new int[] {android.R.attr.state_checked},
                 new int[] {-android.R.attr.state_checked}
         };
+        // Material default: white thumb on the accent track when on, gray thumb on a light track
+        // when off. The legacy accent-dim track made the switch read as disabled.
         toggle.setThumbTintList(new ColorStateList(states,
-                new int[] {tokens.accent, tokens.textTertiary}));
+                new int[] {tokens.textOnColor, tokens.textSecondary}));
         toggle.setTrackTintList(new ColorStateList(states,
-                new int[] {tokens.accentDim, tokens.surfaceLight}));
+                new int[] {tokens.accent, tokens.surfaceLight}));
     }
 
     static void topMargin(Context context, View view, int topDp) {

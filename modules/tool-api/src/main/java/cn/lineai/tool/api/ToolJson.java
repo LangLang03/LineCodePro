@@ -8,7 +8,8 @@ import org.json.JSONObject;
  *
  * <p>Feature modules are not allowed to import {@code org.json} directly, but tool cards still need
  * to read a handful of fields. This wrapper keeps the parser on the tool boundary and exposes only
- * the primitives the UI needs: text, flags, integers, nested objects and arrays.</p>
+ * the primitives the UI needs: text, flags, integers, nested objects and arrays. Parsing is lenient
+ * through {@link ToolJsonRepair}, so a card still shows the path or command of a malformed call.</p>
  */
 public final class ToolJson {
 
@@ -24,14 +25,26 @@ public final class ToolJson {
         return EMPTY;
     }
 
-    /** Returns {@code null} when the text is not a valid JSON object. */
+    /** Returns {@code null} when the text carries no usable JSON object. */
     public static ToolJson tryParse(String json) {
-        if (json == null || json.trim().isEmpty()) return null;
-        try {
-            return new ToolJson(new JSONObject(json));
-        } catch (Exception invalid) {
-            return null;
-        }
+        JSONObject object = ToolJsonRepair.parse(json);
+        return object == null ? null : new ToolJson(object);
+    }
+
+    /** Repaired object for tool execution; never {@code null}, empty when nothing is usable. */
+    public static JSONObject object(String json) {
+        JSONObject object = ToolJsonRepair.parse(json);
+        return object == null ? new JSONObject() : object;
+    }
+
+    /**
+     * True when the argument object closes properly.
+     *
+     * <p>Used as a safety gate for mutating tools: a call truncated at the token limit can still be
+     * repaired into valid JSON, but running it would write half a file.</p>
+     */
+    public static boolean complete(String json) {
+        return ToolJsonRepair.complete(json);
     }
 
     /** Parses to an empty object when the text is missing or malformed. */
