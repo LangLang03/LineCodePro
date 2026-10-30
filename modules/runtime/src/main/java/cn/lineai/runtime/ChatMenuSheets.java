@@ -48,11 +48,8 @@ public final class ChatMenuSheets {
                         .key(cn.lineai.core.mvi.nav.Params.Empty.INSTANCE)));
         addRow(host, panel, R.string.sheet_more_export, R.string.sheet_more_export_desc,
                 host::requestExport);
-        // Message multi-select lives on the timeline; until it lands the row reports unavailable.
-        addRow(host, panel, R.string.sheet_more_select_export,
-                R.string.sheet_more_select_export_desc, host::unavailable);
         addRow(host, panel, R.string.sheet_more_compact, R.string.sheet_more_compact_desc,
-                () -> showCompaction(host, host::unavailable));
+                () -> showCompaction(host, () -> compactContext(host)));
         addRow(host, panel, R.string.sheet_more_clear, R.string.sheet_more_clear_desc, () -> {
             String id = host.graph().chat().conversationId();
             if (!id.isEmpty()) {
@@ -141,6 +138,30 @@ public final class ChatMenuSheets {
     }
 
     // ------------------------------------------------------------- compaction
+
+    private static void compactContext(PageHost host) {
+        host.graph().chat().compactContext(result -> {
+            int text;
+            switch (result) {
+                case DONE:
+                    text = R.string.context_compact_success;
+                    break;
+                case NO_MODEL:
+                    text = R.string.context_compact_no_model;
+                    break;
+                case INSUFFICIENT:
+                    text = R.string.context_compact_insufficient;
+                    break;
+                case BUSY:
+                    text = R.string.context_compact_busy;
+                    break;
+                default:
+                    text = R.string.context_compact_failed;
+                    break;
+            }
+            Toast.makeText(host.activity(), text, Toast.LENGTH_SHORT).show();
+        });
+    }
 
     public static void showCompaction(PageHost host, Runnable onConfirm) {
         Context context = host.activity();

@@ -9,6 +9,7 @@ public enum ToolIcon {
     DELETE,
     LIST,
     SEARCH,
+    FETCH,
     TERMINAL,
     MCP,
     IMAGE,

@@ -257,14 +257,7 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
     }
 
     @Override public void onVideoPicker() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("video/*");
-        try {
-            startActivityForResult(intent, cn.lineai.runtime.SafActions.REQUEST_VIDEO);
-        } catch (ActivityNotFoundException error) {
-            Toast.makeText(this, R.string.rewrite_not_available, Toast.LENGTH_SHORT).show();
-        }
+        HostActions.pickVisualMedia(this, "video/*", cn.lineai.runtime.SafActions.REQUEST_VIDEO);
     }
 
     @Override public void onAttachmentPicker() {
@@ -372,7 +365,7 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
     }
 
     @Override public void onAttach() {
-        HostActions.pickDocument(this, "image/*", null, cn.lineai.runtime.SafActions.REQUEST_ATTACH);
+        HostActions.pickVisualMedia(this, "image/*", cn.lineai.runtime.SafActions.REQUEST_ATTACH);
     }
 
     @Override public void pickToolModel(boolean understanding) {
@@ -450,6 +443,10 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
 
     @Override public void openExternalWorkspace() {
         HostActions.openExternalWorkspace(this, tokens, graph);
+    }
+
+    @Override public void shareWorkspace() {
+        HostActions.shareWorkspace(this);
     }
 
     @Override public void applyProjectLabel(cn.lineai.core.model.Project project) {

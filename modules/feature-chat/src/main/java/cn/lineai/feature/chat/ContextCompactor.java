@@ -40,7 +40,7 @@ final class ContextCompactor {
 
     static Result prepare(ModelConfig model, ModelStore models, SettingsStore settings,
                           String conversationId, List<Message> loaded, boolean softCompaction,
-                          Summarizer summarizer) {
+                          String instruction, Summarizer summarizer) {
         String summary = settings.get(key(conversationId), "");
         int tailStart = Math.max(0, loaded.size() - TAIL_MESSAGES);
         int threshold = softCompaction ? SOFT_THRESHOLD_PERCENT : HARD_THRESHOLD_PERCENT;
@@ -55,7 +55,7 @@ final class ContextCompactor {
             }
             try {
                 String text = summarizer.summarize(compressor,
-                        prompt(summary, loaded.subList(0, tailStart)));
+                        prompt(instruction, summary, loaded.subList(0, tailStart)));
                 if (text != null && !text.trim().isEmpty()) {
                     summary = text.trim();
                     settings.put(key(conversationId), summary);
@@ -70,11 +70,39 @@ final class ContextCompactor {
         return new Result(new ArrayList<>(loaded.subList(tailStart, loaded.size())), summary);
     }
 
-    private static String prompt(String previous, List<Message> messages) {
+    /**
+     * Manual compaction: summarizes everything except the recent tail regardless of the
+     * automatic thresholds. Returns false when the conversation is too short to compact.
+     */
+    static boolean compactNow(ModelConfig model, ModelStore models, SettingsStore settings,
+                              String conversationId, List<Message> loaded, String instruction,
+                              Summarizer summarizer)
+            throws Exception {
+        if (model == null || loaded.size() <= TAIL_MESSAGES) {
+            return false;
+        }
+        int tailStart = loaded.size() - TAIL_MESSAGES;
+        String summary = settings.get(key(conversationId), "");
+        ModelConfig compressor = model;
+        if (!model.compressionModelId.isEmpty() && models != null) {
+            ModelConfig custom = models.find(model.compressionModelId);
+            if (custom != null) compressor = custom;
+        }
+        String text = summarizer.summarize(compressor,
+                prompt(instruction, summary, loaded.subList(0, tailStart)));
+        if (text == null || text.trim().isEmpty()) {
+            return false;
+        }
+        settings.put(key(conversationId), text.trim());
+        return true;
+    }
+
+    private static String prompt(String instruction, String previous, List<Message> messages) {
         StringBuilder out = new StringBuilder();
-        out.append("Summarize the older part of this coding conversation. Keep decisions, ")
-                .append("files and paths touched, commands run, errors, constraints and TODO state. ")
-                .append("Reply with the summary only.\n\n");
+        String template = instruction == null ? "" : instruction.trim();
+        if (!template.isEmpty()) {
+            out.append(template).append("\n\n");
+        }
         if (!previous.isEmpty()) {
             out.append("Previous summary:\n").append(previous).append("\n\n");
         }

@@ -22,6 +22,7 @@ import cn.lineai.tool.api.Tool;
 import cn.lineai.tool.api.ToolCall;
 import cn.lineai.tool.api.ToolCatalog;
 import cn.lineai.tool.api.ToolContext;
+import cn.lineai.tool.api.ToolKind;
 import cn.lineai.tool.api.ToolRegistry;
 import cn.lineai.tool.api.ToolResult;
 
@@ -96,7 +97,7 @@ public final class NestedAgentRunner implements AgentRunner {
     private ToolRegistry readOnlyRegistry(List<String> allowed) {
         ToolRegistry result = new ToolRegistry();
         for (Tool tool : baseTools.registry().all()) {
-            if (tool.mutating()) continue;
+            if (tool.mutating() || tool.kind() == ToolKind.PHONE) continue;
             if (allowed != null && !allowed.isEmpty() && !allowed.contains(tool.name())) continue;
             result.register(tool);
         }

@@ -54,6 +54,11 @@ public interface PageHost {
         unavailable();
     }
 
+    /** Opens the system picker for another app to read/write the LineCode workspace. */
+    default void shareWorkspace() {
+        unavailable();
+    }
+
     /** Opens the system image picker for the composer long-press action. */
     default void pickChatImage() {
         unavailable();

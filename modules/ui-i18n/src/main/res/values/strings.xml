@@ -974,6 +974,7 @@
     <string name="sheet_title_project">Project</string>
     <string name="workspace_open_folder">Open local folder</string>
     <string name="workspace_open_folder_desc">Pick an existing folder on this device and use it as the workspace.</string>
+    <string name="workspace_share">Share with other apps</string>
     <string name="workspace_open_local">Open local project</string>
     <string name="workspace_open_local_desc">Choose a writable local directory with the system picker</string>
     <string name="workspace_create_desc">Create a managed project under .linecode/project</string>
@@ -1264,6 +1265,9 @@
     <string name="context_compact_cancel_desc">Return to current chat</string>
     <string name="context_compact_no_model">No model available. Please configure a model before compacting context.</string>
     <string name="context_compact_insufficient">Insufficient context, no compaction needed.</string>
+    <string name="context_compact_success">Context compacted</string>
+    <string name="context_compact_failed">Context compaction failed</string>
+    <string name="context_compact_busy">Stop the current generation before compacting context.</string>
 
     <!-- Attachment picker (composer + button) -->
     <string name="attachment_picker_title_ssh">Select SSH file</string>
@@ -1585,6 +1589,7 @@
     <string name="screen_agent_ai_unavailable">AI writer is not available in this build</string>
     <string name="skillhub_downloads">Downloads</string>
     <string name="skillhub_card_meta">↓ %1$s · v%2$s</string>
+    <string name="skillhub_card_stats">↓ %1$s   ☆ %2$s · v%3$s</string>
     <string name="skillhub_publish_row_desc">Upload a local Skill to SkillHub</string>
     <string name="screen_skill_form_title">Skill document</string>
     <string name="chat_context_title">Add to conversation</string>

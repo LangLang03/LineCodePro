@@ -22,6 +22,7 @@
     {"id": "agentSystemPrompt", "file": "agent-system-prompt-template.txt", "variables": ["ROLE_PROMPT","TASK_DESCRIPTION","WORKSPACE_CONTEXT","SCOPE_CONTEXT","EXTENSIONS_CONTEXT","TOOLS_CONTEXT"]},
     {"id": "imageUnderstandingToolSystem", "file": "image-understanding-tool-system.txt"},
     {"id": "contextCompactionSummaryPrefix", "file": "context-compaction-summary-prefix.txt", "variables": ["SUMMARY"]},
-    {"id": "contextCompactionResponsesFallback", "file": "context-compaction-responses-fallback.txt"}
+    {"id": "contextCompactionResponsesFallback", "file": "context-compaction-responses-fallback.txt"},
+    {"id": "agentDraft", "file": "agent-draft-template.txt", "variables": ["USER_NEED","AVAILABLE_TOOLS"]}
   ]
 }

@@ -12,9 +12,12 @@ import cn.lineai.tool.api.ToolContext;
 import cn.lineai.tool.api.ToolIcon;
 import cn.lineai.tool.api.ToolPresentation;
 import cn.lineai.tool.api.ToolResult;
+import cn.lineai.tool.api.ToolSchemaBuilder;
 
 /** One remote MCP tool exposed to the local tool loop. */
 final class McpTool implements Tool {
+
+    private static final String EMPTY_SCHEMA = ToolSchemaBuilder.object().build();
 
     private final McpExtension server;
     private final McpToolInfo remote;
@@ -39,8 +42,7 @@ final class McpTool implements Tool {
     }
 
     @Override public String parametersJson() {
-        return remote.inputSchemaJson.isEmpty() ? "{\"type\":\"object\",\"properties\":{}}"
-                : remote.inputSchemaJson;
+        return remote.inputSchemaJson.isEmpty() ? EMPTY_SCHEMA : remote.inputSchemaJson;
     }
 
     @Override public boolean mutating() {

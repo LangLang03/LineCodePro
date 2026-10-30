@@ -162,7 +162,7 @@ final class MessageActionBar extends LinearLayout {
     private LinearLayout.LayoutParams params(Context context) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 Ui.dp(context, 40), Ui.dp(context, 44));
-        params.rightMargin = Ui.dp(context, 4);
+        params.rightMargin = 0;
         return params;
     }
 }

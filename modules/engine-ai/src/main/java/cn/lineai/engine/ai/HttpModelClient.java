@@ -1,6 +1,9 @@
 package cn.lineai.engine.ai;
 
+import org.json.JSONObject;
+
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -83,9 +86,12 @@ public final class HttpModelClient implements ModelClient {
             }
             int status = connection.getResponseCode();
             if (status < 200 || status >= 300) {
+                String errorPayload = readError(connection);
+                String detail = errorPayload.isEmpty()
+                        ? "HTTP " + status : "HTTP " + status + "\n" + errorPayload;
                 listener.onError(new DomainException(status == 401 || status == 403
                         ? ErrorCode.AUTH
-                        : ErrorCode.NETWORK, "http " + status));
+                        : ErrorCode.NETWORK, detail));
                 return;
             }
             if (!read(connection.getInputStream(), listener, holder, plan.decoder)) {
@@ -96,7 +102,9 @@ public final class HttpModelClient implements ModelClient {
             if (holder.isCancelled()) {
                 listener.onError(new DomainException(ErrorCode.CANCELLED, "connection closed"));
             } else {
-                listener.onError(new DomainException(ErrorCode.NETWORK, error.getClass().getSimpleName(), error));
+                listener.onError(new DomainException(ErrorCode.NETWORK,
+                        error.getMessage() == null ? error.getClass().getSimpleName()
+                                : error.getMessage(), error));
             }
         } finally {
             if (connection != null) {
@@ -129,6 +137,25 @@ public final class HttpModelClient implements ModelClient {
                 return new Plan(OpenAiChatCodec.endpoint(model.baseUrl),
                         OpenAiChatCodec.requestBody(request), headers, OpenAiChatCodec.decoder());
         }
+    }
+
+    /** Reads the provider's error payload; the status code alone hides the actual reason. */
+    private static String readError(HttpURLConnection connection) {
+        InputStream stream = connection.getErrorStream();
+        if (stream == null) {
+            return "";
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (InputStream input = stream) {
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = input.read(buffer)) >= 0 && out.size() < 32768) {
+                out.write(buffer, 0, Math.min(count, 32768 - out.size()));
+            }
+        } catch (IOException error) {
+            return "";
+        }
+        return new String(out.toByteArray(), StandardCharsets.UTF_8).trim();
     }
 
     private boolean read(InputStream input, Listener listener, Connection holder,

@@ -28,14 +28,7 @@ public final class ToolRegistry {
     }
 
     public ToolPresentation presentation(String name, String argumentsJson) {
-        JSONObject arguments;
-        try {
-            arguments = argumentsJson == null || argumentsJson.trim().isEmpty()
-                    ? new JSONObject() : new JSONObject(argumentsJson);
-        } catch (Exception ignored) {
-            arguments = new JSONObject();
-        }
-        return presentation(name, arguments);
+        return presentation(name, ToolJson.object(argumentsJson));
     }
 
     public ToolPresentation presentation(String name, JSONObject arguments) {

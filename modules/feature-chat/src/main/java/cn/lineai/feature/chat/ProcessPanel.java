@@ -5,7 +5,6 @@ import android.graphics.Typeface;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
-import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import java.util.ArrayList;
@@ -17,6 +16,7 @@ import cn.lineai.core.model.UiPreferences;
 import cn.lineai.feature.chat.toolcall.ToolCallEntry;
 import cn.lineai.feature.chat.toolcall.ToolCallGroupView;
 import cn.lineai.ui.i18n.R;
+import cn.lineai.ui.kit.DotMatrixSpinner;
 import cn.lineai.ui.kit.IconButton;
 import cn.lineai.ui.kit.Icons;
 import cn.lineai.ui.kit.Ui;
@@ -26,14 +26,16 @@ import cn.lineai.ui.tokens.Tokens;
 /**
  * The folded process of one assistant turn (C++ {@code AssistantTimeline}).
  *
- * <p>Collapsed it is a single 48dp row: an accent indeterminate spinner on the left while the
- * turn runs, the state label, the elapsed duration once finished, and the disclosure chevron.
- * Expanded it renders the turn's process in order behind a hairline rule.</p>
+ * <p>Collapsed it is a single 48dp row: the same accent dot matrix used by the live status row
+ * while the turn runs, the state label, the elapsed duration once finished, and the disclosure
+ * chevron. While a turn is streaming the panel opens itself so the live tool feed stays visible;
+ * once the turn ends it folds back unless the user toggled it. Expanded it renders the turn's
+ * process in order behind a hairline rule.</p>
  */
 final class ProcessPanel extends LinearLayout {
 
     private final LinearLayout header;
-    private final ProgressBar spinner;
+    private final DotMatrixSpinner spinner;
     private final TextView label;
     private final TextView duration;
     private final IconButton chevron;
@@ -65,8 +67,7 @@ final class ProcessPanel extends LinearLayout {
         header.setClickable(true);
         header.setFocusable(true);
         header.setOnClickListener(v -> toggle());
-        spinner = new ProgressBar(context, null, android.R.attr.progressBarStyleSmall);
-        spinner.setIndeterminate(true);
+        spinner = new DotMatrixSpinner(context, 16f);
         spinner.setVisibility(GONE);
         header.addView(spinner, new LayoutParams(Ui.dp(context, 16), Ui.dp(context, 16)));
         label = Ui.text(context, "", Tokens.FONT_SM, tokens.textSecondary, Typeface.NORMAL);
@@ -110,10 +111,9 @@ final class ProcessPanel extends LinearLayout {
         live = row.live;
         startedAt = row.processingStartedAt;
         finishedAt = row.processingFinishedAt;
-        boolean failed = row.subject != null
-                && row.subject.status == cn.lineai.core.model.Message.Status.FAILED;
-        // A failed turn opens itself so the failure text is visible instead of a blank row.
-        expanded = env.disclosure.isOpen(key + ":process", processAutoExpand() || failed);
+        boolean failed = row.failed;
+        // Live turns and failures open themselves; an explicit toggle always wins.
+        expanded = resolveExpanded(key, failed);
         renderItems(row, key);
         for (View child : children.values()) {
             if (child instanceof ReasoningBlockView) {
@@ -132,8 +132,7 @@ final class ProcessPanel extends LinearLayout {
         duration.setTextColor(current.textSecondary);
         chevron.setIconColor(current.textTertiary);
         rule.setBackgroundColor(current.border);
-        spinner.setIndeterminateTintList(
-                android.content.res.ColorStateList.valueOf(current.accent));
+        spinner.setColor(current.accent);
         for (View child : children.values()) {
             if (child instanceof ToolCallGroupView) {
                 ((ToolCallGroupView) child).applyTokens(current);
@@ -162,28 +161,37 @@ final class ProcessPanel extends LinearLayout {
 
     private void scheduleTick() {
         removeCallbacks(tick);
-        if (running && finishedAt == 0 && isAttachedToWindow()) {
+        if (active() && finishedAt == 0 && isAttachedToWindow()) {
             postDelayed(tick, 1000L);
         }
     }
 
+    private boolean active() {
+        return running || pending || (live && finishedAt == 0);
+    }
+
     private void updateHeader() {
-        boolean active = running || (live && finishedAt == 0);
-        int text = active
+        boolean isActive = active();
+        int text = isActive
                 ? (pending ? R.string.chat_process_pending : R.string.chat_process_running)
                 : R.string.chat_process_done;
         label.setText(getContext().getString(text));
-        spinner.setVisibility(active ? VISIBLE : GONE);
+        spinner.setVisibility(isActive ? VISIBLE : GONE);
+        if (isActive) {
+            spinner.start();
+        } else {
+            spinner.stop();
+        }
         LayoutParams labelParams = (LayoutParams) label.getLayoutParams();
-        int labelStart = active ? Ui.dp(getContext(), 8) : 0;
+        int labelStart = isActive ? Ui.dp(getContext(), 8) : 0;
         if (labelParams.leftMargin != labelStart) {
             labelParams.leftMargin = labelStart;
             label.setLayoutParams(labelParams);
         }
-        if (active && startedAt > 0) {
+        if (isActive && startedAt > 0) {
             duration.setText(formatDuration(System.currentTimeMillis() - startedAt));
             duration.setVisibility(VISIBLE);
-        } else if (!active && finishedAt > startedAt && startedAt > 0) {
+        } else if (!isActive && finishedAt > startedAt && startedAt > 0) {
             duration.setText(formatDuration(finishedAt - startedAt));
             duration.setVisibility(VISIBLE);
         } else {
@@ -198,10 +206,22 @@ final class ProcessPanel extends LinearLayout {
         if (env == null) {
             return;
         }
-        env.disclosure.toggle(rowKey + ":process");
-        expanded = env.disclosure.isOpen(rowKey + ":process", processAutoExpand());
+        expanded = !expanded;
+        env.disclosure.setExplicit(rowKey + ":process", expanded);
         applyExpanded();
         updateHeader();
+    }
+
+    /**
+     * Live turns open the panel so the running tool feed is watchable, then fold back to the
+     * summary once the turn ends. An explicit user toggle wins and survives the state change.
+     */
+    private boolean resolveExpanded(String key, boolean failed) {
+        Boolean choice = env.disclosure.explicit(key + ":process");
+        if (choice != null) {
+            return choice;
+        }
+        return processAutoExpand() || failed || active();
     }
 
     private void applyExpanded() {

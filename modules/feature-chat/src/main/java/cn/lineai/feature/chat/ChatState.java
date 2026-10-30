@@ -21,7 +21,11 @@ public final class ChatState {
     public final long revision;
 
     private ChatState(Builder b) {
-        this.messages = Collections.unmodifiableList(new ArrayList<>(b.messages));
+        List<Message> ordered = new ArrayList<>(b.messages);
+        // Sequence is assigned on the single event queue; sorting here is the last line of defence
+        // so a late event can never render a tool result above the message that requested it.
+        ordered.sort((left, right) -> Long.compare(left.seq, right.seq));
+        this.messages = Collections.unmodifiableList(ordered);
         this.pendingApprovals = Collections.unmodifiableList(new ArrayList<>(b.pendingApprovals));
         this.streaming = b.streaming;
         this.projectLabel = b.projectLabel;

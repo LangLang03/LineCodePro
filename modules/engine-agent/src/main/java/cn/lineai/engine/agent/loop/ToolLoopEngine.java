@@ -1,7 +1,5 @@
 package cn.lineai.engine.agent.loop;
 
-import org.json.JSONObject;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,6 +24,7 @@ import cn.lineai.engine.protocol.ToolSchema;
 import cn.lineai.tool.api.Tool;
 import cn.lineai.tool.api.ToolCall;
 import cn.lineai.tool.api.ToolContext;
+import cn.lineai.tool.api.ToolJson;
 import cn.lineai.tool.api.ToolRegistry;
 import cn.lineai.tool.api.ToolResult;
 
@@ -50,13 +49,18 @@ public final class ToolLoopEngine implements Cancellable {
         void onFailed(DomainException error);
 
         void onBudgetExceeded(int requested, int used, int max);
+
+        /** A transient model failure is about to be retried (attempt starts at 1). */
+        default void onRetry(int attempt, int max, DomainException error) { }
     }
+
+    private static final int MAX_ATTEMPTS = 3;
+    private static final long RETRY_DELAY_MS = 800;
 
     private final ModelClient client;
     private final ToolRegistry tools;
     private final ToolContext toolContext;
     private final Scheduler scheduler;
-    private final int maxToolCalls;
     private final ToolLoopDecider decider = new ToolLoopDecider();
     private final ToolCallMerger merger = new ToolCallMerger();
     private final Observable<ToolLoopState> observable;
@@ -78,7 +82,6 @@ public final class ToolLoopEngine implements Cancellable {
         this.tools = tools;
         this.toolContext = toolContext;
         this.scheduler = scheduler;
-        this.maxToolCalls = maxToolCalls;
         this.observable = new Observable<>(ToolLoopState.idle(maxToolCalls));
     }
 
@@ -150,10 +153,14 @@ public final class ToolLoopEngine implements Cancellable {
     }
 
     private void callModel() {
+        callModel(0);
+    }
+
+    private void callModel(int attempt) {
         if (cancelled) return;
         merger.clear();
         text = new StringBuilder();
-        if (listener != null) listener.onTurnStarted();
+        if (attempt == 0 && listener != null) listener.onTurnStarted();
         ChatRequest request = ChatRequest.builder()
                 .model(model.modelId)
                 .system(systemPrompt)
@@ -182,8 +189,15 @@ public final class ToolLoopEngine implements Cancellable {
             }
 
             @Override public void onError(DomainException error) {
-                dispatch(new ToolLoopEvent.Failed(error.detail().isEmpty()
-                        ? error.code().name() : error.detail()));
+                if (cancelled) return;
+                int next = attempt + 1;
+                if (next >= MAX_ATTEMPTS) {
+                    dispatch(new ToolLoopEvent.Failed(error.detail().isEmpty()
+                            ? error.code().name() : error.detail()));
+                    return;
+                }
+                if (listener != null) listener.onRetry(next, MAX_ATTEMPTS, error);
+                scheduler.io(RETRY_DELAY_MS, () -> callModel(next));
             }
         });
     }
@@ -251,9 +265,12 @@ public final class ToolLoopEngine implements Cancellable {
             return ToolResult.failure(call.id, "Tool requires confirmation: " + call.name);
         }
         try {
-            JSONObject arguments = call.arguments.trim().isEmpty()
-                    ? new JSONObject() : new JSONObject(call.arguments);
-            return tool.execute(toolContext, arguments);
+            // Lenient on purpose: models emit fenced, single-quoted or truncated argument JSON.
+            if (tool.mutating() && !ToolJson.complete(call.arguments)) {
+                return ToolResult.failure(call.id,
+                        "Tool arguments were truncated: " + call.name);
+            }
+            return tool.execute(toolContext, ToolJson.object(call.arguments));
         } catch (Exception error) {
             return ToolResult.failure(call.id, error.getMessage() == null
                     ? error.getClass().getSimpleName() : error.getMessage());

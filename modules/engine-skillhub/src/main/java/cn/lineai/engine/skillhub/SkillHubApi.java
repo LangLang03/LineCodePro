@@ -16,12 +16,14 @@ import java.util.List;
 import cn.lineai.core.model.SkillHubDetail;
 import cn.lineai.core.model.SkillHubComment;
 import cn.lineai.core.model.SkillHubEntry;
+import cn.lineai.core.model.SkillHubMeta;
 
 /** Minimal read-only SkillHub client: search and download. */
 public final class SkillHubApi {
 
     private static final String ROOT = "https://api.skillhub.cn";
     private static final int MAX_ZIP_BYTES = 20 * 1024 * 1024;
+    private static final int MAX_ICON_BYTES = 4 * 1024 * 1024;
 
     public List<SkillHubEntry> list(String keyword, int page) throws IOException {
         return list(keyword, page, "");
@@ -33,7 +35,7 @@ public final class SkillHubApi {
         StringBuilder url = new StringBuilder(ROOT + "/api/skills?page=")
                 .append(safePage).append("&pageSize=20");
         if (sort != null && !sort.trim().isEmpty()) {
-            url.append("&sort=").append(encode(sort.trim()));
+            url.append("&sortBy=").append(encode(sort.trim())).append("&order=desc");
         }
         if (keyword != null && !keyword.trim().isEmpty()) {
             url.append("&keyword=").append(encode(keyword.trim()));
@@ -59,7 +61,34 @@ public final class SkillHubApi {
             markdown = "";
         }
         return new SkillHubDetail(detail.slug, detail.name, detail.description, detail.author,
-                detail.version, markdown, detail.downloads, detail.securityStatus, detail.tags);
+                detail.version, markdown, detail.downloads, detail.securityStatus, detail.tags,
+                detail.meta);
+    }
+
+    /** Downloads a remote skill icon after validating the host allow-list. */
+    public byte[] icon(String rawUrl) throws IOException {
+        String url = requireIconUrl(rawUrl);
+        byte[] bytes = getBytes(url, MAX_ICON_BYTES);
+        if (bytes.length == 0) throw new IOException("SkillHub icon is empty");
+        return bytes;
+    }
+
+    static String requireIconUrl(String rawUrl) throws IOException {
+        String value = rawUrl == null ? "" : rawUrl.trim();
+        try {
+            java.net.URI uri = new java.net.URI(value);
+            String host = uri.getHost();
+            boolean allowed = "https".equalsIgnoreCase(uri.getScheme()) && host != null
+                    && ("skillhub.cn".equalsIgnoreCase(host)
+                    || "www.skillhub.cn".equalsIgnoreCase(host)
+                    || "api.skillhub.cn".equalsIgnoreCase(host)
+                    || "cloudcache.tencent-cloud.com".equalsIgnoreCase(host)
+                    || "skillhub-1388575217.cos.accelerate.myqcloud.com".equalsIgnoreCase(host));
+            if (!allowed) throw new IOException("Invalid SkillHub icon URL");
+            return uri.toASCIIString();
+        } catch (java.net.URISyntaxException error) {
+            throw new IOException("Invalid SkillHub icon URL", error);
+        }
     }
 
     public java.util.List<SkillHubComment> comments(String slug) throws IOException {
@@ -111,12 +140,12 @@ public final class SkillHubApi {
             }
             return new SkillHubDetail(slug,
                     first(skill.optString("displayName"), slug),
-                    first(skill.optString("summary_zh"), skill.optString("summary")),
-                    owner == null ? "" : first(owner.optString("displayName"),
-                            owner.optString("handle")),
-                    latest == null ? skill.optString("version") : latest.optString("version"),
-                    "", stats == null ? 0 : stats.optLong("downloads"),
-                    security == null ? "" : security.optString("statusText"), tags);
+                    description(skill),
+                    author(skill, owner),
+                    version(skill, latest),
+                    "", downloads(skill, stats),
+                    security == null ? "" : security.optString("statusText"), tags,
+                    meta(skill, stats));
         } catch (Exception error) {
             return null;
         }
@@ -161,16 +190,56 @@ public final class SkillHubApi {
                 result.add(new SkillHubEntry(
                         slug,
                         first(skill.optString("displayName"), slug),
-                        first(skill.optString("summary_zh"), skill.optString("summary")),
-                        owner == null ? "" : first(owner.optString("displayName"),
-                                owner.optString("handle")),
-                        latest == null ? skill.optString("version") : latest.optString("version"),
-                        stats == null ? 0 : stats.optLong("downloads")));
+                        description(skill),
+                        author(skill, owner),
+                        version(skill, latest),
+                        downloads(skill, stats),
+                        meta(skill, stats)));
             }
             return result;
         } catch (Exception error) {
             return null;
         }
+    }
+
+    /**
+     * The list endpoint is flat ({@code description/downloads/ownerName/iconUrl/stars}) while the
+     * detail endpoint nests them under {@code stats}/{@code owner}; accept both shapes.
+     */
+    private static String description(JSONObject skill) {
+        return first(first(skill.optString("description_zh"), skill.optString("description")),
+                first(skill.optString("summary_zh"), skill.optString("summary")));
+    }
+
+    private static String author(JSONObject skill, JSONObject owner) {
+        if (owner != null) {
+            String name = first(owner.optString("displayName"), owner.optString("handle"));
+            if (!name.isEmpty()) return name;
+        }
+        String ownerName = skill.optString("ownerName");
+        if (!ownerName.isEmpty()) return ownerName;
+        JSONObject namespace = skill.optJSONObject("namespace");
+        return namespace == null ? ""
+                : first(namespace.optString("displayName"), namespace.optString("handle"));
+    }
+
+    private static String version(JSONObject skill, JSONObject latest) {
+        String value = latest == null ? "" : latest.optString("version");
+        return value.isEmpty() ? skill.optString("version") : value;
+    }
+
+    private static long downloads(JSONObject skill, JSONObject stats) {
+        return skill.optLong("downloads", stats == null ? 0 : stats.optLong("downloads"));
+    }
+
+    private static SkillHubMeta meta(JSONObject skill, JSONObject stats) {
+        JSONObject labels = skill.optJSONObject("labels");
+        long stars = skill.optLong("stars", stats == null ? 0 : stats.optLong("stars"));
+        boolean verified = skill.optBoolean("verified", skill.optBoolean("isAuthorVerified"));
+        boolean apiKey = labels != null
+                && "true".equalsIgnoreCase(labels.optString("requires_api_key"));
+        return new SkillHubMeta(skill.optString("iconUrl"), stars, verified,
+                skill.optString("category"), apiKey);
     }
 
     private static String first(String first, String second) {

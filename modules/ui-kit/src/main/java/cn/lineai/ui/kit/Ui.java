@@ -100,6 +100,13 @@ public final class Ui {
         return luminance > 0.55 ? Color.rgb(36, 38, 42) : Color.rgb(237, 240, 242);
     }
 
+    /** False when the system animator duration scale is 0 ("remove animations" accessibility). */
+    @SuppressWarnings("deprecation")
+    public static boolean animationsEnabled(Context context) {
+        return android.provider.Settings.Global.getFloat(context.getContentResolver(),
+                android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f;
+    }
+
     /** A one-pixel divider that reads as a hairline on every density. */
     public static View hairline(Context context, Tokens tokens) {
         View view = new View(context);

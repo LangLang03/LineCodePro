@@ -53,7 +53,7 @@ public class BuiltinToolsTest {
     }
 
     @Test public void registryContainsEveryTool() {
-        assertEquals(10, registry.all().size());
+        assertEquals(11, registry.all().size());
         assertNull(registry.find("missing"));
     }
 

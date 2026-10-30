@@ -37,7 +37,8 @@ public enum PromptId {
     IMAGE_UNDERSTANDING_TOOL_SYSTEM("imageUnderstandingToolSystem", "image-understanding-tool-system.txt"),
     CONTEXT_COMPACTION_SUMMARY_PREFIX("contextCompactionSummaryPrefix",
             "context-compaction-summary-prefix.txt", "SUMMARY"),
-    CONTEXT_COMPACTION_RESPONSES_FALLBACK("contextCompactionResponsesFallback", "context-compaction-responses-fallback.txt");
+    CONTEXT_COMPACTION_RESPONSES_FALLBACK("contextCompactionResponsesFallback", "context-compaction-responses-fallback.txt"),
+    AGENT_DRAFT("agentDraft", "agent-draft-template.txt", "USER_NEED", "AVAILABLE_TOOLS");
 
     public final String id;
     public final String file;

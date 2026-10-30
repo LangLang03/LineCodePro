@@ -59,11 +59,15 @@ public final class TurnAssembler {
         public final Message subject;
         public final Message userMessage;
         public final Message answer;
+        /** Visible failure reason from an ERROR block on a failed turn. */
+        public final String error;
         public final List<Item> process;
         public final List<ToolCallEntry> tools;
         public final boolean live;
         public final boolean running;
         public final boolean pending;
+        /** True when any message of the turn failed, so the process panel opens on the error. */
+        public final boolean failed;
         public final long processingStartedAt;
         public final long processingFinishedAt;
         /** Everything the row draws; identical signatures skip a rebind. */
@@ -75,11 +79,13 @@ public final class TurnAssembler {
             this.subject = draft.subject;
             this.userMessage = draft.userMessage;
             this.answer = draft.answer;
+            this.error = draft.error == null ? "" : draft.error;
             this.process = Collections.unmodifiableList(new ArrayList<>(draft.process));
             this.tools = Collections.unmodifiableList(new ArrayList<>(draft.tools));
             this.live = draft.live;
             this.running = draft.running;
             this.pending = draft.pending;
+            this.failed = draft.failed;
             this.processingStartedAt = draft.startedAt;
             this.processingFinishedAt = draft.finishedAt;
             this.signature = buildSignature();
@@ -92,18 +98,20 @@ public final class TurnAssembler {
             Message subject;
             Message userMessage;
             Message answer;
+            String error = "";
             final List<Item> process = new ArrayList<>();
             final List<ToolCallEntry> tools = new ArrayList<>();
             boolean live;
             boolean running;
             boolean pending;
+            boolean failed;
             long startedAt;
             long finishedAt;
         }
 
         private String buildSignature() {
             StringBuilder value = new StringBuilder(key).append('\u0001').append(user)
-                    .append('\u0001').append(live).append(running).append(pending)
+                    .append('\u0001').append(live).append(running).append(pending).append(failed)
                     .append('\u0001').append(processingStartedAt).append('/')
                     .append(processingFinishedAt);
             if (userMessage != null) {
@@ -115,6 +123,9 @@ public final class TurnAssembler {
             if (answer != null) {
                 value.append('\u0001').append(answer.id).append('\u0001')
                         .append(answer.plainText());
+            }
+            if (!error.isEmpty()) {
+                value.append('\u0001').append(error);
             }
             for (Item item : process) {
                 value.append('\u0002').append(item.kind).append(':').append(item.key)
@@ -136,7 +147,7 @@ public final class TurnAssembler {
 
         /** True when the row has something to draw at all. */
         public boolean visible() {
-            return user || answer != null || hasProcess() || live;
+            return user || answer != null || hasProcess() || live || !error.isEmpty();
         }
     }
 
@@ -184,8 +195,14 @@ public final class TurnAssembler {
         if (turn.isEmpty()) {
             return;
         }
-        Message last = turn.get(turn.size() - 1);
-        Message answer = isAnswer(last) ? last : null;
+        // Compaction markers may trail the final answer; keep looking backwards for the answer.
+        Message answer = null;
+        for (int index = turn.size() - 1; index >= 0; index--) {
+            if (isAnswer(turn.get(index))) {
+                answer = turn.get(index);
+                break;
+            }
+        }
         boolean live = streaming && lastTurn;
         boolean running = live;
         boolean awaiting = false;
@@ -211,6 +228,13 @@ public final class TurnAssembler {
             if (hasProse) {
                 process.add(new Item(ITEM_MARKDOWN, message.id + ":text", text, "", null));
             }
+            for (ContentBlock block : message.blocks) {
+                if (block.type == ContentBlock.Type.COMPACT) {
+                    flushGroup(process, group);
+                    process.add(new Item(ITEM_COMPACT, message.id + ":compact", "",
+                            block.status, null));
+                }
+            }
             for (ToolCallRecord call : message.toolCalls) {
                 Message result = results.get(call.id);
                 boolean missing = result == null;
@@ -229,9 +253,19 @@ public final class TurnAssembler {
             }
         }
         flushGroup(process, group);
+        String error = "";
+        for (Message message : turn) {
+            for (ContentBlock block : message.blocks) {
+                if (block.type == ContentBlock.Type.ERROR && !block.text.trim().isEmpty()) {
+                    error = block.text.trim();
+                }
+            }
+        }
         long startedAt = turn.get(0).createdAt;
         long finishedAt = 0L;
+        boolean failed = false;
         for (Message message : turn) {
+            failed |= message.status == Message.Status.FAILED;
             if (message.updatedAt > finishedAt) {
                 finishedAt = message.updatedAt;
             }
@@ -243,11 +277,13 @@ public final class TurnAssembler {
         draft.key = "t:" + turn.get(0).id;
         draft.subject = answer == null ? turn.get(0) : answer;
         draft.answer = answer;
+        draft.error = error;
         draft.process.addAll(process);
         draft.tools.addAll(all);
         draft.live = live;
         draft.running = running;
         draft.pending = awaiting;
+        draft.failed = failed;
         draft.startedAt = startedAt;
         draft.finishedAt = finishedAt;
         rows.add(new Row(draft));
@@ -282,8 +318,13 @@ public final class TurnAssembler {
         return "";
     }
 
+    /**
+     * A stopped stream is not an answer yet; a failed message may still carry the partial body
+     * the user already saw, and that body belongs in the answer area (the plain-text error block
+     * is rendered separately).
+     */
     private static boolean isAnswer(Message message) {
-        if (message.status == Message.Status.FAILED) {
+        if (message.status == Message.Status.STREAMING) {
             return false;
         }
         if (!message.toolCalls.isEmpty()) {

@@ -956,6 +956,7 @@
     <string name="sheet_title_project">Проект</string>
     <string name="workspace_open_folder">Открыть локальную папку</string>
     <string name="workspace_open_folder_desc">Выберите существующую папку на устройстве и используйте её как рабочее пространство.</string>
+    <string name="workspace_share">Поделиться с другими приложениями</string>
     <string name="workspace_open_local">Открыть локальный проект</string>
     <string name="workspace_open_local_desc">Выберите доступный для записи каталог через системный выбор</string>
     <string name="workspace_create_desc">Создать управляемый проект в .linecode/project</string>
@@ -1244,6 +1245,9 @@
     <string name="context_compact_cancel_desc">Вернуться к текущему чату</string>
     <string name="context_compact_no_model">Нет доступной модели. Настройте модель перед сжатием контекста.</string>
     <string name="context_compact_insufficient">Контекст недостаточен, сжатие не требуется.</string>
+    <string name="context_compact_success">Контекст сжат</string>
+    <string name="context_compact_failed">Не удалось сжать контекст</string>
+    <string name="context_compact_busy">Сначала остановите текущую генерацию.</string>
 
     <!-- Attachment picker (composer + button) -->
     <string name="attachment_picker_title_ssh">Выбрать SSH файл</string>
@@ -1565,6 +1569,7 @@
     <string name="screen_agent_ai_unavailable">AI-генерация недоступна в этой сборке</string>
     <string name="skillhub_downloads">Загрузки</string>
     <string name="skillhub_card_meta">↓ %1$s · v%2$s</string>
+    <string name="skillhub_card_stats">↓ %1$s   ☆ %2$s · v%3$s</string>
     <string name="skillhub_publish_row_desc">Опубликовать локальный Skill в SkillHub</string>
     <string name="screen_skill_form_title">Документ Skill</string>
     <string name="chat_context_title">Добавить в диалог</string>

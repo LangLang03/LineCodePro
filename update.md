@@ -1,5 +1,144 @@
 # Changelog / 更新日志
 
+## v2.0.1
+
+### English
+
+#### Chat streaming and ordering
+
+- **One queue per turn** - every stream delta, tool result and turn boundary now goes through `SerialEvents`, which drains in submission order on the main thread; sequence numbers are assigned during the drain and `ChatState` keeps a stable order, so a finished message can no longer overtake its last delta and flash prose into the answer area.
+- **Turn pipeline** - the streaming draft moved into `ChatTurnPipeline`, which owns the buffers, the assistant message and every `seq` advance, and drops events from a generation that has already lost the conversation; opening, creating or deleting a conversation also stops the running loop first, so late events cannot leak into the new list.
+- **Answer versus process** - live prose stays inside the process panel until the model message completes; only a completed message without tool calls becomes the answer, which removes the flash-then-fold of the review block.
+- **Failure surface** - a failed turn persists an `ERROR` content block instead of plain prose, keeps partial output as the completed body and renders the reason as normal text (16sp, body color, no Markdown).
+- **Verbatim provider errors** - `HttpModelClient` reads the error stream and reports `HTTP <code>` followed by the response body; the failure formatter no longer rephrases it, so the actual 401/404/429/500 payload reaches the chat.
+- **Stream retry** - a transient model failure retries up to three times with an 800 ms delay, the turn pipeline is told which attempt is running, and a retry clears the half-written draft instead of appending to it.
+
+#### Process and status indicators
+
+- **Shared dot matrix** - `DotMatrix` and `DotMatrixSpinner` in `ui-kit` replace every `ProgressBar`: the working row, the process panel and the tool cards now share one 3x3 walk and one 1.5 s cycle, and all of them honour the system animation scale.
+- **Process panel** - opens itself while a turn streams and folds when it ends; a manual toggle is stored as an absolute choice, so a default that flips later never reverses it, and pending approvals count as active too.
+- **Tool card spacing** - consecutive calls in a group and nested agent cards use a 2dp gap, so a run of calls reads as one list instead of separate cards.
+
+#### Tools
+
+- **`web_fetch`** - new built-in tool that fetches one page and returns readable text: HTTPS only plus HTTP for loopback/emulator hosts, 2 MB response cap, HTML reduced to text with scripts and styles stripped, 12k characters by default and 30k maximum; the tool list uses the new FETCH/GLOBE glyph.
+- **Lenient tool arguments** - `ToolJsonRepair` repairs what models actually emit: fences, prose before the object, smart or single quotes, unquoted keys, comments, Python literals, raw newlines, trailing commas, truncation at the token limit, a double-encoded `arguments` string and a single-object array wrapper. Mutating tools still reject truncated payloads instead of writing half a file.
+- **Structured schemas** - tool schemas and MCP input schemas are built through `ToolSchemaBuilder`/`org.json`; a source guard now rejects hand-written JSON object literals in main sources.
+- **Mode filtering** - agent mode keeps every tool family except phone control, which stays exclusive to control mode.
+
+#### Context
+
+- **Manual compaction** - "Compact context" in the chat menu now performs a real compaction: it summarizes everything except the recent tail and reports done, insufficient, no model, busy or failed.
+- **Compaction marker** - a successful compaction appends a compact row, rendered by the previously unused `CompactBlockView`.
+- **Prompt asset** - the compaction instruction comes from the prompt catalog (`CONTEXT_COMPACTION`) instead of an English string compiled into the compactor.
+
+#### Workspace and attachments
+
+- **Workspace provider** - `WorkspaceDocumentsProvider` exposes `files/workspace` through SAF (`.workspace.documents`), and the workspace card gains "Share with other apps", handing the root to another app with read/write grants.
+- **CJK folder names** - `WorkspaceNames.folder` only replaces characters that are illegal in a path segment, so Chinese, Japanese and Korean names stay readable instead of collapsing to `-`.
+- **Drawer refresh** - the project header and the file tree reload when the workspace changes, and opening the drawer always rebinds them.
+- **Photo Picker** - image and video attachments use the system Photo Picker on API 33+ with the SAF picker as fallback; attachment names prefer `DISPLAY_NAME` before the MIME suffix because Photo Picker URIs carry no extension.
+
+#### SkillHub
+
+- **Both payload shapes** - the store parses the flat list payload (`description`, `downloads`, `ownerName`, `iconUrl`, `stars`, `verified`, `category`, `labels.requires_api_key`) and the nested detail payload (`stats`, `owner`); sorting uses `sortBy` with `order=desc`.
+- **Real icons** - `SkillIconLoader` downloads artwork off the UI thread, caches 24 bitmaps, downsamples to 96 px, validates the URL against an HTTPS allow-list with a 4 MB cap, and tags the view so a late bitmap cannot land on a rebound row.
+- **Legacy card** - artwork, title with a verified tag, author, category tags, a two-line description, downloads/stars/version and a chevron.
+
+#### Extensions and multi-select
+
+- **AI agent writer** - "Let AI write" now works: a bottom sheet takes a natural-language request, generation runs on the IO scheduler through `AgentDraftGenerator` and the new `AGENT_DRAFT` prompt, unknown tool names are dropped against the catalog the page passes in, and incomplete drafts are rejected instead of filling the form with empty fields.
+- **Selection bar** - `SelectionBar` replaces the inline bar with count, copy, share and close; copy and share build a plain-text transcript in timeline order, tapping a message toggles its selection, and the placeholder "select and export" row is gone from the more menu.
+
+#### Interface polish
+
+- **Drawer tabs** - tab glyphs grow from 16dp to 24dp with an 8dp gap, and the inline icon button no longer reserves a minimum size.
+- **Switches** - Material switch tinting (white thumb on the accent track when on, gray on a light track when off), so an enabled switch no longer reads as disabled.
+
+- **Long-press bar** - action buttons lose their 4dp right margin.
+
+#### Engineering
+
+- **Schema builders** - database statements are grouped into conversation, settings/model, extension and project builders instead of one long method.
+- **Composition root** - `AppGraph` construction is decomposed into focused steps without introducing new dependency bags.
+- **Build** - Gradle configuration cache is enabled.
+
+#### Tests
+
+- New `SerialEventsTest`, `ChatStateTest`, `ToolJsonTest`, `WebFetchToolTest`, `AgentDraftGeneratorTest`, `SkillHubApiTest` and `WorkspaceNamesTest`; extended `TurnAssemblerTest`, `ContextCompactorTest`, `ToolModesTest`, `HttpModelClientProtocolTest`, `BuiltinToolsTest` and `SourceHygieneTest`.
+
+#### Release
+
+- Version `2.0.1` (versionCode 47); the release workflow still builds and publishes both the slim and local variants.
+
+### 中文
+
+#### 聊天流式与顺序
+
+- **单队列事件** - 流式增量、工具结果与回合边界统一进入 `SerialEvents`，在主线程按提交顺序排空；`seq` 只在排空过程中分配，`ChatState` 保持稳定排序，完成<u>的消息不会再越过最后一段增量，正文也不会先闪进答案区再折叠。</u>
+- **回合管线** - 流式草稿移入 `ChatTurnPipeline`，由它独占缓冲、助手消息与每一次 `seq` 推进，并丢弃已经失去当前对话的旧生成事件；打开、新建、删除对话前会先停止正在运行的循环，迟到的回调不会写进新会话。
+- **答案与过程分离** - 流式正文只进入过程面板，只有已完成且没有工具调用的消息才成为正式答案，消除了审阅块闪现后再折叠的问题。
+- **失败展示** - 失败回合改为持久化 `ERROR` 内容块，部分输出保留为完成正文，失败原因以普通文本渲染（16sp、正文色、不做 Markdown）。
+- **原始错误透出** - `HttpModelClient` 读取错误流并输出 `HTTP <code>` 加响应体，格式化层不再改写，401/404/429/500 的原始内容直接进入聊天。
+- **流式重试** - 可恢复的模型失败最多重试 3 次、间隔 800ms，回合管线会收到当前重试次数，重试前清空半截草稿而不是继续追加。
+
+#### 过程与状态指示
+
+- **共享点阵** - `ui-kit` 的 `DotMatrix` / `DotMatrixSpinner` 取代全部 `ProgressBar`：工作状态行、过程面板与工具卡片共用同一套 3×3 走位和 1.5s 周期，并统一遵循系统动画缩放。
+- **过程面板** - 流式期间自动展开、回合结束后折叠；手动开关保存为绝对状态，后续默认值翻转不会反转用户选择，待确认状态同样视为进行中。
+- **工具卡间距** - 工具组内的连续调用与嵌套 Agent 卡片改为 2dp 间距，一组调用读起来是连续列表而不是分散卡片。
+
+#### 工具
+
+- **`web_fetch`** - 新增内置工具，抓取单个网页并返回可读正文：仅允许 HTTPS（回环/模拟器地址例外）、响应上限 2MB、剥离脚本与样式的 HTML 转文本、默认 12000 字符、最大 30000 字符；工具清单使用新的 FETCH/GLOBE 图标。
+- **宽松参数解析** - `ToolJsonRepair` 修复模型实际输出的写法：代码围栏、对象前说明文字、中文/单引号、未加引号的键、注释、Python 字面量、字符串内原始换行、尾逗号、token 上限截断、二次编码的 `arguments` 与单对象数组包装。写操作工具仍拒绝截断参数，不写入半截文件。
+- **结构化 Schema** - 工具定义与 MCP 输入 Schema 统一通过 `ToolSchemaBuilder` / `org.json` 构造，源码守卫禁止 main 源码出现手写 JSON 对象字面量。
+- **模式过滤** - Agent 模式保留除手机控制外的全部工具族，手机控制只在 Control 模式注入。
+
+#### 上下文
+
+- **手动压缩** - 聊天菜单的「压缩上下文」现在执行真实压缩：除最近尾部外全部摘要，结果区分完成、无需压缩、缺少模型、生成中与失败。
+- **压缩标记** - 压缩成功后追加一行压缩记录，由此前未被使用的 `CompactBlockView` 渲染。
+- **提示词资产** - 压缩指令改由提示词目录（`CONTEXT_COMPACTION`）提供，不再把英文提示写在压缩器代码里。
+
+#### 工作区与附件
+
+- **工作区 Provider** - `WorkspaceDocumentsProvider` 通过 SAF 暴露 `files/workspace`（`.workspace.documents`），工作区卡片新增「共享给其他应用」，把根目录连同读写授权交给其他应用。
+- **中文目录名** - `WorkspaceNames.folder` 只替换路径段非法字符，中/日/韩名称保持可读，不再退化成 `-`。
+- **抽屉刷新** - 工作区变化后刷新项目标题与文件树，打开抽屉时也会重新绑定。
+- **系统图片选择器** - 图片与视频附件在 API 33+ 走系统 Photo Picker，失败回退 SAF 选择器；附件命名优先取 `DISPLAY_NAME`，再退回 MIME 后缀，因为 Photo Picker 的 URI 没有扩展名。
+
+#### SkillHub
+
+- **两种返回结构** - 商店同时解析扁平列表结构（`description`、`downloads`、`ownerName`、`iconUrl`、`stars`、`verified`、`category`、`labels.requires_api_key`）与嵌套详情结构（`stats`、`owner`）；排序改用 `sortBy` + `order=desc`。
+- **真实图标** - `SkillIconLoader` 在 UI 线程之外下载图标，缓存 24 张位图并降采样到 96px，按 HTTPS 白名单校验地址、单文件上限 4MB，并给目标 View 打 tag，避免迟到的位图落到已复用的行上。
+- **旧版卡片** - 图标、带认证标记的标题、作者、分类标签、两行描述、下载量与收藏数/版本，以及右侧箭头。
+
+#### 扩展与多选
+
+- **AI 写 Agent** - 「让 AI 写」已可用：底部面板接收自然语言需求，生成在 IO 调度器上通过 `AgentDraftGenerator` 与新提示词 `AGENT_DRAFT` 完成，未知工具名按页面传入的清单过滤，字段不全的草稿直接拒绝，不往表单里填空值。
+- **多选操作栏** - `SelectionBar` 取代原行内操作栏，提供计数、复制、分享与关闭；复制/分享按时间线顺序生成纯文本记录，点击消息即可切换选中，更多菜单里的「选择并导出」占位行已移除。
+
+#### 界面细节
+
+- **抽屉标签** - 标签图标从 16dp 增至 24dp、间距改为 8dp，内联图标按钮不再保留最小尺寸。
+- **开关配色** - 开关改用 Material 配色（开启时白色滑块 + 主题色轨道，关闭时灰色滑块 + 浅色轨道），开启状态不再读成禁用。
+- **长按操作条** - 操作按钮移除 4dp 右边距。
+
+#### 工程质量
+
+- **建表语句** - 数据库建表语句拆分为会话、设置与模型、扩展、项目四个构建方法，不再挤在一个长方法里。
+- **组装根** - `AppGraph` 的构造过程拆分为多个聚焦步骤，未引入新的依赖包。
+- **构建** - 启用 Gradle 配置缓存。
+
+#### 测试
+
+- 新增 `SerialEventsTest`、`ChatStateTest`、`ToolJsonTest`、`WebFetchToolTest`、`AgentDraftGeneratorTest`、`SkillHubApiTest`、`WorkspaceNamesTest`；扩展 `TurnAssemblerTest`、`ContextCompactorTest`、`ToolModesTest`、`HttpModelClientProtocolTest`、`BuiltinToolsTest` 与 `SourceHygieneTest`。
+
+#### 版本
+
+- 版本号 `2.0.1`（versionCode 47）；Release 工作流继续同时构建并发布 slim 与本地版。
+
 ## v2.0.0
 
 ### English

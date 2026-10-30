@@ -14,6 +14,7 @@ final class ToolRenderers {
             case READ:
             case LIST:
             case SEARCH:
+            case FETCH:
                 return ReadToolRenderer.INSTANCE;
             case WRITE:
             case EDIT:

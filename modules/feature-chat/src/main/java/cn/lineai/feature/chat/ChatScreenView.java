@@ -110,8 +110,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
     private Scope scope;
     private final LinearLayout content;
     private final ChatHeaderView header;
-    private final LinearLayout selectionBar;
-    private final TextView selectionText;
+    private final SelectionBar selectionBar;
     private final TimelineView timeline;
     private final ChatApprovalView approval;
     private final TextView notice;
@@ -122,6 +121,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
     private java.util.List<cn.lineai.core.model.Conversation> conversations =
             java.util.Collections.emptyList();
     private String drawerConversationId = "";
+    private String drawerProject = "";
 
     public ChatScreenView(Context context, ChatController controller, Tokens tokens) {
         super(context);
@@ -154,27 +154,8 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
 
         timeline = new TimelineView(context, tokens);
 
-        selectionBar = new LinearLayout(context);
-        selectionBar.setOrientation(LinearLayout.HORIZONTAL);
-        selectionBar.setGravity(Gravity.CENTER_VERTICAL);
-        selectionBar.setBackgroundColor(tokens.bg);
-        Ui.padding(selectionBar, 16, 0, 16, 0);
+        selectionBar = new SelectionBar(context, tokens, this::exitMultiSelect);
         selectionBar.setVisibility(GONE);
-        selectionText = Ui.text(context, "", Tokens.FONT_SM, tokens.textSecondary,
-                android.graphics.Typeface.NORMAL);
-        selectionBar.addView(selectionText, new LinearLayout.LayoutParams(0, -2, 1f));
-        TextView cancelSelection = Ui.text(context,
-                context.getString(R.string.common_cancel), Tokens.FONT_SM, tokens.accent,
-                android.graphics.Typeface.NORMAL);
-        cancelSelection.setGravity(Gravity.CENTER);
-        cancelSelection.setClickable(true);
-        cancelSelection.setFocusable(true);
-        Ui.padding(cancelSelection, 8, 8, 8, 8);
-        cancelSelection.setOnClickListener(v -> {
-            timeline.setMultiSelectMode(false);
-            selectionBar.setVisibility(GONE);
-        });
-        selectionBar.addView(cancelSelection, new LinearLayout.LayoutParams(-2, -2));
         content.addView(selectionBar, new LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, Ui.dp(context, 48)));
         content.addView(timeline, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
@@ -333,14 +314,14 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
             @Override
             public void onMultiSelect(cn.lineai.core.model.Message message) {
                 timeline.setMultiSelectMode(true);
+                timeline.toggleSelection(message.id, message);
                 selectionBar.setVisibility(VISIBLE);
             }
 
             @Override
             public void onSelectionChanged(java.util.List<cn.lineai.core.model.Message> selected) {
                 selectionBar.setVisibility(timeline.isMultiSelectMode() ? VISIBLE : GONE);
-                selectionText.setText(getContext().getString(
-                        R.string.chat_selection_count, selected.size()));
+                selectionBar.setSelection(selected);
             }
         });
         timeline.setEmptyAction(new TimelineView.EmptyAction() {
@@ -495,6 +476,10 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
             drawerConversationId = currentId;
             drawer.setConversations(conversations, currentId);
         }
+        if (!state.projectLabel.equals(drawerProject)) {
+            drawerProject = state.projectLabel;
+            drawer.refreshProject();
+        }
         header.render(state, tokens);
         timeline.render(state, tokens);
         approval.render(state.pendingApprovals, tokens);
@@ -516,13 +501,17 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         }
     }
 
+    private void exitMultiSelect() {
+        timeline.setMultiSelectMode(false);
+        selectionBar.setVisibility(GONE);
+    }
+
     public void applyTokens(Tokens current) {
         tokens = current;
         setBackgroundColor(current.bg);
         content.setBackgroundColor(current.bg);
         notice.setTextColor(current.danger);
-        selectionBar.setBackgroundColor(current.bg);
-        selectionText.setTextColor(current.textSecondary);
+        selectionBar.applyTokens(current);
         header.applyTokens(current);
         timeline.applyTokens(current);
         approval.applyTokens(current);

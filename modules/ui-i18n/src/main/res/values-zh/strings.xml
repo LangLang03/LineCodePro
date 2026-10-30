@@ -975,6 +975,7 @@
     <string name="sheet_title_project">项目</string>
     <string name="workspace_open_folder">打开本地文件夹</string>
     <string name="workspace_open_folder_desc">选择设备上的现有目录并作为工作区使用。</string>
+    <string name="workspace_share">共享给其他应用</string>
     <string name="workspace_open_local">打开本地项目</string>
     <string name="workspace_open_local_desc">通过系统选择器选择可写的本地目录</string>
     <string name="workspace_create_desc">在 .linecode/project 下创建托管项目</string>
@@ -1265,6 +1266,9 @@
     <string name="context_compact_cancel_desc">返回当前对话</string>
     <string name="context_compact_no_model">还没有可用模型。请先配置模型，再压缩上下文。</string>
     <string name="context_compact_insufficient">当前上下文不足，无需压缩。</string>
+    <string name="context_compact_success">上下文已压缩</string>
+    <string name="context_compact_failed">上下文压缩失败</string>
+    <string name="context_compact_busy">请先停止当前生成，再压缩上下文。</string>
 
     <!-- Attachment picker (composer + button) -->
     <string name="attachment_picker_title_ssh">选择 SSH 文件</string>
@@ -1586,6 +1590,7 @@
     <string name="screen_agent_ai_unavailable">当前版本暂不支持 AI 生成</string>
     <string name="skillhub_downloads">下载量</string>
     <string name="skillhub_card_meta">↓ %1$s · v%2$s</string>
+    <string name="skillhub_card_stats">↓ %1$s   ☆ %2$s · v%3$s</string>
     <string name="skillhub_publish_row_desc">将本地 Skill 发布到 SkillHub</string>
     <string name="screen_skill_form_title">Skill 文档</string>
     <string name="chat_context_title">添加到对话</string>
