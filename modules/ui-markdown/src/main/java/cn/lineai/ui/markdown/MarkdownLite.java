@@ -30,6 +30,11 @@ public final class MarkdownLite extends LinearLayout {
     private Tokens tokens;
     private String lastMarkdown;
     private boolean codeWrapEnabled;
+    private long passGeneration;
+    private Node passDocument;
+    private Node passCursor;
+    private String passSource;
+    private Runnable passComplete;
 
     public MarkdownLite(Context context, Tokens tokens) {
         super(context);
@@ -39,22 +44,51 @@ public final class MarkdownLite extends LinearLayout {
         setClipToPadding(false);
     }
 
+    /** Restyles retained blocks in place; a repeated token instance is a no-op. */
+    public void applyTheme(Tokens current) {
+        Tokens next = current == null ? tokens : current;
+        if (next == tokens) {
+            return;
+        }
+        tokens = next;
+        inline.setTokens(next);
+        for (AstBlockRenderer block : blocks) {
+            block.applyTheme(next);
+        }
+    }
+
     public void render(String markdown, Tokens current) {
         String source = markdown == null ? "" : markdown;
-        Tokens next = current == null ? tokens : current;
-        if (next != tokens) {
-            tokens = next;
-            inline.setTokens(next);
-            for (AstBlockRenderer block : blocks) {
-                block.applyTheme(next);
-            }
-        }
+        applyTheme(current);
         if (source.equals(lastMarkdown)) {
             return;
         }
+        cancelPass();
         Node document = parser.parse(source);
         reconcile(document, source);
         lastMarkdown = source;
+    }
+
+    /**
+     * Renders the document in chunks of top-level blocks.
+     *
+     * <p>The first chunk is added synchronously so the caller's frame shows real content; every
+     * following chunk is posted to the main queue, which keeps a long tutorial from blocking the
+     * page transition. A newer pass or a detached view cancels the remaining chunks, and
+     * {@code onComplete} fires exactly once when the source was fully materialised.</p>
+     */
+    public void renderIncremental(String markdown, Tokens current, int blocksPerChunk,
+                                  Runnable onComplete) {
+        String source = markdown == null ? "" : markdown;
+        applyTheme(current);
+        if (passDocument == null && source.equals(lastMarkdown)) {
+            if (onComplete != null) {
+                onComplete.run();
+            }
+            return;
+        }
+        startPass(source, onComplete);
+        buildChunk(passGeneration, Math.max(1, blocksPerChunk));
     }
 
     public void setCodeWrapEnabled(boolean enabled) {
@@ -69,6 +103,74 @@ public final class MarkdownLite extends LinearLayout {
 
     public void setLinkHandler(Consumer<String> handler) {
         inline.setLinkHandler(handler);
+    }
+
+    private void startPass(String source, Runnable onComplete) {
+        passGeneration++;
+        removeAllViews();
+        blocks.clear();
+        keys.clear();
+        lastMarkdown = null;
+        passDocument = parser.parse(source);
+        passCursor = passDocument.getFirstChild();
+        passSource = source;
+        passComplete = onComplete;
+    }
+
+    private void cancelPass() {
+        passGeneration++;
+        passDocument = null;
+        passCursor = null;
+        passSource = null;
+        passComplete = null;
+    }
+
+    private void buildChunk(long pass, int limit) {
+        if (pass != passGeneration) {
+            return;
+        }
+        int added = 0;
+        while (passCursor != null && added < limit) {
+            Node node = passCursor;
+            passCursor = node.getNext();
+            if (node instanceof LinkReferenceDefinition) {
+                continue;
+            }
+            AstBlockRenderer block = new AstBlockRenderer(getContext(), inline, tokens, node,
+                    codeWrapEnabled);
+            blocks.add(block);
+            keys.add(blockKey(node, passSource));
+            addView(block.view());
+            added++;
+        }
+        if (passCursor == null) {
+            finishPass(pass);
+        } else {
+            post(() -> continuePass(pass, limit));
+        }
+    }
+
+    private void continuePass(long pass, int limit) {
+        if (pass != passGeneration || !isAttachedToWindow()) {
+            return;
+        }
+        buildChunk(pass, limit);
+    }
+
+    private void finishPass(long pass) {
+        if (pass != passGeneration) {
+            return;
+        }
+        String source = passSource;
+        Runnable complete = passComplete;
+        passDocument = null;
+        passCursor = null;
+        passSource = null;
+        passComplete = null;
+        lastMarkdown = source;
+        if (complete != null) {
+            complete.run();
+        }
     }
 
     private void reconcile(Node document, String source) {
