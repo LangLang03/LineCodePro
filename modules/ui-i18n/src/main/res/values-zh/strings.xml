@@ -1241,7 +1241,7 @@
     <string name="sheet_more_tutorial_desc">打开初学者教程</string>
     <string name="sheet_more_settings_desc">模型、主题、数据管理</string>
     <string name="sheet_more_export">导出对话</string>
-    <string name="sheet_more_export_desc">将当前对话导出为 Markdown 或分享</string>
+    <string name="sheet_more_export_desc">将当前对话导出为 Markdown 文件</string>
     <string name="sheet_more_select_export">选择消息导出</string>
     <string name="sheet_more_select_export_desc">多选消息后合并导出/分享</string>
     <string name="sheet_more_compact">压缩上下文</string>

@@ -1,5 +1,47 @@
 # Changelog / 更新日志
 
+## v2.0.2
+
+### English
+
+#### Chat export
+
+- **Markdown chat export** - "Export chat" in the chat more menu now creates a real Markdown file (`.md`, `text/markdown`) from the current conversation instead of writing the whole-data `.linecode` archive: visible user and assistant messages are exported in timeline order under `## Me` / `## AI` headings, separated by horizontal rules and closed with the LineCode footer. An empty conversation shows the existing "No chat content to export" hint, and success or failure is reported with a toast; Settings -> Data still exports the `.linecode` archive unchanged.
+
+#### Tutorials
+
+- **Progressive tutorial rendering** - the bundled tutorial body is now materialised in chunks of 24 top-level blocks: the first chunk is built synchronously so the page appears immediately, and the remaining chunks are appended on the main queue instead of blocking the push transition. The first frame is several times faster while the finished document, chapter chips, theme changes and chip scrolling stay identical.
+- **Lazy pro tutorial** - the pro document is read and parsed only on the first "Pro mode" selection, and theme changes restyle the retained blocks in place instead of re-rendering the document.
+- **Scroll restoration** - pages that render asynchronously can now restore a saved scroll offset after their content is measured, so rotating or recreating the activity while reading the tutorial keeps the position; other settings pages keep the previous behavior.
+
+#### Tests
+
+- New `ChatTranscriptTest`, `MarkdownLiteIncrementalTest` and `TutorialPageTest`; the existing Markdown rendering tests stay unchanged.
+
+#### Release
+
+- Version `2.0.2` (versionCode 48); the release workflow still builds and publishes both the slim and local variants.
+
+### 中文
+
+#### 对话导出
+
+- **Markdown 对话导出** - 聊天更多菜单里的「导出对话」现在会按当前会话生成真正的 Markdown 文件（`.md`、`text/markdown`），不再误写整库 `.linecode` 归档：可见的用户/助手消息按时间线顺序输出为 `## 我` / `## AI` 小节，用分隔线连接并以 LineCode 页脚收尾；空会话沿用「当前没有对话内容」提示，成功或失败都有 toast；设置 → 数据仍导出原 `.linecode` 归档。
+
+#### 教程
+
+- **教程渐进渲染** - 内置教程正文改为按每 24 个顶层块分批物化：首个分块同步构建，页面立即出现，其余分块在主线程队列中追加，不再阻塞页面推入动画。首帧速度提升数倍，而最终文档、章节 chips、主题切换与章节跳转保持完全一致。
+- **专业教程按需加载** - 专业版文档只在首次选择「专业模式」时读取并解析；主题变化只原地刷新已有块的颜色，不再重渲染整篇文档。
+- **滚动位置恢复** - 异步渲染的页面现在会在内容测量完成后恢复保存的滚动位置，阅读教程时旋转屏幕或重建 Activity 不再跳回顶部；其他设置页保持原有行为。
+
+#### 测试
+
+- 新增 `ChatTranscriptTest`、`MarkdownLiteIncrementalTest` 与 `TutorialPageTest`；原有 Markdown 渲染测试保持不变。
+
+#### 版本
+
+- 版本号 `2.0.2`（versionCode 48）；Release 工作流继续同时构建并发布 slim 与本地版。
+
 ## v2.0.1
 
 ### English

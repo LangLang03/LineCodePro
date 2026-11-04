@@ -1220,7 +1220,7 @@
     <string name="sheet_more_tutorial_desc">Открыть руководство для начинающих</string>
     <string name="sheet_more_settings_desc">Модель, тема и управление данными</string>
     <string name="sheet_more_export">Экспорт чата</string>
-    <string name="sheet_more_export_desc">Экспортировать текущий чат как Markdown или поделиться</string>
+    <string name="sheet_more_export_desc">Экспорт текущего чата в файл Markdown</string>
     <string name="sheet_more_select_export">Выбрать сообщения для экспорта</string>
     <string name="sheet_more_select_export_desc">Множественный выбор сообщений и объединённый экспорт/поделиться</string>
     <string name="sheet_more_compact">Сжать контекст</string>

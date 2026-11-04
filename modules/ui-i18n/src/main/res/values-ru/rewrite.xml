@@ -14,4 +14,9 @@
     <string name="tool_group_shell_name">SSH Shell</string>
     <string name="memory_section_count">%1$s (%2$d)</string>
     <string name="memory_project_hint">Текущий проект: %1$s</string>
+    <string name="chat_exported">Чат экспортирован</string>
+    <string name="chat_export_failed">Не удалось экспортировать чат</string>
+    <string name="chat_export_role_user">Я</string>
+    <string name="chat_export_role_assistant">ИИ</string>
+    <string name="chat_export_footer">*—— Из LineCode Pro*</string>
 </resources>

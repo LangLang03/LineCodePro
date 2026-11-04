@@ -47,7 +47,7 @@ public final class ChatMenuSheets {
                 () -> host.navigation().push(cn.lineai.feature.settings.SettingsScreens.HOME
                         .key(cn.lineai.core.mvi.nav.Params.Empty.INSTANCE)));
         addRow(host, panel, R.string.sheet_more_export, R.string.sheet_more_export_desc,
-                host::requestExport);
+                host::requestChatExport);
         addRow(host, panel, R.string.sheet_more_compact, R.string.sheet_more_compact_desc,
                 () -> showCompaction(host, () -> compactContext(host)));
         addRow(host, panel, R.string.sheet_more_clear, R.string.sheet_more_clear_desc, () -> {

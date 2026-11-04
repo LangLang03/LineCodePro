@@ -223,8 +223,7 @@ public final class ScreenHost implements AutoCloseable {
             }
             if (view instanceof SettingsPage) {
                 SettingsPage page = (SettingsPage) view;
-                int offset = entries.get(i).getInt("scroll", 0);
-                page.post(() -> page.scroll.scrollTo(0, offset));
+                page.restoreScroll(entries.get(i).getInt("scroll", 0));
             }
         }
     }

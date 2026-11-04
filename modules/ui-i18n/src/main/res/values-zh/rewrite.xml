@@ -14,4 +14,9 @@
     <string name="tool_group_shell_name">SSH Shell</string>
     <string name="memory_section_count">%1$s（%2$d）</string>
     <string name="memory_project_hint">当前项目：%1$s</string>
+    <string name="chat_exported">对话已导出</string>
+    <string name="chat_export_failed">对话导出失败</string>
+    <string name="chat_export_role_user">我</string>
+    <string name="chat_export_role_assistant">AI</string>
+    <string name="chat_export_footer">*—— 来自 LineCode Pro*</string>
 </resources>

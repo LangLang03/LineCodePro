@@ -53,5 +53,13 @@ public class SettingsPage extends LinearLayout {
         theme.apply(tokens);
     }
 
+    /**
+     * Restores a saved vertical scroll offset. Pages that build their content asynchronously
+     * override this so the offset is applied after the content exists instead of being clamped.
+     */
+    public void restoreScroll(int offset) {
+        post(() -> scroll.scrollTo(0, offset));
+    }
+
     public void dispose() { }
 }
