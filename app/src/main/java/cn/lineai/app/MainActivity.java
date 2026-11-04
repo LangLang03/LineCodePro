@@ -381,6 +381,10 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
         cn.lineai.runtime.ArchiveActions.requestExport(this);
     }
 
+    @Override public void requestChatExport() {
+        cn.lineai.runtime.ChatExportActions.request(this);
+    }
+
     @Override public void requestImport() {
         cn.lineai.runtime.ArchiveActions.requestImport(this);
     }
@@ -391,6 +395,9 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
         Uri uri = data.getData();
         try {
             if (cn.lineai.runtime.ArchiveActions.handleResult(this, requestCode, uri)) return;
+            if (cn.lineai.runtime.ChatExportActions.handleResult(this, requestCode, uri)) {
+                return;
+            }
             cn.lineai.runtime.SafActions.handle(this, pages, requestCode, uri);
         } catch (RuntimeException error) {
             android.util.Log.e("LineCodeSAF", "SAF result failed", error);

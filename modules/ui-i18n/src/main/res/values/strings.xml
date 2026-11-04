@@ -1240,7 +1240,7 @@
     <string name="sheet_more_tutorial_desc">Open the beginner tutorial</string>
     <string name="sheet_more_settings_desc">Model, theme and data management</string>
     <string name="sheet_more_export">Export chat</string>
-    <string name="sheet_more_export_desc">Export the current chat as Markdown or share it</string>
+    <string name="sheet_more_export_desc">Export the current chat as a Markdown file</string>
     <string name="sheet_more_select_export">Select messages to export</string>
     <string name="sheet_more_select_export_desc">Multi-select messages and merge export/share</string>
     <string name="sheet_more_compact">Compact context</string>

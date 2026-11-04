@@ -23,6 +23,8 @@ public interface PageHost {
 
     void requestExport();
 
+    void requestChatExport();
+
     void requestImport();
 
     void pickToolModel(boolean understanding);
