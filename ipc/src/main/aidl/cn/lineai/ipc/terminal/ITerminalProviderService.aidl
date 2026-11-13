@@ -1,6 +1,6 @@
 // ITerminalProviderService.aidl
 //
-// 接口版本：v1
+// 接口版本：v2
 //
 // 调用方权限：调用方必须持有 cn.lineai.permission.IPC_TERMINAL_PROVIDER
 // （protectionLevel="normal"，在 app 模块 AndroidManifest.xml 中声明）。
@@ -9,6 +9,7 @@
 package cn.lineai.ipc.terminal;
 
 import cn.lineai.ipc.terminal.ITerminalProviderCallback;
+import cn.lineai.ipc.terminal.TerminalShellBackgroundState;
 
 interface ITerminalProviderService {
     // 通用 IPC 基类方法
@@ -18,6 +19,16 @@ interface ITerminalProviderService {
 
     // SHELL 执行
     int executeShell(String command, String cwd, long timeoutMs, ITerminalProviderCallback callback);
+
+    // 后台 SHELL（v2 新增，无向后兼容负担）
+    // - startShellBackground: 立即返回句柄（<=0 表示失败），进程继续运行并通过回调流式输出。
+    // - readShellBackground: 按偏移读取新增输出并返回运行状态；offset 传调用方已消费的字节数。
+    // - killShellBackground: 终止句柄对应的进程树；进程不存在返回 false。
+    // - forgetShellBackground: 释放已完成句柄的提供方侧缓冲。
+    long startShellBackground(String command, String cwd, ITerminalProviderCallback callback);
+    TerminalShellBackgroundState readShellBackground(long handleId, long offset);
+    boolean killShellBackground(long handleId);
+    void forgetShellBackground(long handleId);
 
     // 文件操作（类似 SFTP）
     // readFile/writeFile 保留作为兼容入口，内部通过分块接口实现；

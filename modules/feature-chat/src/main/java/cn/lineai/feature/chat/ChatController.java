@@ -414,6 +414,10 @@ public final class ChatController {
             events.post(() -> draft.appendTool(call, result));
         }
 
+        @Override public void onNoticeInjected(Message message) {
+            events.post(() -> draft.appendNotice(message));
+        }
+
         @Override public void onConfirmationRequired(List<ToolCall> calls) {
             events.post(() -> draft.requestConfirmation(calls));
         }

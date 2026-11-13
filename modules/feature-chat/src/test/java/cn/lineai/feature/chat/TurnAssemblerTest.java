@@ -209,6 +209,33 @@ public class TurnAssemblerTest {
         assertTrue(rows.get(0).user);
     }
 
+    @Test
+    public void hiddenUserNoticeKeepsTheAssistantTurnInOneCard() {
+        // A background-task notice is a HIDDEN user message injected between assistant messages:
+        // it must not flush the folded turn, so the continuation renders in the same card.
+        Message firstAnswer = message("a1", Role.ASSISTANT, Message.Status.COMPLETE, 2L,
+                "Started the server in the background.");
+        Message notice = message("n1", Role.USER, Message.Status.COMPLETE, 3L,
+                "(background task notice - not from the user)")
+                .toBuilder().visibility(Message.Visibility.HIDDEN).build();
+        Message continued = assistant("a2", Message.Status.COMPLETE, 4L, null,
+                tool("call-9", "shell"));
+        Message tool = toolResult("t1", "call-9", Message.Status.COMPLETE, "output");
+
+        List<TurnAssembler.Row> rows = TurnAssembler.assemble(
+                Arrays.asList(message("u1", Role.USER, Message.Status.COMPLETE, 1L, "go"),
+                        firstAnswer, notice, continued, tool),
+                Collections.<String>emptySet(), false);
+
+        assertEquals(2, rows.size());
+        assertTrue(rows.get(0).user);
+        TurnAssembler.Row turn = rows.get(1);
+        assertFalse(turn.user);
+        assertEquals(1, turn.process.size());
+        assertEquals(TurnAssembler.ITEM_TOOLS, turn.process.get(0).kind);
+        assertEquals("call-9", turn.process.get(0).tools.get(0).callId);
+    }
+
     private static Message message(String id, Role role, Message.Status status, long time,
                                    String text) {
         return Message.builder().id(id).role(role).status(status).seq(1L)

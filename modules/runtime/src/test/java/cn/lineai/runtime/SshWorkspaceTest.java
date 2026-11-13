@@ -37,10 +37,10 @@ public class SshWorkspaceTest {
     @Test public void remoteCatalogKeepsOnlyRemoteCapableTools() {
         ToolRegistry source = new ToolRegistry()
                 .register(tool("read_file", true))
-                .register(tool("shell_execute", false));
+                .register(tool("shell", false));
         ToolRegistry filtered = SshWorkspace.remoteOnly(source);
         assertEquals(1, filtered.all().size());
-        assertTrue(filtered.find("shell_execute") != null);
+        assertTrue(filtered.find("shell") != null);
         assertTrue(filtered.find("read_file") == null);
     }
 

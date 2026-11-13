@@ -73,6 +73,7 @@ public final class AnthropicCodec {
             if (message.toolCalls.isEmpty()) {
                 if (images.isEmpty()) {
                     if (text.isEmpty()) continue;
+                    if (mergeIntoPreviousUser(messages, text)) continue;
                     messages.put(new JSONObject().put("role", role).put("content", text));
                 } else {
                     JSONArray content = new JSONArray();
@@ -110,6 +111,26 @@ public final class AnthropicCodec {
         if (role == Role.USER) return "user";
         if (role == Role.ASSISTANT) return "assistant";
         return null;
+    }
+
+    /**
+     * Appends {@code text} to the previous user message instead of emitting a second consecutive
+     * user turn (injected notices follow tool-result user messages); returns true when merged.
+     */
+    private static boolean mergeIntoPreviousUser(JSONArray messages, String text)
+            throws JSONException {
+        if (messages.length() == 0) return false;
+        JSONObject last = messages.optJSONObject(messages.length() - 1);
+        if (last == null || !"user".equals(last.optString("role"))) return false;
+        JSONArray content = last.optJSONArray("content");
+        if (content == null) {
+            content = new JSONArray();
+            content.put(new JSONObject().put("type", "text")
+                    .put("text", last.optString("content")));
+        }
+        content.put(new JSONObject().put("type", "text").put("text", text));
+        last.put("content", content);
+        return true;
     }
 
     public static StreamDecoder decoder() {

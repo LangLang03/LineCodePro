@@ -57,6 +57,10 @@ public final class NestedAgentRunner implements AgentRunner {
             @Override public boolean mutationAllowed() { return false; }
             @Override public cn.lineai.tool.api.TodoStore todos() { return toolContext.todos(); }
             @Override public cn.lineai.tool.api.DiffSink diffs() { return null; }
+            // Reading background output is a read-only operation, so agents may observe tasks.
+            @Override public cn.lineai.tool.api.BackgroundTasks backgrounds() {
+                return toolContext.backgrounds();
+            }
         };
         final ToolLoopEngine loop = new ToolLoopEngine(client, registry, readOnly, scheduler, 200);
         loop.listener(new ToolLoopEngine.Listener() {

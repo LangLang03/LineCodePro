@@ -8,6 +8,7 @@ import cn.lineai.ipc.service.AbstractIpcProviderService;
 import cn.lineai.ipc.service.IpcServerExecutors;
 import cn.lineai.ipc.terminal.ITerminalProviderCallback;
 import cn.lineai.ipc.terminal.ITerminalProviderService;
+import cn.lineai.ipc.terminal.TerminalShellBackgroundState;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -24,11 +25,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONObject;
 
@@ -40,9 +43,59 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
     private static final int MAX_CHUNK_SIZE = DEFAULT_CHUNK_SIZE;
     // readFile 一次性读入内存的字节上限（32MB），避免超大文件耗尽堆内存。
     private static final long MAX_READ_FILE_BYTES = 32L * 1024L * 1024L;
+    // 后台任务缓冲上限：超过后停止追加（保留前缀），偏移量语义保持稳定。
+    private static final int MAX_BACKGROUND_CHARS = 512 * 1024;
 
     // 进程级共享线程池，由 :ipc 库统一管理。
     private final ExecutorService executor = IpcServerExecutors.shared();
+    private final Map<Long, BackgroundTask> backgroundTasks = new ConcurrentHashMap<>();
+    private final AtomicLong backgroundHandleSeq = new AtomicLong();
+
+    /** 后台任务：进程、输出缓冲与回调；句柄在任务被 kill/forget 后移除。 */
+    private static final class BackgroundTask {
+        final long handleId;
+        final Process process;
+        final ITerminalProviderCallback callback;
+        final StringBuilder buffer = new StringBuilder();
+        volatile boolean running = true;
+        volatile int exitCode = -1;
+        volatile boolean truncated;
+
+        BackgroundTask(long handleId, Process process, ITerminalProviderCallback callback) {
+            this.handleId = handleId;
+            this.process = process;
+            this.callback = callback;
+        }
+
+        synchronized void append(String text) {
+            if (buffer.length() >= MAX_BACKGROUND_CHARS) {
+                truncated = true;
+                return;
+            }
+            buffer.append(text);
+            if (buffer.length() > MAX_BACKGROUND_CHARS) {
+                buffer.setLength(MAX_BACKGROUND_CHARS);
+                truncated = true;
+            }
+        }
+
+        synchronized String chunkFrom(long offset) {
+            if (offset < 0 || offset >= buffer.length()) {
+                return "";
+            }
+            return buffer.substring((int) offset);
+        }
+    }
+
+    private static void notifyError(ITerminalProviderCallback callback, String message) {
+        if (callback == null) {
+            return;
+        }
+        try {
+            callback.onError(message);
+        } catch (RemoteException ignored) {
+        }
+    }
 
     @Override
     protected IBinder createBinder() {
@@ -58,11 +111,12 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 JSONObject info = new JSONObject();
                 try {
                     info.put("name", "Android Shell Terminal Provider");
-                    info.put("version", "1.0");
+                    info.put("version", "2.0");
                     info.put("shell", SHELL);
                     info.put("home", getFilesDir().getAbsolutePath());
                     info.put("capabilities", new org.json.JSONArray()
                             .put("executeShell")
+                            .put("backgroundShell")
                             .put("readFile")
                             .put("writeFile")
                             .put("deleteFile")
@@ -200,6 +254,63 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                     }
                     return -1;
                 }
+            }
+
+            @Override
+            public long startShellBackground(String command, String cwd,
+                                             ITerminalProviderCallback callback) {
+                if (command == null || command.length() == 0) {
+                    notifyError(callback, "命令为空");
+                    return -1;
+                }
+                File workingDir = (cwd != null && cwd.length() > 0)
+                        ? new File(cwd)
+                        : new File(getFilesDir().getAbsolutePath());
+                if (!workingDir.exists()) {
+                    workingDir = getFilesDir();
+                }
+                final long handle = backgroundHandleSeq.incrementAndGet();
+                try {
+                    ProcessBuilder pb = new ProcessBuilder(SHELL, "-c", command);
+                    pb.directory(workingDir);
+                    pb.redirectErrorStream(false);
+                    Process process = pb.start();
+                    BackgroundTask task = new BackgroundTask(handle, process, callback);
+                    backgroundTasks.put(handle, task);
+                    executor.submit(() -> runBackground(task));
+                    return handle;
+                } catch (Exception e) {
+                    Log.e(TAG, "startShellBackground failed", e);
+                    backgroundTasks.remove(handle);
+                    notifyError(callback, e.getMessage() == null ? e.toString() : e.getMessage());
+                    return -1;
+                }
+            }
+
+            @Override
+            public TerminalShellBackgroundState readShellBackground(long handleId, long offset) {
+                BackgroundTask task = backgroundTasks.get(handleId);
+                if (task == null) {
+                    return new TerminalShellBackgroundState(handleId, false, -1, "");
+                }
+                return new TerminalShellBackgroundState(handleId, task.running, task.exitCode,
+                        task.chunkFrom(offset));
+            }
+
+            @Override
+            public boolean killShellBackground(long handleId) {
+                BackgroundTask task = backgroundTasks.remove(handleId);
+                if (task == null) {
+                    return false;
+                }
+                task.running = false;
+                killProcessTree(task.process);
+                return true;
+            }
+
+            @Override
+            public void forgetShellBackground(long handleId) {
+                backgroundTasks.remove(handleId);
             }
 
             @Override
@@ -424,9 +535,68 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
 
     @Override
     protected void onProviderDestroy() {
-        // 共享线程池由 :ipc 库统一管理生命周期，此处无需 shutdown。
-        // 保留钩子供未来按需扩展。
+        // 销毁提供方时终止所有仍在运行的后台任务。
+        for (Long handle : backgroundTasks.keySet().toArray(new Long[0])) {
+            BackgroundTask task = backgroundTasks.remove(handle);
+            if (task != null) {
+                task.running = false;
+                killProcessTree(task.process);
+            }
+        }
         Log.i(TAG, "TerminalProviderService 销毁");
+    }
+
+    /** 后台任务主体：双线程流式排空输出，进程退出后记录退出码并回调。 */
+    private void runBackground(BackgroundTask task) {
+        final Process process = task.process;
+        Thread stdoutThread = new Thread(() -> {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                    process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String chunk = line + "\n";
+                    task.append(chunk);
+                    try {
+                        task.callback.onOutput(chunk);
+                    } catch (RemoteException ignored) {
+                    }
+                }
+            } catch (IOException ignored) {
+            }
+        }, "bg-stdout-" + task.handleId);
+        Thread stderrThread = new Thread(() -> {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                    process.getErrorStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String chunk = line + "\n";
+                    task.append(chunk);
+                    try {
+                        task.callback.onOutput(chunk);
+                    } catch (RemoteException ignored) {
+                    }
+                }
+            } catch (IOException ignored) {
+            }
+        }, "bg-stderr-" + task.handleId);
+        stdoutThread.start();
+        stderrThread.start();
+        try {
+            int exitCode = process.waitFor();
+            stdoutThread.join(1000);
+            stderrThread.join(1000);
+            task.exitCode = exitCode;
+            task.running = false;
+            try {
+                task.callback.onComplete(exitCode);
+            } catch (RemoteException ignored) {
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "background task failed", e);
+            task.exitCode = -1;
+            task.running = false;
+            notifyError(task.callback, e.getMessage() == null ? e.toString() : e.getMessage());
+        }
     }
 
     /**

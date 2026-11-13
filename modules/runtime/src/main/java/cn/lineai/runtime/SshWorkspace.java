@@ -17,7 +17,7 @@ import cn.lineai.tool.api.ToolRegistry;
  *
  * <p>The rewritten app keeps SSH projects imported from the legacy database (ids such as
  * {@code ssh:default}); their {@code path} is a directory on the remote host. Local file tools
- * must not run there, and {@code shell_execute} is routed through {@link SshService}.</p>
+ * must not run there, and {@code shell} is routed through {@link SshService}.</p>
  */
 final class SshWorkspace {
 

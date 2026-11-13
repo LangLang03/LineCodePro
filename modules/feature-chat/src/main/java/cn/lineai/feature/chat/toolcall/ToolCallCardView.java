@@ -5,6 +5,7 @@ import android.widget.LinearLayout;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 import cn.lineai.feature.chat.ToolPresentationProvider;
 import cn.lineai.tool.api.ToolPresentation;
@@ -34,6 +35,7 @@ public class ToolCallCardView extends LinearLayout {
     private String lastSignature = "";
     private boolean expanded;
     private boolean expandable;
+    private Consumer<Boolean> expandedListener;
 
     public ToolCallCardView(Context context, Tokens tokens) {
         super(context);
@@ -117,10 +119,16 @@ public class ToolCallCardView extends LinearLayout {
         return expandable;
     }
 
+    /** Notified only for user toggles; programmatic restores do not echo back. */
+    public void setOnExpandedChanged(Consumer<Boolean> listener) {
+        expandedListener = listener;
+    }
+
     void toggleExpanded() {
         if (!expandable) return;
         expanded = !expanded;
         render();
+        if (expandedListener != null) expandedListener.accept(expanded);
     }
 
     private static String signature(ToolCallEntry value, ToolPresentation presentation) {

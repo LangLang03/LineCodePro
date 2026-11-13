@@ -40,7 +40,7 @@ public class AgentDraftGeneratorTest {
     @Test public void fallsBackToReadOnlyToolsWhenTheModelPicksNone() throws Exception {
         AgentExtension draft = generator(
                 "noise before {\"name\":\"A\",\"slug\":\"a\",\"prompt\":\"p\"} noise after")
-                .generate(MODEL, "prompt", Arrays.asList("read_file", "shell_execute"));
+                .generate(MODEL, "prompt", Arrays.asList("read_file", "shell"));
         assertEquals(Arrays.asList("read_file"), draft.toolNames);
     }
 

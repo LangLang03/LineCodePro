@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 import cn.lineai.feature.chat.ToolPresentationProvider;
@@ -37,6 +38,7 @@ public class ToolCallGroupView extends LinearLayout {
     private final TextView label;
     private final List<ToolCallCardView> cardViews = new ArrayList<>();
     private final List<String> boundIds = new ArrayList<>();
+    private final Map<String, Boolean> explicitCardExpansion = new LinkedHashMap<>();
     private ToolPresentationProvider provider;
     private ToolDiffLookup diffLookup;
     private Consumer<Boolean> expansionListener;
@@ -130,6 +132,7 @@ public class ToolCallGroupView extends LinearLayout {
             cardViews.clear();
             boundIds.clear();
             boundIds.addAll(ids);
+            explicitCardExpansion.keySet().retainAll(ids);
         }
         for (int i = 0; i < entries.size(); i++) {
             ToolCallCardView card;
@@ -150,7 +153,11 @@ public class ToolCallGroupView extends LinearLayout {
             LayoutParams params = (LayoutParams) card.getLayoutParams();
             params.bottomMargin = Ui.dp(getContext(), 2);
             card.setLayoutParams(params);
+            final String callId = entries.get(i).callId;
+            card.setOnExpandedChanged(open -> explicitCardExpansion.put(callId, open));
             card.bind(entries.get(i), tokens);
+            Boolean saved = explicitCardExpansion.get(callId);
+            if (saved != null) card.setExpanded(saved);
         }
         while (cardViews.size() > entries.size()) {
             ToolCallCardView removed = cardViews.remove(cardViews.size() - 1);

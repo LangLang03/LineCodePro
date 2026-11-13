@@ -81,9 +81,11 @@ public class SettingsPresenterTest {
         store.dispatch(new SettingsAction.Change(Field.ALLOW_ANY_HTTP, "true"));
         store.dispatch(new SettingsAction.Change(Field.BROWSER_JAVASCRIPT, "true"));
         store.dispatch(new SettingsAction.Change(Field.BYPASS_PATH_PROTECTION, "true"));
+        store.dispatch(new SettingsAction.Change(Field.TRUST_EXTENSION_SIGNATURES, "true"));
         assertTrue(store.state().saved.allowAnyHttp());
         assertTrue(store.state().saved.browserJavaScript());
         assertTrue(store.state().saved.bypassPathProtection());
+        assertTrue(store.state().saved.trustExtensionSignatures());
     }
 
     @Test public void reducerDoesNotReadOrWriteStorage() {

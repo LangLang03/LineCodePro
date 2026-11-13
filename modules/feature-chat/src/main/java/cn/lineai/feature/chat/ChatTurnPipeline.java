@@ -164,6 +164,27 @@ final class ChatTurnPipeline {
         chat.writes.submit(() -> chat.messages.append(tool));
     }
 
+    /**
+     * A hidden user message injected by the loop (background-task completion notice). It is
+     * published and persisted so later turns still see it, but the timeline skips HIDDEN rows —
+     * the continuation renders inside the same assistant card.
+     */
+    void appendNotice(Message notice) {
+        if (stale()) {
+            return;
+        }
+        final Message stored = notice.toBuilder()
+                .conversationId(chat.conversationId)
+                .seq(chat.seq++)
+                .times(chat.clock.nowMs(), chat.clock.nowMs())
+                .build();
+        chat.publish(chat.state.value().toBuilder()
+                .add(stored)
+                .revision(System.nanoTime())
+                .build());
+        chat.writes.submit(() -> chat.messages.append(stored));
+    }
+
     void requestConfirmation(List<ToolCall> calls) {
         if (stale()) {
             return;

@@ -10,11 +10,12 @@ import cn.lineai.core.model.ScannedTerminalProvider;
 import cn.lineai.core.model.TerminalProviderConfig;
 import cn.lineai.ui.i18n.R;
 import cn.lineai.ui.kit.Icons;
+import cn.lineai.ui.kit.Refreshable;
 import cn.lineai.ui.kit.SettingsSection;
 import cn.lineai.ui.tokens.Tokens;
 
 /** Scan, add and manage external terminal provider apps (IPC). */
-public final class TerminalProvidersPage extends ExtensionPage {
+public final class TerminalProvidersPage extends ExtensionPage implements Refreshable {
 
     public interface Listener {
         List<TerminalProviderConfig> installed();
@@ -35,11 +36,24 @@ public final class TerminalProvidersPage extends ExtensionPage {
     public TerminalProvidersPage(Context context, Tokens tokens, Runnable back, Listener listener) {
         super(context, tokens, back, R.string.screen_terminal_provider_title);
         this.listener = listener;
+        refresh();
+    }
+
+    @Override
+    public void onShown() {
+        refresh();
+    }
+
+    /** Re-reads installed providers and rescans available providers on every page entry. */
+    private void refresh() {
+        scanResults = listener.scan();
+        scanned = true;
         reload();
     }
 
     public void reload() {
         content.removeAllViews();
+        installed();
         SettingsSection scan = section(R.string.screen_terminal_provider_scan);
         scan.row(ExtensionKit.action(getContext(), theme, Icons.SEARCH,
                 R.string.screen_terminal_provider_scan,
@@ -49,7 +63,6 @@ public final class TerminalProvidersPage extends ExtensionPage {
                     reload();
                 }), false, 0);
         if (scanned) scanResults();
-        installed();
     }
 
     private void scanResults() {
@@ -95,8 +108,11 @@ public final class TerminalProvidersPage extends ExtensionPage {
     }
 
     private void confirmAdd(ScannedTerminalProvider provider) {
-        ExtensionKit.confirm(getContext(), theme, R.string.screen_terminal_provider_add_confirm,
+        ExtensionKit.confirmAction(getContext(), theme,
+                getContext().getString(R.string.screen_terminal_provider_add_confirm,
+                        provider.name),
                 getContext().getString(R.string.screen_terminal_provider_add_confirm_desc),
+                R.string.common_add,
                 () -> {
                     listener.add(provider);
                     reload();

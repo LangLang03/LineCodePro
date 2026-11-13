@@ -18,6 +18,7 @@ public final class SecuritySettingsPage extends SettingsPage {
     private final PreferenceRow http;
     private final PreferenceRow javaScript;
     private final PreferenceRow bypass;
+    private final PreferenceRow trustExtensions;
 
     public SecuritySettingsPage(Context context, Tokens tokens, Runnable back,
                                 Consumer<SettingsAction> dispatch) {
@@ -59,14 +60,24 @@ public final class SecuritySettingsPage extends SettingsPage {
                     });
         });
         section(R.string.screen_security_section_path).row(bypass, false, 0);
+
+        trustExtensions = new PreferenceRow(context, theme, PreferenceRow.Style.SWITCH,
+                Icons.PACKAGE,
+                R.string.settings_row_security_trust_extensions_title,
+                R.string.settings_row_security_trust_extensions_desc);
+        trustExtensions.onToggle(value -> dispatch.accept(new SettingsAction.Change(
+                Field.TRUST_EXTENSION_SIGNATURES, value.toString())));
+        section(R.string.screen_security_section_extensions).row(trustExtensions, false, 0);
     }
 
     public void render(SettingsState state) {
         http.checked(state.values.allowAnyHttp());
         javaScript.checked(state.values.browserJavaScript());
         bypass.checked(state.values.bypassPathProtection());
+        trustExtensions.checked(state.values.trustExtensionSignatures());
         http.setEnabled(state.loaded);
         javaScript.setEnabled(state.loaded);
         bypass.setEnabled(state.loaded);
+        trustExtensions.setEnabled(state.loaded);
     }
 }

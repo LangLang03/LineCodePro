@@ -8,30 +8,50 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import java.util.function.Consumer;
-
 import cn.lineai.ui.i18n.R;
 import cn.lineai.ui.kit.IconButton;
 import cn.lineai.ui.kit.Icons;
-import cn.lineai.ui.kit.PreferenceRow;
 import cn.lineai.ui.kit.SettingsPage;
 import cn.lineai.ui.kit.Ui;
-import cn.lineai.ui.tokens.ThemeBinder;
 import cn.lineai.ui.tokens.Tokens;
 
-/** Execution target, SSH shortcuts and per-group tool switches. */
+/** Execution target, local shell switch, provider status and per-group tool switches. */
 public final class McpSettingsPage extends SettingsPage {
 
     public interface Listener {
         void onOpenSshSettings();
 
         void onOpenTermuxIntegration();
+
+        void onOpenTerminalProviders();
+
+        void onExecutionModeChanged();
+
+        ProviderStatus terminalProviderStatus();
+
+        void onTestTerminalProvider();
+    }
+
+    public enum ProviderState {
+        NONE, DISCONNECTED, CONNECTED
+    }
+
+    public static final class ProviderStatus {
+        public final ProviderState state;
+        public final String name;
+
+        public ProviderStatus(ProviderState state, String name) {
+            this.state = state == null ? ProviderState.NONE : state;
+            this.name = name == null ? "" : name;
+        }
     }
 
     private final McpPreferences preferences;
     private final Listener listener;
     private final LinearLayout cards;
     private String mode;
+    private TextView providerTestTitle;
+    private TextView providerTestStatus;
 
     public McpSettingsPage(Context context, Tokens tokens, Runnable back, McpPreferences preferences,
                            Listener listener) {
@@ -48,8 +68,14 @@ public final class McpSettingsPage extends SettingsPage {
 
     private void rebuild() {
         cards.removeAllViews();
+        providerTestTitle = null;
+        providerTestStatus = null;
         executionCard();
-        if (McpPreferences.MODE_SSH.equals(mode)) sshCard();
+        if (McpPreferences.MODE_SSH.equals(mode)) {
+            sshCard();
+        } else if (McpPreferences.MODE_TERMINAL_PROVIDER.equals(mode)) {
+            terminalProviderCard();
+        }
         for (ToolGroups.Group group : ToolGroups.all()) {
             if (group.visibleIn(mode)) toolCard(group);
         }
@@ -96,6 +122,7 @@ public final class McpSettingsPage extends SettingsPage {
             mode = value;
             preferences.setMode(value);
             rebuild();
+            listener.onExecutionModeChanged();
         });
         segment.addView(button, new LinearLayout.LayoutParams(0, -1, 1f));
     }
@@ -124,6 +151,104 @@ public final class McpSettingsPage extends SettingsPage {
         actionsParams.topMargin = Ui.dp(context, 8);
         card.addView(actions, actionsParams);
         addCard(card);
+    }
+
+    private void terminalProviderCard() {
+        Context context = getContext();
+        Tokens tokens = theme.current();
+        LinearLayout card = card(context, tokens);
+        card.addView(Ui.bold(context,
+                context.getString(R.string.screen_mcp_section_terminal_provider),
+                Tokens.FONT_MD, tokens.text), new LayoutParams(-1, -2));
+        TextView desc = desc(context, tokens,
+                context.getString(R.string.screen_mcp_terminal_provider_overview));
+        LinearLayout.LayoutParams descParams = new LayoutParams(-1, -2);
+        descParams.topMargin = Ui.dp(context, 2);
+        card.addView(desc, descParams);
+
+        ProviderStatus status = listener.terminalProviderStatus();
+        TextView state = desc(context, tokens, providerStatusText(status));
+        state.setTextColor(status.state == ProviderState.CONNECTED
+                ? tokens.accent : tokens.textSecondary);
+        LinearLayout.LayoutParams stateParams = new LayoutParams(-1, -2);
+        stateParams.topMargin = Ui.dp(context, 8);
+        card.addView(state, stateParams);
+
+        LinearLayout actions = new LinearLayout(context);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout manage = actionButton(context, tokens,
+                R.string.screen_mcp_terminal_provider_manage, Icons.TERMINAL, true,
+                listener::onOpenTerminalProviders);
+        LinearLayout test = actionButton(context, tokens,
+                R.string.screen_mcp_terminal_provider_test, Icons.SERVER, false,
+                this::requestTerminalProviderTest);
+        LinearLayout.LayoutParams manageParams = new LinearLayout.LayoutParams(0, Ui.dp(context, 42), 1f);
+        manageParams.rightMargin = Ui.dp(context, 8);
+        actions.addView(manage, manageParams);
+        actions.addView(test, new LinearLayout.LayoutParams(0, Ui.dp(context, 42), 1f));
+        LinearLayout.LayoutParams actionsParams = new LayoutParams(-1, -2);
+        actionsParams.topMargin = Ui.dp(context, 10);
+        card.addView(actions, actionsParams);
+
+        providerTestTitle = Ui.bold(context, "", Tokens.FONT_XS, tokens.textSecondary);
+        providerTestTitle.setVisibility(View.GONE);
+        providerTestStatus = Ui.text(context, "", Tokens.FONT_XS, tokens.textSecondary,
+                Typeface.NORMAL);
+        providerTestStatus.setTypeface(Typeface.MONOSPACE);
+        providerTestStatus.setVisibility(View.GONE);
+        providerTestStatus.setLineSpacing(Ui.dp(context, 3), 1f);
+        LinearLayout.LayoutParams titleParams = new LayoutParams(-1, -2);
+        titleParams.topMargin = Ui.dp(context, 10);
+        card.addView(providerTestTitle, titleParams);
+        LinearLayout.LayoutParams testParams = new LayoutParams(-1, -2);
+        testParams.topMargin = Ui.dp(context, 4);
+        card.addView(providerTestStatus, testParams);
+        addCard(card);
+    }
+
+    private void requestTerminalProviderTest() {
+        showProviderTestStatus(R.string.screen_mcp_terminal_provider_testing_title,
+                getContext().getString(R.string.screen_mcp_terminal_provider_testing_message),
+                false);
+        listener.onTestTerminalProvider();
+    }
+
+    /** Called by the runtime after a provider probe finishes. */
+    public void showTerminalProviderResult(CharSequence message, boolean error) {
+        showProviderTestStatus(error
+                        ? R.string.screen_mcp_terminal_provider_test_failed_title
+                        : R.string.screen_mcp_terminal_provider_test_success_title,
+                message, error);
+    }
+
+    private void showProviderTestStatus(int title, CharSequence message, boolean error) {
+        if (providerTestTitle == null || providerTestStatus == null) {
+            return;
+        }
+        Tokens tokens = theme.current();
+        providerTestTitle.setText(title);
+        providerTestTitle.setTextColor(error ? tokens.danger : tokens.accent);
+        providerTestTitle.setVisibility(View.VISIBLE);
+        providerTestStatus.setText(message);
+        providerTestStatus.setTextColor(error ? tokens.danger : tokens.textSecondary);
+        providerTestStatus.setBackground(Ui.roundedStroke(getContext(),
+                error ? tokens.dangerMuted : tokens.codeBg, 8,
+                error ? tokens.danger : tokens.codeBorder));
+        Ui.padding(providerTestStatus, 12, 8, 12, 8);
+        providerTestStatus.setVisibility(View.VISIBLE);
+    }
+
+    private String providerStatusText(ProviderStatus status) {
+        if (status == null || status.state == ProviderState.NONE) {
+            return getContext().getString(R.string.screen_mcp_terminal_provider_status_none);
+        }
+        if (status.state == ProviderState.DISCONNECTED) {
+            return getContext().getString(R.string.screen_mcp_terminal_provider_status_disconnected);
+        }
+        String name = status.name.isEmpty()
+                ? getContext().getString(R.string.screen_mcp_terminal_provider_manage)
+                : status.name;
+        return getContext().getString(R.string.screen_mcp_terminal_provider_status_connected, name);
     }
 
     private void toolCard(ToolGroups.Group group) {

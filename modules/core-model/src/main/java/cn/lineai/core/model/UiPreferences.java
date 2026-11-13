@@ -22,6 +22,7 @@ public final class UiPreferences {
         ALLOW_ANY_HTTP("output.allowAnyHttp", "false", "true"),
         BROWSER_JAVASCRIPT("output.browserJavaScript", "false", "true"),
         BYPASS_PATH_PROTECTION("output.bypassPathProtection", "false", "true"),
+        TRUST_EXTENSION_SIGNATURES("security.trustExtensionSignatures", "false", "true"),
         KEEP_ALIVE_WAKE_LOCK("keepAlive.wakeLock", "false", "true"),
         KEEP_ALIVE_FOREGROUND("keepAlive.foreground", "false", "true"),
         KEEP_ALIVE_FAKE_AUDIO("keepAlive.fakeAudio", "false", "true");
@@ -87,6 +88,7 @@ public final class UiPreferences {
     public boolean allowAnyHttp() { return booleanOf(Field.ALLOW_ANY_HTTP); }
     public boolean browserJavaScript() { return booleanOf(Field.BROWSER_JAVASCRIPT); }
     public boolean bypassPathProtection() { return booleanOf(Field.BYPASS_PATH_PROTECTION); }
+    public boolean trustExtensionSignatures() { return booleanOf(Field.TRUST_EXTENSION_SIGNATURES); }
     public boolean keepAliveWakeLock() { return booleanOf(Field.KEEP_ALIVE_WAKE_LOCK); }
     public boolean keepAliveForeground() { return booleanOf(Field.KEEP_ALIVE_FOREGROUND); }
     public boolean keepAliveFakeAudio() { return booleanOf(Field.KEEP_ALIVE_FAKE_AUDIO); }

@@ -323,6 +323,7 @@ public final class FeaturePageFactory {
     }
 
     private TerminalProvidersPage terminalProvidersPage() {
+        host.graph().refreshTerminalProviders();
         return new TerminalProvidersPage(host.activity(), host.tokens(), host.navigation()::back,
                 new TerminalProvidersPage.Listener() {
                     public java.util.List<cn.lineai.core.model.TerminalProviderConfig> installed() {
@@ -341,16 +342,25 @@ public final class FeaturePageFactory {
                         return result;
                     }
                     public void add(cn.lineai.core.model.ScannedTerminalProvider provider) {
+                        if (!host.graph().trustsProviderSignature(provider.packageName)) {
+                            Toast.makeText(host.activity(),
+                                    R.string.toast_terminal_provider_signature_untrusted,
+                                    Toast.LENGTH_LONG).show();
+                            return;
+                        }
                         host.graph().terminalProviders().add(
                                 new cn.lineai.core.model.TerminalProviderConfig(
                                         "", true, provider.name, provider.packageName,
                                         provider.serviceClass, provider.providerType, 0, 0));
+                        host.graph().refreshTerminalProviders();
                     }
                     public void setEnabled(String id, boolean enabled) {
                         host.graph().terminalProviders().setEnabled(id, enabled);
+                        host.graph().refreshTerminalProviders();
                     }
                     public void delete(String id) {
                         host.graph().terminalProviders().delete(id);
+                        host.graph().refreshTerminalProviders();
                     }
                 });
     }

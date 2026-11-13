@@ -78,21 +78,72 @@ public final class SettingsPageFactory {
             return page;
         }
         if (key.id() == SettingsScreens.SECURITY) {
+            java.util.function.Consumer<cn.lineai.feature.settings.SettingsAction> dispatch =
+                    action -> {
+                        host.graph().preferences().dispatch(action);
+                        if (action instanceof cn.lineai.feature.settings.SettingsAction.Change) {
+                            cn.lineai.feature.settings.SettingsAction.Change change =
+                                    (cn.lineai.feature.settings.SettingsAction.Change) action;
+                            if (change.field == cn.lineai.core.model.UiPreferences.Field
+                                    .TRUST_EXTENSION_SIGNATURES) {
+                                // Persist synchronously so auto-load picks the new trust policy up
+                                // immediately; the settings store also receives the same value
+                                // from the presenter effect.
+                                host.graph().settings().put(change.field.key, change.value);
+                                host.graph().refreshTerminalProviders();
+                            }
+                        }
+                    };
             SecuritySettingsPage page = new SecuritySettingsPage(host.activity(), host.tokens(),
-                    host.navigation()::back, host.graph().preferences()::dispatch);
+                    host.navigation()::back, dispatch);
             page.render(host.graph().preferences().state());
             return page;
         }
         if (key.id() == SettingsScreens.MCP) {
-            return new McpSettingsPage(host.activity(), host.tokens(), host.navigation()::back,
-                    new McpPreferences(host.graph().settings()), new McpSettingsPage.Listener() {
+            host.graph().refreshTerminalProviders();
+            final McpSettingsPage[] holder = new McpSettingsPage[1];
+            holder[0] = new McpSettingsPage(host.activity(), host.tokens(),
+                    host.navigation()::back,
+                    new McpPreferences(host.graph().settings()),
+                    new McpSettingsPage.Listener() {
                         public void onOpenSshSettings() {
                             host.navigation().push(SettingsScreens.SSH.key(Params.Empty.INSTANCE));
                         }
                         public void onOpenTermuxIntegration() {
                             host.navigation().push(SettingsScreens.TERMUX.key(Params.Empty.INSTANCE));
                         }
+                        public void onOpenTerminalProviders() {
+                            openExtension("terminalProvider");
+                        }
+                        public void onExecutionModeChanged() {
+                            host.graph().refreshTerminalProviders();
+                        }
+                        public McpSettingsPage.ProviderStatus terminalProviderStatus() {
+                            int state = host.graph().terminalProviderState();
+                            McpSettingsPage.ProviderState providerState = state
+                                    == 2 ? McpSettingsPage.ProviderState.CONNECTED
+                                    : state == 1 ? McpSettingsPage.ProviderState.DISCONNECTED
+                                    : McpSettingsPage.ProviderState.NONE;
+                            return new McpSettingsPage.ProviderStatus(providerState,
+                                    host.graph().terminalProviderName());
+                        }
+                        public void onTestTerminalProvider() {
+                            Scheduler scheduler = host.graph().scheduler();
+                            scheduler.io(() -> {
+                                try {
+                                    String output = host.graph().probeTerminalProvider();
+                                    scheduler.main(() -> holder[0].showTerminalProviderResult(
+                                            output.trim(), false));
+                                } catch (cn.lineai.core.kernel.error.DomainException error) {
+                                    String detail = error.detail().isEmpty()
+                                            ? error.code().name() : error.detail();
+                                    scheduler.main(() -> holder[0].showTerminalProviderResult(
+                                            detail, true));
+                                }
+                            });
+                        }
                     });
+            return holder[0];
         }
         if (key.id() == SettingsScreens.EXTENSIONS) {
             return new ExtensionsPage(host.activity(), host.tokens(), host.navigation()::back,

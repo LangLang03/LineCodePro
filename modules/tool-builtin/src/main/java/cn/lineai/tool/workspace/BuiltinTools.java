@@ -22,6 +22,8 @@ public final class BuiltinTools {
                 .register(new EditFileTool())
                 .register(new DeleteFileTool())
                 .register(new ShellTool())
+                .register(new ShellOutputTool())
+                .register(new ShellKillTool())
                 .register(new WebSearchTool(webSearch))
                 .register(new WebFetchTool())
                 .register(new TodoUpdateTool())

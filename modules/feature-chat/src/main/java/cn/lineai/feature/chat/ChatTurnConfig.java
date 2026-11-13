@@ -42,8 +42,12 @@ final class ChatTurnConfig {
         String mode = ChatMode.normalize(settings.get(ToolModes.CHAT_MODE_KEY, ChatMode.AGENT));
         boolean minimal = Boolean.parseBoolean(
                 settings.get(UiPreferences.Field.MINIMAL_MODE.key, "false"));
-        String allowed = toolNames(activeTools);
-        String blocked = blockedToolNames(activeTools, allTools);
+        // Models with native tool support receive the schemas in the request's tools field;
+        // the prompt carries no tool names at all. Other models keep the prompt-name fallback.
+        boolean nativeTools = model != null && model.supportsTools
+                && activeTools != null && !activeTools.all().isEmpty();
+        String allowed = nativeTools ? "" : toolNames(activeTools);
+        String blocked = nativeTools ? "" : blockedToolNames(activeTools, allTools);
         String base = minimal
                 ? prompts.minimal(allowed)
                 : prompts.assemble(model.modelId, model.displayName(), model.providerId,

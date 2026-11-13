@@ -50,9 +50,16 @@ public final class SystemPromptAssembler {
         modeValues.put("MODE_TOOLS_BLOCKED", safe(modeToolsBlocked));
         String modeContext = PromptRenderer.render(modePrompt(chatMode),
                 prompts.current(modePrompt(chatMode)), modeValues);
-        String toolContext = "## Available tools\nOnly these tools are injected for this request "
+        // Empty allowed AND blocked lists mean the model received the tools natively in the
+        // request's tools field - the prompt carries no tool names at all.
+        String allowed = safe(modeToolsAllowed);
+        String blocked = safe(modeToolsBlocked);
+        String toolContext = allowed.isEmpty() && blocked.isEmpty() ? ""
+                : "## Available tools\nOnly these tools are injected for this request "
                 + "(parameter protocol and constraints are in the tool definitions): "
-                + (safe(modeToolsAllowed).isEmpty() ? "none" : safe(modeToolsAllowed));
+                + (allowed.isEmpty() ? "none" : allowed)
+                + (blocked.isEmpty() ? ""
+                : "\nTools denied by the current permission mode: " + blocked);
         Map<String, String> contexts = new LinkedHashMap<>();
         contexts.put("TOOLS_CONTEXT", toolContext);
         contexts.put("TONE_CONTEXT", toneContext);
@@ -69,9 +76,12 @@ public final class SystemPromptAssembler {
     public String minimal(String toolNames) {
         Map<String, String> values = new LinkedHashMap<>();
         String names = safe(toolNames);
-        values.put("TOOL_NAMES", names.isEmpty() ? "none." : names);
-        return PromptRenderer.render(PromptId.MINIMAL_PROMPT,
+        values.put("TOOL_NAMES", names);
+        String rendered = PromptRenderer.render(PromptId.MINIMAL_PROMPT,
                 prompts.current(PromptId.MINIMAL_PROMPT), values);
+        // Models without native tool support still need the name list as a prompt fallback;
+        // native-tools models render the bare template with no tool names at all.
+        return names.isEmpty() ? rendered : rendered + "\n\nTools: " + names;
     }
 
     /** The editable compaction instruction; the asset is the only copy. */

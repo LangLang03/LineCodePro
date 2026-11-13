@@ -6,6 +6,8 @@ import android.content.res.Configuration;
 import java.io.File;
 
 import cn.lineai.core.kernel.di.Graph;
+import cn.lineai.core.kernel.error.DomainException;
+import cn.lineai.core.kernel.error.ErrorCode;
 import cn.lineai.core.kernel.time.Clock;
 import cn.lineai.core.kernel.time.Scheduler;
 import cn.lineai.core.model.ThemePalette;
@@ -53,7 +55,9 @@ import cn.lineai.engine.prompt.PromptStore;
 import cn.lineai.engine.prompt.SystemPromptAssembler;
 import cn.lineai.feature.chat.ChatController;
 import cn.lineai.feature.chat.DefaultPromptExtensions;
+import cn.lineai.feature.settings.McpPreferences;
 import cn.lineai.platform.AndroidScheduler;
+import cn.lineai.tool.api.BackgroundTasks;
 import cn.lineai.tool.api.DiffSink;
 import cn.lineai.tool.api.ToolCatalog;
 import cn.lineai.tool.agent.AgentRunner;
@@ -94,6 +98,10 @@ public final class AppGraph implements AutoCloseable {
     private final ConversationStore conversationStore;
     private final cn.lineai.tool.api.TodoStore sessionTodos;
     private final TerminalProviderStore terminalProviders;
+    private final McpPreferences mcpPreferences;
+    private final TerminalProviderGateway terminalProviderGateway;
+    private final BackgroundShellRegistry backgroundShellRegistry;
+    private final Context context;
     private final ToolCatalog toolCatalog;
     private final ToolCatalog baseCatalogForAgents;
     private final ModelClient modelClient;
@@ -106,6 +114,7 @@ public final class AppGraph implements AutoCloseable {
     private final cn.lineai.feature.settings.ThemePreferences themePreferences;
 
     private AppGraph(Context context) {
+        this.context = context.getApplicationContext();
         scheduler = new AndroidScheduler();
         File dbFile = new File(context.getDatabasePath("linecode-v2.db").getAbsolutePath());
         database = new LineCodeDatabase(dbFile);
@@ -146,6 +155,9 @@ public final class AppGraph implements AutoCloseable {
         this.mcpExtensions = mcpExtensionStore;
         this.skills = skillStore;
         this.terminalProviders = providerStore;
+        this.mcpPreferences = new McpPreferences(settingsStore);
+        this.terminalProviderGateway = new TerminalProviderGateway(this.context, settingsStore,
+                providerStore);
         this.prompts = promptStore;
         final File workspace = new File(context.getFilesDir(), "workspace");
         workspace.mkdirs();
@@ -155,6 +167,12 @@ public final class AppGraph implements AutoCloseable {
         this.projects = projectStore;
         this.diffs = diffStore;
         this.conversationStore = conversations;
+        // Terminal provider mode owns remote background tasks via AIDL v2 handles; SSH
+        // workspaces keep the temp-log backend (unless an SSH project is selected).
+        this.backgroundShellRegistry = new BackgroundShellRegistry(this::runRemote,
+                terminalProviderGateway.providerBackground(),
+                () -> !SshWorkspace.isSsh(projectStore.selected())
+                        && terminalProviderGateway.terminalMode());
         final cn.lineai.feature.settings.ToolPreferences toolPreferences =
                 new cn.lineai.feature.settings.ToolPreferences(settingsStore);
         final VisionClient visionClient = new VisionClient();
@@ -175,7 +193,7 @@ public final class AppGraph implements AutoCloseable {
                 mcpExtensionStore::list, new McpClient()::callTool);
         final ToolCatalog toolCatalog = toolCatalog(baseCatalog, agentExtensionStore, projectStore);
         this.toolCatalog = toolCatalog;
-        this.baseCatalogForAgents = baseCatalog;
+        this.baseCatalogForAgents = () -> applyWorkspacePolicy(baseCatalog.registry());
         this.modelClient = client;
         this.toolContextForAgents = toolContext;
         this.chat = new ChatController(conversations, messages, modelStore, settingsStore,
@@ -192,6 +210,7 @@ public final class AppGraph implements AutoCloseable {
         preferences.dispatch(new SettingsAction.Load());
 
         this.graph = buildGraph(clock, messages);
+        terminalProviderGateway.start();
     }
 
     private Graph buildGraph(Clock clock, MessageStore messages) {
@@ -224,19 +243,31 @@ public final class AppGraph implements AutoCloseable {
 
     private ToolCatalog toolCatalog(ToolCatalog baseCatalog, AgentExtensionStore agents,
                                     ProjectStore projects) {
-        return () -> {
-            cn.lineai.tool.api.ToolRegistry registry = AgentTools.augment(baseCatalog.registry(),
-                    agents::list, agentRunner);
-            // An SSH workspace must not receive local file/shell tools.
-            return SshWorkspace.isSsh(projects.selected())
-                    ? SshWorkspace.remoteOnly(registry) : registry;
-        };
+        return () -> applyWorkspacePolicy(AgentTools.augment(baseCatalog.registry(),
+                agents::list, agentRunner));
     }
 
-    private static ToolContext toolContext(Context context, Clock clock, SettingsStore settings,
-                                           ProjectStore projects, DiffStore diffs,
-                                           MemoryStore memories, ModelStore models,
-                                           MemoryTodoStore todoStore) {
+    /**
+     * Remote workspaces (SSH host or terminal provider guest) keep only tools that do not require
+     * the local filesystem; local workspaces obey the local-shell preference.
+     */
+    private cn.lineai.tool.api.ToolRegistry applyWorkspacePolicy(
+            cn.lineai.tool.api.ToolRegistry registry) {
+        if (remoteWorkspaceActive()) {
+            return LocalToolPolicy.apply(SshWorkspace.remoteOnly(registry),
+                    mcpPreferences.remoteShell());
+        }
+        return LocalToolPolicy.apply(registry, mcpPreferences.localShell());
+    }
+
+    private boolean remoteWorkspaceActive() {
+        return SshWorkspace.isSsh(projects.selected()) || terminalProviderGateway.terminalMode();
+    }
+
+    private ToolContext toolContext(Context context, Clock clock, SettingsStore settings,
+                                    ProjectStore projects, DiffStore diffs,
+                                    MemoryStore memories, ModelStore models,
+                                    MemoryTodoStore todoStore) {
         File workspace = new File(context.getFilesDir(), "workspace");
         return new ToolContext() {
             @Override public cn.lineai.tool.api.TodoStore todos() { return todoStore; }
@@ -271,15 +302,33 @@ public final class AppGraph implements AutoCloseable {
                         "false"));
             }
             @Override public boolean remoteWorkspace() {
-                return SshWorkspace.isSsh(projects.selected());
+                return remoteWorkspaceActive();
             }
             @Override public String remoteDirectory() {
-                return SshWorkspace.directory(projects.selected());
+                if (SshWorkspace.isSsh(projects.selected())) {
+                    return SshWorkspace.directory(projects.selected());
+                }
+                return terminalProviderGateway.terminalMode() ? terminalProviderGateway.home() : "";
             }
             @Override public String remoteExecute(String command, int timeoutMs) {
-                return SshWorkspace.execute(context, settings, command, timeoutMs);
+                return runRemote(command, timeoutMs);
+            }
+            @Override public BackgroundTasks backgrounds() {
+                return backgroundShellRegistry;
             }
         };
+    }
+
+    /** One blocking remote execution on the active workspace; shared by tools and background SSH tasks. */
+    private String runRemote(String command, int timeoutMs) {
+        if (SshWorkspace.isSsh(projects.selected())) {
+            return SshWorkspace.execute(context, settings, command, timeoutMs);
+        }
+        if (terminalProviderGateway.terminalMode()) {
+            return terminalProviderGateway.execute(command, timeoutMs);
+        }
+        throw new DomainException(ErrorCode.INVALID_INPUT,
+                "remote execution is unavailable in the local workspace");
     }
 
     public static AppGraph create(Context context) {
@@ -337,6 +386,18 @@ public final class AppGraph implements AutoCloseable {
 
     public TerminalProviderStore terminalProviders() { return terminalProviders; }
 
+    public void refreshTerminalProviders() { terminalProviderGateway.refresh(); }
+
+    public int terminalProviderState() { return terminalProviderGateway.state(); }
+
+    public String terminalProviderName() { return terminalProviderGateway.providerName(); }
+
+    public String probeTerminalProvider() { return terminalProviderGateway.probe(); }
+
+    public boolean trustsProviderSignature(String packageName) {
+        return terminalProviderGateway.trusted(packageName);
+    }
+
     public ToolCatalog tools() { return toolCatalog; }
 
     public void setAgentRunner(AgentRunner runner) {
@@ -355,6 +416,8 @@ public final class AppGraph implements AutoCloseable {
 
     @Override
     public void close() {
+        backgroundShellRegistry.shutdown();
+        terminalProviderGateway.shutdown();
         preferences.close();
         graph.close();
         scheduler.close();

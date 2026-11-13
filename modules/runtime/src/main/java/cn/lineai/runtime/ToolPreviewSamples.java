@@ -98,16 +98,16 @@ public final class ToolPreviewSamples {
                 PRESENTATIONS.get("delete_file"), true));
 
         samples.add(new Sample(R.string.toolcall_preview_category_shell,
-                new ToolCallEntry("preview-shell", "shell_execute",
+                new ToolCallEntry("preview-shell", "shell",
                         "{\"command\":\"gradlew :app:assembleDebug\"}",
                         "BUILD SUCCESSFUL in 12s", false, false),
-                PRESENTATIONS.get("shell_execute"), true));
+                PRESENTATIONS.get("shell"), true));
 
         samples.add(new Sample(R.string.toolcall_preview_category_shell,
-                new ToolCallEntry("preview-shell-running", "shell_execute",
+                new ToolCallEntry("preview-shell-running", "shell",
                         "{\"command\":\"gradlew :app:assembleDebug\"}",
                         "", false, true),
-                PRESENTATIONS.get("shell_execute"), false));
+                PRESENTATIONS.get("shell"), false));
 
         samples.add(new Sample(R.string.toolcall_preview_category_todo,
                 new ToolCallEntry("preview-todo", "todo_update",
@@ -195,7 +195,7 @@ public final class ToolPreviewSamples {
                 + "{\"id\":\"nested-1\",\"name\":\"read_file\",\"arguments\":"
                 + "{\"path\":\"" + ACTIVITY + "\"},\"result\":{\"content\":"
                 + "\"Read 128 lines\",\"is_error\":false}},"
-                + "{\"id\":\"nested-2\",\"name\":\"shell_execute\",\"arguments\":"
+                + "{\"id\":\"nested-2\",\"name\":\"shell\",\"arguments\":"
                 + "{\"command\":\"find . -name '*.java' | wc -l\"},\"result\":"
                 + "{\"content\":\"42\",\"is_error\":false}}]}";
     }
@@ -230,7 +230,7 @@ public final class ToolPreviewSamples {
         values.put("file_diff", new ToolPresentation("File diff", ToolIcon.DIFF, ACTIVITY, ""));
         values.put("delete_file", new ToolPresentation("Delete file", ToolIcon.DELETE,
                 "app/src/main/java/cn/lineai/TodoActivity.java", ""));
-        values.put("shell_execute", new ToolPresentation("Terminal", ToolIcon.TERMINAL,
+        values.put("shell", new ToolPresentation("Terminal", ToolIcon.TERMINAL,
                 "gradlew :app:assembleDebug", ""));
         values.put("todo_update", new ToolPresentation("TODO update", ToolIcon.TODO,
                 "3 items", ""));

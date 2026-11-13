@@ -326,6 +326,21 @@
     <string name="screen_security_title">安全</string>
     <string name="screen_security_section_http">HTTP 限制</string>
     <string name="screen_security_section_browser">内置浏览器</string>
+    <string name="tool_group_local_shell_name">Shell</string>
+    <string name="tool_group_local_shell_desc">在本地工作区执行 Shell 命令，支持后台任务（用 shell_output 查看输出、shell_kill 终止）；关闭后本地模式不再提供 Shell 工具</string>
+    <string name="screen_security_section_extensions">扩展</string>
+    <string name="settings_row_security_trust_extensions_title">信任签名不一致的扩展包</string>
+    <string name="settings_row_security_trust_extensions_desc">允许自动加载使用不同证书签名的扩展与终端提供者包</string>
+    <string name="screen_mcp_terminal_provider_status_none">尚未配置终端提供者</string>
+    <string name="screen_mcp_terminal_provider_status_disconnected">终端提供者未连接</string>
+    <string name="screen_mcp_terminal_provider_status_connected">已连接：%1$s</string>
+    <string name="screen_mcp_terminal_provider_manage">终端提供者</string>
+    <string name="screen_mcp_terminal_provider_test">测试连接</string>
+    <string name="screen_mcp_terminal_provider_testing_title">正在测试终端提供者</string>
+    <string name="screen_mcp_terminal_provider_testing_message">正在提供者环境中执行命令</string>
+    <string name="screen_mcp_terminal_provider_test_success_title">终端提供者测试通过</string>
+    <string name="screen_mcp_terminal_provider_test_failed_title">终端提供者测试失败</string>
+    <string name="toast_terminal_provider_signature_untrusted">此终端提供者使用的签名与主程序不一致，请先在「设置 → 安全」中开启「信任签名不一致的扩展包」。</string>
     <string name="screen_security_section_path">路径保护</string>
     <string name="settings_row_security_bypass_path_title">无视路径保护</string>
     <string name="settings_row_security_bypass_path_desc">允许工具和 Agent 访问任意路径,不限制在工作区内</string>
@@ -633,6 +648,8 @@
     <string name="screen_mcp_ssh_desc">连接远程 Linux 服务器并将其作为执行目标</string>
     <string name="screen_mcp_ssh_settings">SSH 连接设置</string>
     <string name="screen_mcp_termux_integration">Termux 对接</string>
+    <string name="screen_mcp_section_terminal_provider">终端提供者</string>
+    <string name="screen_mcp_terminal_provider_overview">终端提供者模式通过 IPC 调用外部提供者应用执行 Shell 命令和传输文件。使用前请先在终端提供者页面扫描并添加提供者应用。</string>
 
     <string name="screen_mcp_edit_title">编辑 MCP</string>
     <string name="screen_mcp_list_empty">还没有 MCP 扩展。</string>
@@ -1229,7 +1246,7 @@
     <string name="tool_group_image_understanding_desc">读取本地或 SSH 工作区图片并调用已选择的视觉模型理解内容</string>
     <string name="tool_group_image_generation_name">图片生成</string>
     <string name="tool_group_image_generation_desc">调用已选择的生图模型生成图片，并以内联 Markdown 图片返回</string>
-    <string name="tool_group_shell_desc">通过 SSH 执行 shell 命令</string>
+    <string name="tool_group_shell_desc">通过 SSH 或终端提供者在远程主机执行 shell 命令，支持后台任务（用 shell_output 查看输出、shell_kill 终止）</string>
     <string name="tool_group_web_search_name">网页搜索</string>
     <string name="tool_group_web_search_desc">搜索互联网并查看网页内容</string>
     <string name="tool_group_memory_name">记忆</string>
@@ -1303,10 +1320,10 @@
     <string name="prompt_user_message_label">用户消息 </string>
 
     <!-- AgentPromptBuilder fallback role prompts -->
-    <string name="agent_fallback_role_explore_remote">你是一个远程 Shell 环境下的探索 Agent。可以使用 shell_execute 执行只读命令。\n规则：\n- 只读取代码，不做任何修改。\n- 优先使用只读工具搜索和读取关键文件；可以使用 shell_execute 执行只读命令。</string>
-    <string name="agent_fallback_role_coding_remote">你是一个远程 Shell 环境下的编程 Agent（当前工作区位于 SSH 远端或终端提供者容器内，本地 file_read / file_write / file_edit / glob / list_dir 不一定可用）。\n规则：\n- 必须通过 shell_execute 完成绝大多数工作：先 cat/ls/grep 读取，写入用 sed/awk/python heredoc 或 tee，确认 cat 验证。\n- 只能修改 write_scope 中列出的文件或目录；没有 write_scope 时禁止写入文件。</string>
-    <string name="agent_fallback_role_explore_local">你是一个代码探索 Agent。你的任务是快速定位和分析代码。\n规则：\n- 只读取代码，不做任何修改，不调用任何写入类工具。\n- 优先使用只读工具搜索和读取关键文件；可以使用 shell_execute 执行只读命令。\n- 给出简洁准确的中文回答。</string>
-    <string name="agent_fallback_role_coding_local">你是一个编程 Agent。你的任务是完成边界清晰的编程子任务。\n规则：\n- 只能修改 write_scope 中列出的文件或目录；没有 write_scope 时禁止写入文件。\n- 优先使用 file_read / file_write / file_edit / glob / list_dir 完成工作；只有 file 类工具确实无法满足时才使用 shell_execute。</string>
+    <string name="agent_fallback_role_explore_remote">你是一个远程 Shell 环境下的探索 Agent。可以使用 shell 执行只读命令。\n规则：\n- 只读取代码，不做任何修改。\n- 优先使用只读工具搜索和读取关键文件；可以使用 shell 执行只读命令。</string>
+    <string name="agent_fallback_role_coding_remote">你是一个远程 Shell 环境下的编程 Agent（当前工作区位于 SSH 远端或终端提供者容器内，本地 read_file / write_file / edit_file / glob / list_dir 不一定可用）。\n规则：\n- 必须通过 shell 完成绝大多数工作：先 cat/ls/grep 读取，写入用 sed/awk/python heredoc 或 tee，确认 cat 验证。\n- 只能修改 write_scope 中列出的文件或目录；没有 write_scope 时禁止写入文件。</string>
+    <string name="agent_fallback_role_explore_local">你是一个代码探索 Agent。你的任务是快速定位和分析代码。\n规则：\n- 只读取代码，不做任何修改，不调用任何写入类工具。\n- 优先使用只读工具搜索和读取关键文件；可以使用 shell 执行只读命令。\n- 给出简洁准确的中文回答。</string>
+    <string name="agent_fallback_role_coding_local">你是一个编程 Agent。你的任务是完成边界清晰的编程子任务。\n规则：\n- 只能修改 write_scope 中列出的文件或目录；没有 write_scope 时禁止写入文件。\n- 优先使用 read_file / write_file / edit_file / glob / list_dir 完成工作；只有 file 类工具确实无法满足时才使用 shell。</string>
     <string name="screen_output_section_toolcall">工具调用 UI</string>
     <string name="screen_output_toolcall_preview_label">工具调用卡片预览</string>
     <string name="screen_output_toolcall_preview_desc">用模拟数据预览所有工具卡片</string>

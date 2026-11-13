@@ -9,6 +9,9 @@ public final class McpPreferences {
     public static final String MODE_SSH = "ssh";
     public static final String MODE_TERMINAL_PROVIDER = "terminal_provider";
     private static final String MODE_KEY = "mcp.executionMode";
+    private static final String LOCAL_SHELL_GROUP = "local_shell";
+    /** Remote-mode shell group; controls the same shell tool family as {@link #LOCAL_SHELL_GROUP}. */
+    public static final String SHELL_GROUP = "shell";
 
     private final SettingsStore settings;
 
@@ -23,6 +26,20 @@ public final class McpPreferences {
 
     public void setMode(String mode) {
         settings.put(MODE_KEY, normalize(mode));
+    }
+
+    /** Whether local workspace mode may execute shell commands on this device. */
+    public boolean localShell() {
+        return enabled(LOCAL_SHELL_GROUP, true);
+    }
+
+    public void setLocalShell(boolean value) {
+        setEnabled(LOCAL_SHELL_GROUP, value);
+    }
+
+    /** Whether remote workspace modes may execute shell commands via SSH or a provider. */
+    public boolean remoteShell() {
+        return enabled(SHELL_GROUP, true);
     }
 
     public boolean enabled(String groupId, boolean fallback) {

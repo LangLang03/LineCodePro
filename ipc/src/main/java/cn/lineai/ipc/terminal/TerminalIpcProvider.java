@@ -32,7 +32,33 @@ public final class TerminalIpcProvider extends BaseIpcProvider {
     public TerminalShellResult executeShell(String command, String cwd, long timeoutMs,
                                             TerminalShellCallback callback) throws RemoteException {
         ITerminalProviderService service = getService();
-        ITerminalProviderCallback aidlCallback = new ITerminalProviderCallback.Stub() {
+        ITerminalProviderCallback aidlCallback = adapt(callback);
+        int exitCode = service.executeShell(command, cwd, timeoutMs, aidlCallback);
+        return new TerminalShellResult(exitCode);
+    }
+
+    /** Starts a background shell task; returns the provider handle (<=0 on failure). */
+    public long startShellBackground(String command, String cwd,
+                                     TerminalShellCallback callback) throws RemoteException {
+        ITerminalProviderService service = getService();
+        return service.startShellBackground(command, cwd, adapt(callback));
+    }
+
+    public TerminalShellBackgroundState readShellBackground(long handleId, long offset)
+            throws RemoteException {
+        return getService().readShellBackground(handleId, offset);
+    }
+
+    public boolean killShellBackground(long handleId) throws RemoteException {
+        return getService().killShellBackground(handleId);
+    }
+
+    public void forgetShellBackground(long handleId) throws RemoteException {
+        getService().forgetShellBackground(handleId);
+    }
+
+    private static ITerminalProviderCallback adapt(TerminalShellCallback callback) {
+        return new ITerminalProviderCallback.Stub() {
             @Override
             public void onOutput(String content) {
                 if (callback != null) {
@@ -54,8 +80,6 @@ public final class TerminalIpcProvider extends BaseIpcProvider {
                 }
             }
         };
-        int exitCode = service.executeShell(command, cwd, timeoutMs, aidlCallback);
-        return new TerminalShellResult(exitCode);
     }
 
     public byte[] readFile(String path) throws RemoteException {
