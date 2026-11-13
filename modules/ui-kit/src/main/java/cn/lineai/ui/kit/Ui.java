@@ -13,16 +13,40 @@ import android.widget.TextView;
 
 import cn.lineai.ui.tokens.Tokens;
 
-/** Small drawing/measurement helpers shared by every rewritten view. */
+/**
+ * Drawing, measurement and factory helpers shared by every hand-written view in the kit.
+ *
+ * <p>All helpers are stateless so any view can call them during layout or theme passes. The text
+ * factories bake the typography conventions (tight line spacing, no font padding, simple break
+ * strategy) so screens cannot drift into different paragraph metrics, and the drawable factories
+ * return fresh instances because a single {@code GradientDrawable} cannot back two views at
+ * once.</p>
+ */
 public final class Ui {
 
+    /** Not instantiable; every helper is static. */
     private Ui() {
     }
 
+    /**
+     * Converts a dp value to whole pixels using the context display density.
+     *
+     * @param context context supplying display metrics
+     * @param value length in dp
+     * @return rounded pixel value
+     */
     public static int dp(Context context, float value) {
         return Math.round(value * context.getResources().getDisplayMetrics().density);
     }
 
+    /**
+     * Builds a solid rounded rectangle drawable.
+     *
+     * @param context context used for density conversion
+     * @param color fill color
+     * @param radiusDp corner radius in dp
+     * @return a new drawable, owned exclusively by the caller
+     */
     public static GradientDrawable rounded(Context context, int color, float radiusDp) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
@@ -30,12 +54,30 @@ public final class Ui {
         return drawable;
     }
 
+    /**
+     * Builds a filled rounded rectangle with a 1px outline.
+     *
+     * @param context context used for density conversion
+     * @param color fill color
+     * @param radiusDp corner radius in dp
+     * @param strokeColor outline color, drawn at a minimum width of one pixel
+     * @return a new drawable, owned exclusively by the caller
+     */
     public static GradientDrawable roundedStroke(Context context, int color, float radiusDp, int strokeColor) {
         GradientDrawable drawable = rounded(context, color, radiusDp);
         drawable.setStroke(Math.max(1, dp(context, 1)), strokeColor);
         return drawable;
     }
 
+    /**
+     * Builds a rounded rectangle whose bottom corners are square, for sheets and headers that must
+     * meet the screen edge.
+     *
+     * @param context context used for density conversion
+     * @param color fill color
+     * @param radiusDp top corner radius in dp
+     * @return a new drawable, owned exclusively by the caller
+     */
     public static GradientDrawable roundedTop(Context context, int color, float radiusDp) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
@@ -44,11 +86,31 @@ public final class Ui {
         return drawable;
     }
 
+    /**
+     * Sets padding in dp in one call, mirroring the XML attribute order.
+     *
+     * @param view target view
+     * @param left left padding in dp
+     * @param top top padding in dp
+     * @param right right padding in dp
+     * @param bottom bottom padding in dp
+     */
     public static void padding(View view, int left, int top, int right, int bottom) {
         Context context = view.getContext();
         view.setPadding(dp(context, left), dp(context, top), dp(context, right), dp(context, bottom));
     }
 
+    /**
+     * Creates a plain-body text view with the kit typography: no font padding, 2dp line spacing and
+     * the simple line-break strategy on API 29 and above.
+     *
+     * @param context hosting context
+     * @param value initial text
+     * @param sizeSp text size in sp
+     * @param color text color
+     * @param style typeface style ({@link Typeface#NORMAL}, {@link Typeface#BOLD}, and so on)
+     * @return a new text view, owned exclusively by the caller
+     */
     public static TextView text(Context context, CharSequence value, int sizeSp, int color, int style) {
         TextView textView = new TextView(context);
         textView.setText(value);
@@ -65,16 +127,41 @@ public final class Ui {
         return textView;
     }
 
+    /**
+     * Creates a medium-weight label, the default weight for row titles and section headings.
+     *
+     * @param context hosting context
+     * @param value initial text
+     * @param sizeSp text size in sp
+     * @param color text color
+     * @return a new text view, owned exclusively by the caller
+     */
     public static TextView medium(Context context, CharSequence value, int sizeSp, int color) {
         TextView textView = text(context, value, sizeSp, color, Typeface.NORMAL);
         textView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         return textView;
     }
 
+    /**
+     * Creates a bold text view, used for dialog headings and screen titles.
+     *
+     * @param context hosting context
+     * @param value initial text
+     * @param sizeSp text size in sp
+     * @param color text color
+     * @return a new text view, owned exclusively by the caller
+     */
     public static TextView bold(Context context, CharSequence value, int sizeSp, int color) {
         return text(context, value, sizeSp, color, Typeface.BOLD);
     }
 
+    /**
+     * Builds the pressed/resting background used by tappable list rows and cards.
+     *
+     * @param context hosting context
+     * @param tokens palette snapshot providing accent and surface colors
+     * @return a fresh state-list drawable
+     */
     public static Drawable pressable(Context context, Tokens tokens) {
         StateListDrawable states = new StateListDrawable();
         states.addState(new int[] {android.R.attr.state_pressed},
@@ -84,6 +171,13 @@ public final class Ui {
         return states;
     }
 
+    /**
+     * Builds the focused/resting background used by text inputs.
+     *
+     * @param context hosting context
+     * @param tokens palette snapshot providing input and border colors
+     * @return a fresh state-list drawable
+     */
     public static Drawable field(Context context, Tokens tokens) {
         StateListDrawable states = new StateListDrawable();
         states.addState(new int[] {android.R.attr.state_focused},

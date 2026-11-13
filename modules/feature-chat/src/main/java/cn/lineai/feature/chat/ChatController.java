@@ -51,7 +51,7 @@ public final class ChatController {
     public static final String KEY_CONTEXT_SIZE = "model.contextSize";
     public static final String KEY_PROJECT_LABEL = "project.label";
 
-    // Package-private for ChatTurnPipeline, which owns the streaming draft on the same event queue.
+    // Package-private for ChatTurnPipeline, which owns the streaming draft on the event queue.
     final ConversationStore conversations;
     final MessageStore messages;
     private final ModelStore models;
@@ -82,6 +82,7 @@ public final class ChatController {
     private boolean started;
     ErrorLogStore errorLogs;
 
+    /** Wires stores and schedulers; approval decisions delegate to {@link ApprovalPolicy}. */
     public ChatController(ConversationStore conversations, MessageStore messages,
                           ModelStore models, SettingsStore settings, ModelClient client,
                           Scheduler scheduler, Clock clock, SystemPromptAssembler prompts,
@@ -103,21 +104,27 @@ public final class ChatController {
         this.writes = new SerialWrites(scheduler);
         this.events = new SerialEvents(scheduler);
     }
+    /** Attaches the error-log store used to record turn failures. */
     public void setErrorLogStore(ErrorLogStore store) {
         this.errorLogs = store;
     }
+    /** Hook invoked when a send is attempted without a configured model. */
     public void setModelMissingHandler(Runnable handler) {
         this.modelMissingHandler = handler;
     }
+    /** Current immutable snapshot. */
     public ChatState state() {
         return state.value();
     }
+    /** Observes state changes; callbacks arrive on the main thread. */
     public Cancellable observe(Observable.Observer<ChatState> observer) {
         return state.observe(observer);
     }
+    /** Observes the conversation list; callbacks arrive on the main thread. */
     public Cancellable observeConversations(Observable.Observer<List<Conversation>> observer) {
         return conversationList.observe(observer);
     }
+    /** Identifier of the open conversation; empty until one is loaded or created. */
     public String conversationId() {
         return conversationId;
     }
@@ -135,8 +142,8 @@ public final class ChatController {
             open(loaded.get(0).id);
         });
     }
+    /** Loads a conversation; a running loop is stopped first so it cannot write into the new list. */
     public void open(String id) {
-        // Switching conversations must not leave the previous loop writing into the new list.
         if (engine != null) stop();
         invalidatePendingGeneration();
         scheduler.io(() -> {
@@ -159,6 +166,7 @@ public final class ChatController {
         });
     }
 
+    /** Clears the transcript and returns to the unsaved empty conversation. */
     public void newConversation() {
         if (engine != null) stop();
         invalidatePendingGeneration();
@@ -173,11 +181,10 @@ public final class ChatController {
         });
     }
 
+    /** Deletes a conversation; the active one is stopped and its draft discarded before io deletion. */
     public void deleteConversation(String id) {
         if (id.equals(conversationId)) {
             stop();
-            // The conversation is going away: the posted cancel event must not persist a
-            // stopped draft into rows the io task below is deleting underneath it.
             discardPipeline();
         }
         scheduler.io(() -> {
@@ -207,10 +214,9 @@ public final class ChatController {
         FAILED
     }
 
-    /** Summarizes older messages now and shows a compact marker in the timeline. */
+    /** Summarizes older messages now and shows a compact marker; {@code starting} guards the
+     * io-side prepare window against a concurrent {@code send}. */
     public void compactContext(java.util.function.Consumer<CompactionResult> callback) {
-        // starting covers the io-side prepare window: a concurrent compact could otherwise
-        // interleave with startGeneration's seq/conversationId writes.
         if (engine != null || starting) {
             events.post(() -> callback.accept(CompactionResult.BUSY));
             return;
@@ -273,6 +279,7 @@ public final class ChatController {
     public void send(String text, List<String> imagePaths) {
         send(text, imagePaths, Collections.<String>emptyList());
     }
+    /** Sends a prompt with images and file references; ignored while a generation is active. */
     public void send(String text, List<String> imagePaths, List<String> filePaths) {
         String prompt = text == null ? "" : text.trim();
         final List<String> images = imagePaths == null
@@ -302,6 +309,7 @@ public final class ChatController {
         });
     }
 
+    /** IO-side setup: creates the conversation if needed, persists the user row, posts the start. */
     private void startGeneration(String prompt, List<String> images, List<String> files,
                                  ModelConfig model, int generation) {
         if (generation != generationSeq) {
@@ -378,8 +386,8 @@ public final class ChatController {
                 ChatTurnConfig.reasoningSpec(settings, model));
     }
 
+    /** Dropping the reference makes every late callback from the old loop stale and ignored. */
     private void discardPipeline() {
-        // Dropping the reference makes every late callback from the old loop stale and ignored.
         pipeline = null;
     }
 
@@ -389,6 +397,7 @@ public final class ChatController {
         starting = false;
     }
 
+    /** Forwards every engine callback onto {@link SerialEvents}; state mutates only in the drain. */
     private final class LoopListener implements ToolLoopEngine.Listener {
         private final ChatTurnPipeline draft;
 
@@ -452,6 +461,7 @@ public final class ChatController {
         return approvals.autoApprove(calls);
     }
 
+    /** Presentation metadata for a tool name; chat UI must not branch on tool names. */
     public ToolPresentation presentationFor(String toolName) {
         return toolsForLookup().presentation(toolName);
     }
@@ -461,10 +471,12 @@ public final class ChatController {
         return activeTools == null ? toolCatalog.registry() : activeTools;
     }
 
+    /** Approves the pending batch once; queued on the event queue. */
     public void approveOnce() {
         events.post(this::approveOnceNow);
     }
 
+    /** Clears pending approvals and confirms the engine; no-op when nothing is pending. */
     private void approveOnceNow() {
         if (engine == null || pipeline == null || pipeline.pendingApprovals().isEmpty()) {
             return;
@@ -477,10 +489,12 @@ public final class ChatController {
         engineConfirm(true);
     }
 
+    /** Approves the pending batch and remembers the tool names for the process lifetime. */
     public void approveAlways() {
         events.post(this::approveAlwaysNow);
     }
 
+    /** Persists "always allow" for the pending tools via {@link ApprovalPolicy}, then approves. */
     private void approveAlwaysNow() {
         if (engine == null || pipeline == null || pipeline.pendingApprovals().isEmpty()) {
             return;
@@ -489,10 +503,12 @@ public final class ChatController {
         approveOnceNow();
     }
 
+    /** Denies the pending batch; the engine refuses the rejected tool calls. */
     public void denyApproval() {
         events.post(this::denyNow);
     }
 
+    /** Clears pending approvals and denies the engine; no-op when nothing is pending. */
     private void denyNow() {
         if (engine == null || pipeline == null || pipeline.pendingApprovals().isEmpty()) {
             return;
@@ -505,11 +521,11 @@ public final class ChatController {
         engineConfirm(false);
     }
 
+    /** Halts the loop; the cancelled draft is finalized before the loop's own finish event lands. */
     public void stop() {
         invalidatePendingGeneration();
         ToolLoopEngine active = engine;
         engine = null;
-        // Finalize the cancelled draft before the loop's own finish event lands.
         events.post(() -> {
             if (pipeline != null) {
                 pipeline.cancel();
@@ -526,6 +542,7 @@ public final class ChatController {
         discardPipeline();
     }
 
+    /** Enriches the snapshot with projection fields and publishes it on the main thread. */
     void publish(ChatState snapshot) {
         boolean hasModel = modelConfig() != null;
         ChatState ready = snapshot.toBuilder().hasModel(hasModel)
@@ -547,6 +564,7 @@ public final class ChatController {
         return (int) (chars / 4);
     }
 
+    /** Configured context window size in tokens; at least 1. */
     public int maxTokens() {
         return Math.max(1, ChatContextLimits.of(modelConfig(), settings));
     }
@@ -554,6 +572,7 @@ public final class ChatController {
     /** True when the current conversation already contains messages. */
     public boolean hasMessages() { return !state.value().messages.isEmpty(); }
     /** Reloads conversations and the selected model after an external data restore. */
+    /** Reopens the most recent conversation after an external data restore. */
     public void reload() {
         invalidatePendingGeneration();
         if (engine != null) stop();
@@ -564,6 +583,7 @@ public final class ChatController {
         refreshModel();
     }
 
+    /** Republishes the state with the currently selected model's display name. */
     public void refreshModel() {
         scheduler.main(() -> publish(state.value().toBuilder().model(modelLabel()).build()));
     }

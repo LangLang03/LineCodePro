@@ -1,8 +1,14 @@
 package cn.lineai.feature.workspace;
 
-/** Folder-name normalisation shared by managed workspace creation. */
+/**
+ * Folder-name normalisation shared by managed workspace creation.
+ *
+ * <p>Package-level contract: normalisation must remain deterministic and idempotent so the same
+ * display name always maps to the same directory on every device locale.</p>
+ */
 public final class WorkspaceNames {
 
+    /** Not instantiable; normalisation is static. */
     private WorkspaceNames() {
     }
 

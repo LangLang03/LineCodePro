@@ -26,11 +26,19 @@ import cn.lineai.ui.tokens.Tokens;
 /** Image-tool model slots and the web-search provider form. */
 public final class ToolSettingsPage extends SettingsPage {
 
+    /** Host callbacks for model picking and web-search persistence. */
     public interface Listener {
+        /** Opens the model picker for the image understanding slot. */
         void onPickImageUnderstanding();
 
+        /** Opens the model picker for the image generation slot. */
         void onPickImageGeneration();
 
+        /**
+         * Notifies the host that the web-search configuration changed.
+         *
+         * @param config configuration assembled from the current form values
+         */
         void onWebSearchChanged(WebSearchConfig config);
     }
 
@@ -47,6 +55,17 @@ public final class ToolSettingsPage extends SettingsPage {
     private boolean suppress;
     private int section;
 
+    /**
+     * Builds the tool settings page with image slots and the search provider form.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param understandingLabel label of the model assigned to image understanding, or null
+     * @param generationLabel label of the model assigned to image generation, or null
+     * @param search persisted web-search configuration used to seed the form
+     * @param listener host callbacks for picking models and saving search settings
+     */
     public ToolSettingsPage(Context context, Tokens tokens, Runnable back, String understandingLabel,
                             String generationLabel, WebSearchConfig search, Listener listener) {
         super(context, R.string.screen_tools_title, tokens, back);
@@ -106,6 +125,7 @@ public final class ToolSettingsPage extends SettingsPage {
         applyVisibility();
     }
 
+    /** Adds an uppercase section heading between cards. */
     private void sectionHeader(int title) {
         TextView view = Ui.medium(getContext(), getContext().getString(title).toUpperCase(java.util.Locale.ROOT),
                 Tokens.FONT_XS, theme.current().textTertiary);
@@ -118,6 +138,7 @@ public final class ToolSettingsPage extends SettingsPage {
         theme.bind(t -> view.setTextColor(t.textTertiary));
     }
 
+    /** Adds one image-tool slot card showing the assigned model and a picker button. */
     private void imageCard(int title, int description, String selectedLabel, int icon, Runnable pick) {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -143,6 +164,7 @@ public final class ToolSettingsPage extends SettingsPage {
         addCard(card);
     }
 
+    /** Builds an accent-filled icon-and-label button. */
     private LinearLayout actionButton(Context context, Tokens tokens, int label, int icon, Runnable action) {
         LinearLayout button = new LinearLayout(context);
         button.setGravity(Gravity.CENTER);
@@ -163,6 +185,7 @@ public final class ToolSettingsPage extends SettingsPage {
         return button;
     }
 
+    /** Adds one provider segment button to the provider grid. */
     private void addProvider(GridLayout grid, int label, String provider) {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -184,6 +207,7 @@ public final class ToolSettingsPage extends SettingsPage {
         grid.addView(button, params);
     }
 
+    /** Resets the form to the provider defaults, updates highlighting, and notifies the host. */
     private void selectProvider(String provider) {
         WebSearchConfig defaults = WebSearchConfig.defaultConfig(provider);
         selectedProvider[0] = defaults.provider;
@@ -207,6 +231,7 @@ public final class ToolSettingsPage extends SettingsPage {
         listener.onWebSearchChanged(readConfig());
     }
 
+    /** Hides and disables the credential fields for the free provider that needs no configuration. */
     private void applyVisibility() {
         boolean free = WebSearchConfig.PROVIDER_BING_RSS_FREE.equals(selectedProvider[0]);
         int visibility = free ? View.GONE : View.VISIBLE;
@@ -216,6 +241,7 @@ public final class ToolSettingsPage extends SettingsPage {
         }
     }
 
+    /** Builds a watcher that emits the current config on edits, skipping programmatic updates. */
     private TextWatcher watcher() {
         return new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
@@ -226,11 +252,13 @@ public final class ToolSettingsPage extends SettingsPage {
         };
     }
 
+    /** Assembles a {@link WebSearchConfig} from the selected provider and form values. */
     private WebSearchConfig readConfig() {
         return new WebSearchConfig(selectedProvider[0], baseUrl.value(), apiKey.value(),
                 model.value(), queryParam.value(), apiKeyHeader.value(), apiKeyParam.value());
     }
 
+    /** Creates a rounded card container that re-tints on theme changes. */
     private LinearLayout card() {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -242,12 +270,14 @@ public final class ToolSettingsPage extends SettingsPage {
         return card;
     }
 
+    /** Appends a card to the page with the standard bottom spacing. */
     private void addCard(View card) {
         LinearLayout.LayoutParams params = new LayoutParams(-1, -2);
         params.bottomMargin = Ui.dp(getContext(), 12);
         content.addView(card, params);
     }
 
+    /** Creates the small secondary description text used inside cards. */
     private TextView desc(String text) {
         TextView view = Ui.text(getContext(), text, Tokens.FONT_XS, theme.current().textTertiary,
                 Typeface.NORMAL);
@@ -255,6 +285,7 @@ public final class ToolSettingsPage extends SettingsPage {
         return view;
     }
 
+    /** Builds the layout parameters shared by all form fields. */
     private LinearLayout.LayoutParams formParams() {
         LinearLayout.LayoutParams params = new LayoutParams(-1, -2);
         params.topMargin = Ui.dp(getContext(), 12);

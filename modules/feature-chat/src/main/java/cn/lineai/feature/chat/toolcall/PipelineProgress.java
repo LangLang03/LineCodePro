@@ -11,17 +11,28 @@ import cn.lineai.tool.api.ToolJsonArray;
 /** Parsed pipeline request/result: stage rows plus the header summary counters. */
 final class PipelineProgress {
 
+    /** One pipeline stage merged from the request and the result payload. */
     static final class Stage {
+        /** Stage id used for dependency edges. */
         final String id;
+        /** Human description from the request. */
         final String description;
+        /** Agent type token (explore, sub_coding, ...). */
         final String type;
+        /** Ids of stages this one depends on. */
         final List<String> dependencies;
+        /** Wire status; waiting when the result omits it. */
         final String status;
+        /** True when the stage reported an error. */
         final boolean error;
+        /** Reasoning text, if any. */
         final String thinking;
+        /** Stage output text, if any. */
         final String output;
+        /** Nested tool calls carried by the result. */
         final ToolJsonArray toolCalls;
 
+        /** Null-safe constructor defaulting the status to waiting. */
         Stage(String id, String description, String type, List<String> dependencies,
               String status, boolean error, String thinking, String output,
               ToolJsonArray toolCalls) {
@@ -37,24 +48,35 @@ final class PipelineProgress {
             this.toolCalls = toolCalls;
         }
 
+        /** Display name: description, or the id when undescribed. */
         String name() {
             return description.isEmpty() ? id : description;
         }
 
+        /** True while the stage status is running. */
         boolean running() {
             return ToolRunStatus.RUNNING.matches(status);
         }
     }
 
+    /** Merged stage list in request order, with result-only stages appended. */
     final List<Stage> stages;
+    /** Count of completed stages. */
     final int completed;
+    /** Count of running stages. */
     final int running;
+    /** Count of stages awaiting review. */
     final int pending;
+    /** Count of failed stages. */
     final int failed;
+    /** True when the whole pipeline finished successfully. */
     final boolean complete;
+    /** True when the call failed or the payload reported an error. */
     final boolean error;
+    /** Pipeline summary text. */
     final String output;
 
+    /** Computes the header counters from the merged stages. */
     private PipelineProgress(List<Stage> stages, boolean complete, boolean error, String output) {
         this.stages = stages;
         int done = 0;
@@ -76,6 +98,10 @@ final class PipelineProgress {
         this.output = output == null ? "" : output;
     }
 
+    /**
+     * Merges the requested agents (arguments) with the reported ones (progress envelope) by id,
+     * keeping the request order and appending result-only stages.
+     */
     static PipelineProgress parse(ToolCallEntry entry) {
         ToolJson arguments = ToolCardSupport.arguments(entry);
         ToolJsonArray requested = arguments.array("agents");
@@ -110,6 +136,7 @@ final class PipelineProgress {
         return new PipelineProgress(stages, complete, error, output);
     }
 
+    /** Result stages keyed by id for the merge. */
     private static Map<String, Stage> resultStages(ToolJson progress) {
         Map<String, Stage> values = new LinkedHashMap<>();
         if (progress == null) return values;
@@ -130,12 +157,14 @@ final class PipelineProgress {
         return values;
     }
 
+    /** The result JSON only when it carries the pipeline-progress flag. */
     private static ToolJson progressEnvelope(String content) {
         ToolJson json = ToolCardSupport.resultJson(content);
         if (json == null) return null;
         return json.flag("linecode_agent_pipeline_progress") ? json : null;
     }
 
+    /** Non-empty depends_on ids of one agent object. */
     private static List<String> dependencies(ToolJson agent) {
         List<String> values = new ArrayList<>();
         ToolJsonArray array = agent.array("depends_on");

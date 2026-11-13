@@ -24,9 +24,13 @@ public final class ToolPreviewSamples {
 
     /** One preview row: a category heading plus the call and its presentation metadata. */
     public static final class Sample {
+        /** Category label resource id. */
         public final int category;
+        /** Fake call/result pair rendered by the production renderer. */
         public final ToolCallEntry entry;
+        /** Presentation the matching tool would supply. */
         public final ToolPresentation presentation;
+        /** Whether the card starts with its body visible. */
         public final boolean expanded;
 
         Sample(int category, ToolCallEntry entry, ToolPresentation presentation,
@@ -38,10 +42,12 @@ public final class ToolPreviewSamples {
         }
     }
 
+    /** Path used by most samples so cards show a plausible target. */
     private static final String ACTIVITY =
             "app/src/main/java/cn/lineai/MainActivity.java";
     private static final Map<String, ToolPresentation> PRESENTATIONS = presentations();
 
+    /** Static utility; not instantiable. */
     private ToolPreviewSamples() {
     }
 
@@ -187,6 +193,7 @@ public final class ToolPreviewSamples {
         };
     }
 
+    /** Result JSON of an explore agent sample, with nested tool calls for the nested cards. */
     private static String agentResult() {
         return "{\"linecode_agent_progress\":true,\"status\":\"done\","
                 + "\"description\":\"Explore the codebase structure\",\"type\":\"explore\","
@@ -200,6 +207,7 @@ public final class ToolPreviewSamples {
                 + "{\"content\":\"42\",\"is_error\":false}}]}";
     }
 
+    /** Arguments JSON of the pipeline sample: three dependent stages. */
     private static String pipelineArguments() {
         return "{\"agents\":["
                 + "{\"id\":\"scan\",\"description\":\"Scan the layout code\","
@@ -210,6 +218,7 @@ public final class ToolPreviewSamples {
                 + "\"type\":\"sub-coding\",\"depends_on\":[\"summarize\"]}]}";
     }
 
+    /** Result JSON of the pipeline sample, including one failed stage. */
     private static String pipelineResult() {
         return "{\"linecode_agent_pipeline_progress\":true,\"status\":\"done\","
                 + "\"summary\":\"Scanned 3 areas and verified the build.\",\"agents\":["
@@ -219,6 +228,7 @@ public final class ToolPreviewSamples {
                 + "\"output\":\"Build failed: missing string resource.\"}]}";
     }
 
+    /** Fixed presentation table mirroring what the real tools advertise. */
     private static Map<String, ToolPresentation> presentations() {
         Map<String, ToolPresentation> values = new LinkedHashMap<>();
         values.put("read_file", new ToolPresentation("Read file", ToolIcon.READ, ACTIVITY, ""));

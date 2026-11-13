@@ -28,7 +28,15 @@ import java.util.concurrent.TimeUnit;
  * <p>This class has no dependency on :app internal classes (only Android SDK).
  * It can be extracted into :feature-phone once the tool framework is extracted
  * into a shared module, since Phone*Tool classes depend on this service.
- * See {@code cn.lineai.tool.builtin.PhoneClickTool} for full module split barrier notes.
+ * See {@code cn.lineai.tool.builtin.PhoneClickTool} for full module split barrier notes.</p>
+ *
+ * <p>Ownership contract: the platform module owns the service lifecycle and the static instance
+ * registry, while tool classes only consume the instance. The registry is published in
+ * {@link #onCreate} and {@link #onServiceConnected}, cleared in {@link #onDestroy} through a
+ * compare-and-set so a later service instance is never nulled by an earlier teardown, and consumed
+ * through {@link #getInstance} or the bounded wait in {@link #getReadyInstance}. Gesture methods
+ * must be called after the service is connected; callers that cannot guarantee that use the
+ * ready-instance lookup instead of holding a stale reference.</p>
  */
 public final class LineCodeAccessibilityService extends AccessibilityService {
 
@@ -37,36 +45,54 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
 
     private final Executor screenshotExecutor = Executors.newSingleThreadExecutor();
 
+    /** Publishes the instance as early as possible so tools can find it before connection. */
     @Override
     public void onCreate() {
         super.onCreate();
         INSTANCE.set(this);
     }
 
+    /** Republishes the instance once the system has connected the service. */
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
         INSTANCE.set(this);
     }
 
+    /** Intentionally unused; the service dispatches gestures on demand instead of observing events. */
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
     }
 
+    /** Intentionally unused; interrupted feedback requires no action here. */
     @Override
     public void onInterrupt() {
     }
 
+    /** Clears the registry only when this instance is still the registered one. */
     @Override
     public void onDestroy() {
         super.onDestroy();
         INSTANCE.compareAndSet(this, null);
     }
 
+    /**
+     * Returns the current service instance without waiting.
+     *
+     * @return the connected instance, or null when the service is not running
+     */
     public static LineCodeAccessibilityService getInstance() {
         return INSTANCE.get();
     }
 
+    /**
+     * Returns the service instance, waiting briefly for the system to connect it after the user has
+     * just enabled it.
+     *
+     * @param context context used to check the enabled-services list; may be null, which disables
+     *     the wait
+     * @return the connected instance, or null when it is absent after at most 800 ms
+     */
     public static LineCodeAccessibilityService getReadyInstance(Context context) {
         LineCodeAccessibilityService service = INSTANCE.get();
         if (service != null) {
@@ -90,6 +116,13 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
         return null;
     }
 
+    /**
+     * Checks the accessibility manager's enabled list for this service class, independent of the
+     * static instance (which may briefly lag the user toggle).
+     *
+     * @param context context used to reach the accessibility manager; may be null
+     * @return true when the system currently reports this service as enabled
+     */
     public static boolean isServiceEnabled(Context context) {
         if (context == null) {
             return false;
@@ -113,18 +146,50 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
         return false;
     }
 
+    /**
+     * Taps at screen coordinates.
+     *
+     * @param x horizontal coordinate in screen pixels
+     * @param y vertical coordinate in screen pixels
+     * @return true when the system accepted the gesture; acceptance does not guarantee completion
+     */
     public boolean click(int x, int y) {
         return dispatchGesture(tapGesture(x, y, 1), null, null);
     }
 
+    /**
+     * Drags from one point to another.
+     *
+     * @param x1 start horizontal coordinate in screen pixels
+     * @param y1 start vertical coordinate in screen pixels
+     * @param x2 end horizontal coordinate in screen pixels
+     * @param y2 end vertical coordinate in screen pixels
+     * @param durationMs gesture duration in milliseconds; values below 100 are clamped up
+     * @return true when the system accepted the gesture
+     */
     public boolean swipe(int x1, int y1, int x2, int y2, int durationMs) {
         return dispatchGesture(swipeGesture(x1, y1, x2, y2, Math.max(100, durationMs)), null, null);
     }
 
+    /**
+     * Long-presses at screen coordinates.
+     *
+     * @param x horizontal coordinate in screen pixels
+     * @param y vertical coordinate in screen pixels
+     * @param durationMs press duration in milliseconds; values below 400 are clamped up so the
+     *     gesture is always recognised as a long press
+     * @return true when the system accepted the gesture
+     */
     public boolean longPress(int x, int y, int durationMs) {
         return dispatchGesture(tapGesture(x, y, Math.max(400, durationMs)), null, null);
     }
 
+    /**
+     * Dumps the active window's node tree as indented text with class, id, text, description and
+     * bounds per node.
+     *
+     * @return the hierarchy dump, or a diagnostic line when no window is active
+     */
     public String viewHierarchy() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) {
@@ -136,6 +201,13 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
         return builder.toString();
     }
 
+    /**
+     * Clicks the first clickable node matching a view id.
+     *
+     * @param resourceId resource id, either bare ({@code my_button}) or fully qualified
+     *     ({@code pkg:id/my_button}); bare ids resolve against this app's package
+     * @return true when a clickable matching node accepted {@code ACTION_CLICK}
+     */
     public boolean clickById(String resourceId) {
         if (resourceId == null || resourceId.length() == 0) {
             return false;
@@ -151,6 +223,12 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
         return clicked;
     }
 
+    /**
+     * Clicks the first clickable node whose visible text matches.
+     *
+     * @param text text to search for; empty or null is rejected
+     * @return true when a clickable matching node accepted {@code ACTION_CLICK}
+     */
     public boolean clickByText(String text) {
         if (text == null || text.length() == 0) {
             return false;
@@ -165,10 +243,25 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
         return clicked;
     }
 
+    /**
+     * Coordinate-based click alias kept for tool-call symmetry with {@link #clickById}.
+     *
+     * @param x horizontal coordinate in screen pixels
+     * @param y vertical coordinate in screen pixels
+     * @return true when the system accepted the gesture
+     */
     public boolean clickByCoordinates(int x, int y) {
         return click(x, y);
     }
 
+    /**
+     * Performs a named global action.
+     *
+     * @param action one of {@code back}, {@code home}, {@code exit_app}, {@code recents},
+     *     {@code notifications}, {@code quick_settings}, {@code power_dialog} or {@code lock_screen}
+     * @return true when the action was recognised and performed; {@code lock_screen} additionally
+     *     requires API 28
+     */
     public boolean performPhoneAction(String action) {
         if ("back".equals(action)) {
             return performGlobalAction(GLOBAL_ACTION_BACK);
@@ -194,6 +287,7 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
         return false;
     }
 
+    /** Clicks the first clickable node in the list, recycling every node either way. */
     private boolean clickFirstClickableNode(List<AccessibilityNodeInfo> nodes) {
         if (nodes == null) {
             return false;
@@ -209,6 +303,12 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
         return clicked;
     }
 
+    /**
+     * Captures the default display as a software bitmap.
+     *
+     * @return an ARGB_8888 copy of the screen, or null below API 30, when no display is available,
+     *     on timeout (5 s), or on any capture failure
+     */
     public Bitmap takeScreenshot() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             return null;
@@ -245,6 +345,7 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
         }
     }
 
+    /** Converts a hardware screenshot result into a software ARGB bitmap and releases the buffer. */
     @TargetApi(Build.VERSION_CODES.R)
     private Bitmap bitmapFromScreenshotResult(ScreenshotResult screenshotResult) {
         if (screenshotResult == null) {
@@ -274,6 +375,7 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
         }
     }
 
+    /** Builds a single-stroke tap gesture of the requested duration at one point. */
     private GestureDescription tapGesture(int x, int y, int durationMs) {
         Path path = new Path();
         path.moveTo(x, y);
@@ -281,6 +383,7 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
         return new GestureDescription.Builder().addStroke(stroke).build();
     }
 
+    /** Builds a single-stroke line gesture between two points. */
     private GestureDescription swipeGesture(int x1, int y1, int x2, int y2, int durationMs) {
         Path path = new Path();
         path.moveTo(x1, y1);
@@ -289,6 +392,7 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
         return new GestureDescription.Builder().addStroke(stroke).build();
     }
 
+    /** Recursively appends one node and its children to the dump, recycling children as consumed. */
     private void dumpNode(AccessibilityNodeInfo node, StringBuilder builder, int depth) {
         for (int i = 0; i < depth; i++) {
             builder.append("  ");

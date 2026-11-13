@@ -23,13 +23,20 @@ import cn.lineai.ui.tokens.Tokens;
  * Connection settings for the active model.
  *
  * <p>One screen, one job: edit the endpoint/key/model triple and persist it. The chat reads the
- * same keys through {@code ChatController}, so saving here takes effect on the next send.</p>
+ * same keys through {@code ChatController}, so saving here takes effect on the next send. The view
+ * builds its form once from either an existing config or a provider preset; persistence happens
+ * synchronously in {@code save} because the model store is expected to be cheap and local.</p>
  */
 public final class ModelSetupView extends LinearLayout {
 
+    /**
+     * Navigation and completion callbacks owned by the hosting screen.
+     */
     public interface Listener {
+        /** Reports that the header back button was pressed. */
         void onBack();
 
+        /** Reports that the form was saved successfully. */
         void onSaved();
     }
 
@@ -45,10 +52,26 @@ public final class ModelSetupView extends LinearLayout {
     private Listener listener;
     private Tokens tokens;
 
+    /**
+     * Creates a blank setup view for a new model.
+     *
+     * @param context hosting context
+     * @param models store receiving the saved config
+     * @param tokens initial palette snapshot
+     */
     public ModelSetupView(Context context, ModelStore models, Tokens tokens) {
         this(context, models, null, null, tokens);
     }
 
+    /**
+     * Creates the setup view pre-filled from an existing config or a preset.
+     *
+     * @param context hosting context
+     * @param models store receiving the saved config
+     * @param existing config to edit; null starts a new model seeded from {@code preset}
+     * @param preset preset seeding the endpoint and protocol of a new model; may be null
+     * @param tokens initial palette snapshot
+     */
     public ModelSetupView(Context context, ModelStore models, ModelConfig existing,
                           ModelPreset preset, Tokens tokens) {
         super(context);
@@ -118,6 +141,7 @@ public final class ModelSetupView extends LinearLayout {
         form.addView(save, saveParams);
     }
 
+    /** Builds one labelled single-line input and appends it to the form column. */
     private EditText field(LinearLayout parent, int labelRes, String value, int inputType) {
         TextView label = Ui.text(getContext(), getContext().getString(labelRes),
                 Tokens.FONT_SM, tokens.textSecondary, Typeface.NORMAL);
@@ -142,10 +166,21 @@ public final class ModelSetupView extends LinearLayout {
         return input;
     }
 
+    /**
+     * Installs the callback pair; safe to call before or after the view is attached because the
+     * back button defers to whatever listener is current at press time.
+     *
+     * @param value callback pair; may be null to detach
+     */
     public void setListener(Listener value) {
         listener = value;
     }
 
+    /**
+     * Persists the form. The endpoint trio is required; every other field falls back to sensible
+     * defaults (display name from the model id, numeric fields from their fallbacks), and editing an
+     * existing config preserves its identity, protocol, sampling and capability flags.
+     */
     private void save() {
         String url = text(baseUrl);
         String id = text(modelId);
@@ -172,6 +207,7 @@ public final class ModelSetupView extends LinearLayout {
         if (listener != null) listener.onSaved();
     }
 
+    /** Parses an integer field, returning the fallback when blank or malformed. */
     private int number(EditText input, int fallback) {
         try {
             return Integer.parseInt(text(input));
@@ -180,10 +216,17 @@ public final class ModelSetupView extends LinearLayout {
         }
     }
 
+    /** Reads and trims an editor's text. */
     private static String text(EditText input) {
         return input.getText().toString().trim();
     }
 
+    /**
+     * Replaces the palette. Only the window background is swapped directly; the form children keep
+     * their construction-time colors because this legacy view rebuilds nothing on theme changes.
+     *
+     * @param current new palette snapshot; never null
+     */
     public void applyTokens(Tokens current) {
         tokens = current;
         setBackgroundColor(current.bg);

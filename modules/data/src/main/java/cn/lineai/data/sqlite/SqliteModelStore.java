@@ -18,19 +18,36 @@ import cn.lineai.data.api.SettingsStore;
 /** SQLite-backed model configurations; the selected row is the chat default. */
 public final class SqliteModelStore implements ModelStore {
 
+    /** Legacy settings key holding the endpoint base URL. */
     public static final String KEY_BASE_URL = "model.baseUrl";
+    /** Legacy settings key holding the API secret. */
     public static final String KEY_API_KEY = "model.apiKey";
+    /** Legacy settings key holding the provider model identifier. */
     public static final String KEY_MODEL_ID = "model.modelId";
+    /** Legacy settings key holding the display name. */
     public static final String KEY_MODEL_NAME = "model.name";
+    /** Legacy settings key holding the context window size. */
     public static final String KEY_CONTEXT_SIZE = "model.contextSize";
+    /** Legacy settings key holding the maximum output tokens. */
     public static final String KEY_MAX_TOKENS = "model.maxTokens";
 
     private final LineCodeDatabase database;
 
+    /**
+     * Creates the store.
+     *
+     * @param database shared database connection holder
+     */
     public SqliteModelStore(LineCodeDatabase database) {
         this.database = database;
     }
 
+    /**
+     * Reads every model, the default first and then alphabetical by name.
+     *
+     * @return all stored model configurations
+     * @throws DomainException with {@code ErrorCode.STORAGE} when the query fails
+     */
     @Override
     public List<ModelConfig> list() {
         List<ModelConfig> result = new ArrayList<>();
@@ -43,6 +60,13 @@ public final class SqliteModelStore implements ModelStore {
         return result;
     }
 
+    /**
+     * Looks up one model by identifier.
+     *
+     * @param id model identifier
+     * @return the model or null when the identifier is unknown
+     * @throws DomainException with {@code ErrorCode.STORAGE} when the query fails
+     */
     @Override
     public ModelConfig find(String id) {
         try (Cursor cursor = database.open().query("models", null, "id=?",
@@ -53,6 +77,11 @@ public final class SqliteModelStore implements ModelStore {
         }
     }
 
+    /**
+     * Resolves the chat default: the row marked default, else the first row.
+     *
+     * @return the default model or null when the table is empty
+     */
     @Override
     public ModelConfig selected() {
         List<ModelConfig> models = list();
@@ -61,6 +90,14 @@ public final class SqliteModelStore implements ModelStore {
         return models.get(0);
     }
 
+    /**
+     * Inserts or replaces one model in a transaction. The first stored model and every model
+     * saved with the default flag become the default; the previous default is demoted so exactly
+     * one row holds the flag.
+     *
+     * @param model configuration to persist; must not be null
+     * @throws DomainException with {@code ErrorCode.STORAGE} when the write fails
+     */
     @Override
     public void save(ModelConfig model) {
         if (model == null) throw new IllegalArgumentException("model == null");
@@ -81,6 +118,12 @@ public final class SqliteModelStore implements ModelStore {
         }
     }
 
+    /**
+     * Moves the default flag to one model inside a transaction.
+     *
+     * @param id model identifier; unknown identifiers leave no default selected
+     * @throws DomainException with {@code ErrorCode.STORAGE} when the update fails
+     */
     @Override
     public void select(String id) {
         SQLiteDatabase db = database.open();
@@ -100,6 +143,13 @@ public final class SqliteModelStore implements ModelStore {
         }
     }
 
+    /**
+     * Deletes the given models in a transaction and, when the default was among them, reassigns
+     * the flag to the first remaining model so a non-empty table always keeps a default.
+     *
+     * @param ids model identifiers to delete; null or empty leaves the store untouched
+     * @throws DomainException with {@code ErrorCode.STORAGE} when the delete fails
+     */
     @Override
     public void delete(List<String> ids) {
         if (ids == null || ids.isEmpty()) return;
@@ -125,6 +175,12 @@ public final class SqliteModelStore implements ModelStore {
         }
     }
 
+    /**
+     * Creates the first model from the legacy single-model settings keys, but only while the
+     * table is still empty and both the base URL and model identifier keys are present.
+     *
+     * @param settings settings store holding the legacy keys
+     */
     @Override
     public void seedFromSettings(SettingsStore settings) {
         if (!list().isEmpty()) return;
@@ -141,18 +197,21 @@ public final class SqliteModelStore implements ModelStore {
                 .build());
     }
 
+    /** Counts the model rows. */
     private static int count(SQLiteDatabase db) {
         try (Cursor cursor = db.rawQuery("SELECT COUNT(*) FROM models", null)) {
             return cursor.moveToFirst() ? cursor.getInt(0) : 0;
         }
     }
 
+    /** Demotes every model except the given identifier from the default flag. */
     private static void clearOtherDefaults(SQLiteDatabase db, String keep) {
         ContentValues values = new ContentValues();
         values.put("is_default", 0);
         db.update("models", values, "id<>?", new String[] {keep});
     }
 
+    /** Builds the row values; the default flag is decided by the caller. */
     private static ContentValues write(ModelConfig model, boolean isDefault) {
         ContentValues values = new ContentValues();
         values.put("id", model.id);
@@ -182,6 +241,7 @@ public final class SqliteModelStore implements ModelStore {
         return values;
     }
 
+    /** Maps the current row onto a model configuration. */
     private static ModelConfig read(Cursor cursor) {
         return ModelConfig.builder()
                 .identity(cursor.getString(cursor.getColumnIndexOrThrow("id")),
@@ -213,6 +273,7 @@ public final class SqliteModelStore implements ModelStore {
                 .build();
     }
 
+    /** Parses the stored protocol, falling back to the OpenAI-compatible default. */
     private static ModelConfig.Protocol protocol(String value) {
         try {
             return ModelConfig.Protocol.valueOf(value);
@@ -221,6 +282,7 @@ public final class SqliteModelStore implements ModelStore {
         }
     }
 
+    /** Parses the stored reasoning effort, falling back to the medium default. */
     private static ModelConfig.ReasoningEffort effort(String value) {
         try {
             return ModelConfig.ReasoningEffort.valueOf(value);

@@ -210,14 +210,17 @@ public class SourceHygieneTest {
         assertEquals("Locks outside sanctioned files:\n" + violations, 0, violations.length());
     }
 
-    /** AGENT.md budgets the :app shell at 1500 Java lines total (no page construction). */
+    /**
+     * AGENT.md budgets the :app shell at 1800 Java lines total (no page construction). The
+     * budget was raised from 1500 when the comment policy made per-method Javadoc mandatory.
+     */
     @Test
     public void appShellStaysWithinTotalBudget() {
         int total = 0;
         for (File file : Modules.sourcesOf("app")) {
             total += Modules.read(file).split("\n").length;
         }
-        assertTrue("app shell over budget: " + total + " lines (max 1500)", total <= 1500);
+        assertTrue("app shell over budget: " + total + " lines (max 1800)", total <= 1800);
     }
 
     static List<Integer> statusLiteralOffsets(String source) {

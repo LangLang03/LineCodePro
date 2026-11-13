@@ -9,15 +9,35 @@ import java.util.Locale;
 import cn.lineai.core.model.Message;
 import cn.lineai.core.model.Role;
 
-/** OpenAI Responses API ("Codex") streaming request and SSE event parsing. */
+/**
+ * OpenAI Responses API ("Codex") streaming request and SSE event parsing.
+ *
+ * <p>The Codex CLI wire contract is honoured explicitly: requests always stream and conversation
+ * history is sent as a flat {@code input} array in which tool results are
+ * {@code function_call_output} items and assistant tool calls are {@code function_call} items.</p>
+ */
 public final class CodexCodec {
 
+    /** Codex CLI protocol version, sent as the {@code version} header and query parameter. */
     public static final String PROTOCOL_VERSION = "0.120.0";
+    /** Originator identifier the Codex backend expects on every request. */
     public static final String ORIGINATOR = "codex_cli_rs";
 
     private CodexCodec() {
     }
 
+    /**
+     * Builds the JSON body of a Responses API streaming request.
+     *
+     * <p>{@code store} is enabled only for Azure deployments, which require server-side storage.
+     * Reasoning is emitted with {@code summary} set to {@code auto}, and {@code max} effort is
+     * downgraded to {@code high} because the Responses API defines no {@code max} level.</p>
+     *
+     * @param request normalized completion request
+     * @param baseUrl provider base URL, used only to detect Azure
+     * @return the request body as JSON text
+     * @throws IllegalStateException when the body cannot be serialized
+     */
     public static String requestBody(ChatRequest request, String baseUrl) {
         try {
             JSONObject body = new JSONObject();
@@ -50,6 +70,7 @@ public final class CodexCodec {
         }
     }
 
+    /** Encodes history as Responses input items; TOOL roles become function_call_output items. */
     private static JSONArray input(ChatRequest request) throws JSONException {
         JSONArray input = new JSONArray();
         for (Message message : request.messages) {
@@ -98,11 +119,21 @@ public final class CodexCodec {
         return input;
     }
 
+    /**
+     * Returns a stateful decoder for Responses SSE events.
+     *
+     * <p>Responses events identify tool calls by {@code call_id} rather than by numeric index, so
+     * the decoder assigns each new call the next free index; fragments of one call then merge
+     * correctly in {@link ToolCallMerger}. The instance belongs to a single response stream.</p>
+     *
+     * @return decoder for one response stream
+     */
     public static StreamDecoder decoder() {
         return new StreamDecoder() {
             private final java.util.Map<String, Integer> indexes = new java.util.HashMap<>();
             private int next;
 
+            /** Decodes one Responses event, resolving tool calls through the index map. */
             @Override public StreamEvent decode(String payload) {
                 try {
                     JSONObject event = new JSONObject(payload);
@@ -130,6 +161,7 @@ public final class CodexCodec {
                 }
             }
 
+            /** Returns the stable index for a call id, allocating the next free one on first use. */
             private int index(String callId) {
                 Integer existing = indexes.get(callId);
                 if (existing != null) return existing;
@@ -140,6 +172,15 @@ public final class CodexCodec {
         };
     }
 
+    /**
+     * Parses one Responses SSE payload without tool-call state.
+     *
+     * @param payload data field of one SSE event
+     * @return decoded event; an empty event for unrecognised event types
+     * @throws IllegalStateException when the provider reports {@code error},
+     *         {@code response.failed} or {@code response.incomplete}, or when the payload is not
+     *         valid JSON
+     */
     public static StreamEvent parse(String payload) {
         try {
             JSONObject event = new JSONObject(payload);
@@ -167,6 +208,13 @@ public final class CodexCodec {
         }
     }
 
+    /**
+     * Normalises a base URL to the Responses endpoint.
+     *
+     * @param baseUrl provider base URL; may end in {@code /chat/completions}, {@code /responses}
+     *        or the bare origin
+     * @return URL whose path ends with {@code /responses}
+     */
     public static String responsesEndpoint(String baseUrl) {
         String base = baseUrl == null ? "" : baseUrl.trim();
         while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
@@ -177,6 +225,13 @@ public final class CodexCodec {
         return base + "/responses";
     }
 
+    /**
+     * Returns {@code true} when the base URL points at an Azure OpenAI deployment; Azure requires
+     * {@code store: true} on Responses requests.
+     *
+     * @param baseUrl provider base URL, matched case-insensitively
+     * @return true for known Azure OpenAI host patterns
+     */
     public static boolean isAzure(String baseUrl) {
         String normalized = baseUrl == null ? "" : baseUrl.toLowerCase(Locale.ROOT);
         return normalized.contains("openai.azure.") || normalized.contains("cognitiveservices.azure.")

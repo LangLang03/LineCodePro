@@ -47,6 +47,7 @@ public class ToolCallGroupView extends LinearLayout {
     private boolean expanded;
     private boolean running;
 
+    /** Builds the clickable 48dp header row and the hidden card container. */
     public ToolCallGroupView(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -81,11 +82,13 @@ public class ToolCallGroupView extends LinearLayout {
         applyTokens(tokens);
     }
 
+    /** Propagates the presentation source to every bound card. */
     public void setProvider(ToolPresentationProvider value) {
         provider = value;
         for (ToolCallCardView card : cardViews) card.setProvider(value);
     }
 
+    /** Propagates the diff bridge to every bound card. */
     public void setDiffLookup(ToolDiffLookup value) {
         diffLookup = value;
         for (ToolCallCardView card : cardViews) card.setDiffLookup(value);
@@ -96,16 +99,26 @@ public class ToolCallGroupView extends LinearLayout {
         expansionListener = listener;
     }
 
+    /** Programmatic expansion used by restores; does not notify the listener. */
     public void setExpanded(boolean value) {
         if (expanded == value) return;
         expanded = value;
         applyExpanded();
     }
 
+    /** Current group expansion state. */
     public boolean isExpanded() {
         return expanded;
     }
 
+    /**
+     * Rebinds the group: syncs the card list with the entries, refreshes the count label and
+     * applies the expansion.
+     *
+     * @param values  entries of one consecutive tool run
+     * @param current design tokens
+     * @param active  true while a call of this group may still be running
+     */
     public void bind(List<ToolCallEntry> values, Tokens current, boolean active) {
         tokens = current;
         entries = values == null ? Collections.<ToolCallEntry>emptyList() : values;
@@ -116,6 +129,7 @@ public class ToolCallGroupView extends LinearLayout {
         applyExpanded();
     }
 
+    /** Applies tokens to the header and every card without rebuilding. */
     public void applyTokens(Tokens current) {
         tokens = current;
         label.setTextColor(current.textSecondary);
@@ -124,6 +138,7 @@ public class ToolCallGroupView extends LinearLayout {
         for (ToolCallCardView card : cardViews) card.applyTokens(current);
     }
 
+    /** Reconciles card views with entries; per-card expansion overrides survive the rebind. */
     private void syncCards() {
         List<String> ids = new ArrayList<>();
         for (ToolCallEntry entry : entries) ids.add(entry.callId);
@@ -165,12 +180,14 @@ public class ToolCallGroupView extends LinearLayout {
         }
     }
 
+    /** Header tap: flips the expansion and notifies the timeline. */
     private void toggleExpanded() {
         expanded = !expanded;
         applyExpanded();
         if (expansionListener != null) expansionListener.accept(expanded);
     }
 
+    /** Points the chevron and shows or hides the card list. */
     private void applyExpanded() {
         chevron.setIconType(expanded ? Icons.CHEVRON_DOWN : Icons.CHEVRON_RIGHT);
         cards.setVisibility(expanded ? VISIBLE : GONE);

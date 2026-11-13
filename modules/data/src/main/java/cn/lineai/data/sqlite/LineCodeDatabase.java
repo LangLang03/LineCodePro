@@ -19,15 +19,28 @@ import cn.lineai.core.kernel.error.ErrorCode;
  */
 public final class LineCodeDatabase {
 
+    /** Current schema version; bumping it triggers {@link #migrate} on the next open. */
     public static final int VERSION = 13;
 
     private final File file;
     private SQLiteDatabase database;
 
+    /**
+     * Creates the database holder; the file is opened lazily by {@link #open()}.
+     *
+     * @param file database file location
+     */
     public LineCodeDatabase(File file) {
         this.file = file;
     }
 
+    /**
+     * Returns the shared connection, creating the schema or migrating it on first use. Foreign
+     * key enforcement is switched on here because SQLite does not persist that pragma.
+     *
+     * @return the open database connection
+     * @throws DomainException with {@code ErrorCode.STORAGE} when the database cannot be opened
+     */
     public synchronized SQLiteDatabase open() {
         if (database != null && database.isOpen()) {
             return database;
@@ -53,6 +66,7 @@ public final class LineCodeDatabase {
         }
     }
 
+    /** Closes the shared connection; later calls to {@link #open()} reopen it. */
     public synchronized void close() {
         if (database != null) {
             database.close();
@@ -60,16 +74,26 @@ public final class LineCodeDatabase {
         }
     }
 
+    /** Reads the schema version recorded in {@code user_version}. */
     private static int readVersion(SQLiteDatabase db) {
         try (Cursor cursor = db.rawQuery("PRAGMA user_version", null)) {
             return cursor.moveToFirst() ? cursor.getInt(0) : 0;
         }
     }
 
+    /** Persists the current schema version in {@code user_version}. */
     private static void writeVersion(SQLiteDatabase db) {
         db.execSQL("PRAGMA user_version=" + VERSION);
     }
 
+    /**
+     * Upgrades an existing database to the current schema. Every statement is idempotent so a
+     * partially applied migration can be replayed safely.
+     *
+     * @param db open database to upgrade in place
+     * @param fromVersion schema version the database currently carries
+     * @throws DomainException with {@code ErrorCode.STORAGE} when a non-idempotent statement fails
+     */
     private void migrate(SQLiteDatabase db, int fromVersion) {
         // v1 is the legacy schema; v2 is a fresh, normalized layout. The legacy tables are copied
         // by MigrationV1ToV2 when present, otherwise the schema is created from scratch.
@@ -97,6 +121,7 @@ public final class LineCodeDatabase {
         }
     }
 
+    /** Creates the full schema for a fresh database inside one transaction. */
     private void createSchema(SQLiteDatabase db) {
         db.beginTransaction();
         try {
@@ -109,6 +134,7 @@ public final class LineCodeDatabase {
         }
     }
 
+    /** Assembles the complete CREATE statement set, grouped by feature area. */
     private static List<String> schemaStatements() {
         List<String> statements = new ArrayList<>();
         statements.addAll(conversationSchema());
@@ -118,6 +144,7 @@ public final class LineCodeDatabase {
         return statements;
     }
 
+    /** Conversation, message, block and tool call tables with their indexes. */
     private static List<String> conversationSchema() {
         List<String> statements = new ArrayList<>();
         statements.add("CREATE TABLE IF NOT EXISTS conversations ("
@@ -169,6 +196,7 @@ public final class LineCodeDatabase {
         return statements;
     }
 
+    /** Settings, model, error log and memory tables with their indexes. */
     private static List<String> settingsAndModelSchema() {
         List<String> statements = new ArrayList<>();
         statements.add("CREATE TABLE IF NOT EXISTS settings ("
@@ -224,6 +252,7 @@ public final class LineCodeDatabase {
         return statements;
     }
 
+    /** Agent, MCP, file diff tables with their indexes. */
     private static List<String> extensionSchema() {
         List<String> statements = new ArrayList<>();
         statements.add("CREATE TABLE IF NOT EXISTS extension_agents ("
@@ -263,6 +292,7 @@ public final class LineCodeDatabase {
         return statements;
     }
 
+    /** Project and IPC provider tables. */
     private static List<String> projectSchema() {
         List<String> statements = new ArrayList<>();
         statements.add("CREATE TABLE IF NOT EXISTS projects ("

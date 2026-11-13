@@ -20,9 +20,17 @@ import java.util.Set;
  */
 final class ProcessKiller {
 
+    /** Utility class; never instantiated. */
     private ProcessKiller() {
     }
 
+    /**
+     * Terminates the process and every descendant it spawned. Children are signalled
+     * first so they cannot reparent and survive, then the shell itself is destroyed. If
+     * the pid cannot be determined, only the direct destroy is attempted.
+     *
+     * @param process the guest shell process to tear down; null is ignored
+     */
     static void killTree(Process process) {
         if (process == null) {
             return;
@@ -115,6 +123,7 @@ final class ProcessKiller {
         }
     }
 
+    /** Reads the first line of {@code /proc/<pid>/stat}; null when the process vanished. */
     private static String statLine(File procDir) {
         File stat = new File(procDir, "stat");
         try (BufferedReader reader = new BufferedReader(
@@ -125,6 +134,11 @@ final class ProcessKiller {
         }
     }
 
+    /**
+     * Sends SIGKILL, treating both an already-exited pid and an EPERM refusal as
+     * non-fatal: a process that exited between the /proc walk and the kill needs no
+     * further action.
+     */
     private static void safeKill(int pid) {
         if (pid <= 0) {
             return;

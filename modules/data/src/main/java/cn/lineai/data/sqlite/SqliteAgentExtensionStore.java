@@ -22,11 +22,23 @@ public final class SqliteAgentExtensionStore implements AgentExtensionStore {
     private final LineCodeDatabase database;
     private final Clock clock;
 
+    /**
+     * Creates the store.
+     *
+     * @param database shared database connection holder
+     * @param clock clock used to timestamp saved extensions
+     */
     public SqliteAgentExtensionStore(LineCodeDatabase database, Clock clock) {
         this.database = database;
         this.clock = clock;
     }
 
+    /**
+     * Reads every agent extension, newest update first.
+     *
+     * @return all stored extensions
+     * @throws DomainException with {@code ErrorCode.STORAGE} when the query fails
+     */
     @Override
     public List<AgentExtension> list() {
         List<AgentExtension> result = new ArrayList<>();
@@ -51,6 +63,14 @@ public final class SqliteAgentExtensionStore implements AgentExtensionStore {
         return result;
     }
 
+    /**
+     * Inserts or replaces one extension, assigning an identifier and a normalized slug when
+     * missing and preserving the original creation time on update.
+     *
+     * @param input extension to persist; null is treated as an empty extension
+     * @return the stored form including generated identity fields
+     * @throws DomainException with {@code ErrorCode.STORAGE} when the write fails
+     */
     @Override
     public AgentExtension save(AgentExtension input) {
         AgentExtension source = input == null ? AgentExtension.builder().build() : input;
@@ -81,6 +101,12 @@ public final class SqliteAgentExtensionStore implements AgentExtensionStore {
         return saved;
     }
 
+    /**
+     * Toggles the enabled flag without rewriting the extension body.
+     *
+     * @param id extension identifier; unknown identifiers are ignored
+     * @param enabled whether the extension may run
+     */
     @Override
     public void setEnabled(String id, boolean enabled) {
         ContentValues values = new ContentValues();
@@ -89,15 +115,22 @@ public final class SqliteAgentExtensionStore implements AgentExtensionStore {
         database.open().update("extension_agents", values, "id=?", new String[] {id});
     }
 
+    /**
+     * Removes the extension with the given identifier.
+     *
+     * @param id extension identifier; unknown identifiers are ignored
+     */
     @Override
     public void delete(String id) {
         database.open().delete("extension_agents", "id=?", new String[] {id});
     }
 
+    /** Reads one required text column. */
     private static String text(Cursor cursor, String column) {
         return cursor.getString(cursor.getColumnIndexOrThrow(column));
     }
 
+    /** Splits the newline-separated column back into a clean tool name list. */
     private static List<String> toolNames(String raw) {
         List<String> names = new ArrayList<>();
         if (raw == null) return names;
@@ -108,6 +141,7 @@ public final class SqliteAgentExtensionStore implements AgentExtensionStore {
         return names;
     }
 
+    /** Joins the tool names into the newline-separated storage format, skipping blanks. */
     private static String joinToolNames(List<String> names) {
         StringBuilder out = new StringBuilder();
         for (String name : names) {
@@ -118,6 +152,10 @@ public final class SqliteAgentExtensionStore implements AgentExtensionStore {
         return out.toString();
     }
 
+    /**
+     * Reduces a slug to lowercase letters, digits, underscores and single hyphens, falling back to
+     * the name and finally to a time-based placeholder so the column is never empty.
+     */
     private static String normalizeSlug(String raw, String fallback) {
         String source = raw == null || raw.trim().isEmpty() ? fallback : raw;
         String lower = source == null ? "" : source.toLowerCase(Locale.ROOT);

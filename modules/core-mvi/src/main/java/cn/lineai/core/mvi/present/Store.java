@@ -13,21 +13,32 @@ public final class Store<S extends UiState, A extends Action> implements AutoClo
     private final Scheduler scheduler;
     private final MainMailbox<S> mailbox;
 
+    /**
+     * Creates a store whose state starts at {@code presenter.initial()}.
+     * @param presenter reduction and effect logic, never null
+     * @param scheduler main and IO execution backing the mailbox, never null
+     */
     public Store(Presenter<S, A> presenter, Scheduler scheduler) {
         this.presenter = Objects.requireNonNull(presenter, "presenter");
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler");
         this.mailbox = new MainMailbox<>(presenter.initial(), scheduler);
     }
 
+    /** Returns the latest published state. */
     public S state() {
         return mailbox.value();
     }
 
+    /**
+     * Queues {@code action} for serial reduction on the main thread.
+     * @param action action to reduce, never null
+     */
     public void dispatch(A action) {
         Objects.requireNonNull(action, "action");
         mailbox.post(() -> reduce(action));
     }
 
+    /** Applies {@code action} through the presenter, publishes the state and starts its effects. */
     private void reduce(A action) {
         Transition<S> transition = Objects.requireNonNull(
                 presenter.reduce(mailbox.value(), action), "transition");
@@ -40,6 +51,7 @@ public final class Store<S extends UiState, A extends Action> implements AutoClo
         }
     }
 
+    /** Executes {@code effect} on an IO thread; unexpected failures close the store and propagate. */
     private void run(Effect effect) {
         if (mailbox.isClosed()) {
             return;

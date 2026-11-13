@@ -26,6 +26,14 @@ final class SshShellBackend {
         this.remoteExecutor = remoteExecutor;
     }
 
+    /**
+     * Launches the command detached on the remote host and records the remote pid and temp
+     * log path on the task. The remote round trip is blocking and must not run on main.
+     *
+     * @param task task whose command is launched; mutated under the registry lock
+     * @param cwd remote working directory; empty or {@code null} uses the login directory
+     * @throws IllegalStateException when the launch output does not match the wire protocol
+     */
     void start(BackgroundTask task, String cwd) {
         String response = remoteExecutor.execute(launchScript(cwd, task.command),
                 REMOTE_TIMEOUT_MS);
@@ -39,6 +47,13 @@ final class SshShellBackend {
         }
     }
 
+    /**
+     * Runs one poll round trip: appends new log bytes from the last consumed offset and
+     * completes the task when the remote process is gone. Transient transport failures are
+     * swallowed so the next poll retries.
+     *
+     * @param task task to refresh; mutated under the registry lock
+     */
     void poll(BackgroundTask task) {
         final long requested;
         synchronized (registry.lock) {
@@ -73,6 +88,13 @@ final class SshShellBackend {
         }
     }
 
+    /**
+     * Terminates the remote process group, escalating from SIGTERM to SIGKILL, and reports
+     * whether the wire protocol confirmed the death.
+     *
+     * @param task task whose remote process group is killed
+     * @return {@code true} only when the kill script answered {@code __BG_DEAD__}
+     */
     boolean kill(BackgroundTask task) {
         try {
             String response = remoteExecutor.execute(killScript(task), REMOTE_TIMEOUT_MS);
@@ -94,12 +116,14 @@ final class SshShellBackend {
         return out.toString();
     }
 
+    /** Emits the running state marker and the unconsumed log suffix in one round trip. */
     private static String pollScript(BackgroundTask task, long offset) {
         return "if kill -0 " + task.pid + " 2>/dev/null; then echo __BG_RUNNING__; "
                 + "else echo __BG_DONE__; fi; tail -c +" + (offset + 1) + " "
                 + shellQuote(task.logPath) + " 2>/dev/null || true";
     }
 
+    /** Escalates SIGTERM to SIGKILL for the process group and reports the outcome. */
     private static String killScript(BackgroundTask task) {
         return "kill -TERM -- -" + task.pid + " 2>/dev/null; kill -TERM " + task.pid
                 + " 2>/dev/null; sleep 0.3; kill -KILL -- -" + task.pid + " 2>/dev/null; "
@@ -108,6 +132,7 @@ final class SshShellBackend {
                 + "else echo __BG_DEAD__; fi";
     }
 
+    /** POSIX single-quote escaping; safe against shell metacharacters in paths and commands. */
     private static String shellQuote(String value) {
         return "'" + value.replace("'", "'\\''") + "'";
     }

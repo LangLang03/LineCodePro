@@ -19,6 +19,7 @@ import cn.lineai.core.model.Role;
  */
 final class ChatFailure {
 
+    /** Static utility; not instantiable. */
     private ChatFailure() {
     }
 

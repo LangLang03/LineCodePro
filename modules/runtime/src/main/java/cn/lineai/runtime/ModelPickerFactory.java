@@ -19,15 +19,23 @@ import cn.lineai.ui.tokens.Tokens;
 /** Model picker, probe and result dialogs for tool settings and model tests. */
 public final class ModelPickerFactory {
 
+    /** Utility class; instantiation is not permitted. */
     private ModelPickerFactory() {
     }
 
+    /**
+     * Shows the bottom-sheet picker of configured models for one tool image role.
+     *
+     * @param host host providing the activity, tokens and model store
+     * @param understanding {@code true} for image understanding, {@code false} for generation
+     */
     public static void pick(PageHost host, boolean understanding) {
         java.util.List<cn.lineai.core.model.ModelConfig> models =
                 host.graph().models().list();
         Sheets.showBottom(host.activity(), host.tokens(), panel(host, models, understanding));
     }
 
+    /** Builds the sheet content: title, clear row and one row per configured model. */
     private static View panel(PageHost host, java.util.List<cn.lineai.core.model.ModelConfig> models,
                               boolean understanding) {
         Tokens tokens = host.tokens();
@@ -61,6 +69,13 @@ public final class ModelPickerFactory {
         return panel;
     }
 
+    /**
+     * Persists the tool image model selection and reopens the tool settings page.
+     *
+     * @param host host providing the settings store and navigation
+     * @param understanding {@code true} for image understanding, {@code false} for generation
+     * @param id selected model id, empty to clear the assignment
+     */
     public static void save(PageHost host, boolean understanding, String id) {
         ToolPreferences preferences = new ToolPreferences(host.graph().settings());
         if (understanding) preferences.setImageUnderstandingModelId(id);
@@ -70,6 +85,13 @@ public final class ModelPickerFactory {
                 .key(cn.lineai.core.mvi.nav.Params.Empty.INSTANCE));
     }
 
+    /**
+     * Runs one blocking model completion on an io thread and reports duration, summary and
+     * raw response on main.
+     *
+     * @param host host providing the scheduler, strings and dialogs
+     * @param model the model configuration to test
+     */
     public static void probe(PageHost host, cn.lineai.core.model.ModelConfig model) {
         long start = System.currentTimeMillis();
         cn.lineai.core.kernel.time.Scheduler scheduler =
@@ -97,6 +119,7 @@ public final class ModelPickerFactory {
         });
     }
 
+    /** Shows the selectable probe result in a centered dialog. */
     private static void showResult(PageHost host, String message) {
         Tokens tokens = host.tokens();
         Dialog dialog = new Dialog(host.activity());
@@ -130,6 +153,7 @@ public final class ModelPickerFactory {
         }
     }
 
+    /** Closes the sheet hosting the given panel view. */
     static void dismiss(View panel) {
         cn.lineai.ui.kit.Sheets.dismiss(panel);
     }

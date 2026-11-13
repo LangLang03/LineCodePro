@@ -3,6 +3,9 @@ package cn.lineai.core.kernel.time;
 /**
  * The only abstraction over posting work. Nothing in the rewritten code base is allowed to call
  * {@code new Thread}, {@code Handler} or {@code Executors} directly.
+ *
+ * <p>Threading policy lives behind this interface, so tests and deterministic reducers substitute
+ * an inline implementation without touching call sites.</p>
  */
 public interface Scheduler {
 
@@ -15,12 +18,23 @@ public interface Scheduler {
     /** Runs on a background thread suited for CPU work. */
     void compute(Runnable runnable);
 
-    /** Runs on a background thread after the given delay. */
+    /** Runs on a background thread after the given delay.
+     *
+     * @param delayMs delay before execution, in milliseconds
+     * @param runnable work to execute
+     * @return handle that cancels the pending execution
+     */
     Cancellable io(long delayMs, Runnable runnable);
 
-    /** Runs on the UI thread after the given delay. */
+    /** Runs on the UI thread after the given delay.
+     *
+     * @param delayMs delay before execution, in milliseconds
+     * @param runnable work to execute
+     * @return handle that cancels the pending execution
+     */
     Cancellable main(long delayMs, Runnable runnable);
 
+    /** Returns {@code true} when the calling thread is the main (UI) thread. */
     boolean isMain();
 
     /** Returns a scheduler that executes inline; used by tests and by deterministic reducers. */

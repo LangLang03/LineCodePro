@@ -23,6 +23,13 @@ public final class DotMatrixSpinner extends View {
     private boolean running;
     private float progress;
 
+    /**
+     * Creates the spinner. Accessibility is disabled on purpose: progress is announced by the
+     * owning status row, not by the decorative view.
+     *
+     * @param context hosting context
+     * @param sizeDp requested square side length in dp
+     */
     public DotMatrixSpinner(Context context, float sizeDp) {
         super(context);
         this.sizeDp = sizeDp;
@@ -38,6 +45,11 @@ public final class DotMatrixSpinner extends View {
         invalidate();
     }
 
+    /**
+     * Starts the repeating chase animation, or arms it if the view is not yet attached; the
+     * animator is created on attachment. Disabled system animations (animator duration scale of 0)
+     * keep the view static at progress zero.
+     */
     public void start() {
         if (running) {
             return;
@@ -49,6 +61,7 @@ public final class DotMatrixSpinner extends View {
         invalidate();
     }
 
+    /** Stops the animation and resets progress to zero so the next start begins a fresh cycle. */
     public void stop() {
         running = false;
         stopAnimator();
@@ -56,6 +69,7 @@ public final class DotMatrixSpinner extends View {
         invalidate();
     }
 
+    /** Squares the view to the requested dp size within the parent's constraints. */
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         int size = Ui.dp(getContext(), sizeDp);
@@ -63,6 +77,7 @@ public final class DotMatrixSpinner extends View {
                 resolveSize(size, heightMeasureSpec));
     }
 
+    /** Draws the current frame centred inside the measured bounds. */
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
@@ -71,6 +86,7 @@ public final class DotMatrixSpinner extends View {
                 (getHeight() - size) / 2f, size, color);
     }
 
+    /** Resumes the animation on attachment when {@link #start} armed it earlier. */
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
@@ -79,12 +95,17 @@ public final class DotMatrixSpinner extends View {
         }
     }
 
+    /** Cancels the animator on detachment; a later {@link #start} recreates it. */
     @Override
     protected void onDetachedFromWindow() {
         stopAnimator();
         super.onDetachedFromWindow();
     }
 
+    /**
+     * Creates the repeating linear animator unless one already runs or system animations are
+     * disabled; in the disabled case the view simply stays at progress zero.
+     */
     private void startAnimator() {
         if (animator != null && animator.isStarted()) {
             return;
@@ -105,6 +126,7 @@ public final class DotMatrixSpinner extends View {
         animator.start();
     }
 
+    /** Cancels and discards the animator, safe to call repeatedly. */
     private void stopAnimator() {
         if (animator != null) {
             animator.cancel();

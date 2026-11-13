@@ -9,8 +9,22 @@ import android.content.pm.ServiceInfo;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Device-wide discovery of provider services for one {@link IpcProviderType}.
+ *
+ * <p>Uses the package manager to resolve the type's intent action and keeps only
+ * services whose declaring package also requests the type's custom permission, so the
+ * result can be turned into bindable {@link IpcProviderConfig}s directly.
+ */
 public final class IpcProviderScanner {
 
+    /**
+     * Returns every installed provider service matching the given type.
+     *
+     * @param context context used to reach the package manager; null yields an empty list
+     * @param type the provider kind to scan for; null yields an empty list
+     * @return the compliant services, possibly empty; never null
+     */
     public List<ScannedProvider> scan(Context context, IpcProviderType type) {
         List<ScannedProvider> result = new ArrayList<>();
         if (context == null || type == null) {
@@ -38,6 +52,10 @@ public final class IpcProviderScanner {
         return result;
     }
 
+    /**
+     * Reports whether the declaring package requests the required permission. An empty
+     * permission name passes so unguarded provider kinds are not filtered out.
+     */
     private boolean hasPermission(Context context, String packageName, String permission) {
         if (permission == null || permission.length() == 0) {
             return true;

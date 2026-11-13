@@ -16,21 +16,52 @@ import cn.lineai.ui.tokens.Tokens;
 /** Agent extension detail: quick add, installed list, toggle and delete. */
 public final class AgentExtensionsPage extends ExtensionPage implements Refreshable {
 
+    /** Host callbacks for agent extension management. */
     public interface Listener {
+        /**
+         * Loads the installed agent extensions.
+         *
+         * @return current extensions; may be null or empty
+         */
         List<AgentExtension> load();
 
+        /**
+         * Enables or disables one agent extension.
+         *
+         * @param id extension identifier
+         * @param enabled true to enable the extension
+         */
         void setEnabled(String id, boolean enabled);
 
+        /**
+         * Deletes one agent extension.
+         *
+         * @param id extension identifier
+         */
         void delete(String id);
 
+        /** Opens the editor for creating a new agent extension. */
         void add();
 
+        /**
+         * Opens the editor for an existing agent extension.
+         *
+         * @param agent extension to edit
+         */
         void edit(AgentExtension agent);
     }
 
     private final Listener listener;
     private final LinearLayout installedHost;
 
+    /**
+     * Builds the agent extension page.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param listener host callbacks for extension management
+     */
     public AgentExtensionsPage(Context context, Tokens tokens, Runnable back, Listener listener) {
         super(context, tokens, back, R.string.screen_extensions_section_agent);
         this.listener = listener;
@@ -47,14 +78,17 @@ public final class AgentExtensionsPage extends ExtensionPage implements Refresha
         renderInstalled();
     }
 
+    /** Re-renders the installed list when the page returns to the foreground. */
     @Override public void onShown() {
         renderInstalled();
     }
 
+    /** Forces a re-render of the installed list after external changes. */
     public void reload() {
         renderInstalled();
     }
 
+    /** Rebuilds the installed agents section with switch rows and empty-state handling. */
     private void renderInstalled() {
         installedHost.removeAllViews();
         SettingsSection installed = ExtensionKit.section(getContext(), theme,
@@ -80,6 +114,7 @@ public final class AgentExtensionsPage extends ExtensionPage implements Refresha
         }
     }
 
+    /** Shows the long-press menu with edit and confirmed delete actions for one agent. */
     private void openItemMenu(AgentExtension agent) {
         String name = agent.name.isEmpty() ? agent.slug : agent.name;
         List<ExtensionKit.SheetItem> items = new ArrayList<>();

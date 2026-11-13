@@ -32,7 +32,7 @@ import cn.lineai.ui.kit.SettingsSection;
 import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
 
-/** Theme mode picker plus the custom palette editor. Mirrors the legacy layout one-to-one. */
+/** Theme mode picker plus the custom palette editor; layout mirrors the legacy editor one-to-one. */
 public final class ThemeSettingsPage extends SettingsPage {
 
     private static final Mode[] MODES = {
@@ -102,6 +102,7 @@ public final class ThemeSettingsPage extends SettingsPage {
     private String activeStarter;
     private Tokens rendered;
 
+    /** Creates the page; this file sits near the 600-line guard, so members keep one-line docs. */
     public ThemeSettingsPage(Context context, Tokens tokens, Runnable back, String mode,
                              Map<String, String> savedColors, Consumer<String> onModeChanged,
                              Consumer<Map<String, String>> onSaveColors) {
@@ -161,6 +162,7 @@ public final class ThemeSettingsPage extends SettingsPage {
         refreshCustomViews();
     }
 
+    /** Adds one selectable row per built-in theme mode. */
     private void addModes() {
         SettingsSection section = section(R.string.screen_theme_section_themes);
         for (int i = 0; i < MODES.length; i++) {
@@ -178,12 +180,14 @@ public final class ThemeSettingsPage extends SettingsPage {
         }
     }
 
+    /** Marks the row of the currently selected mode as active. */
     private void refreshModeRows() {
         for (int i = 0; i < modeRows.size(); i++) {
             modeRows.get(i).active(MODES[i].mode.equals(mode));
         }
     }
 
+    /** Adds the custom-colors header row holding the reset and save actions. */
     private void addCustomHeader() {
         Context context = getContext();
         LinearLayout header = new LinearLayout(context);
@@ -218,6 +222,7 @@ public final class ThemeSettingsPage extends SettingsPage {
         content.addView(header, params);
     }
 
+    /** Builds the save button; taps are rejected while any draft value is an invalid hex color. */
     private LinearLayout buildSaveAction() {
         Context context = getContext();
         LinearLayout action = new LinearLayout(context);
@@ -244,6 +249,7 @@ public final class ThemeSettingsPage extends SettingsPage {
         return action;
     }
 
+    /** Re-renders the preview, starter grid, swatches, and editor from the current draft. */
     private void refreshCustomViews() {
         int bg = color(ThemePalette.KEY_BG);
         int border = color(ThemePalette.KEY_BORDER);
@@ -260,6 +266,7 @@ public final class ThemeSettingsPage extends SettingsPage {
         refreshEditor();
     }
 
+    /** Rebuilds the starter grid from the built-in palettes plus the saved palette, if any. */
     private void refreshStarterPanel() {
         if (starterPanel == null) return;
         Context context = getContext();
@@ -285,6 +292,7 @@ public final class ThemeSettingsPage extends SettingsPage {
         starterPanel.addView(grid, gridParams);
     }
 
+    /** Adds one starter palette tile that seeds the draft when clicked. */
     private void addStarter(GridLayout grid, String id, int label, int icon, ThemePalette palette) {
         Context context = getContext();
         boolean active = id.equals(activeStarter);
@@ -331,6 +339,7 @@ public final class ThemeSettingsPage extends SettingsPage {
         grid.addView(button, params);
     }
 
+    /** Rebuilds the swatch grid for the field being edited, highlighting the current value. */
     private void refreshSwatches() {
         Context context = getContext();
         swatchLabel.setText(context.getString(R.string.theme_current_editing, labelFor(activeKey)));
@@ -363,6 +372,7 @@ public final class ThemeSettingsPage extends SettingsPage {
         }
     }
 
+    /** Rebuilds the per-field color editor rows from the fixed field catalog. */
     private void refreshEditor() {
         Context context = getContext();
         editorGroup.removeAllViews();
@@ -374,6 +384,7 @@ public final class ThemeSettingsPage extends SettingsPage {
         }
     }
 
+    /** Builds one editor row with a live preview and a validating hex input. */
     private android.view.View colorRow(Field field, boolean divider) {
         Context context = getContext();
         LinearLayout wrapper = new LinearLayout(context);
@@ -462,6 +473,7 @@ public final class ThemeSettingsPage extends SettingsPage {
         return wrapper;
     }
 
+    /** Refreshes only the preview visuals and swatch highlight, skipping the full editor rebuild. */
     private void updatePreviewOnly() {
         updateSaveAction();
         if (!ThemePalette.isHexColor(draft.get(activeKey))) return;
@@ -474,6 +486,7 @@ public final class ThemeSettingsPage extends SettingsPage {
         refreshSwatches();
     }
 
+    /** Enables the save action when every editable key holds a valid hex color. */
     private void updateSaveAction() {
         boolean valid = !invalid();
         saveAction.setEnabled(valid);
@@ -483,6 +496,7 @@ public final class ThemeSettingsPage extends SettingsPage {
         saveText.setTextColor(color);
     }
 
+    /** Returns true when any editable key in the draft fails hex validation. */
     private boolean invalid() {
         for (String key : ThemePalette.EDITABLE_KEYS) {
             if (!ThemePalette.isHexColor(draft.get(key))) return true;
@@ -490,10 +504,12 @@ public final class ThemeSettingsPage extends SettingsPage {
         return false;
     }
 
+    /** Parses a draft color, falling back to the custom default for the key. */
     private int color(String key) {
         return ThemePalette.parseHex(draft.get(key), ThemePalette.customDefault().colorForKey(key));
     }
 
+    /** Resolves the localized label of a palette key, falling back to the raw key. */
     private String labelFor(String key) {
         for (Field field : FIELDS) {
             if (field.key.equals(key)) return getContext().getString(field.label);
@@ -501,6 +517,7 @@ public final class ThemeSettingsPage extends SettingsPage {
         return key;
     }
 
+    /** Creates a rounded, padded panel container used for page sections. */
     private LinearLayout panel() {
         Context context = getContext();
         LinearLayout panel = new LinearLayout(context);
@@ -510,6 +527,7 @@ public final class ThemeSettingsPage extends SettingsPage {
         return panel;
     }
 
+    /** Appends a panel to the page content with the standard side margins. */
     private void addPanel(LinearLayout panel) {
         Context context = getContext();
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
@@ -519,6 +537,7 @@ public final class ThemeSettingsPage extends SettingsPage {
         content.addView(panel, params);
     }
 
+    /** Seeds the draft from a base palette, overlaying valid persisted colors when present. */
     private Map<String, String> themeDraft(ThemePalette base, Map<String, String> stored) {
         LinkedHashMap<String, String> values = new LinkedHashMap<>(base.editableHexMap());
         if (stored != null) {
@@ -530,6 +549,7 @@ public final class ThemeSettingsPage extends SettingsPage {
         return values;
     }
 
+    /** Produces the draft values for a starter tile, with per-mode code-background tweaks. */
     private Map<String, String> starterDraft(String id, ThemePalette palette) {
         LinkedHashMap<String, String> values = new LinkedHashMap<>(palette.editableHexMap());
         if ("saved".equals(id)) {
@@ -548,11 +568,13 @@ public final class ThemeSettingsPage extends SettingsPage {
         refreshCustomViews();
     }
 
+    /** One selectable theme mode row descriptor. */
     private static final class Mode {
         final String mode;
         final int label;
         final int description;
         final int icon;
+        /** Creates a mode descriptor. */
         Mode(String mode, int label, int description, int icon) {
             this.mode = mode;
             this.label = label;
@@ -561,10 +583,12 @@ public final class ThemeSettingsPage extends SettingsPage {
         }
     }
 
+    /** One editable palette key with its label and description resources. */
     private static final class Field {
         final String key;
         final int label;
         final int description;
+        /** Creates a field descriptor. */
         Field(String key, int label, int description) {
             this.key = key;
             this.label = label;

@@ -89,6 +89,7 @@ public final class ModelEditPage extends LinearLayout {
     private boolean fetching;
     private String selectedId;
 
+    /** Builds the add/edit form; an existing config wins over the preset and locks the provider row. */
     public ModelEditPage(Context context, Tokens tokens, Scheduler scheduler, Runnable back,
                          ModelConfig editing, ModelPreset preset, Catalog catalog, Listener listener) {
         super(context);

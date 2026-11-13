@@ -23,13 +23,30 @@ import cn.lineai.ui.tokens.Tokens;
 /** SSH server form with save and connection test. */
 public final class SshSettingsPage extends SettingsPage implements Refreshable {
 
+    /** Host callbacks for persistence, connectivity probing, and navigation. */
     public interface Listener {
+        /**
+         * Loads the persisted SSH configuration.
+         *
+         * @return current configuration; never null
+         */
         SshConfig load();
 
+        /**
+         * Persists the given SSH configuration.
+         *
+         * @param config configuration to store
+         */
         void save(SshConfig config);
 
+        /**
+         * Starts an asynchronous connection test against the given configuration.
+         *
+         * @param config configuration to probe
+         */
         void test(SshConfig config);
 
+        /** Opens the Termux integration screen. */
         void onOpenTermux();
     }
 
@@ -43,6 +60,14 @@ public final class SshSettingsPage extends SettingsPage implements Refreshable {
     private final LinearLayout testButton;
     private final TextView status;
 
+    /**
+     * Builds the SSH settings page and populates the form from the persisted configuration.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param listener host callbacks for persistence and testing
+     */
     public SshSettingsPage(Context context, Tokens tokens, Runnable back, Listener listener) {
         super(context, R.string.screen_ssh_title, tokens, back);
         this.listener = listener;
@@ -117,6 +142,7 @@ public final class SshSettingsPage extends SettingsPage implements Refreshable {
         addCard(form);
     }
 
+    /** Creates a labeled form field bound to the page theme. */
     private FormField field(int label, String value, int hint, boolean secure, boolean multiline) {
         FormField field = new FormField(getContext(), theme, label, value,
                 getContext().getString(hint), secure, multiline);
@@ -145,6 +171,7 @@ public final class SshSettingsPage extends SettingsPage implements Refreshable {
         status.setVisibility(View.GONE);
     }
 
+    /** Returns whether the form already shows exactly the stored configuration. */
     private boolean matches(SshConfig stored) {
         return stored.host.equals(host.value())
                 && String.valueOf(stored.port).equals(port.value())
@@ -154,11 +181,23 @@ public final class SshSettingsPage extends SettingsPage implements Refreshable {
                 && stored.passphrase.equals(passphrase.value());
     }
 
+    /**
+     * Enables or disables the test button while a probe is running.
+     *
+     * @param testing true to disable the button during the probe
+     */
     public void setTesting(boolean testing) {
         testButton.setEnabled(!testing);
         testButton.setAlpha(testing ? 0.65f : 1f);
     }
 
+    /**
+     * Shows the status line with success or error styling.
+     *
+     * @param title status title resource text
+     * @param message status detail text
+     * @param error true to render the status in error styling
+     */
     public void showStatus(CharSequence title, CharSequence message, boolean error) {
         status.setVisibility(View.VISIBLE);
         status.setText(getContext().getString(R.string.status_title_message, title, message));
@@ -169,11 +208,13 @@ public final class SshSettingsPage extends SettingsPage implements Refreshable {
                 error ? tokens.danger : tokens.codeBorder));
     }
 
+    /** Assembles an {@link SshConfig} from the current form values. */
     private SshConfig read() {
         return new SshConfig(host.value(), parsePort(port.value()), username.value(),
                 password.value(), privateKey.value(), passphrase.value());
     }
 
+    /** Parses the port field, falling back to the default port for invalid input. */
     private static int parsePort(String raw) {
         try {
             int port = Integer.parseInt(raw.trim());
@@ -183,6 +224,7 @@ public final class SshSettingsPage extends SettingsPage implements Refreshable {
         }
     }
 
+    /** Creates a rounded card container that re-tints on theme changes. */
     private LinearLayout card() {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -194,12 +236,14 @@ public final class SshSettingsPage extends SettingsPage implements Refreshable {
         return card;
     }
 
+    /** Appends a card to the page with the standard bottom spacing. */
     private void addCard(View card) {
         LinearLayout.LayoutParams params = new LayoutParams(-1, -2);
         params.bottomMargin = Ui.dp(getContext(), 12);
         content.addView(card, params);
     }
 
+    /** Builds a compact icon-and-label button in primary or secondary styling. */
     private LinearLayout actionButton(int label, int icon, boolean primary, Runnable action) {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -222,6 +266,7 @@ public final class SshSettingsPage extends SettingsPage implements Refreshable {
         return button;
     }
 
+    /** Creates the small secondary description text used inside cards. */
     private TextView desc(String text) {
         TextView view = Ui.text(getContext(), text, Tokens.FONT_XS, theme.current().textTertiary,
                 Typeface.NORMAL);
@@ -229,6 +274,7 @@ public final class SshSettingsPage extends SettingsPage implements Refreshable {
         return view;
     }
 
+    /** Builds the layout parameters shared by all form fields. */
     private LinearLayout.LayoutParams formParams() {
         LinearLayout.LayoutParams params = new LayoutParams(-1, -2);
         params.topMargin = Ui.dp(getContext(), 12);

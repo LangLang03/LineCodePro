@@ -96,6 +96,7 @@ public final class Icons {
     public static final int IMAGE = 84;
     public static final int VIDEO = 85;
 
+    /** Not instantiable; the mapping is accessed through the static {@link #drawable}. */
     private Icons() {
     }
 

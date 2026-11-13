@@ -14,11 +14,13 @@ import cn.lineai.ui.tokens.Tokens;
 /** Agent call card: bot ring, type/agent-id pills, status and nested tool results. */
 final class AgentToolRenderer implements ToolCardRenderer {
 
+    /** Shared stateless instance. */
     static final AgentToolRenderer INSTANCE = new AgentToolRenderer();
 
     private AgentToolRenderer() {
     }
 
+    /** Renders the header row and, when expanded, the meta pills, output and nested cards. */
     @Override
     public void render(ToolCardFrame frame, ToolCallEntry entry, ToolPresentation presentation) {
         ToolJson arguments = ToolCardSupport.arguments(entry);
@@ -116,6 +118,7 @@ final class AgentToolRenderer implements ToolCardRenderer {
         frame.body.addView(scroll, frame.fill());
     }
 
+    /** Agent cards open so the running feed is visible without a tap. */
     @Override
     public boolean initiallyExpanded() {
         return true;

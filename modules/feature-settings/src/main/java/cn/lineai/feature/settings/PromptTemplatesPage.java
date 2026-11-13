@@ -24,14 +24,35 @@ import cn.lineai.ui.tokens.Tokens;
 /** Editable prompt templates with per-template reset and save. */
 public final class PromptTemplatesPage extends SettingsPage {
 
+    /** Persistence callbacks for template edits. */
     public interface Listener {
+        /**
+         * Persists the edited template text.
+         *
+         * @param id template identifier
+         * @param value validated template text
+         */
         void onSave(String id, String value);
 
+        /**
+         * Restores a template to its factory default.
+         *
+         * @param id template identifier
+         */
         void onReset(String id);
     }
 
     private final List<Editor> editors = new ArrayList<>();
 
+    /**
+     * Builds the prompt templates page with one editor per template.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param templates catalog entries to edit; null renders an empty page
+     * @param listener persistence callbacks
+     */
     public PromptTemplatesPage(Context context, Tokens tokens, Runnable back,
                                List<PromptTemplateEntry> templates, Listener listener) {
         super(context, R.string.screen_prompt_templates_title, tokens, back);
@@ -51,11 +72,19 @@ public final class PromptTemplatesPage extends SettingsPage {
         }
     }
 
+    /** Re-tints all editors when the app theme changes. */
     @Override public void applyTokens(Tokens tokens) {
         theme.apply(tokens);
         for (Editor editor : editors) editor.applyTokens(tokens);
     }
 
+    /**
+     * Builds the intro paragraph listing every template, its description, and variables.
+     *
+     * @param context context used for localized strings
+     * @param templates catalog entries to summarize
+     * @return multi-line intro text
+     */
     private static String introText(Context context, List<PromptTemplateEntry> templates) {
         StringBuilder builder = new StringBuilder();
         builder.append(context.getString(R.string.screen_prompt_templates_variables)).append("\n");
@@ -72,6 +101,12 @@ public final class PromptTemplatesPage extends SettingsPage {
         return builder.toString().trim();
     }
 
+    /**
+     * Renders a template's variable names as {@code {{NAME}}} placeholders.
+     *
+     * @param item entry whose variables to render
+     * @return comma-separated placeholder list; empty when the template has none
+     */
     static String variablesText(PromptTemplateEntry item) {
         String[] variables = item.variables;
         if (variables.length == 0) return "";
@@ -83,6 +118,7 @@ public final class PromptTemplatesPage extends SettingsPage {
         return builder.toString();
     }
 
+    /** One editable template card with placeholder validation, reset, and save. */
     private static final class Editor extends LinearLayout {
         private static final java.util.regex.Pattern PLACEHOLDER =
                 java.util.regex.Pattern.compile("\\{\\{\\s*([A-Z0-9_]+)\\s*\\}\\}");
@@ -95,6 +131,14 @@ public final class PromptTemplatesPage extends SettingsPage {
         private final ActionButton resetButton;
         private final ActionButton saveButton;
 
+        /**
+         * Builds the editor card for one template entry.
+         *
+         * @param context Android context used to inflate views
+         * @param item template entry edited by this card
+         * @param listener persistence callbacks
+         * @param tokens design tokens for the current theme
+         */
         private Editor(Context context, PromptTemplateEntry item, Listener listener, Tokens tokens) {
             super(context);
             this.item = item;
@@ -167,6 +211,13 @@ public final class PromptTemplatesPage extends SettingsPage {
             updateStatus(item.customized());
         }
 
+        /**
+         * Validates that every {@code {{PLACEHOLDER}}} in the text is a declared variable and no
+         * undeclared placeholder syntax remains.
+         *
+         * @param value template text to validate
+         * @return true when the text only references declared variables
+         */
         private boolean validPlaceholders(String value) {
             java.util.Set<String> allowed =
                     new java.util.HashSet<>(java.util.Arrays.asList(item.variables));
@@ -180,12 +231,14 @@ public final class PromptTemplatesPage extends SettingsPage {
             return stripped.indexOf("{{") < 0;
         }
 
+        /** Updates the built-in/customized status label of the editor. */
         private void updateStatus(boolean customized) {
             statusView.setText(customized
                     ? R.string.screen_prompt_templates_status_custom
                     : R.string.screen_prompt_templates_status_built_in);
         }
 
+        /** Re-tints the editor views for the given tokens. */
         private void applyTokens(Tokens tokens) {
             description.setTextColor(tokens.textSecondary);
             meta.setTextColor(tokens.textTertiary);
@@ -198,10 +251,19 @@ public final class PromptTemplatesPage extends SettingsPage {
         }
     }
 
+    /** Small icon-and-label button used for editor actions. */
     private static final class ActionButton extends LinearLayout {
         private final IconButton icon;
         private final TextView text;
 
+        /**
+         * Builds the action button and applies the initial tokens.
+         *
+         * @param context Android context used to inflate views
+         * @param iconType icon resource to display
+         * @param label text label of the action
+         * @param tokens design tokens for the current theme
+         */
         private ActionButton(Context context, int iconType, String label, Tokens tokens) {
             super(context);
             setGravity(Gravity.CENTER);
@@ -218,6 +280,7 @@ public final class PromptTemplatesPage extends SettingsPage {
             applyTokens(tokens);
         }
 
+        /** Re-tints the button background, icon, and label for the given tokens. */
         private void applyTokens(Tokens tokens) {
             setBackground(Ui.roundedStroke(getContext(), tokens.surfaceLight, 8, tokens.borderLight));
             icon.setIconColor(tokens.textSecondary);

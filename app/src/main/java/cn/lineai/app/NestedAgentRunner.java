@@ -35,6 +35,15 @@ public final class NestedAgentRunner implements AgentRunner {
     private final ToolContext toolContext;
     private final Scheduler scheduler;
 
+    /**
+     * Creates the runner over the shared model client and tool base catalog.
+     *
+     * @param client model client used by the nested loop
+     * @param models model store resolving the currently selected model
+     * @param baseTools base catalog filtered down to read-only tools per agent
+     * @param toolContext host context adapted to a read-only view
+     * @param scheduler scheduler used to start the loop on the main thread
+     */
     public NestedAgentRunner(ModelClient client, ModelStore models, ToolCatalog baseTools,
                              ToolContext toolContext, Scheduler scheduler) {
         this.client = client;
@@ -44,6 +53,18 @@ public final class NestedAgentRunner implements AgentRunner {
         this.scheduler = scheduler;
     }
 
+    /**
+     * Runs the agent to completion and returns its final text. The call blocks on a latch
+     * (the sanctioned synchronous bridge) while the loop streams on the scheduler; tool
+     * confirmations are auto-approved because the registry only contains read-only tools.
+     *
+     * @param agent the extension agent to execute
+     * @param task the user task handed to the agent
+     * @return the accumulated assistant text, trimmed
+     * @throws IllegalStateException when no model is configured, the loop failed, the tool
+     *         budget was exceeded, or the 300 second timeout elapsed (after cancelling)
+     * @throws Exception when the engine start fails
+     */
     @Override public String run(AgentExtension agent, String task) throws Exception {
         ModelConfig model = models.selected();
         if (model == null) throw new IllegalStateException("No model configured for the agent");
@@ -98,6 +119,14 @@ public final class NestedAgentRunner implements AgentRunner {
         }
     }
 
+    /**
+     * Filters the base catalog to non-mutating, non-phone tools, optionally restricted to
+     * the agent's declared tool names.
+     *
+     * @param allowed agent-declared tool names; empty or {@code null} keeps every
+     *                read-only tool
+     * @return a fresh registry containing only the permitted tools
+     */
     private ToolRegistry readOnlyRegistry(List<String> allowed) {
         ToolRegistry result = new ToolRegistry();
         for (Tool tool : baseTools.registry().all()) {

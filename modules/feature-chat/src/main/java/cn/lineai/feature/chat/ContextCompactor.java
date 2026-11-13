@@ -9,15 +9,26 @@ import cn.lineai.core.model.Role;
 import cn.lineai.data.api.ModelStore;
 import cn.lineai.data.api.SettingsStore;
 
-/** Summarizes older messages once the context crosses the compression threshold. */
+/**
+ * Summarizes older messages once the context crosses the compression threshold.
+ *
+ * <p>Automatic compaction runs at 80% of the context window, or at 50% when soft compaction is
+ * enabled, and always leaves a recent tail untouched. The tail boundary is snapped past raw
+ * TOOL rows so the wire history never opens with an orphan tool result. The summary itself is
+ * persisted per conversation in settings under {@link #key}.</p>
+ */
 final class ContextCompactor {
 
+    /** Pluggable summarization backend; production wiring calls the model. */
     interface Summarizer {
         String summarize(ModelConfig model, String prompt) throws Exception;
     }
 
+    /** Wire history plus the running summary that replaces the summarized range. */
     static final class Result {
+        /** Messages actually sent to the model (tail plus later rows). */
         final List<Message> history;
+        /** Persisted summary text; empty when nothing was compacted. */
         final String summary;
 
         Result(List<Message> history, String summary) {
@@ -32,13 +43,20 @@ final class ContextCompactor {
     private static final int HARD_THRESHOLD_PERCENT = 80;
     private static final int MAX_PROMPT_CHARS = 30_000;
 
+    /** Static utility; not instantiable. */
     private ContextCompactor() {
     }
 
+    /** Settings key holding the persisted summary for one conversation. */
     static String key(String conversationId) {
         return KEY_PREFIX + conversationId;
     }
 
+    /**
+     * Prepares the wire history for the next model turn, compacting first when the current
+     * usage crosses the hard (80%) or soft (50%) threshold and compression is enabled for the
+     * model. Always returns the safe tail plus summary, even when compaction was skipped.
+     */
     static Result prepare(ModelConfig model, ModelStore models, SettingsStore settings,
                           String conversationId, List<Message> loaded, boolean softCompaction,
                           String instruction, Summarizer summarizer) {
@@ -112,6 +130,7 @@ final class ContextCompactor {
         return true;
     }
 
+    /** Builds the summarization prompt: instruction, previous summary, then truncated messages. */
     private static String prompt(String instruction, String previous, List<Message> messages) {
         StringBuilder out = new StringBuilder();
         String template = instruction == null ? "" : instruction.trim();

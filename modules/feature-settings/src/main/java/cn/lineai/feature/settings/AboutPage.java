@@ -18,6 +18,18 @@ import cn.lineai.ui.tokens.Tokens;
 /** About screen: app identity, developer contacts and legal entry. */
 public final class AboutPage extends SettingsPage {
 
+    /**
+     * Builds the about screen with identity, developer contacts, and legal entries.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param appLabel display name of the application
+     * @param versionName human-readable version string
+     * @param versionCode numeric build identifier
+     * @param github action opening the project repository page
+     * @param licenses action opening the open-source licences page
+     */
     public AboutPage(Context context, Tokens tokens, Runnable back, String appLabel,
                      String versionName, long versionCode, Runnable github, Runnable licenses) {
         super(context, R.string.screen_about_title, tokens, back);
@@ -85,6 +97,7 @@ public final class AboutPage extends SettingsPage {
         content.addView(footer, footerParams);
     }
 
+    /** Adds a section heading label above a group of items. */
     private void group(int title) {
         TextView label = Ui.text(getContext(), getContext().getString(title),
                 Tokens.FONT_SM, theme.current().textTertiary, Typeface.NORMAL);
@@ -97,6 +110,7 @@ public final class AboutPage extends SettingsPage {
         content.addView(label, params);
     }
 
+    /** Adds one info row; rows without an action render without a chevron and are inert. */
     private void item(int icon, int label, String value, Runnable action) {
         Context context = getContext();
         PreferenceRow row = new PreferenceRow(context, theme, PreferenceRow.Style.ACTION,

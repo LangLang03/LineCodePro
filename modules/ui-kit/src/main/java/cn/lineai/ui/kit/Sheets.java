@@ -58,6 +58,14 @@ public final class Sheets {
         return showBottom(context, tokens, panel, 0);
     }
 
+    /**
+     * Shows a bottom sheet with the default height cap and no minimum height.
+     *
+     * @param context hosting context
+     * @param tokens palette snapshot used for the panel background and scrim
+     * @param panel content view placed inside the bounded scroll container
+     * @return the showing dialog, also reachable from children via {@link #dialogOf}
+     */
     public static Dialog showBottom(Context context, Tokens tokens, View panel, int maxHeightDp) {
         return showBottom(context, tokens, panel, maxHeightDp, 0);
     }
@@ -68,6 +76,13 @@ public final class Sheets {
      * <p>The picker drawers keep the legacy 240dp floor so a short list still reads as a drawer
      * instead of a thin strip; the panel gets an explicit height because a ScrollView measures a
      * wrap-content child without honouring its minimum height.</p>
+     *
+     * @param context hosting context
+     * @param tokens palette snapshot used for the panel background and scrim
+     * @param panel content view placed inside the bounded scroll container
+     * @param maxHeightDp height cap in dp; 0 falls back to 82 percent of screen height
+     * @param minHeightDp floor for the panel height in dp; 0 lets the panel wrap its content
+     * @return the showing dialog, also reachable from children via {@link #dialogOf}
      */
     public static Dialog showBottom(Context context, Tokens tokens, View panel, int maxHeightDp,
                                     int minHeightDp) {
@@ -107,24 +122,37 @@ public final class Sheets {
         return alpha / 255f;
     }
 
+    /**
+     * Computes the standard sheet width: full screen width minus 16dp margins, capped at 560dp.
+     *
+     * @param context context supplying display metrics
+     * @return width in pixels, always at least 1
+     */
     public static int dialogWidth(Context context) {
         int width = context.getResources().getDisplayMetrics().widthPixels - Ui.dp(context, 32);
         return Math.max(1, Math.min(Ui.dp(context, 560), width));
     }
 
+    /** Default height cap: 82 percent of current screen height, expressed in dp. */
     private static int maxHeightDp(Context context) {
         return Math.round(context.getResources().getDisplayMetrics().heightPixels
                 / context.getResources().getDisplayMetrics().density * .82f);
     }
 
+    /**
+     * Scroll container that caps sheet height so tall panels scroll instead of covering the screen.
+     */
     private static final class BoundedScroll extends ScrollView {
         private final int maxHeightDp;
 
+        /** Creates the container with the fixed dp cap applied in {@link #onMeasure}. */
         private BoundedScroll(Context context, int maxHeightDp) {
             super(context);
             this.maxHeightDp = maxHeightDp;
         }
 
+        /** Clamps the measured height to the cap, supplying an AT_MOST spec when the parent left it
+         * unspecified so wrap-content panels still respect the limit. */
         @Override protected void onMeasure(int widthSpec, int heightSpec) {
             int cap = Ui.dp(getContext(), maxHeightDp);
             int mode = MeasureSpec.getMode(heightSpec);

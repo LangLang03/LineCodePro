@@ -34,6 +34,7 @@ final class MessageActionBar extends LinearLayout {
     private Message message;
     private Runnable onDismiss;
 
+    /** Builds copy, quote, share, multi-select and recall buttons in fixed order. */
     MessageActionBar(Context context, Tokens tokens, boolean user) {
         super(context);
         this.user = user;
@@ -90,6 +91,7 @@ final class MessageActionBar extends LinearLayout {
         onDismiss = value;
     }
 
+    /** Hides the bar and notifies the owning row. */
     private void dismiss() {
         setVisibility(GONE);
         if (onDismiss != null) {
@@ -97,16 +99,19 @@ final class MessageActionBar extends LinearLayout {
         }
     }
 
+    /** Rebinds the action hooks and the target message; visibility follows the hooks. */
     void setActions(MessageActions value, Message current) {
         actions = value;
         message = current;
         applyActionVisibility();
     }
 
+    /** Rebinds only the target message. */
     void bind(Message current) {
         message = current;
     }
 
+    /** Hides host-backed actions whose hooks report them unsupported; retry is user-only. */
     private void applyActionVisibility() {
         quote.setVisibility(actions != null && actions.canQuote() ? VISIBLE : GONE);
         multiSelect.setVisibility(actions != null && actions.canMultiSelect()
@@ -115,6 +120,7 @@ final class MessageActionBar extends LinearLayout {
                 ? VISIBLE : GONE);
     }
 
+    /** Recolors every glyph with the tertiary text token. */
     void applyTokens(Tokens current) {
         copy.setIconColor(current.textTertiary);
         quote.setIconColor(current.textTertiary);
@@ -123,6 +129,7 @@ final class MessageActionBar extends LinearLayout {
         retry.setIconColor(current.textTertiary);
     }
 
+    /** Copies the message plain text to the clipboard; empty text is a no-op. */
     private void copyText() {
         String text = message == null ? "" : message.plainText();
         if (text.isEmpty()) {
@@ -135,6 +142,7 @@ final class MessageActionBar extends LinearLayout {
         }
     }
 
+    /** Shares the message plain text through the system send chooser. */
     private void shareText() {
         String text = message == null ? "" : message.plainText();
         if (text.isEmpty()) {
@@ -152,6 +160,7 @@ final class MessageActionBar extends LinearLayout {
         }
     }
 
+    /** Builds one 44x16dp glyph button with its accessibility description. */
     private IconButton button(int icon, String description) {
         IconButton button = new IconButton(getContext(), icon);
         button.setIconSizeDp(44, 16);
@@ -159,6 +168,7 @@ final class MessageActionBar extends LinearLayout {
         return button;
     }
 
+    /** Fixed 40x44dp parameters shared by every action button. */
     private LinearLayout.LayoutParams params(Context context) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 Ui.dp(context, 40), Ui.dp(context, 44));

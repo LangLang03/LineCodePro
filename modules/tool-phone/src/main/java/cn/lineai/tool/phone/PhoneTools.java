@@ -16,12 +16,27 @@ import cn.lineai.tool.api.ToolPresentation;
 import cn.lineai.tool.api.ToolRegistry;
 import cn.lineai.tool.api.ToolResult;
 
-/** Accessibility-backed phone control tools. */
+/**
+ * Accessibility-backed phone control tools.
+ *
+ * <p>All six tools share one {@link PhoneControl} supplier so the accessibility bridge can be
+ * enabled or disabled at runtime; an unavailable control is reported as a failure result
+ * rather than thrown. Every tool carries {@link ToolKind#PHONE} so mode policies can filter
+ * the family as a unit.</p>
+ */
 public final class PhoneTools {
 
+    /** Utility class; not instantiable. */
     private PhoneTools() {
     }
 
+    /**
+     * Copies the base registry and registers the phone tool family.
+     *
+     * @param base registry to extend; may be {@code null} to start empty
+     * @param control supplier of the accessibility-backed control, evaluated per call
+     * @return a new registry containing the base tools plus the phone tools
+     */
     public static ToolRegistry augment(ToolRegistry base, Supplier<PhoneControl> control) {
         ToolRegistry registry = new ToolRegistry();
         if (base != null) {
@@ -37,53 +52,70 @@ public final class PhoneTools {
         return registry;
     }
 
+    /** Current control from the supplier, or {@code null} when none is available. */
     private static PhoneControl control(Supplier<PhoneControl> supplier) {
         return supplier == null ? null : supplier.get();
     }
 
+    /** Standard failure used by every tool when the accessibility bridge is unavailable. */
     private static ToolResult missing() {
         return ToolResult.failure("", "Accessibility service is not enabled");
     }
 
+    /** Phone-family card with the given title and action text. */
     private static ToolPresentation toolPresentation(String title, String action) {
         return new ToolPresentation(title, ToolIcon.PHONE, action, "");
     }
 
+    /** Shared kind so phone tools can be toggled independently of file tools. */
     private static ToolKind phoneKind() {
         return ToolKind.PHONE;
     }
 
+    /** Dumps the accessibility tree of the active screen. */
     private static final class Hierarchy implements Tool {
         private final Supplier<PhoneControl> supplier;
 
+        /** Binds the tool to the shared control supplier. */
         Hierarchy(Supplier<PhoneControl> supplier) {
             this.supplier = supplier;
         }
 
+        /** {@inheritDoc} */
         public String name() {
             return "phone_view_hierarchy";
         }
 
+        /** {@inheritDoc} */
         public String description() {
             return "Dump the accessibility tree of the current screen.";
         }
 
+        /** {@inheritDoc} */
         public String parametersJson() {
             return cn.lineai.tool.api.ToolSchemaBuilder.object().build();
         }
 
+        /** {@inheritDoc} */
         public boolean mutating() {
             return false;
         }
 
+        /** {@inheritDoc} */
         public ToolKind kind() {
             return phoneKind();
         }
 
+        /** {@inheritDoc} */
         public ToolPresentation presentation(JSONObject arguments) {
             return toolPresentation("Phone hierarchy", "");
         }
 
+        /**
+         * {@inheritDoc}
+         *
+         * <p>An empty hierarchy means no active window and is reported as a failure.</p>
+         */
         public ToolResult execute(ToolContext context, JSONObject arguments) {
             PhoneControl control = control(supplier);
             if (control == null)
@@ -95,21 +127,26 @@ public final class PhoneTools {
         }
     }
 
+    /** Taps at pixel coordinates on the current screen. */
     private static final class Click implements Tool {
         private final Supplier<PhoneControl> supplier;
 
+        /** Binds the tool to the shared control supplier. */
         Click(Supplier<PhoneControl> supplier) {
             this.supplier = supplier;
         }
 
+        /** {@inheritDoc} */
         public String name() {
             return "phone_click";
         }
 
+        /** {@inheritDoc} */
         public String description() {
             return "Tap screen coordinates (pixels).";
         }
 
+        /** {@inheritDoc} */
         public String parametersJson() {
             return cn.lineai.tool.api.ToolSchemaBuilder.object()
                     .number("x", "Screen X coordinate")
@@ -117,19 +154,23 @@ public final class PhoneTools {
                     .required("x").required("y").build();
         }
 
+        /** {@inheritDoc} */
         public boolean mutating() {
             return true;
         }
 
+        /** {@inheritDoc} */
         public ToolKind kind() {
             return phoneKind();
         }
 
+        /** {@inheritDoc} */
         public ToolPresentation presentation(JSONObject arguments) {
             return toolPresentation("Phone click", "x=" + arguments.optInt("x")
                     + " y=" + arguments.optInt("y"));
         }
 
+        /** {@inheritDoc} */
         public ToolResult execute(ToolContext context, JSONObject arguments) {
             PhoneControl control = control(supplier);
             if (control == null)
@@ -140,21 +181,26 @@ public final class PhoneTools {
         }
     }
 
+    /** Presses and holds at pixel coordinates. */
     private static final class LongPress implements Tool {
         private final Supplier<PhoneControl> supplier;
 
+        /** Binds the tool to the shared control supplier. */
         LongPress(Supplier<PhoneControl> supplier) {
             this.supplier = supplier;
         }
 
+        /** {@inheritDoc} */
         public String name() {
             return "phone_long_press";
         }
 
+        /** {@inheritDoc} */
         public String description() {
             return "Long-press screen coordinates (pixels).";
         }
 
+        /** {@inheritDoc} */
         public String parametersJson() {
             return cn.lineai.tool.api.ToolSchemaBuilder.object()
                     .number("x", "Screen X coordinate")
@@ -163,19 +209,23 @@ public final class PhoneTools {
                     .required("x").required("y").build();
         }
 
+        /** {@inheritDoc} */
         public boolean mutating() {
             return true;
         }
 
+        /** {@inheritDoc} */
         public ToolKind kind() {
             return phoneKind();
         }
 
+        /** {@inheritDoc} */
         public ToolPresentation presentation(JSONObject arguments) {
             return toolPresentation("Phone long press", "x=" + arguments.optInt("x")
                     + " y=" + arguments.optInt("y"));
         }
 
+        /** {@inheritDoc} */
         public ToolResult execute(ToolContext context, JSONObject arguments) {
             PhoneControl control = control(supplier);
             if (control == null)
@@ -187,21 +237,26 @@ public final class PhoneTools {
         }
     }
 
+    /** Drags from one screen point to another, e.g. for scrolling. */
     private static final class Swipe implements Tool {
         private final Supplier<PhoneControl> supplier;
 
+        /** Binds the tool to the shared control supplier. */
         Swipe(Supplier<PhoneControl> supplier) {
             this.supplier = supplier;
         }
 
+        /** {@inheritDoc} */
         public String name() {
             return "phone_swipe";
         }
 
+        /** {@inheritDoc} */
         public String description() {
             return "Swipe between two screen points.";
         }
 
+        /** {@inheritDoc} */
         public String parametersJson() {
             return cn.lineai.tool.api.ToolSchemaBuilder.object()
                     .number("x1", "Start X")
@@ -212,20 +267,24 @@ public final class PhoneTools {
                     .required("x1").required("y1").required("x2").required("y2").build();
         }
 
+        /** {@inheritDoc} */
         public boolean mutating() {
             return true;
         }
 
+        /** {@inheritDoc} */
         public ToolKind kind() {
             return phoneKind();
         }
 
+        /** {@inheritDoc} */
         public ToolPresentation presentation(JSONObject arguments) {
             return toolPresentation("Phone swipe", arguments.optInt("x1") + ","
                     + arguments.optInt("y1") + " → " + arguments.optInt("x2") + ","
                     + arguments.optInt("y2"));
         }
 
+        /** {@inheritDoc} */
         public ToolResult execute(ToolContext context, JSONObject arguments) {
             PhoneControl control = control(supplier);
             if (control == null)
@@ -238,22 +297,27 @@ public final class PhoneTools {
         }
     }
 
+    /** Runs one global accessibility action such as back or home. */
     private static final class GlobalAction implements Tool {
         private final Supplier<PhoneControl> supplier;
 
+        /** Binds the tool to the shared control supplier. */
         GlobalAction(Supplier<PhoneControl> supplier) {
             this.supplier = supplier;
         }
 
+        /** {@inheritDoc} */
         public String name() {
             return "phone_global_action";
         }
 
+        /** {@inheritDoc} */
         public String description() {
             return "Run a global action: back, home, recents, notifications, "
                     + "quick_settings, power_dialog, lock_screen.";
         }
 
+        /** {@inheritDoc} */
         public String parametersJson() {
             return cn.lineai.tool.api.ToolSchemaBuilder.object()
                     .enumString("action", "Global action", "back", "home", "recents",
@@ -261,18 +325,22 @@ public final class PhoneTools {
                     .required("action").build();
         }
 
+        /** {@inheritDoc} */
         public boolean mutating() {
             return true;
         }
 
+        /** {@inheritDoc} */
         public ToolKind kind() {
             return phoneKind();
         }
 
+        /** {@inheritDoc} */
         public ToolPresentation presentation(JSONObject arguments) {
             return toolPresentation("Phone action", arguments.optString("action", ""));
         }
 
+        /** {@inheritDoc} */
         public ToolResult execute(ToolContext context, JSONObject arguments) {
             PhoneControl control = control(supplier);
             if (control == null)
@@ -284,37 +352,51 @@ public final class PhoneTools {
         }
     }
 
+    /** Captures the screen and stores the PNG under {@code screenshots/}. */
     private static final class Screenshot implements Tool {
         private final Supplier<PhoneControl> supplier;
 
+        /** Binds the tool to the shared control supplier. */
         Screenshot(Supplier<PhoneControl> supplier) {
             this.supplier = supplier;
         }
 
+        /** {@inheritDoc} */
         public String name() {
             return "phone_screenshot";
         }
 
+        /** {@inheritDoc} */
         public String description() {
             return "Capture the screen and save a PNG in the workspace.";
         }
 
+        /** {@inheritDoc} */
         public String parametersJson() {
             return cn.lineai.tool.api.ToolSchemaBuilder.object().build();
         }
 
+        /** {@inheritDoc} */
         public boolean mutating() {
             return true;
         }
 
+        /** {@inheritDoc} */
         public ToolKind kind() {
             return phoneKind();
         }
 
+        /** {@inheritDoc} */
         public ToolPresentation presentation(JSONObject arguments) {
             return toolPresentation("Phone screenshot", "");
         }
 
+        /**
+         * {@inheritDoc}
+         *
+         * <p>Files are timestamped so repeated captures never collide; the result reports the
+         * workspace-relative path the model can pass to read_file or image_understanding.</p>
+         */
         public ToolResult execute(ToolContext context, JSONObject arguments) {
             PhoneControl control = control(supplier);
             if (control == null)

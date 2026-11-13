@@ -34,7 +34,7 @@ the original repository. All code now lives under `modules/` (plus the thin `:ap
   module allowed to depend on the frozen `:ipc`
 - `:platform-android` — scheduler, accessibility service, keep-alive service
 - `:runtime` — composition root (`AppGraph`), screen factories, SAF/archive dispatch
-- `:app` — `NextApp` + `MainActivity` shell only (≤1,500 Java lines, no page construction)
+- `:app` — `NextApp` + `MainActivity` shell only (≤1,800 Java lines total including the mandatory per-method Javadoc, no page construction)
 - `:arch-test` — mechanical architecture guards
 
 ## Data
@@ -103,7 +103,7 @@ Architecture guards: `linecode.java`, `linecode.android`, `linecode.verify`, `li
 literals, no raw threads/locks outside sanctioned files, no UI string concatenation, stringly-typed
 state (statuses only inside enums), en/zh/ru string key parity, prompt-catalog consistency
 (manifest ↔ `PromptId` ↔ placeholders, no duplicate or orphan assets), the `:app` shell budget
-(≤1,500 Java lines total), settings-key parity between `LegacyMigration` and `ToolModes`, and no
+(≤1,800 Java lines total), settings-key parity between `LegacyMigration` and `ToolModes`, and no
 hand-written JSON object literals in main sources (`noHandWrittenJsonObjects`).
 
 Sanctioned blocking-thread files (each documented here, list must stay minimal): `app/NestedAgentRunner`

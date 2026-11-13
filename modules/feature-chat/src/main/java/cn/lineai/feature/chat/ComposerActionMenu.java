@@ -24,13 +24,25 @@ import cn.lineai.ui.tokens.Tokens;
  */
 final class ComposerActionMenu {
 
+    /** Fixed row metrics in dp. */
     private static final int ROW_MIN_HEIGHT_DP = 52;
     private static final int ICON_DP = 16;
     private static final int ICON_GAP_DP = 8;
 
+    /** Static utility; not instantiable. */
     private ComposerActionMenu() {
     }
 
+    /**
+     * Shows the bottom sheet with one row per attachment/permission drawer, ordered thinking,
+     * mode, files, image (vision), video (video support). Unsupported capability rows are either
+     * omitted or toast a lock explanation.
+     *
+     * @param context      context hosting the sheet window
+     * @param tokens       design tokens
+     * @param listener     composer callbacks invoked after the sheet dismisses
+     * @param capabilities model capability switches; null defaults to reasoning only
+     */
     static void show(Context context, Tokens tokens, ChatComposer.Listener listener,
                      ChatCapabilities capabilities) {
         if (listener == null) {
@@ -68,6 +80,7 @@ final class ComposerActionMenu {
         Sheets.showBottom(context, tokens, panel);
     }
 
+    /** Adds one 52dp menu row that dismisses the sheet before running its action. */
     private static void addRow(Context context, Tokens tokens, LinearLayout panel, int icon,
                                int label, Runnable action) {
         LinearLayout row = row(context);
@@ -93,12 +106,14 @@ final class ComposerActionMenu {
         panel.addView(row, new LinearLayout.LayoutParams(-1, -2));
     }
 
+    /** Vertical sheet container. */
     private static LinearLayout column(Context context) {
         LinearLayout layout = new LinearLayout(context);
         layout.setOrientation(LinearLayout.VERTICAL);
         return layout;
     }
 
+    /** Horizontally centered row container. */
     private static LinearLayout row(Context context) {
         LinearLayout layout = new LinearLayout(context);
         layout.setOrientation(LinearLayout.HORIZONTAL);
@@ -106,6 +121,7 @@ final class ComposerActionMenu {
         return layout;
     }
 
+    /** Walks up to the hosting dialog and dismisses it, so the action runs on a closed sheet. */
     private static void dismiss(View view) {
         ViewParent parent = view.getParent();
         while (parent != null && !(parent instanceof Dialog)) {

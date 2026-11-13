@@ -24,13 +24,16 @@ import cn.lineai.ui.tokens.Tokens;
  */
 final class DiffView extends HorizontalScrollView {
 
+    /** Unchanged lines kept around every change. */
     private static final int CONTEXT_LINES = 3;
+    /** Hard cap on rendered diff lines. */
     private static final int MAX_DISPLAYED = 200;
 
     private final LinearLayout content;
     private final List<LineRow> rows = new ArrayList<>();
     private final List<TextView> mutedLabels = new ArrayList<>();
 
+    /** Builds the horizontally scrollable row container. */
     DiffView(Context context) {
         super(context);
         setFillViewport(true);
@@ -40,6 +43,10 @@ final class DiffView extends HorizontalScrollView {
         addView(content, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
     }
 
+    /**
+     * Rebuilds the rows: three context lines around each change, one gap marker per collapsed
+     * region, a truncation note past {@link #MAX_DISPLAYED} and a no-newline note where needed.
+     */
     void bind(DiffLines diff, Tokens tokens) {
         content.removeAllViews();
         rows.clear();
@@ -87,6 +94,7 @@ final class DiffView extends HorizontalScrollView {
         apply(tokens);
     }
 
+    /** Recolors rows and labels in place, keeping the row structure intact. */
     void apply(Tokens tokens) {
         for (LineRow row : rows) {
             int textColor = row.kind == DiffLines.Line.ADDED ? tokens.diffAddText
@@ -104,6 +112,7 @@ final class DiffView extends HorizontalScrollView {
         for (TextView label : mutedLabels) label.setTextColor(tokens.textTertiary);
     }
 
+    /** Inserts the ellipsis marker for a collapsed unchanged region. */
     private void addGap() {
         TextView gap = Ui.text(getContext(), "\u22ef", Tokens.FONT_SM,
                 android.graphics.Color.GRAY, Typeface.NORMAL);
@@ -112,6 +121,7 @@ final class DiffView extends HorizontalScrollView {
         content.addView(gap, new LinearLayout.LayoutParams(-1, -2));
     }
 
+    /** Adds one 26dp diff row: marker strip, right-aligned number and single-line code cell. */
     private void addLine(DiffLines.Line line, Tokens tokens) {
         Context context = getContext();
         LinearLayout root = new LinearLayout(context);
@@ -132,6 +142,7 @@ final class DiffView extends HorizontalScrollView {
         content.addView(root, new LinearLayout.LayoutParams(-1, -2));
     }
 
+    /** Single-line monospace cell; colors are applied later by {@link #apply}. */
     private TextView cell(String text) {
         TextView view = Ui.text(getContext(), text, Tokens.FONT_SM,
                 android.graphics.Color.GRAY, Typeface.NORMAL);
@@ -140,6 +151,7 @@ final class DiffView extends HorizontalScrollView {
         return view;
     }
 
+    /** References to one rendered diff row for in-place restyling. */
     private static final class LineRow {
         final View root;
         final View marker;

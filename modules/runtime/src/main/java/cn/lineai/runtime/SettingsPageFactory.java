@@ -47,10 +47,12 @@ public final class SettingsPageFactory {
 
     private final PageHost host;
 
+    /** Creates the factory over the given host. */
     SettingsPageFactory(PageHost host) {
         this.host = host;
     }
 
+    /** Builds the view for one settings-family screen key; throws on unregistered routes. */
     View create(ScreenKey<?, ?> key) {
         if (key.id() == SettingsScreens.HOME) {
             return new SettingsHome(host.activity(), host.tokens(), host.navigation()::back,
@@ -192,6 +194,7 @@ public final class SettingsPageFactory {
         throw new IllegalArgumentException("Unregistered settings screen: " + key.id().route());
     }
 
+    /** Routes an extension id to its feature-module screen; unavailable otherwise. */
     private void openExtension(String id) {
         if ("agent".equals(id)) {
             host.navigation().push(ExtensionScreens.AGENTS.key(Params.Empty.INSTANCE));
@@ -208,6 +211,7 @@ public final class SettingsPageFactory {
         }
     }
 
+    /** Memory management page over long-term items, session TODOs and chat index. */
     private View memoryPage() {
         return new MemoryPage(host.activity(), host.tokens(), host.navigation()::back,
                 new MemoryPage.Listener() {
@@ -230,6 +234,7 @@ public final class SettingsPageFactory {
                 }, host.graph().scheduler());
     }
 
+    /** SSH credentials page with a diagnostics-backed connection test. */
     private View sshPage() {
         final SshPreferences preferences = new SshPreferences(host.graph().settings());
         final SshService service = new SshService(host.activity().getFilesDir());
@@ -266,6 +271,7 @@ public final class SettingsPageFactory {
         return holder[0];
     }
 
+    /** Termux integration page driving the one-tap OpenSSH setup flow. */
     private View termuxPage() {
         final TermuxClient client = new TermuxClient(host.activity());
         final SshPreferences preferences = new SshPreferences(host.graph().settings());
@@ -337,6 +343,7 @@ public final class SettingsPageFactory {
         return holder[0];
     }
 
+    /** Tool settings page for image models and web search configuration. */
     private View toolSettingsPage() {
         ToolPreferences preferences = new ToolPreferences(host.graph().settings());
         return new ToolSettingsPage(host.activity(), host.tokens(), host.navigation()::back,
@@ -351,6 +358,7 @@ public final class SettingsPageFactory {
                 });
     }
 
+    /** Error log list page; clearing resets the rendered list immediately. */
     private View errorLogsPage() {
         final ErrorLogsPage[] holder = new ErrorLogsPage[1];
         ErrorLogsPage.Listener listener = new ErrorLogsPage.Listener() {
@@ -370,6 +378,7 @@ public final class SettingsPageFactory {
         return holder[0];
     }
 
+    /** Storage management page; renders asynchronously measured statistics. */
     private View storagePage() {
         final StorageManagementPage[] holder = new StorageManagementPage[1];
         holder[0] = new StorageManagementPage(host.activity(), host.tokens(),
@@ -381,6 +390,7 @@ public final class SettingsPageFactory {
         return holder[0];
     }
 
+    /** Loads storage statistics on io and delivers them to the consumer on main. */
     private void loadStorage(java.util.function.Consumer<cn.lineai.data.api.StorageStats> consumer) {
         Scheduler scheduler = host.graph().graph().get(Scheduler.class);
         scheduler.io(() -> {
@@ -389,6 +399,7 @@ public final class SettingsPageFactory {
         });
     }
 
+    /** Keep-alive page for the battery exemption and foreground service toggle. */
     private View keepAlivePage() {
         KeepAliveSettingsPage page = new KeepAliveSettingsPage(host.activity(), host.tokens(),
                 host.navigation()::back, host.graph().preferences()::dispatch,
@@ -405,6 +416,7 @@ public final class SettingsPageFactory {
         return page;
     }
 
+    /** Phone control page for the accessibility service disclaimer and settings. */
     private View phoneControlPage() {
         return new PhoneControlPage(host.activity(), host.tokens(), host.navigation()::back,
                 new PhoneControlPreferences(host.graph().settings()),
@@ -427,6 +439,7 @@ public final class SettingsPageFactory {
                 });
     }
 
+    /** Prompt template editor page over the catalog entries. */
     private View promptsPage() {
         return new PromptTemplatesPage(host.activity(), host.tokens(), host.navigation()::back,
                 PromptTemplatesCatalog.entries(host.graph().prompts(), host.activity()),
@@ -440,6 +453,7 @@ public final class SettingsPageFactory {
                 });
     }
 
+    /** About page with app metadata and project links. */
     private View aboutPage() {
         return new AboutPage(host.activity(), host.tokens(), host.navigation()::back,
                 AppInfo.label(host.activity()), AppInfo.versionName(host.activity()),
@@ -448,6 +462,7 @@ public final class SettingsPageFactory {
                 () -> host.navigation().push(SettingsScreens.LICENSES.key(Params.Empty.INSTANCE)));
     }
 
+    /** Theme page persisting mode and custom colors and applying them immediately. */
     private View themePage() {
         ThemePreferences theme = host.graph().themePreferences();
         return new ThemeSettingsPage(host.activity(), host.tokens(), host.navigation()::back,
@@ -459,22 +474,26 @@ public final class SettingsPageFactory {
                                 .withCustomColors(colors))));
     }
 
+    /** Dark configuration check used when resolving theme palettes. */
     private boolean isNightMode() {
         return (host.activity().getResources().getConfiguration().uiMode
                 & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
                 == android.content.res.Configuration.UI_MODE_NIGHT_YES;
     }
 
+    /** Display name of a model id; empty when unset or unknown. */
     private String modelLabel(String id) {
         if (id == null || id.isEmpty()) return "";
         cn.lineai.core.model.ModelConfig model = host.graph().models().find(id);
         return model == null ? "" : model.name;
     }
 
+    /** String resource shortcut. */
     private String string(int id) {
         return host.activity().getString(id);
     }
 
+    /** Formatted string resource shortcut. */
     private String string(int id, Object... args) {
         return host.activity().getString(id, args);
     }

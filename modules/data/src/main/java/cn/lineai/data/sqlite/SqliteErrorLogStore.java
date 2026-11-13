@@ -18,11 +18,22 @@ public final class SqliteErrorLogStore implements ErrorLogStore {
     private final LineCodeDatabase database;
     private final Clock clock;
 
+    /**
+     * Creates the store.
+     *
+     * @param database shared database connection holder
+     * @param clock clock used to timestamp new entries
+     */
     public SqliteErrorLogStore(LineCodeDatabase database, Clock clock) {
         this.database = database;
         this.clock = clock;
     }
 
+    /**
+     * Reads every retained entry, newest first.
+     *
+     * @return all entries in reverse creation order
+     */
     @Override
     public List<ErrorLog> list() {
         List<ErrorLog> logs = new ArrayList<>();
@@ -40,6 +51,14 @@ public final class SqliteErrorLogStore implements ErrorLogStore {
         return logs;
     }
 
+    /**
+     * Appends one entry with a fresh identifier, then trims the table back to
+     * {@link #MAX_ENTRIES} rows so the log cannot grow without bound.
+     *
+     * @param title short headline; null is stored as empty
+     * @param subtitle optional secondary line; null is stored as empty
+     * @param detail full technical description; null is stored as empty
+     */
     @Override
     public void record(String title, String subtitle, String detail) {
         SQLiteDatabase db = database.open();
@@ -54,6 +73,7 @@ public final class SqliteErrorLogStore implements ErrorLogStore {
                 + "(SELECT id FROM error_logs ORDER BY created_at DESC LIMIT " + MAX_ENTRIES + ")");
     }
 
+    /** Deletes every recorded entry. */
     @Override
     public void clear() {
         database.open().delete("error_logs", null, null);

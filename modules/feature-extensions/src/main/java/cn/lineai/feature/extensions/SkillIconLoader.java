@@ -23,11 +23,22 @@ final class SkillIconLoader {
     private final SkillHubApi api;
     private final LruCache<String, Bitmap> cache = new LruCache<>(24);
 
+    /**
+     * Creates a loader bound to a scheduler; the LruCache lives for the owning page only.
+     *
+     * @param scheduler scheduler enforcing the I/O-to-main threading contract
+     */
     SkillIconLoader(Scheduler scheduler) {
         this.scheduler = scheduler;
         this.api = new SkillHubApi();
     }
 
+    /**
+     * Loads the artwork for a URL into the target view, decoding on I/O and assigning on main.
+     *
+     * @param rawUrl artwork URL; may be null or empty to keep the fallback glyph
+     * @param target view to receive the bitmap once loaded
+     */
     void load(String rawUrl, ImageView target) {
         String url = rawUrl == null ? "" : rawUrl.trim();
         target.setTag(url);
@@ -58,6 +69,7 @@ final class SkillIconLoader {
         });
     }
 
+    /** Decodes bytes at a bounded sample size; returns null for empty or invalid images. */
     private static Bitmap decode(byte[] bytes) {
         if (bytes == null || bytes.length == 0) {
             return null;

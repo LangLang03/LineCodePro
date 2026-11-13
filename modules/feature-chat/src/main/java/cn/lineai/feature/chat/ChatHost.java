@@ -17,26 +17,34 @@ import cn.lineai.ui.tokens.Tokens;
  */
 public interface ChatHost {
 
+    /** Hosting activity, used for toasts, SAF results and system UI. */
     Activity activity();
 
+    /** Design tokens for chat-owned surfaces. */
     Tokens tokens();
 
+    /** Navigation back stack for host-owned pages. */
     BackStack navigation();
 
     /** Graceful "not supported here" fallback for optional host capabilities. */
     void unavailable();
 
+    /** The chat controller driving this screen. */
     ChatController chat();
 
+    /** Model store for capability lookups and model selection. */
     ModelStore models();
 
+    /** Project store for workspace context. */
     ProjectStore projects();
 
+    /** Settings store for chat preferences. */
     SettingsStore settings();
 
     /** Dispatches a settings action without exposing the settings store or presenter state. */
     void dispatchSettings(SettingsAction action);
 
+    /** Scheduler for io/main dispatch from chat code. */
     Scheduler scheduler();
 
     /** Opens the SAF export flow for the chat transcript. */

@@ -21,11 +21,13 @@ public final class IpcProviderRegistry {
 
     private final Map<IpcProviderType, IpcProviderFactory> factories = new ConcurrentHashMap<>();
 
+    /** Private constructor; the library's own factory is registered eagerly. */
     private IpcProviderRegistry() {
         // The factory shipped with this library is always present.
         register(TerminalProviderServiceFactory.getInstance());
     }
 
+    /** Returns the process-wide singleton instance. */
     public static IpcProviderRegistry getInstance() {
         return INSTANCE;
     }

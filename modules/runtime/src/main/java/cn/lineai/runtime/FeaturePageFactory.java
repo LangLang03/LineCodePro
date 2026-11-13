@@ -34,11 +34,13 @@ public final class FeaturePageFactory {
     private WorkspaceProjectsPage workspacePage;
     private LocalModelBridge.Page localPage;
 
+    /** Creates the factory; the local bridge is resolved once, reflecting the build flavor. */
     FeaturePageFactory(PageHost host) {
         this.host = host;
         this.localModels = LocalModelBridges.find();
     }
 
+    /** Builds the view for one feature screen key; throws on unregistered routes. */
     View create(ScreenKey<?, ?> key) {
         if (key.id() == ExtensionScreens.AGENTS) return agentExtensionsPage();
         if (key.id() == ExtensionScreens.AGENT_EDIT) return agentEditPage((Params.Args) key.params());
@@ -123,18 +125,22 @@ public final class FeaturePageFactory {
         throw new IllegalArgumentException("Unregistered feature screen: " + key.id().route());
     }
 
+    /** Forwards an imported GGUF path to the open local model page, if any. */
     public void applyLocalModelPath(String path) {
         if (localPage != null) localPage.setModelPath(path);
     }
 
+    /** Refreshes the cached workspace projects page after SAF-driven changes. */
     public void reloadWorkspace() {
         if (workspacePage != null) workspacePage.reload();
     }
 
+    /** Refreshes the cached skills page after a SAF skill import. */
     public void reloadSkills() {
         if (skillsPage != null) skillsPage.reload();
     }
 
+    /** Extension agent list page wired to the agent extension store. */
     private AgentExtensionsPage agentExtensionsPage() {
         return new AgentExtensionsPage(host.activity(), host.tokens(), host.navigation()::back,
                 new AgentExtensionsPage.Listener() {
@@ -156,6 +162,7 @@ public final class FeaturePageFactory {
                 });
     }
 
+    /** Agent editor page; loads the edited agent and the phone-tool-free catalog. */
     private AgentExtensionEditPage agentEditPage(Params.Args args) {
         String id = args.get("id") instanceof String ? (String) args.get("id") : "";
         cn.lineai.core.model.AgentExtension editing = null;
@@ -202,6 +209,7 @@ public final class FeaturePageFactory {
                 new cn.lineai.engine.ai.ModelProbe());
     }
 
+    /** MCP server list page wired to the MCP extension store. */
     private McpExtensionsPage mcpExtensionsPage() {
         return new McpExtensionsPage(host.activity(), host.tokens(), host.navigation()::back,
                 new McpExtensionsPage.Listener() {
@@ -223,6 +231,7 @@ public final class FeaturePageFactory {
                 });
     }
 
+    /** MCP server editor page; loads the edited server when the args carry an id. */
     private McpExtensionEditPage mcpEditPage(Params.Args args) {
         String id = args.get("id") instanceof String ? (String) args.get("id") : "";
         cn.lineai.core.model.McpExtension editing = null;
@@ -246,6 +255,7 @@ public final class FeaturePageFactory {
                 });
     }
 
+    /** Skills list page; cached so SAF imports can trigger a reload. */
     private SkillsExtensionsPage skillsExtensionsPage() {
         skillsPage = new SkillsExtensionsPage(host.activity(), host.tokens(),
                 host.navigation()::back, new SkillsExtensionsPage.Listener() {
@@ -284,6 +294,7 @@ public final class FeaturePageFactory {
         return skillsPage;
     }
 
+    /** Skill editor page; loads the edited skill when the args carry an id. */
     private SkillEditPage skillEditPage(Params.Args args) {
         String id = args.get("id") instanceof String ? (String) args.get("id") : "";
         cn.lineai.core.model.Skill editing = null;
@@ -306,6 +317,7 @@ public final class FeaturePageFactory {
                 });
     }
 
+    /** Terminal provider management page; refreshes discovery before rendering. */
     private TerminalProvidersPage terminalProvidersPage() {
         host.graph().refreshTerminalProviders();
         return new TerminalProvidersPage(host.activity(), host.tokens(), host.navigation()::back,
@@ -340,6 +352,7 @@ public final class FeaturePageFactory {
                 });
     }
 
+    /** Workspace listener handling selection, creation, SSH status and change routing. */
     private WorkspaceProjectsPage.Listener workspaceListener() {
         return new WorkspaceProjectsPage.Listener() {
                     public java.util.List<cn.lineai.core.model.Project> list() {
@@ -389,12 +402,14 @@ public final class FeaturePageFactory {
         };
     }
 
+    /** Workspace projects page; cached so SAF results can trigger a reload. */
     private View workspaceProjectsPage() {
         workspacePage = new WorkspaceProjectsPage(host.activity(), host.tokens(),
                 host.navigation()::back, workspaceListener());
         return workspacePage;
     }
 
+    /** Model list page with a late loader that re-reads the store on each visit. */
     private View modelListPage() {
         ModelListPage page = new ModelListPage(host.activity(), host.tokens(),
                 host.graph().models().list(), selectedModelId(),
@@ -421,6 +436,7 @@ public final class FeaturePageFactory {
         return page;
     }
 
+    /** Model add-options page; the local entry is hidden in the slim build. */
     private View modelOptionsPage() {
         return new cn.lineai.feature.models.ModelAddOptionsPage(host.activity(), host.tokens(),
                 host.navigation()::back, new cn.lineai.feature.models.ModelAddOptionsPage.Listener() {
@@ -444,6 +460,7 @@ public final class FeaturePageFactory {
                 });
     }
 
+    /** Custom or preset model editor page; saves select the model and pop back. */
     private View modelEditPage(ScreenKey<?, ?> key, cn.lineai.core.model.ModelConfig existing) {
         cn.lineai.core.model.ModelPreset preset = key.args().asMap().containsKey("preset")
                 ? cn.lineai.core.model.ModelPreset.find(key.args().requireString("preset")) : null;
@@ -468,6 +485,7 @@ public final class FeaturePageFactory {
         return page;
     }
 
+    /** Local GGUF model page from the optional bridge; falls back when absent. */
     private View localModelPage(cn.lineai.core.model.ModelConfig existing) {
         if (localModels == null) {
             host.unavailable();
@@ -491,6 +509,7 @@ public final class FeaturePageFactory {
         return localPage.view();
     }
 
+    /** Id of the currently selected model; empty when none is selected. */
     private String selectedModelId() {
         cn.lineai.core.model.ModelConfig selected = host.graph().models().selected();
         return selected == null ? "" : selected.id;

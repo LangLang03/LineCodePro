@@ -43,6 +43,7 @@ public final class ChatSheets {
     /** C++ PickerSheetPanel min_height: a short picker still reads as a drawer. */
     static final int PICKER_MIN_HEIGHT_DP = 240;
 
+    /** Static utility; not instantiable. */
     private ChatSheets() {
     }
 
@@ -57,6 +58,7 @@ public final class ChatSheets {
         });
     }
 
+    /** Renders the loaded model rows; selecting one persists the choice and refreshes the header. */
     private static void showModelPickerList(ChatHost host, List<ModelConfig> models,
                                             ModelConfig selected) {
         Tokens tokens = host.tokens();
@@ -87,6 +89,7 @@ public final class ChatSheets {
                 PICKER_MIN_HEIGHT_DP);
     }
 
+    /** Reasoning-level picker; the chosen level is persisted and dispatched to settings. */
     public static void showReasoningPicker(ChatHost host) {
         Tokens tokens = host.tokens();
         Context context = host.activity();
@@ -115,6 +118,7 @@ public final class ChatSheets {
                 PICKER_MIN_HEIGHT_DP);
     }
 
+    /** Context-usage sheet with used/limit/percent rows from the controller's estimates. */
     public static Dialog showContextUsage(ChatHost host) {
         Tokens tokens = host.tokens();
         Context context = host.activity();
@@ -134,22 +138,27 @@ public final class ChatSheets {
         return Sheets.showBottom(context, tokens, panel);
     }
 
+    /** Alias to {@link ChatMenuSheets#showMore} for the shared entry vocabulary. */
     public static void showMore(ChatHost host) {
         ChatMenuSheets.showMore(host);
     }
 
+    /** Alias to {@link ChatMenuSheets#showPermission}. */
     public static void showPermission(ChatHost host) {
         ChatMenuSheets.showPermission(host);
     }
 
+    /** Alias to {@link ChatMenuSheets#showContextMenu}. */
     public static void showContextMenu(ChatHost host) {
         ChatMenuSheets.showContextMenu(host);
     }
 
+    /** Alias to {@link ChatMenuSheets#showCompaction}. */
     public static void showCompaction(ChatHost host, Runnable onConfirm) {
         ChatMenuSheets.showCompaction(host, onConfirm);
     }
 
+    /** Alias to {@link ChatAttachmentSheet#show} with a pre-built tree. */
     public static void showAttachmentPicker(ChatHost host, DrawerPanel.FileNode tree,
                                             List<String> selected, Consumer<String> onToggle) {
         ChatAttachmentSheet.show(host, tree, selected, onToggle);
@@ -182,6 +191,7 @@ public final class ChatSheets {
         });
     }
 
+    /** Recursive tree build; directories first, then case-insensitive names, budget-capped. */
     private static DrawerPanel.FileNode buildTree(java.io.File dir, String relative, int depth,
                                                   int[] budget) {
         java.util.List<DrawerPanel.FileNode> children = new java.util.ArrayList<>();
@@ -211,18 +221,21 @@ public final class ChatSheets {
                 "medium"));
     }
 
+    /** Current permission mode for checkmark rendering. */
     static String permissionMode(ChatHost host) {
         return ToolModes.mode(host.settings());
     }
 
     // ------------------------------------------------------------------ framing
 
+    /** Vertical container. */
     static LinearLayout column(Context context) {
         LinearLayout layout = new LinearLayout(context);
         layout.setOrientation(LinearLayout.VERTICAL);
         return layout;
     }
 
+    /** Centered horizontal container. */
     static LinearLayout row(Context context) {
         LinearLayout layout = new LinearLayout(context);
         layout.setOrientation(LinearLayout.HORIZONTAL);
@@ -230,10 +243,12 @@ public final class ChatSheets {
         return layout;
     }
 
+    /** dp conversion. */
     static int dp(Context context, float value) {
         return Ui.dp(context, value);
     }
 
+    /** Regular-weight label. */
     static TextView text(Context context, String value, int sizeSp, int color) {
         return Ui.text(context, value, sizeSp, color, Typeface.NORMAL);
     }
@@ -262,6 +277,7 @@ public final class ChatSheets {
         return pickerPanelText(host, host.activity().getString(titleRes), subtitle);
     }
 
+    /** Picker header variant taking an already-resolved title string. */
     static LinearLayout pickerPanelText(ChatHost host, String title, String subtitle) {
         Context context = host.activity();
         Tokens tokens = host.tokens();
@@ -347,6 +363,7 @@ public final class ChatSheets {
         return row;
     }
 
+    /** Padded tertiary message for empty pickers. */
     static LinearLayout emptyRow(ChatHost host, int message) {
         Context context = host.activity();
         LinearLayout wrapper = column(context);
@@ -356,6 +373,7 @@ public final class ChatSheets {
         return wrapper;
     }
 
+    /** Sub-pixel hairline. */
     static View divider(Context context, Tokens tokens) {
         View divider = new View(context);
         divider.setBackgroundColor(tokens.borderLight);
@@ -369,12 +387,14 @@ public final class ChatSheets {
         return bottomSpacer(host, 16);
     }
 
+    /** Spacer with an explicit height. */
     static View bottomSpacer(ChatHost host, int heightDp) {
         View spacer = new View(host.activity());
         spacer.setLayoutParams(new LinearLayout.LayoutParams(1, dp(host.activity(), heightDp)));
         return spacer;
     }
 
+    /** 48dp close glyph that dismisses the hosting dialog. */
     static View closeButton(ChatHost host) {
         Context context = host.activity();
         Tokens tokens = host.tokens();
@@ -389,10 +409,12 @@ public final class ChatSheets {
         return close;
     }
 
+    /** Dismisses the dialog hosting the view. */
     static void dismiss(View view) {
         Sheets.dismiss(view);
     }
 
+    /** One label/value row of the context-usage sheet. */
     private static void usageRow(ChatHost host, LinearLayout parent, int label, String value) {
         Context context = host.activity();
         Tokens tokens = host.tokens();
@@ -406,11 +428,13 @@ public final class ChatSheets {
 
     /** Reasoning level tokens, prices and descriptions shared by the picker and the pill. */
     static final class Reasoning {
+        /** Supported levels in display order. */
         static final String[] LEVELS = {"off", "auto", "low", "medium", "high", "max"};
 
         private Reasoning() {
         }
 
+        /** Localized short label; unknown levels fall back to medium. */
         static int label(String level) {
             if ("off".equals(level)) return R.string.screen_llm_thinking_off_label;
             if ("auto".equals(level)) return R.string.screen_llm_thinking_auto_label;
@@ -420,6 +444,7 @@ public final class ChatSheets {
             return R.string.screen_llm_thinking_medium_label;
         }
 
+        /** Localized detail description; unknown levels fall back to medium. */
         static int detail(String level) {
             if ("off".equals(level)) return R.string.screen_llm_thinking_off_desc;
             if ("auto".equals(level)) return R.string.screen_llm_thinking_auto;

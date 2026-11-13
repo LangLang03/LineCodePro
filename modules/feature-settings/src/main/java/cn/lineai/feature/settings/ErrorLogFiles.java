@@ -32,9 +32,16 @@ public final class ErrorLogFiles {
     private static final String EXTENSION = ".txt";
     private static final int MAXIMUM_STEM = 96;
 
+    /** Utility class; not instantiable. */
     private ErrorLogFiles() {
     }
 
+    /**
+     * Returns the directory holding exported error log files.
+     *
+     * @param context context whose files directory hosts the logs
+     * @return the {@code files/error-logs/} directory, not necessarily created
+     */
     public static File directory(Context context) {
         return new File(context.getFilesDir(), DIRECTORY);
     }
@@ -59,6 +66,13 @@ public final class ErrorLogFiles {
         return file;
     }
 
+    /**
+     * Builds the content-provider URI exposing a log file read-only to other apps.
+     *
+     * @param context context whose package name forms the authority
+     * @param file log file inside {@link #directory}; only its name is used
+     * @return content URI of the form {@code content://<package>.errorlogs/<name>}
+     */
     public static Uri uriFor(Context context, File file) {
         return new Uri.Builder().scheme("content")
                 .authority(context.getPackageName() + AUTHORITY_SUFFIX)
@@ -74,6 +88,13 @@ public final class ErrorLogFiles {
         return format.format(new Date(entry.createdAt));
     }
 
+    /**
+     * Renders the plain-text body of an entry: title, date, subtitle, and detail.
+     *
+     * @param context context used for date formatting
+     * @param entry entry to render; null yields an empty string
+     * @return the full text written to the exported file
+     */
     public static String body(Context context, ErrorLog entry) {
         StringBuilder out = new StringBuilder();
         if (entry == null) return out.toString();
@@ -86,6 +107,14 @@ public final class ErrorLogFiles {
         return out.toString();
     }
 
+    /**
+     * Writes the entry body to a file derived from the entry title and timestamp.
+     *
+     * @param context context used for storage and formatting
+     * @param entry entry to export
+     * @return the written file
+     * @throws IOException when the log directory cannot be created or the file cannot be written
+     */
     public static File write(Context context, ErrorLog entry) throws IOException {
         File dir = directory(context);
         if (!dir.isDirectory() && !dir.mkdirs() && !dir.isDirectory()) {
@@ -98,6 +127,13 @@ public final class ErrorLogFiles {
         return file;
     }
 
+    /**
+     * Derives a filesystem-safe file name from the entry title and timestamp, with a fixed
+     * fallback stem when nothing usable remains.
+     *
+     * @param entry entry to name; may be null
+     * @return sanitized file name ending in {@code .txt}
+     */
     static String fileName(ErrorLog entry) {
         StringBuilder stem = new StringBuilder();
         String title = entry == null ? "" : entry.title;

@@ -14,6 +14,7 @@ import cn.lineai.ui.kit.SettingsPage;
 import cn.lineai.ui.tokens.Tokens;
 
 /** HTTP, browser-script and path-protection switches. */
+/** HTTP, browser-script and path-protection switches. */
 public final class SecuritySettingsPage extends SettingsPage {
 
     private final PreferenceRow http;
@@ -21,6 +22,14 @@ public final class SecuritySettingsPage extends SettingsPage {
     private final PreferenceRow bypass;
     private final PreferenceRow trustExtensions;
 
+    /**
+     * Builds the security page; disabling path protection requires an explicit confirmation.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param dispatch consumer receiving settings actions for all switches
+     */
     public SecuritySettingsPage(Context context, Tokens tokens, Runnable back,
                                 Consumer<SettingsAction> dispatch) {
         super(context, R.string.screen_security_title, tokens, back);
@@ -71,6 +80,11 @@ public final class SecuritySettingsPage extends SettingsPage {
         section(R.string.screen_security_section_extensions).row(trustExtensions, false, 0);
     }
 
+    /**
+     * Syncs all switches to the given state; switches stay disabled until preferences load.
+     *
+     * @param state current settings state from the presenter
+     */
     public void render(SettingsState state) {
         http.checked(state.values.allowAnyHttp());
         javaScript.checked(state.values.browserJavaScript());

@@ -55,6 +55,7 @@ final class ProcessPanel extends LinearLayout {
     private long finishedAt;
     private boolean live;
 
+    /** Builds the clickable 48dp header, the hairline rule and the foldable body. */
     ProcessPanel(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -102,6 +103,10 @@ final class ProcessPanel extends LinearLayout {
         applyTokens(tokens);
     }
 
+    /**
+     * Binds the panel to one row: expands for live or failed turns unless the user toggled,
+     * reuses child views keyed by item identity, and refreshes the header summary.
+     */
     void bind(TurnAssembler.Row row, Tokens current, RowEnv rowEnv, String key) {
         tokens = current;
         env = rowEnv;
@@ -126,6 +131,7 @@ final class ProcessPanel extends LinearLayout {
         applyTokens(current);
     }
 
+    /** Applies tokens to the header and delegates to every child view. */
     void applyTokens(Tokens current) {
         tokens = current;
         label.setTextColor(current.textSecondary);
@@ -159,6 +165,7 @@ final class ProcessPanel extends LinearLayout {
         super.onDetachedFromWindow();
     }
 
+    /** Re-arms the one-second header tick while the turn is active. */
     private void scheduleTick() {
         removeCallbacks(tick);
         if (active() && finishedAt == 0 && isAttachedToWindow()) {
@@ -166,10 +173,12 @@ final class ProcessPanel extends LinearLayout {
         }
     }
 
+    /** True while running, awaiting approval, or live without a finish timestamp. */
     private boolean active() {
         return running || pending || (live && finishedAt == 0);
     }
 
+    /** Refreshes the state label, spinner, and elapsed duration of the summary header. */
     private void updateHeader() {
         boolean isActive = active();
         int text = isActive
@@ -202,6 +211,7 @@ final class ProcessPanel extends LinearLayout {
         scheduleTick();
     }
 
+    /** Header tap: records the explicit open/closed choice for this row. */
     private void toggle() {
         if (env == null) {
             return;
@@ -224,11 +234,13 @@ final class ProcessPanel extends LinearLayout {
         return processAutoExpand() || failed || active();
     }
 
+    /** Points the chevron and shows or hides the body. */
     private void applyExpanded() {
         chevron.setIconType(expanded ? Icons.CHEVRON_DOWN : Icons.CHEVRON_RIGHT);
         body.setVisibility(expanded ? VISIBLE : GONE);
     }
 
+    /** Syncs child views with the row's process items, removing stale ones and reordering. */
     private void renderItems(TurnAssembler.Row row, String key) {
         List<String> order = new ArrayList<>();
         for (TurnAssembler.Item item : row.process) {
@@ -261,6 +273,7 @@ final class ProcessPanel extends LinearLayout {
         }
     }
 
+    /** Builds or recycles the view for one process item kind. */
     private View create(TurnAssembler.Item item, View existing, String key) {
         if (item.kind == TurnAssembler.ITEM_REASONING) {
             ReasoningBlockView block = existing instanceof ReasoningBlockView
@@ -298,6 +311,7 @@ final class ProcessPanel extends LinearLayout {
         return markdown;
     }
 
+    /** Re-applies code-wrap and link preferences to every markdown child. */
     private void applyMarkdownPreferences() {
         for (MarkdownLite markdown : markdowns.keySet()) {
             markdown.setCodeWrapEnabled(env.preferences.codeWrap());
@@ -305,11 +319,13 @@ final class ProcessPanel extends LinearLayout {
         }
     }
 
+    /** The user's auto-expand preference for the process panel. */
     private boolean processAutoExpand() {
         UiPreferences preferences = env.preferences;
         return preferences.processAutoExpand();
     }
 
+    /** Change signal of one item; identical signals skip the rebuild. */
     private static String signal(TurnAssembler.Item item) {
         StringBuilder signal = new StringBuilder().append(item.kind).append('\u0001')
                 .append(item.text).append('\u0001').append(item.status);
@@ -321,6 +337,7 @@ final class ProcessPanel extends LinearLayout {
         return signal.toString();
     }
 
+    /** Compact elapsed-time label in seconds, minutes or hours. */
     static String formatDuration(long elapsedMillis) {
         long seconds = Math.max(0L, elapsedMillis) / 1000L;
         if (seconds < 60L) {

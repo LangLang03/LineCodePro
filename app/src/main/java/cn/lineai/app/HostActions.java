@@ -36,9 +36,18 @@ final class HostActions {
 
     private static final int NOTIFICATION_REQUEST = 7301;
 
+    /** Utility class; instantiation is not permitted. */
     private HostActions() {
     }
 
+    /**
+     * Opens a workspace file in an external viewer through the read-only content provider,
+     * refusing paths that escape the project root via canonical path comparison.
+     *
+     * @param activity activity used for the chooser and toasts
+     * @param graph application graph resolving the selected project
+     * @param relativePath path relative to the project root, empty for the root itself
+     */
     static void openWorkspaceFile(Activity activity, AppGraph graph, String relativePath) {
         Project project = graph.projects().selected();
         if (project == null) {
@@ -72,6 +81,14 @@ final class HostActions {
         }
     }
 
+    /**
+     * Launches the SAF open-document picker.
+     *
+     * @param activity activity receiving the result
+     * @param mime primary accepted mime type
+     * @param extraMimes additional accepted mime types, or {@code null}
+     * @param requestCode request code reported back by the activity
+     */
     static void pickDocument(Activity activity, String mime, String[] extraMimes, int requestCode) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -93,6 +110,18 @@ final class HostActions {
      * navigate folders to reach a picture. Android 13's Photo Picker is the media surface users
      * expect (recent photos, albums, no storage permission). Older devices and OEMs without the
      * picker keep the SAF fallback.</p>
+     */
+    /**
+     * Picks an image or video through the system Photo Picker when the platform has one.
+     *
+     * <p>{@code ACTION_OPEN_DOCUMENT} opens DocumentsUI, which is a file browser: the user has to
+     * navigate folders to reach a picture. Android 13's Photo Picker is the media surface users
+     * expect (recent photos, albums, no storage permission). Older devices and OEMs without the
+     * picker keep the SAF fallback.</p>
+     *
+     * @param activity activity receiving the result
+     * @param mime accepted media type such as {@code image/*} or {@code video/*}
+     * @param requestCode request code reported back by the activity
      */
     static void pickVisualMedia(Activity activity, String mime, int requestCode) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -130,6 +159,14 @@ final class HostActions {
         }
     }
 
+    /**
+     * Registers an external directory as a workspace project, requesting all-files access
+     * on API 30 and later before falling back to the SAF tree picker.
+     *
+     * @param activity activity hosting the dialogs and pickers
+     * @param tokens design tokens for the confirmation dialog
+     * @param graph application graph (reserved for follow-up wiring)
+     */
     static void openExternalWorkspace(Activity activity, Tokens tokens, AppGraph graph) {
         if (android.os.Build.VERSION.SDK_INT >= 30
                 && !android.os.Environment.isExternalStorageManager()) {
@@ -163,12 +200,25 @@ final class HostActions {
         }
     }
 
+    /**
+     * Reads the battery optimization exemption state.
+     *
+     * @param activity activity used to reach the power manager
+     * @return {@code true} when the app is exempt; conservatively {@code true} when the
+     *         power manager is unavailable
+     */
     static boolean isIgnoringBatteryOptimizations(Activity activity) {
         android.os.PowerManager power =
                 (android.os.PowerManager) activity.getSystemService(Activity.POWER_SERVICE);
         return power == null || power.isIgnoringBatteryOptimizations(activity.getPackageName());
     }
 
+    /**
+     * Opens the direct exemption request, falling back to the general settings screen when
+     * the direct action is unavailable on the device.
+     *
+     * @param activity activity starting the system screens
+     */
     static void requestBatteryOptimizationExemption(Activity activity) {
         try {
             activity.startActivity(new Intent(
@@ -180,6 +230,13 @@ final class HostActions {
         }
     }
 
+    /**
+     * Restarts the keep-alive service with the stored wake lock, foreground and fake-audio
+     * preferences, requesting the notification permission first when needed.
+     *
+     * @param activity activity used to start the service and request permissions
+     * @param graph application graph providing the settings state
+     */
     static void updateKeepAlive(Activity activity, AppGraph graph) {
         UiPreferences values = graph.preferences().state().values;
         boolean wake = values.keepAliveWakeLock();
@@ -194,6 +251,11 @@ final class HostActions {
         }
     }
 
+    /**
+     * Opens {@link CrashActivity} when a crash report from a previous run exists.
+     *
+     * @param activity activity used to launch the crash screen
+     */
     static void showCrashIfNeeded(Activity activity) {
         File crash = CrashHandler.crashFile(activity);
         if (!crash.isFile()) {
@@ -204,6 +266,12 @@ final class HostActions {
         activity.startActivity(intent);
     }
 
+    /**
+     * Moves a pending (non-fatal) crash log into the error log store and deletes the file.
+     *
+     * @param activity activity used to resolve the pending file and strings
+     * @param graph application graph providing the error log store
+     */
     static void importCrashLog(Activity activity, AppGraph graph) {
         File file = CrashHandler.pendingFile(activity);
         if (!file.isFile()) {

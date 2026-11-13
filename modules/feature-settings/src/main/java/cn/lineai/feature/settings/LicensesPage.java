@@ -13,6 +13,13 @@ import cn.lineai.ui.tokens.Tokens;
 /** Open-source licence attributions. */
 public final class LicensesPage extends SettingsPage {
 
+    /**
+     * Builds the licences page listing every bundled third-party component.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     */
     public LicensesPage(Context context, Tokens tokens, Runnable back) {
         super(context, R.string.screen_licenses_title, tokens, back);
         Ui.padding(content, 12, 12, 12, 100);
@@ -30,6 +37,7 @@ public final class LicensesPage extends SettingsPage {
                 R.string.screen_licenses_lucide_desc);
     }
 
+    /** Adds one attribution card with component name, coordinates, and summary text. */
     private void license(int name, String meta, int description) {
         Context context = getContext();
         LinearLayout item = new LinearLayout(context);

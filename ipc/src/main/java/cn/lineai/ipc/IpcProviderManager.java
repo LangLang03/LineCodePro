@@ -28,10 +28,22 @@ public final class IpcProviderManager {
     private final Context context;
     private final IpcProviderRegistry registry;
 
+    /**
+     * Creates a manager backed by the default {@link IpcProviderRegistry}.
+     *
+     * @param context context used for binding; only the application context is retained
+     */
     public IpcProviderManager(Context context) {
         this(context, IpcProviderRegistry.getInstance());
     }
 
+    /**
+     * Creates a manager backed by an explicit registry, which allows hosts to use an
+     * isolated factory set. A null registry falls back to the default singleton.
+     *
+     * @param context context used for binding; only the application context is retained
+     * @param registry the factory registry to resolve provider types against
+     */
     public IpcProviderManager(Context context, IpcProviderRegistry registry) {
         this.context = context.getApplicationContext();
         this.registry = registry == null ? IpcProviderRegistry.getInstance() : registry;
@@ -130,6 +142,7 @@ public final class IpcProviderManager {
         }
     }
 
+    /** Forwards every provider transition to the global listeners, isolating listener failures. */
     private final IpcProviderStateListener providerStateForwarder = (provider, newState, cause) -> {
         for (IpcProviderStateListener listener : globalListeners) {
             try {

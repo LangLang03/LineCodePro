@@ -29,6 +29,7 @@ final class AssistantTurnView extends LinearLayout {
     private boolean live;
     private boolean actionsVisible;
 
+    /** Builds the child stack in render order: process, answer, error, working status, changes. */
     AssistantTurnView(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -92,6 +93,11 @@ final class AssistantTurnView extends LinearLayout {
         });
     }
 
+    /**
+     * Rebinds the row: process panel (when present), final answer markdown, error line, working
+     * status while no answer has streamed yet, and the changed-files block. The long-press action
+     * bar closes whenever the answer text changed.
+     */
     void bind(TurnAssembler.Row row, Tokens current, RowEnv rowEnv) {
         tokens = current;
         env = rowEnv;
@@ -133,6 +139,7 @@ final class AssistantTurnView extends LinearLayout {
         applyTokens(current);
     }
 
+    /** Applies the current design tokens to every child and re-renders the answer. */
     void applyTokens(Tokens current) {
         tokens = current;
         process.applyTokens(current);
@@ -143,6 +150,7 @@ final class AssistantTurnView extends LinearLayout {
         actions.applyTokens(current);
     }
 
+    /** Called by the timeline to close this row's action bar (single-open invariant). */
     void hideActions() {
         actionsVisible = false;
         actions.setVisibility(GONE);

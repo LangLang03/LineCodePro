@@ -25,6 +25,7 @@ import cn.lineai.ui.tokens.Tokens;
 /** Shown after an uncaught exception; the stack trace is also written to the error log. */
 public final class CrashActivity extends Activity {
 
+    /** Renders the crash report, archives it as the pending log, and removes the file. */
     @Override protected void onCreate(Bundle saved) {
         super.onCreate(saved);
         String path = getIntent().getStringExtra("crash_file");
@@ -83,6 +84,7 @@ public final class CrashActivity extends Activity {
         if (path != null) new File(path).delete();
     }
 
+    /** Builds one styled action button with dark theme tokens. */
     private TextView button(int text, Runnable action) {
         Tokens tokens = Tokens.of(ThemePalette.dark());
         TextView view = Ui.medium(this, getString(text), 14, tokens.text);
@@ -94,6 +96,7 @@ public final class CrashActivity extends Activity {
         return view;
     }
 
+    /** Copies the report to the clipboard and confirms with a toast. */
     private void copy(String detail) {
         ClipboardManager clipboard = getSystemService(ClipboardManager.class);
         if (clipboard == null) return;
@@ -101,6 +104,7 @@ public final class CrashActivity extends Activity {
         Toast.makeText(this, R.string.crash_copied, Toast.LENGTH_SHORT).show();
     }
 
+    /** Persists the report so the next launch can import it into the error log. */
     private void savePending(String detail) {
         try {
             File file = CrashHandler.pendingFile(this);
@@ -112,6 +116,7 @@ public final class CrashActivity extends Activity {
         }
     }
 
+    /** Reads the crash report file; the read error itself when the file is unreadable. */
     private static String read(String path) {
         if (path == null) return "";
         try {

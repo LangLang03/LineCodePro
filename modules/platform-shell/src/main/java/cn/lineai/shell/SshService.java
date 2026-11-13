@@ -15,19 +15,48 @@ import cn.lineai.core.kernel.error.DomainException;
 import cn.lineai.core.kernel.error.ErrorCode;
 import cn.lineai.core.model.SshConfig;
 
-/** Minimal JSch client: run one command over a fresh session. */
+/**
+ * Minimal JSch client: every command runs over a fresh session that is disconnected
+ * afterwards. Host keys are pinned on first use in a private {@code known_hosts} file; a
+ * regenerated remote host key is re-pinned once so the Termux setup flow can recover.
+ */
 public final class SshService {
 
     private final File knownHostsDirectory;
 
+    /**
+     * Creates a client whose pinned host keys live under the given directory.
+     *
+     * @param filesDirectory the application private files directory; the {@code ssh}
+     *                       subdirectory holds {@code known_hosts}
+     */
     public SshService(File filesDirectory) {
         this.knownHostsDirectory = new File(filesDirectory, "ssh");
     }
 
+    /**
+     * Runs a canned diagnostic command and returns its output, so callers can verify the
+     * connection and show the remote user and directory.
+     *
+     * @param config the credentials to test
+     * @return the captured standard output of the diagnostic command
+     * @throws cn.lineai.core.kernel.error.DomainException on transport or authentication failure
+     */
     public String testConnection(SshConfig config) {
         return execute(config, "echo LineAI SSH OK && whoami && pwd", 10_000);
     }
 
+    /**
+     * Executes one command over a fresh SSH session and returns its standard output.
+     *
+     * @param config the credentials to use; must be configured
+     * @param command the command line to run on the remote host
+     * @param timeoutMs timeout applied to the session, the channel and the execution
+     * @return the captured standard output of the command
+     * @throws cn.lineai.core.kernel.error.DomainException with {@code INVALID_INPUT} when the
+     *         configuration is missing, {@code TOOL_FAILED} when the command wrote to stderr,
+     *         or {@code NETWORK} for transport and authentication failures
+     */
     public String execute(SshConfig config, String command, int timeoutMs) {
         if (config == null || !config.isConfigured()) {
             throw new DomainException(ErrorCode.INVALID_INPUT, "ssh not configured");
@@ -74,6 +103,10 @@ public final class SshService {
         }
     }
 
+    /**
+     * Opens a session, re-pinning the host key once when the failure indicates the remote
+     * key was regenerated; other failures propagate unchanged.
+     */
     private Session connect(SshConfig config, int timeoutMs) throws Exception {
         try {
             return openSession(config, timeoutMs);
@@ -91,6 +124,7 @@ public final class SshService {
         }
     }
 
+    /** Configures and opens one JSch session with key or password authentication. */
     private Session openSession(SshConfig config, int timeoutMs) throws Exception {
         JSch jsch = new JSch();
         jsch.setKnownHosts(knownHosts().getAbsolutePath());
@@ -114,6 +148,7 @@ public final class SshService {
         return session;
     }
 
+    /** Ensures the ssh directory and the known_hosts file exist and returns the latter. */
     private File knownHosts() throws Exception {
         if (!knownHostsDirectory.exists() && !knownHostsDirectory.mkdirs()) {
             throw new DomainException(ErrorCode.STORAGE, "cannot create ssh directory");
@@ -125,6 +160,7 @@ public final class SshService {
         return file;
     }
 
+    /** Drains a stream fully into a UTF-8 string; an empty stream yields the empty string. */
     private static String read(InputStream input) throws Exception {
         if (input == null) return "";
         ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -134,6 +170,11 @@ public final class SshService {
         return output.toString(StandardCharsets.UTF_8.name());
     }
 
+    /**
+     * Accepts unknown host keys (trust on first use) and rejects changed keys, so a
+     * regenerated remote key surfaces as a connect failure instead of being silently
+     * re-pinned from the interactive prompt path.
+     */
     private static final class TrustOnFirstUse implements UserInfo {
         @Override public String getPassphrase() { return null; }
         @Override public String getPassword() { return null; }

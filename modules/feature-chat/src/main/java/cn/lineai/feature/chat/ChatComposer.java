@@ -29,8 +29,11 @@ import cn.lineai.ui.tokens.Tokens;
  * action menu (thinking / mode / files), a long press opens the system image picker.
  */
 public final class ChatComposer extends LinearLayout {
+    /** Composer outcomes forwarded to the screen. */
     public interface Listener {
+        /** Sends the trimmed prompt with image and file attachment paths. */
         void onSend(String text, List<String> imagePaths, List<String> filePaths);
+        /** Stops the running generation. */
         void onStop();
         /** Menu row "files": open the workspace attachment tree. */
         void onAttachFiles();
@@ -39,15 +42,21 @@ public final class ChatComposer extends LinearLayout {
 
         /** Video picker, only offered when the model declares video input support. */
         void onVideoPicker();
+        /** Opens the composer action menu (thinking, mode, files). */
         void onMode();
+        /** Opens the model picker. */
         void onModel();
+        /** Opens the reasoning picker. */
         void onReasoning();
+        /** Applies a "/chat" style chat-mode command typed in the input. */
         void onChatMode(String mode);
     }
+    /** A queued send while a generation is streaming; flushed on the next render. */
     private static final class Pending {
         final String text;
         final List<String> images;
         final List<String> files;
+        /** Defensive-copies the attachment lists at enqueue time. */
         Pending(String text, List<String> images, List<String> files) {
             this.text = text;
             this.images = new ArrayList<>(images);
@@ -73,6 +82,7 @@ public final class ChatComposer extends LinearLayout {
     private boolean streaming;
     private String modelLabel = "";
     private boolean enterSends = true;
+    /** Builds attachment strip, input panel, model pill and the attach/send controls. */
     public ChatComposer(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -214,10 +224,12 @@ public final class ChatComposer extends LinearLayout {
         restyle();
         updateSend();
     }
+    /** dp conversion shorthand. */
     private int dpx(float value) {
         return Ui.dp(getContext(), value);
     }
 
+    /** Clickable 32dp pill container for the model label. */
     private LinearLayout pill(Context context) {
         LinearLayout pill = new LinearLayout(context);
         pill.setOrientation(HORIZONTAL);
@@ -227,6 +239,7 @@ public final class ChatComposer extends LinearLayout {
         Ui.padding(pill, 10, 0, 8, 0);
         return pill;
     }
+    /** Non-clickable glyph button. */
     private static IconButton glyph(Context context, int icon, int sizeDp, int color) {
         IconButton glyph = new IconButton(context, icon);
         glyph.setIconColor(color);
@@ -235,6 +248,7 @@ public final class ChatComposer extends LinearLayout {
         return glyph;
     }
 
+    /** Installs the composer callbacks. */
     public void setListener(Listener value) {
         listener = value;
     }
@@ -245,12 +259,14 @@ public final class ChatComposer extends LinearLayout {
     }
     // ------------------------------------------------------------- attachments
 
+    /** Adds an image attachment; duplicates are ignored. */
     public void addAttachment(String path) {
         if (path == null || path.isEmpty() || attachments.contains(path)) return;
         attachments.add(path);
         renderAttachments();
         updateSend();
     }
+    /** Adds a file attachment; duplicates are ignored. */
     public void addFileAttachment(String path) {
         if (path == null || path.isEmpty() || files.contains(path)) return;
         files.add(path);
@@ -267,16 +283,19 @@ public final class ChatComposer extends LinearLayout {
         renderAttachments();
         updateSend();
     }
+    /** Copy of the currently selected file paths. */
     public List<String> fileAttachmentPaths() {
         return new ArrayList<>(files);
     }
 
+    /** Removes every image and file attachment. */
     public void clearAttachments() {
         attachments.clear();
         files.clear();
         renderAttachments();
         updateSend();
     }
+    /** Rebuilds the chip strip; the scroll strip is hidden while there are no attachments. */
     private void renderAttachments() {
         attachmentRow.removeAllViews();
         chips.clear();
@@ -289,6 +308,7 @@ public final class ChatComposer extends LinearLayout {
         attachmentScroll.setVisibility(chips.isEmpty() ? GONE : VISIBLE);
     }
 
+    /** Appends one 34dp attachment chip. */
     private void addChip(String path, boolean image) {
         AttachmentChip chip = new AttachmentChip(path, image);
         chips.add(chip);
@@ -297,11 +317,13 @@ public final class ChatComposer extends LinearLayout {
         params.rightMargin = dpx(8);
         attachmentRow.addView(chip, params);
     }
+    /** One rounded chip: file name plus a remove button that edits the source lists directly. */
     private final class AttachmentChip extends LinearLayout {
         private final TextView name;
         private final IconButton remove;
         private final boolean image;
 
+        /** Builds the chip and wires the remove button. */
         AttachmentChip(String path, boolean image) {
             super(ChatComposer.this.getContext());
             this.image = image;
@@ -334,6 +356,7 @@ public final class ChatComposer extends LinearLayout {
             addView(remove, removeParams);
             restyle();
         }
+        /** Applies the current tokens to chip background and glyphs. */
         void restyle() {
             setBackground(Ui.roundedStroke(getContext(), tokens.inputBg, 17, tokens.border));
             name.setTextColor(tokens.textSecondary);
@@ -342,6 +365,7 @@ public final class ChatComposer extends LinearLayout {
     }
 
     // ----------------------------------------------------------------- rendering
+    /** Renders streaming state (send becomes stop), model pill, hint and the pending queue. */
     public void render(ChatState state, Tokens current) {
         applyTokens(current);
         boolean finished = streaming && !state.streaming;
@@ -363,6 +387,7 @@ public final class ChatComposer extends LinearLayout {
         tokens = current;
         restyle();
     }
+    /** Restyles panel, input, pills, glyphs and chips. */
     private void restyle() {
         setBackgroundColor(tokens.bg);
         panel.setBackground(Ui.roundedStroke(getContext(), tokens.inputBg, 24, tokens.border));
@@ -378,18 +403,22 @@ public final class ChatComposer extends LinearLayout {
         updateSend();
     }
 
+    /** Replaces the draft text and moves the cursor to the end. */
     public void setDraft(String text) {
         input.setText(text == null ? "" : text);
         input.setSelection(input.getText().length());
     }
+    /** Current draft text. */
     public String draft() {
         return input.getText().toString();
     }
 
+    /** True when text or any attachment is present; drives the send/stop affordance. */
     public boolean hasContent() {
         return input.getText().toString().trim().length() > 0
                 || !attachments.isEmpty() || !files.isEmpty();
     }
+    /** Applies the enter-sends preference to the IME action. */
     public void preferences(cn.lineai.core.model.UiPreferences values) {
         enterSends = values.enterSends();
         input.setImeOptions(enterSends ? EditorInfo.IME_ACTION_SEND : EditorInfo.IME_ACTION_NONE);
@@ -403,12 +432,14 @@ public final class ChatComposer extends LinearLayout {
         }
         return name.substring(separator + 1).replace('\r', ' ').replace('\n', ' ');
     }
+    /** True for a single plain Enter press without modifiers. */
     private static boolean plainEnter(android.view.KeyEvent event) {
         return event != null && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER
                 && event.getAction() == android.view.KeyEvent.ACTION_DOWN
                 && event.getRepeatCount() == 0 && event.hasNoModifiers();
     }
 
+    /** Sends or queues the draft; intercepts the /chat /model /reasoning slash commands. */
     private void submit() {
         String text = input.getText().toString().trim();
         if (listener == null) return;
@@ -441,6 +472,7 @@ public final class ChatComposer extends LinearLayout {
         renderAttachments();
         updateSend();
     }
+    /** Chat-mode constant for a "/chat" style command, or null when text is not one. */
     private static String modeCommand(String text) {
         if ("/chat".equals(text)) return cn.lineai.core.model.ChatMode.CHAT;
         if ("/plan".equals(text)) return cn.lineai.core.model.ChatMode.PLAN;
@@ -449,12 +481,14 @@ public final class ChatComposer extends LinearLayout {
         return null;
     }
 
+    /** Sends the next queued message once the streaming generation has finished. */
     private void sendPending() {
         if (!streaming && listener != null && !pending.isEmpty()) {
             Pending next = pending.removeFirst();
             listener.onSend(next.text, next.images, next.files);
         }
     }
+    /** Serializes draft, cursor, pending queue and attachments for configuration changes. */
     public android.os.Bundle save() {
         android.os.Bundle state = new android.os.Bundle();
         state.putString("draft", draft());
@@ -473,6 +507,7 @@ public final class ChatComposer extends LinearLayout {
         state.putBoolean("generationActive", streaming);
         return state;
     }
+    /** Restores everything {@link #save} wrote; a null bundle leaves the composer untouched. */
     public void restore(android.os.Bundle state) {
         if (state == null) return;
         setDraft(state.getString("draft", ""));
@@ -505,6 +540,7 @@ public final class ChatComposer extends LinearLayout {
         modelText.setMaxWidth(dpx(width < dpx(400) ? 96 : 128));
     }
 
+    /** Syncs the send/stop button and the attach button with streaming and content state. */
     private void updateSend() {
         boolean canSend = streaming || hasContent();
         boolean idleStop = streaming && !hasContent();

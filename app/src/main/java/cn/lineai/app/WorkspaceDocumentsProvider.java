@@ -48,10 +48,12 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
             Document.COLUMN_FLAGS
     };
 
+    /** No initialization required; the workspace root is created lazily per request. */
     @Override public boolean onCreate() {
         return true;
     }
 
+    /** Exposes the single workspace root with create and is-child support flags. */
     @Override public Cursor queryRoots(String[] projection) {
         MatrixCursor cursor = new MatrixCursor(DEFAULT_ROOT_PROJECTION);
         MatrixCursor.RowBuilder row = cursor.newRow();
@@ -66,6 +68,7 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         return cursor;
     }
 
+    /** Returns one document row for the resolved id; unknown ids throw. */
     @Override public Cursor queryDocument(String documentId, String[] projection)
             throws FileNotFoundException {
         MatrixCursor cursor = new MatrixCursor(DEFAULT_DOCUMENT_PROJECTION);
@@ -73,6 +76,7 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         return cursor;
     }
 
+    /** Lists children of a directory, folders first, then case-insensitive by name. */
     @Override public Cursor queryChildDocuments(String parentDocumentId, String[] projection,
                                                 String sortOrder) throws FileNotFoundException {
         File parent = documentFor(parentDocumentId);
@@ -95,6 +99,7 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         return cursor;
     }
 
+    /** Depth-first recursive name search over the whole workspace, capped at 100 matches. */
     @Override public Cursor querySearchDocuments(String rootId, String query, String[] projection)
             throws FileNotFoundException {
         String needle = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
@@ -107,10 +112,12 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         return cursor;
     }
 
+    /** Resolves the document to its concrete mime type. */
     @Override public String getDocumentType(String documentId) throws FileNotFoundException {
         return mimeType(documentFor(documentId));
     }
 
+    /** Opens a file translating SAF read/write/append/truncate modes to descriptor flags. */
     @Override public ParcelFileDescriptor openDocument(String documentId, String mode,
                                                        android.os.CancellationSignal signal)
             throws FileNotFoundException {
@@ -130,6 +137,15 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         return ParcelFileDescriptor.open(file, flags);
     }
 
+    /**
+     * Creates a file or directory with a sanitized, collision-free name.
+     *
+     * @param parentDocumentId existing directory to create within
+     * @param mimeType target mime type; {@link Document#MIME_TYPE_DIR} creates a directory
+     * @param displayName requested name, sanitized and made unique
+     * @return the document id of the created entry
+     * @throws FileNotFoundException when the parent is not a directory or creation fails
+     */
     @Override public String createDocument(String parentDocumentId, String mimeType,
                                            String displayName) throws FileNotFoundException {
         File parent = documentFor(parentDocumentId);
@@ -152,6 +168,7 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         return documentId(target);
     }
 
+    /** Deletes the document recursively; the workspace root is protected. */
     @Override public void deleteDocument(String documentId) throws FileNotFoundException {
         if (documentId == null || documentId.isEmpty()
                 || ROOT_DOCUMENT_ID.equals(documentId)) {
@@ -161,6 +178,15 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         deleteRecursively(file);
     }
 
+    /**
+     * Renames the document to a sanitized, collision-free name within its parent.
+     *
+     * @param documentId document to rename; the workspace root cannot be renamed
+     * @param displayName requested new name
+     * @return the document id after the rename
+     * @throws FileNotFoundException when the document has no parent, is the root, or the
+     *         rename fails
+     */
     @Override public String renameDocument(String documentId, String displayName)
             throws FileNotFoundException {
         File file = documentFor(documentId);
@@ -175,6 +201,7 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         return documentId(target);
     }
 
+    /** Canonical-path containment check used before move operations. */
     @Override public boolean isChildDocument(String parentDocumentId, String documentId) {
         try {
             File parent = documentFor(parentDocumentId);
@@ -188,6 +215,7 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         }
     }
 
+    /** Emits one document row with delete, rename and write/create flags. */
     private void addDocumentRow(MatrixCursor cursor, File file) {
         MatrixCursor.RowBuilder row = cursor.newRow();
         row.add(Document.COLUMN_DOCUMENT_ID, documentId(file));
@@ -204,6 +232,7 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         row.add(Document.COLUMN_FLAGS, flags);
     }
 
+    /** Recursive search helper honouring the match limit at every level. */
     private void collect(File directory, String needle, List<File> matches, int limit) {
         if (matches.size() >= limit) {
             return;
@@ -225,6 +254,7 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         }
     }
 
+    /** Deletes children first, then the entry itself. */
     private static void deleteRecursively(File file) {
         File[] children = file.listFiles();
         if (children != null) {
@@ -235,6 +265,7 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         file.delete();
     }
 
+    /** Files/workspace root, created on demand. */
     private File workspaceRoot() {
         File root = new File(getContext().getFilesDir(), "workspace");
         if (!root.isDirectory()) {
@@ -243,6 +274,14 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         return root;
     }
 
+    /**
+     * Maps a document id to a file inside the workspace, rejecting traversal outside the
+     * canonical root and unknown paths.
+     *
+     * @param documentId slash-separated relative id, or "/" for the root
+     * @return the resolved file or directory
+     * @throws FileNotFoundException when the path escapes the root or does not exist
+     */
     private File documentFor(String documentId) throws FileNotFoundException {
         File root = workspaceRoot();
         if (documentId == null || documentId.isEmpty()
@@ -265,6 +304,7 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         }
     }
 
+    /** Builds the stable relative document id; falls back to the file name on IO failure. */
     private String documentId(File file) {
         File root = workspaceRoot();
         try {
@@ -280,6 +320,7 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         }
     }
 
+    /** Appends a guessed extension when missing and disambiguates existing names. */
     private static File unique(File parent, String name, String mimeType) {
         String candidate = name;
         if (!Document.MIME_TYPE_DIR.equals(mimeType) && !candidate.contains(".")) {
@@ -297,6 +338,7 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         return target;
     }
 
+    /** Trims, strips path separators and bounds the display name to 80 characters. */
     private static String safeName(String raw) {
         String name = raw == null ? "" : raw.trim();
         name = name.replace('/', '-').replace('\\', '-');
@@ -306,6 +348,7 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         return name.length() > 80 ? name.substring(0, 80) : name;
     }
 
+    /** File extension for a mime type; empty when unresolvable. */
     private static String extensionFor(String mimeType) {
         if (mimeType == null || !mimeType.contains("/")) {
             return "";
@@ -315,6 +358,7 @@ public final class WorkspaceDocumentsProvider extends DocumentsProvider {
         return extension == null ? "" : extension;
     }
 
+    /** Directory marker or extension-derived mime type; octet-stream when unknown. */
     private String mimeType(File file) {
         if (file.isDirectory()) {
             return Document.MIME_TYPE_DIR;

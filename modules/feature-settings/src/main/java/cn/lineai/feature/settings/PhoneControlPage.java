@@ -22,11 +22,19 @@ import cn.lineai.ui.tokens.Tokens;
 /** Accessibility disclaimer, enable shortcut and per-action switches. */
 public final class PhoneControlPage extends SettingsPage implements cn.lineai.ui.kit.Refreshable {
 
+    /** Host callbacks for accessibility state and the disclaimer flow. */
     public interface Listener {
+        /**
+         * Returns whether the accessibility service is currently enabled.
+         *
+         * @return true when the service is active
+         */
         boolean accessibilityEnabled();
 
+        /** Opens the system accessibility settings for enabling the service. */
         void onOpenAccessibilitySettings();
 
+        /** Records that the user accepted the accessibility disclaimer. */
         void onAcceptDisclaimer();
     }
 
@@ -34,6 +42,15 @@ public final class PhoneControlPage extends SettingsPage implements cn.lineai.ui
     private final Listener listener;
     private final LinearLayout section;
 
+    /**
+     * Builds the phone control page with the accessibility gate and permission switches.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param preferences store-backed per-action permission switches
+     * @param listener host callbacks for accessibility state and disclaimer
+     */
     public PhoneControlPage(Context context, Tokens tokens, Runnable back,
                             PhoneControlPreferences preferences, Listener listener) {
         super(context, R.string.screen_phone_control_title, tokens, back);
@@ -78,6 +95,7 @@ public final class PhoneControlPage extends SettingsPage implements cn.lineai.ui
         rebuildRows();
     }
 
+    /** Rebuilds the permission switches; the section stays empty until the gate passes. */
     private void rebuildRows() {
         section.removeAllViews();
         if (!preferences.disclaimerAccepted() || !listener.accessibilityEnabled()) return;
@@ -116,6 +134,7 @@ public final class PhoneControlPage extends SettingsPage implements cn.lineai.ui
                 PhoneControlPreferences.GLOBAL_ACTION, false);
     }
 
+    /** Adds one permission switch row persisted per action kind. */
     private void addSwitch(LinearLayout rows, Context context, int label, int description, int icon,
                            String action, boolean divider) {
         PreferenceRow row = new PreferenceRow(context, theme, PreferenceRow.Style.SWITCH, icon,
@@ -130,6 +149,7 @@ public final class PhoneControlPage extends SettingsPage implements cn.lineai.ui
         }
     }
 
+    /** Resolves the accessibility status text based on the disclaimer and service state. */
     private String accessibilityDescription() {
         if (!preferences.disclaimerAccepted()) {
             return getContext().getString(R.string.screen_phone_control_disclaimer_title);
@@ -139,6 +159,7 @@ public final class PhoneControlPage extends SettingsPage implements cn.lineai.ui
                 : R.string.screen_phone_control_accessibility_status_disabled);
     }
 
+    /** Runs the disclaimer gate, then routes to system accessibility settings when disabled. */
     private void onAccessibilityClicked() {
         if (!preferences.disclaimerAccepted()) {
             Dialogs.confirm(getContext(), theme.current(),
@@ -158,6 +179,7 @@ public final class PhoneControlPage extends SettingsPage implements cn.lineai.ui
         }
     }
 
+    /** Re-reads the accessibility state and rebuilds the rows on every show. */
     @Override public void onShown() {
         rebuildRows();
     }

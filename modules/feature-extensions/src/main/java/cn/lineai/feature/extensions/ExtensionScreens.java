@@ -13,6 +13,7 @@ public final class ExtensionScreens {
     public static final ScreenId<UiState, Params.Args> AGENT_EDIT =
             new ScreenId<>("extensions.agents.edit", AGENTS, true, args -> args);
 
+    /** Utility class; not instantiable. */
     private ExtensionScreens() {
     }
 
@@ -42,20 +43,43 @@ public final class ExtensionScreens {
     public static final ScreenId<UiState, Params.Empty> TERMINAL_PROVIDERS =
             new ScreenId<>("extensions.terminalProviders", null, true, Params.Empty::fromArgs);
 
+    /**
+     * Registers every extension screen with the navigation registry.
+     *
+     * @param registry registry to populate; must not already contain these identifiers
+     */
     public static void register(ScreenRegistry registry) {
         registry.register(AGENTS).register(AGENT_EDIT).register(MCPS).register(MCP_EDIT)
                 .register(SKILLS).register(SKILL_EDIT).register(SKILL_HUB).register(SKILL_DETAIL).register(SKILL_LOGIN).register(SKILL_PUBLISH).register(SKILL_GITHUB).register(LINECODE)
                 .register(TERMINAL_PROVIDERS);
     }
 
+    /**
+     * Builds the navigation arguments for the agent edit screen.
+     *
+     * @param id agent identifier; null or empty means creation mode
+     * @return arguments carrying the id, or empty arguments
+     */
     public static Params.Args agentArgs(String id) {
         return id == null || id.isEmpty() ? Params.Args.empty() : Params.Args.of("id", id);
     }
 
+    /**
+     * Builds the navigation arguments for the MCP extension edit screen.
+     *
+     * @param id extension identifier; null or empty means creation mode
+     * @return arguments carrying the id, or empty arguments
+     */
     public static Params.Args mcpArgs(String id) {
         return id == null || id.isEmpty() ? Params.Args.empty() : Params.Args.of("id", id);
     }
 
+    /**
+     * Builds the navigation arguments for the skill edit screen.
+     *
+     * @param id skill identifier; null or empty means creation mode
+     * @return arguments carrying the id, or empty arguments
+     */
     public static Params.Args skillArgs(String id) {
         return id == null || id.isEmpty() ? Params.Args.empty() : Params.Args.of("id", id);
     }

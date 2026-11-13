@@ -27,6 +27,14 @@ final class LocalShellBackend {
         this.registry = registry;
     }
 
+    /**
+     * Spawns the command through {@code sh -c} and starts the daemon reader thread that
+     * drains the merged stdout/stderr pipe. Start failures mark the task failed instead of
+     * propagating.
+     *
+     * @param task task to run; the process and reader are stored under the registry lock
+     * @param cwd working directory; ignored when empty or not an existing directory
+     */
     void start(BackgroundTask task, String cwd) {
         try {
             ProcessBuilder builder = new ProcessBuilder("sh", "-c", task.command);
@@ -51,6 +59,10 @@ final class LocalShellBackend {
         }
     }
 
+    /**
+     * Reader-thread body: streams output into the registry ring buffer until the process
+     * exits, then applies the kill-flag-over-exit-code rule documented at the call sites.
+     */
     private void drain(BackgroundTask task, Process process) {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                 process.getInputStream(), StandardCharsets.UTF_8))) {
@@ -91,6 +103,12 @@ final class LocalShellBackend {
         }
     }
 
+    /**
+     * Completes a finished task if the reader thread has also finished draining; a still
+     * running process or a live reader leaves the task untouched.
+     *
+     * @param task task to reconcile; caller holds the registry lock
+     */
     void refresh(BackgroundTask task) {
         Process process = task.process;
         if (process == null) {
@@ -108,6 +126,13 @@ final class LocalShellBackend {
         registry.finish(task, BackgroundTask.Status.COMPLETED, tryExitValue(process));
     }
 
+    /**
+     * Kills the direct child and every descendant found under {@code /proc}, because
+     * {@code sh -c} spawns grandchildren that {@code destroyForcibly()} does not reach.
+     *
+     * @param task task to kill; the kill flag is set first so the reader thread classifies
+     *             the resulting exit as {@code KILLED}
+     */
     void stop(BackgroundTask task) {
         synchronized (registry.lock) {
             task.killRequested = true;
@@ -124,10 +149,12 @@ final class LocalShellBackend {
         }
     }
 
+    /** Best available message for an exception, falling back to {@code toString}. */
     private static String message(Exception error) {
         return error.getMessage() == null ? error.toString() : error.getMessage();
     }
 
+    /** Exit value when available; {@link Integer#MIN_VALUE} when the process still runs. */
     private static int tryExitValue(Process process) {
         try {
             return process.exitValue();
@@ -182,6 +209,7 @@ final class LocalShellBackend {
         return descendants;
     }
 
+    /** Parent pid parsed from {@code /proc/<pid>/stat}; -1 for unreadable entries. */
     private static int ppidOf(File procDir) {
         File stat = new File(procDir, "stat");
         try (BufferedReader reader = new BufferedReader(
@@ -197,6 +225,7 @@ final class LocalShellBackend {
         }
     }
 
+    /** Best-effort SIGKILL through a detached {@code kill} process; failures are logged only. */
     private static void execKill(int pid) {
         if (pid <= 0) return;
         try {

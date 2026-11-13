@@ -65,6 +65,12 @@ public final class Tokens {
     public final int diffAddText;
     public final int diffDelText;
 
+    /**
+     * Builds the snapshot by copying every palette color into a field, so a snapshot never
+     * changes under a view that already read from it.
+     *
+     * @param p palette whose resolved colors are copied
+     */
     private Tokens(ThemePalette p) {
         this.palette = p;
         this.bg = p.bg;
@@ -100,15 +106,31 @@ public final class Tokens {
         this.diffDelText = p.diffDelText;
     }
 
+    /**
+     * Creates the token snapshot for one palette; null falls back to the dark palette.
+     *
+     * @param palette palette to snapshot
+     * @return an immutable snapshot of the palette colors
+     */
     public static Tokens of(ThemePalette palette) {
         return new Tokens(palette == null ? ThemePalette.dark() : palette);
     }
 
+    /**
+     * Reports whether the snapshotted palette is the dark variant.
+     *
+     * @return true when the palette is dark
+     */
     public boolean isDark() {
         return palette.isDark();
     }
 
-    /** Colour for one semantic key; unknown keys fall back to the accent colour. */
+    /**
+     * Colour for one semantic key; unknown keys fall back to the accent colour.
+     *
+     * @param key semantic colour key used by the palette registry
+     * @return resolved colour value for the key
+     */
     public int color(String key) {
         return palette.colorForKey(key);
     }

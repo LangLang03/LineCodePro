@@ -5,9 +5,11 @@ import cn.lineai.tool.api.ToolIcon;
 /** Renderer registry keyed by {@link ToolIcon}; no view ever branches on a tool name. */
 final class ToolRenderers {
 
+    /** Static utility; not instantiable. */
     private ToolRenderers() {
     }
 
+    /** Renderer for an icon family; unknown and null icons fall back to the generic card. */
     static ToolCardRenderer renderer(ToolIcon icon) {
         if (icon == null) return GenericToolRenderer.INSTANCE;
         switch (icon) {

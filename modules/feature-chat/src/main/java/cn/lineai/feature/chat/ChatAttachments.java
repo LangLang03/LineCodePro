@@ -19,6 +19,7 @@ import cn.lineai.ui.i18n.R;
  */
 public final class ChatAttachments {
 
+    /** Static utility; not instantiable. */
     private ChatAttachments() {
     }
 
@@ -42,6 +43,7 @@ public final class ChatAttachments {
         copyAndAttach(host, uri, System.currentTimeMillis() + "-" + fileName, true);
     }
 
+    /** Copies on the io pool, then attaches on main; failures clean up and toast. */
     private static void copyAndAttach(ChatHost host, Uri uri, String fileName, boolean file) {
         host.scheduler().io(() -> {
             File target = new File(attachmentsDir(host.activity()), fileName);
@@ -96,6 +98,7 @@ public final class ChatAttachments {
         return name.isEmpty() ? "attachment.bin" : name;
     }
 
+    /** File extension for a MIME subtype, with common audio/video aliases mapped. */
     private static String extension(String mime) {
         if (mime == null || !mime.contains("/")) {
             return "";
@@ -109,12 +112,14 @@ public final class ChatAttachments {
         return suffix.matches("[a-z0-9]{2,5}") ? suffix : "";
     }
 
+    /** Private attachments directory, created on demand. */
     private static File attachmentsDir(Context context) {
         File dir = new File(context.getFilesDir(), "attachments");
         dir.mkdirs();
         return dir;
     }
 
+    /** Fixed-buffer stream copy. */
     private static void copy(InputStream input, OutputStream output) throws IOException {
         byte[] buffer = new byte[8192];
         int count;

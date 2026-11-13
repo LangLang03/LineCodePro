@@ -17,7 +17,15 @@ import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.md.R;
 import cn.lineai.ui.tokens.Tokens;
 
-/** Wrapping changes measurement, never the code text or copy action. */
+/**
+ * Rendered code fence: language label, copy action and a monospace body inside a horizontal
+ * viewport that can switch between scrolling and wrapping.
+ *
+ * <p>Package-private by design; instances are created and owned by {@link AstBlockRenderer}. The
+ * class-level invariant is that toggling wrap changes only measurement ({@code maxWidth}, scroll
+ * flags and layout requests), never the code text or the copy action, so a theme or preference
+ * change cannot destroy selection state. Restyling mutates the existing children in place.</p>
+ */
 final class CodeBlockView extends LinearLayout {
     private final String code;
     private final TextView label;
@@ -27,6 +35,16 @@ final class CodeBlockView extends LinearLayout {
     private final GradientDrawable background;
     private boolean wrap;
 
+    /**
+     * Builds the block with header, body and themed background. The body is text-selectable and
+     * never re-created afterwards; all later updates are in-place mutations.
+     *
+     * @param context hosting context
+     * @param tokens palette snapshot applied at construction
+     * @param code literal code text; retained verbatim for the copy action
+     * @param language info-string language shown in the header; may be empty
+     * @param wrap initial wrap mode; false keeps long lines inside a horizontal viewport
+     */
     CodeBlockView(Context context, Tokens tokens, String code, String language, boolean wrap) {
         super(context);
         this.code = code;
@@ -57,6 +75,7 @@ final class CodeBlockView extends LinearLayout {
         applyTheme(tokens);
     }
 
+    /** Assembles the language-label and copy-button header row at construction time. */
     private void addHeader() {
         LinearLayout header = new LinearLayout(getContext());
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -68,6 +87,11 @@ final class CodeBlockView extends LinearLayout {
         addView(header, params);
     }
 
+    /**
+     * Restyles the retained children in place for a theme change.
+     *
+     * @param tokens new palette snapshot
+     */
     void applyTheme(Tokens tokens) {
         background.setColor(tokens.codeBg);
         label.setTextColor(tokens.textTertiary);
@@ -75,6 +99,11 @@ final class CodeBlockView extends LinearLayout {
         body.setTextColor(tokens.text);
     }
 
+    /**
+     * Switches between wrapping and horizontal scrolling. A no-op when the mode already matches.
+     *
+     * @param enabled true to wrap long lines, false to scroll them horizontally
+     */
     void setCodeWrapEnabled(boolean enabled) {
         if (wrap == enabled) {
             return;
@@ -89,6 +118,7 @@ final class CodeBlockView extends LinearLayout {
         body.invalidate();
     }
 
+    /** Copies the retained literal to the primary clip and confirms with a short toast. */
     private void copyCode() {
         ClipboardManager clipboard = (ClipboardManager) getContext()
                 .getSystemService(Context.CLIPBOARD_SERVICE);
@@ -98,11 +128,16 @@ final class CodeBlockView extends LinearLayout {
         }
     }
 
+    /**
+     * Horizontal host that keeps the code body's {@code maxWidth} in sync with the viewport width:
+     * unbounded in scroll mode, clamped to the measured width in wrap mode.
+     */
     private final class CodeViewport extends HorizontalScrollView {
         private CodeViewport(Context context) {
             super(context);
         }
 
+        /** Updates the body width limit from the incoming width spec before measuring. */
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             int limit = Integer.MAX_VALUE;

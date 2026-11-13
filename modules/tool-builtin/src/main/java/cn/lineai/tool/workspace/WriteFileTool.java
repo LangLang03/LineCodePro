@@ -13,13 +13,21 @@ import cn.lineai.tool.api.ToolPresentation;
 import cn.lineai.tool.api.ToolContext;
 import cn.lineai.tool.api.ToolResult;
 
-/** Creates or overwrites a workspace file. */
+/**
+ * Creates or overwrites a workspace file.
+ *
+ * <p>Missing parent directories are created implicitly; the before/after snapshots are handed
+ * to the {@code DiffSink} so history stays complete for both creation and overwrite.</p>
+ */
 public final class WriteFileTool implements Tool {
 
+    /** {@inheritDoc} */
     @Override public String name() { return "write_file"; }
 
+    /** {@inheritDoc} */
     @Override public String description() { return "Create or replace a workspace file."; }
 
+    /** {@inheritDoc} */
     @Override public String parametersJson() {
         return cn.lineai.tool.api.ToolSchemaBuilder.object()
                 .string("path", "Workspace-relative path")
@@ -27,15 +35,24 @@ public final class WriteFileTool implements Tool {
                 .required("path").required("content").build();
     }
 
+    /** {@inheritDoc} */
     @Override public ToolPresentation presentation(JSONObject arguments) {
         return new ToolPresentation("Write file", ToolIcon.WRITE,
                 arguments.optString("path", ""), ToolPresentation.reason(arguments));
     }
 
+    /** {@inheritDoc} */
     @Override public boolean needsLocalWorkspace() { return true; }
 
+    /** {@inheritDoc} */
     @Override public boolean mutating() { return true; }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Refuses to run when mutations are disallowed or the parent directory cannot be
+     * created; the recorded diff covers the whole file, not an incremental edit.</p>
+     */
     @Override public ToolResult execute(ToolContext context, JSONObject arguments) {
         try {
             if (!context.mutationAllowed()) return ToolResult.failure("", "Mutation not allowed");

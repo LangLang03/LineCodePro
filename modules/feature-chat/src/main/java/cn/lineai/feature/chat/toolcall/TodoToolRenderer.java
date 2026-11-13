@@ -22,11 +22,13 @@ import cn.lineai.ui.tokens.Tokens;
  */
 final class TodoToolRenderer implements ToolCardRenderer {
 
+    /** Shared stateless instance. */
     static final TodoToolRenderer INSTANCE = new TodoToolRenderer();
 
     private TodoToolRenderer() {
     }
 
+    /** Renders the item rows directly (no header) or the failure/empty state. */
     @Override
     public void render(ToolCardFrame frame, ToolCallEntry entry, ToolPresentation presentation) {
         frame.showBodyAlways();
@@ -59,6 +61,7 @@ final class TodoToolRenderer implements ToolCardRenderer {
         frame.body.addView(list, frame.withPadding(0, 12, 0, 12));
     }
 
+    /** One 44dp row: check/circle indicator plus strike-through styling for completed items. */
     private View todoRow(ToolCardFrame frame, String content, String status) {
         LinearLayout row = frame.row();
         row.setMinimumHeight(Ui.dp(frame.context(), 44));
@@ -96,6 +99,7 @@ final class TodoToolRenderer implements ToolCardRenderer {
         return row;
     }
 
+    /** The list is always visible; there is no body to reveal. */
     @Override
     public boolean expandable(ToolCallEntry entry, ToolPresentation presentation) {
         return false;

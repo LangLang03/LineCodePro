@@ -14,11 +14,32 @@ public final class FormField extends LinearLayout {
 
     private final EditText input;
 
+    /**
+     * Creates a single-line field.
+     *
+     * @param context hosting context
+     * @param theme binder used to register restyle callbacks; never null
+     * @param label resource id of the caption rendered above the input
+     * @param value initial text; null renders as empty
+     * @param hint placeholder shown while the input is empty
+     * @param secure true to mask the text as a password
+     */
     public FormField(Context context, ThemeBinder theme, int label, String value,
                      CharSequence hint, boolean secure) {
         this(context, theme, label, value, hint, secure, false);
     }
 
+    /**
+     * Creates a field with full control over line behaviour.
+     *
+     * @param context hosting context
+     * @param theme binder used to register restyle callbacks; never null
+     * @param label resource id of the caption rendered above the input
+     * @param value initial text; null renders as empty
+     * @param hint placeholder shown while the input is empty
+     * @param secure true to mask the text as a password; ignored when {@code multiline} is true
+     * @param multiline true for a top-aligned, suggestion-free editor with a 120dp minimum height
+     */
     public FormField(Context context, ThemeBinder theme, int label, String value,
                      CharSequence hint, boolean secure, boolean multiline) {
         super(context);
@@ -55,10 +76,12 @@ public final class FormField extends LinearLayout {
         });
     }
 
+    /** Returns the underlying editor for listeners and selection control; never null. */
     public EditText input() {
         return input;
     }
 
+    /** Returns the trimmed current text, or an empty string when the editor is empty. */
     public String value() {
         return input.getText() == null ? "" : input.getText().toString().trim();
     }

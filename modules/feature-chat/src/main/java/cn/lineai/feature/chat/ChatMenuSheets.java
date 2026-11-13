@@ -24,16 +24,19 @@ import cn.lineai.ui.tokens.Tokens;
  */
 public final class ChatMenuSheets {
 
+    /** Fixed sheet metrics in dp. */
     private static final int DESCRIBED_ROW_MIN_DP = 69;
     private static final int PLAIN_ROW_MIN_DP = 52;
     private static final int PERMISSION_STORAGE_ROW_MIN_DP = 86;
     private static final int CONTEXT_TITLE_HEIGHT_DP = 52;
 
+    /** Static utility; not instantiable. */
     private ChatMenuSheets() {
     }
 
     // ------------------------------------------------------------------ more
 
+    /** More-options sheet: tutorial, settings, export, compaction and clear conversation. */
     public static void showMore(ChatHost host) {
         Context context = host.activity();
         Tokens tokens = host.tokens();
@@ -58,6 +61,7 @@ public final class ChatMenuSheets {
         Sheets.showBottom(context, tokens, panel);
     }
 
+    /** Adds one described row that dismisses the sheet before running its action. */
     private static void addRow(ChatHost host, LinearLayout panel, int title, int detail,
                                Runnable action) {
         Context context = host.activity();
@@ -72,6 +76,7 @@ public final class ChatMenuSheets {
 
     // ------------------------------------------------------------ permissions
 
+    /** Permission sheet: auto/confirm/readonly with checkmarks, storage grant and revoke note. */
     public static void showPermission(ChatHost host) {
         Context context = host.activity();
         Tokens tokens = host.tokens();
@@ -115,10 +120,12 @@ public final class ChatMenuSheets {
         Sheets.showBottom(context, tokens, panel);
     }
 
+    /** True when all-files access is already granted (or not required below API 30). */
     private static boolean storageGranted() {
         return Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager();
     }
 
+    /** Deep-links to the system all-files-access page for this app. */
     private static void openStorageSettings(ChatHost host) {
         if (Build.VERSION.SDK_INT < 30) {
             host.unavailable();
@@ -136,6 +143,7 @@ public final class ChatMenuSheets {
 
     // ------------------------------------------------------------- compaction
 
+    /** Runs manual compaction and toasts the mapped outcome. */
     private static void compactContext(ChatHost host) {
         host.chat().compactContext(result -> {
             int text;
@@ -160,6 +168,7 @@ public final class ChatMenuSheets {
         });
     }
 
+    /** Compaction confirmation sheet; the confirm row runs the supplied callback. */
     public static void showCompaction(ChatHost host, Runnable onConfirm) {
         Context context = host.activity();
         Tokens tokens = host.tokens();
@@ -188,6 +197,7 @@ public final class ChatMenuSheets {
 
     // ----------------------------------------------------------- context menu
 
+    /** Context menu: attachments, image, model, chat mode, workspace, permissions, settings. */
     public static void showContextMenu(ChatHost host) {
         Context context = host.activity();
         Tokens tokens = host.tokens();
@@ -219,6 +229,7 @@ public final class ChatMenuSheets {
         Sheets.showBottom(context, tokens, panel);
     }
 
+    /** Adds one plain row that dismisses the sheet before running its action. */
     private static void addPlainRow(ChatHost host, LinearLayout panel, String label,
                                     Runnable action) {
         LinearLayout row = ChatSheets.plainRow(host, label);
@@ -231,6 +242,7 @@ public final class ChatMenuSheets {
 
     // -------------------------------------------------------------- chat mode
 
+    /** Chat-mode picker sheet: chat, plan, agent, control with the current mode checked. */
     public static void showChatMode(ChatHost host) {
         Context context = host.activity();
         Tokens tokens = host.tokens();
@@ -260,6 +272,7 @@ public final class ChatMenuSheets {
         Sheets.showBottom(context, tokens, panel, ChatSheets.PICKER_MAX_HEIGHT_DP);
     }
 
+    /** Localized label of a normalized chat mode. */
     private static String chatModeLabel(Context context, String mode) {
         String normalized = cn.lineai.core.model.ChatMode.normalize(mode);
         if (cn.lineai.core.model.ChatMode.CHAT.equals(normalized)) {

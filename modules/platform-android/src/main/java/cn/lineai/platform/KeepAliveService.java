@@ -14,16 +14,36 @@ import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
 
+/**
+ * Foreground keep-alive service owned by the platform module.
+ *
+ * <p>The service merges two independent keep-alive requests — a manual one from settings toggles
+ * and an automatic one tied to model generation — into a single notification, wake lock and silent
+ * audio track. Request flags are additive: whichever request asks for a resource keeps it alive
+ * until that request is withdrawn, so overlapping requests cannot steal each other's resources.
+ * Every mutation goes through {@code onStartCommand} actions; the static helpers are the only
+ * supported way for other modules to drive the service, keeping intent construction out of feature
+ * code.</p>
+ */
 public final class KeepAliveService extends Service {
+    /** Starts (or reconfigures) the manual keep-alive request. */
     public static final String ACTION_START = "cn.lineai.action.START_KEEP_ALIVE";
+    /** Withdraws the manual keep-alive request. */
     public static final String ACTION_STOP = "cn.lineai.action.STOP_KEEP_ALIVE";
+    /** Replaces the notification status text. */
     public static final String ACTION_UPDATE_STATUS = "cn.lineai.action.UPDATE_STATUS";
+    /** Starts the generation-scoped keep-alive request. */
     public static final String ACTION_START_GENERATION = "cn.lineai.action.START_GENERATION_KEEP_ALIVE";
+    /** Withdraws the generation-scoped keep-alive request. */
     public static final String ACTION_STOP_GENERATION = "cn.lineai.action.STOP_GENERATION_KEEP_ALIVE";
 
+    /** Boolean extra enabling the partial wake lock. */
     public static final String EXTRA_WAKE_LOCK = "wake_lock";
+    /** Boolean extra enabling the foreground notification. */
     public static final String EXTRA_FOREGROUND = "foreground";
+    /** Boolean extra enabling the looping silent audio track. */
     public static final String EXTRA_FAKE_AUDIO = "fake_audio";
+    /** String extra carrying the notification status line. */
     public static final String EXTRA_STATUS_TEXT = "status_text";
 
     private static final String CHANNEL_ID = "linecode_keep_alive";
@@ -42,6 +62,7 @@ public final class KeepAliveService extends Service {
     private boolean generationFakeAudio;
     private boolean generationActive;
 
+    /** Creates the low-importance notification channel used for the whole service lifetime. */
     @Override
     public void onCreate() {
         super.onCreate();
@@ -49,6 +70,16 @@ public final class KeepAliveService extends Service {
         createNotificationChannel();
     }
 
+    /**
+     * Applies one keep-alive action and keeps the service alive only while a request is active.
+     *
+     * @param intent command carrying the action and its extras; a null intent (system restart
+     *     delivery) is ignored
+     * @param flags standard start flags, unused
+     * @param startId standard start id, unused
+     * @return {@code START_STICKY} for state-changing actions worth restarting, otherwise
+     *     {@code START_NOT_STICKY}
+     */
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) {
@@ -112,23 +143,27 @@ public final class KeepAliveService extends Service {
         return START_NOT_STICKY;
     }
 
+    /** Not bindable; all interaction goes through start intents. */
     @Override
     public IBinder onBind(Intent intent) {
         return null;
     }
 
+    /** Releases every keep-alive resource before the service is destroyed. */
     @Override
     public void onDestroy() {
         stopKeepAlive();
         super.onDestroy();
     }
 
+    /** Builds the launch intent for the fixed main activity class. */
     private Intent launchIntent() {
         Intent launch = new Intent();
         launch.setClassName(getPackageName(), "cn.lineai.app.MainActivity");
         return launch;
     }
 
+    /** Creates the low-importance channel on API 26 and above; older systems need no channel. */
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
@@ -142,6 +177,11 @@ public final class KeepAliveService extends Service {
         }
     }
 
+    /**
+     * Reconciles the actual resources with the merged request flags. Foreground is implied when
+     * fake audio runs, because the silent track alone would not justify a background service on
+     * modern Android.
+     */
     private void applyKeepAliveState() {
         boolean wakeLockEnabled = manualWakeLock || generationActive;
         boolean fakeAudioEnabled = manualFakeAudio || (generationActive && generationFakeAudio);
@@ -172,6 +212,7 @@ public final class KeepAliveService extends Service {
         }
     }
 
+    /** Clears all request flags and releases wake lock, audio and foreground state. */
     private void stopKeepAlive() {
         manualWakeLock = false;
         manualForeground = false;
@@ -187,6 +228,7 @@ public final class KeepAliveService extends Service {
         }
     }
 
+    /** Acquires the tagged partial wake lock once; repeated calls are no-ops. */
     private void acquireWakeLock() {
         if (wakeLock != null) {
             return;
@@ -201,6 +243,7 @@ public final class KeepAliveService extends Service {
         }
     }
 
+    /** Releases the wake lock when held and drops the reference; safe to call repeatedly. */
     private void releaseWakeLock() {
         if (wakeLock != null && wakeLock.isHeld()) {
             wakeLock.release();
@@ -208,6 +251,11 @@ public final class KeepAliveService extends Service {
         }
     }
 
+    /**
+     * Starts a looping two-second silent PCM track that convinces the system audio focus of media
+     * playback is active. Creation failures are swallowed and leave the field null so later
+     * reconciliations simply retry.
+     */
     private void startSilentAudio() {
         if (silentAudioTrack != null) {
             return;
@@ -256,6 +304,7 @@ public final class KeepAliveService extends Service {
         }
     }
 
+    /** Pauses, flushes and releases the silent track; safe to call when none is running. */
     private void stopSilentAudio() {
         AudioTrack track = silentAudioTrack;
         silentAudioTrack = null;
@@ -271,6 +320,7 @@ public final class KeepAliveService extends Service {
         track.release();
     }
 
+    /** Builds the ongoing low-priority notification with the current status text and launch intent. */
     private Notification buildNotification() {
         String status = currentStatus == null || currentStatus.length() == 0
                 ? getString(R.string.notification_keep_alive_text)
@@ -307,16 +357,26 @@ public final class KeepAliveService extends Service {
         }
     }
 
+    /** Reposts the notification when in foreground; respects the user's notification setting. */
     private void updateNotification() {
         if (isForeground && notificationManager.areNotificationsEnabled()) {
             notificationManager.notify(NOTIFICATION_ID, buildNotification());
         }
     }
 
+    /** Reports whether any request still needs a keep-alive resource. */
     private boolean hasActiveKeepAlive() {
         return manualWakeLock || manualForeground || manualFakeAudio || generationActive || generationFakeAudio;
     }
 
+    /**
+     * Starts or reconfigures the manual keep-alive request.
+     *
+     * @param context context used to start the service
+     * @param wakeLock true to hold a partial wake lock
+     * @param foreground true to run as a foreground service with a notification
+     * @param fakeAudio true to loop silent audio; implies foreground on modern Android
+     */
     public static void start(Context context, boolean wakeLock, boolean foreground, boolean fakeAudio) {
         if (!wakeLock && !foreground && !fakeAudio) {
             stop(context);
@@ -335,12 +395,24 @@ public final class KeepAliveService extends Service {
         }
     }
 
+    /**
+     * Withdraws the manual keep-alive request; the service stops itself when no other request
+     * remains.
+     *
+     * @param context context used to start the service
+     */
     public static void stop(Context context) {
         Intent intent = new Intent(context, KeepAliveService.class);
         intent.setAction(ACTION_STOP);
         context.startService(intent);
     }
 
+    /**
+     * Replaces the notification status text while any keep-alive is running.
+     *
+     * @param context context used to start the service
+     * @param status new status line; empty or null is ignored by the service
+     */
     public static void updateStatus(Context context, String status) {
         Intent intent = new Intent(context, KeepAliveService.class);
         intent.setAction(ACTION_UPDATE_STATUS);
@@ -348,6 +420,12 @@ public final class KeepAliveService extends Service {
         context.startService(intent);
     }
 
+    /**
+     * Starts the generation-scoped keep-alive, reading the fake-audio preference so generation
+     * survives doze on devices where the user opted in.
+     *
+     * @param context context used to start the service and read preferences
+     */
     public static void startGeneration(Context context) {
         boolean fakeAudio = context.getSharedPreferences("linecode_keep_alive", Context.MODE_PRIVATE).getBoolean("fake_audio_enabled", false);
         Intent intent = new Intent(context, KeepAliveService.class);
@@ -361,6 +439,12 @@ public final class KeepAliveService extends Service {
         }
     }
 
+    /**
+     * Withdraws the generation-scoped keep-alive; the service stops itself when no manual request
+     * remains.
+     *
+     * @param context context used to start the service
+     */
     public static void stopGeneration(Context context) {
         Intent intent = new Intent(context, KeepAliveService.class);
         intent.setAction(ACTION_STOP_GENERATION);

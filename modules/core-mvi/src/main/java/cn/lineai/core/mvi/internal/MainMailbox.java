@@ -19,19 +19,30 @@ public final class MainMailbox<T> implements AutoCloseable {
     private boolean scheduled;
     private boolean closed;
 
+    /**
+     * Creates a mailbox holding {@code initial} until the first publish.
+     * @param initial starting value, never null
+     * @param scheduler scheduler that must run tasks on the main thread, never null
+     */
     public MainMailbox(T initial, Scheduler scheduler) {
         this.value = Objects.requireNonNull(initial, "initial");
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler");
     }
 
+    /** Returns the latest published value. */
     public T value() {
         return value;
     }
 
+    /** Returns whether {@link #close()} has run. */
     public synchronized boolean isClosed() {
         return closed;
     }
 
+    /**
+     * Queues {@code task} for serial execution on the main thread; dropped once closed.
+     * @param task task to run, never null
+     */
     public void post(Runnable task) {
         Objects.requireNonNull(task, "task");
         synchronized (this) {
@@ -52,6 +63,7 @@ public final class MainMailbox<T> implements AutoCloseable {
         }
     }
 
+    /** Runs queued tasks on the main thread until the queue empties or the mailbox closes. */
     private void drain() {
         try {
             if (!scheduler.isMain()) {
@@ -85,6 +97,11 @@ public final class MainMailbox<T> implements AutoCloseable {
         }
     }
 
+    /**
+     * Subscribes {@code observer}; activation with the current value happens on the main thread.
+     * @param observer notified of every published value
+     * @return handle cancelling the subscription
+     */
     public Cancellable observe(Observable.Observer<T> observer) {
         Subscription subscription = new Subscription(Objects.requireNonNull(observer, "observer"));
         synchronized (this) {
@@ -98,6 +115,7 @@ public final class MainMailbox<T> implements AutoCloseable {
         return subscription;
     }
 
+    /** Cancels all observers, discards queued tasks and ignores further posts; idempotent. */
     @Override
     public synchronized void close() {
         if (closed) {
@@ -110,26 +128,31 @@ public final class MainMailbox<T> implements AutoCloseable {
         }
     }
 
+    /** Per-observer handle; delivery stops once cancelled or the mailbox closes. */
     private final class Subscription implements Cancellable {
         private Observable.Observer<T> observer;
         private boolean active;
         private boolean cancelled;
 
+        /** Wraps {@code observer} until activation. */
         private Subscription(Observable.Observer<T> observer) {
             this.observer = observer;
         }
 
+        /** Marks the subscription active and delivers the current value. */
         private void activate() {
             active = true;
             deliver(value);
         }
 
+        /** Invokes the observer when still active, not cancelled and the mailbox is open. */
         private void deliver(T next) {
             if (active && !cancelled && !closed) {
                 observer.onChanged(next);
             }
         }
 
+        /** Detaches the observer; idempotent. */
         @Override
         public void cancel() {
             synchronized (MainMailbox.this) {
@@ -141,6 +164,7 @@ public final class MainMailbox<T> implements AutoCloseable {
             }
         }
 
+        /** Returns whether {@link #cancel()} has run. */
         @Override
         public boolean isCancelled() {
             synchronized (MainMailbox.this) {

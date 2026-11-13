@@ -43,6 +43,16 @@ public final class SkillHubDetailPage extends SettingsPage {
     private LinearLayout installButton;
     private TextView installLabel;
 
+    /**
+     * Builds the detail page and starts the asynchronous detail load.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param scheduler scheduler enforcing the I/O-to-main threading contract
+     * @param store local skill store backing the install flow
+     * @param slug slug of the SkillHub entry to show
+     */
     public SkillHubDetailPage(Context context, Tokens tokens, Runnable back, Scheduler scheduler,
                               SkillStore store, String slug) {
         super(context, R.string.skillhub_title_detail, tokens, back);
@@ -71,6 +81,7 @@ public final class SkillHubDetailPage extends SettingsPage {
         load();
     }
 
+    /** Fetches the detail on I/O and renders loading, error, or ready on main. */
     private void load() {
         body.removeAllViews();
         addBody(spinner(), 16);
@@ -86,6 +97,7 @@ public final class SkillHubDetailPage extends SettingsPage {
         });
     }
 
+    /** Renders the failure card with a retry action. */
     private void renderError(String message) {
         body.removeAllViews();
         LinearLayout section = ExtensionKit.card(getContext(), theme, false);
@@ -101,6 +113,7 @@ public final class SkillHubDetailPage extends SettingsPage {
         addBody(section, 16);
     }
 
+    /** Renders all sections of a successfully loaded detail and starts the comment load. */
     private void render(SkillHubDetail loaded) {
         detail = loaded;
         body.removeAllViews();
@@ -129,6 +142,7 @@ public final class SkillHubDetailPage extends SettingsPage {
         loadComments();
     }
 
+    /** Builds the hero card: artwork, title, author, description, and status tags. */
     private View hero(SkillHubDetail value) {
         LinearLayout card = new LinearLayout(getContext());
         card.setOrientation(LinearLayout.VERTICAL);
@@ -198,6 +212,7 @@ public final class SkillHubDetailPage extends SettingsPage {
         return card;
     }
 
+    /** Builds the info section with version and download metadata plus optional tag row. */
     private View hubInfo(SkillHubDetail value) {
         LinearLayout cards = new LinearLayout(getContext());
         cards.setOrientation(LinearLayout.HORIZONTAL);
@@ -214,6 +229,7 @@ public final class SkillHubDetailPage extends SettingsPage {
                 Icons.BOXES, content);
     }
 
+    /** Builds a horizontal row with at most four tags. */
     private View tagRow(List<String> values) {
         LinearLayout row = new LinearLayout(getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -228,6 +244,7 @@ public final class SkillHubDetailPage extends SettingsPage {
         return row;
     }
 
+    /** Builds one label-and-value metadata card. */
     private View metadata(int label, String value) {
         LinearLayout card = new LinearLayout(getContext());
         card.setOrientation(LinearLayout.VERTICAL);
@@ -247,6 +264,7 @@ public final class SkillHubDetailPage extends SettingsPage {
         return card;
     }
 
+    /** Builds the safety section, flagging any non-benign security status as a warning. */
     private View hubSafety(SkillHubDetail value) {
         boolean unsafe = !value.securityStatus.isEmpty()
                 && !"benign".equals(value.securityStatus);
@@ -269,6 +287,7 @@ public final class SkillHubDetailPage extends SettingsPage {
                 content);
     }
 
+    /** Builds the SKILL.md section rendering the published markdown, or an empty state. */
     private View hubMarkdown(SkillHubDetail value) {
         List<View> content = new ArrayList<>();
         if (value.markdown.isEmpty()) {
@@ -291,6 +310,7 @@ public final class SkillHubDetailPage extends SettingsPage {
                 Icons.FILE_TEXT, content);
     }
 
+    /** Builds the comments section wiring the post button, list host, and input field. */
     private View hubComments(SkillHubDetail value) {
         if (commentsHost.getParent() instanceof android.view.ViewGroup) {
             ((android.view.ViewGroup) commentsHost.getParent()).removeView(commentsHost);
@@ -304,6 +324,7 @@ public final class SkillHubDetailPage extends SettingsPage {
                 Icons.MESSAGE_CIRCLE, content);
     }
 
+    /** Fetches comments on I/O; failures render as an empty comment list on main. */
     private void loadComments() {
         scheduler.io(() -> {
             List<SkillHubComment> comments;
@@ -317,6 +338,7 @@ public final class SkillHubDetailPage extends SettingsPage {
         });
     }
 
+    /** Renders the comment list or the login-first empty state. */
     private void renderComments(List<SkillHubComment> comments) {
         commentsHost.removeAllViews();
         if (comments == null || comments.isEmpty()) {
@@ -348,6 +370,7 @@ public final class SkillHubDetailPage extends SettingsPage {
         }
     }
 
+    /** Validates the input, posts the comment on I/O while signed in, and refreshes the list. */
     private void postComment() {
         String content = commentInput.getText() == null ? "" : commentInput.getText().toString();
         if (content.isEmpty() || content.length() > 500) return;
@@ -374,6 +397,7 @@ public final class SkillHubDetailPage extends SettingsPage {
         });
     }
 
+    /** Installs the skill through the shared remote install pipeline and disables the button. */
     private void install(SkillHubDetail value) {
         RemoteSkillInstall.run(scheduler, store,
                 () -> api.download(value.slug, value.version), value.slug + ".zip",
@@ -393,6 +417,7 @@ public final class SkillHubDetailPage extends SettingsPage {
                 });
     }
 
+    /** Builds the centered indeterminate loading spinner. */
     private View spinner() {
         FrameLayout frame = new FrameLayout(getContext());
         Ui.padding(frame, 16, 16, 16, 16);
@@ -403,6 +428,7 @@ public final class SkillHubDetailPage extends SettingsPage {
         return frame;
     }
 
+    /** Appends a section to the page body with the given top margin. */
     private void addBody(View view, int topDp) {
         ExtensionKit.topMargin(getContext(), view, topDp);
         body.addView(view);

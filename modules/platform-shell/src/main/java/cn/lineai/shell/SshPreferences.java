@@ -10,10 +10,21 @@ public final class SshPreferences {
 
     private final SettingsStore settings;
 
+    /**
+     * Creates a store backed by the given settings table.
+     *
+     * @param settings key-value store holding the {@code ssh.*} entries
+     */
     public SshPreferences(SettingsStore settings) {
         this.settings = settings;
     }
 
+    /**
+     * Reads the persisted SSH configuration, falling back to the built-in defaults for
+     * entries that were never saved.
+     *
+     * @return the stored configuration; never {@code null}, but possibly unconfigured
+     */
     public SshConfig config() {
         SshConfig defaults = SshConfig.defaultConfig();
         return new SshConfig(
@@ -25,6 +36,12 @@ public final class SshPreferences {
                 settings.get(PREFIX + "passphrase", ""));
     }
 
+    /**
+     * Writes every field of the configuration to the settings table, overwriting
+     * the previous values.
+     *
+     * @param config the configuration to persist
+     */
     public void save(SshConfig config) {
         settings.put(PREFIX + "host", config.host);
         settings.put(PREFIX + "port", String.valueOf(config.port));

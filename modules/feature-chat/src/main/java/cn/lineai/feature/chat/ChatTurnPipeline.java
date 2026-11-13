@@ -29,11 +29,16 @@ final class ChatTurnPipeline {
     private Message streamingMessage;
     private List<ToolApprovalItem> pendingApprovals = new ArrayList<>();
 
+    /**
+     * @param chat  owning controller, used for persistence stores and state publication
+     * @param model model configuration resolved when the generation started
+     */
     ChatTurnPipeline(ChatController chat, ModelConfig model) {
         this.chat = chat;
         this.model = model;
     }
 
+    /** Approval batch currently shown to the user; empty once approved, denied or cleared. */
     List<ToolApprovalItem> pendingApprovals() {
         return pendingApprovals;
     }
@@ -88,6 +93,11 @@ final class ChatTurnPipeline {
                 .build());
     }
 
+    /**
+     * Appends a text delta to the draft answer and republishes the streaming row.
+     *
+     * @param delta incremental answer text reported by the model client
+     */
     void appendText(String delta) {
         if (stale()) {
             return;
@@ -96,6 +106,11 @@ final class ChatTurnPipeline {
         publishStreaming();
     }
 
+    /**
+     * Appends a reasoning delta to the draft reasoning buffer and republishes the streaming row.
+     *
+     * @param delta incremental reasoning text reported by the model client
+     */
     void appendReasoning(String delta) {
         if (stale()) {
             return;
@@ -181,6 +196,12 @@ final class ChatTurnPipeline {
         chat.writes.submit(() -> chat.messages.append(stored));
     }
 
+    /**
+     * Runs the {@link ApprovalPolicy} over the requested batch: auto-approvable batches confirm
+     * the engine immediately, anything else is parked as pending approvals until the user decides.
+     *
+     * @param calls tool calls the engine wants to execute
+     */
     void requestConfirmation(List<ToolCall> calls) {
         if (stale()) {
             return;
@@ -201,6 +222,7 @@ final class ChatTurnPipeline {
                 .build());
     }
 
+    /** Normal turn end: releases the engine, clears approvals and touches conversation metadata. */
     void finishTurn() {
         if (stale()) {
             return;
@@ -220,6 +242,12 @@ final class ChatTurnPipeline {
         });
     }
 
+    /**
+     * Finalizes the turn as failed: logs the error, persists an ERROR-finished message carrying
+     * whatever partial draft exists, and releases the engine.
+     *
+     * @param error domain error reported by the engine or model client
+     */
     void failTurn(DomainException error) {
         if (stale()) {
             return;
@@ -256,6 +284,7 @@ final class ChatTurnPipeline {
         });
     }
 
+    /** Ends the turn because the engine refused further tool calls; nothing further is persisted. */
     void budgetExceeded() {
         if (stale()) {
             return;
@@ -298,6 +327,7 @@ final class ChatTurnPipeline {
         chat.writes.submit(() -> chat.messages.append(stopped));
     }
 
+    /** Rebinds the streaming row with the current draft text, reasoning and context percentage. */
     private void publishStreaming() {
         if (streamingMessage == null) {
             return;

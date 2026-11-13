@@ -12,15 +12,38 @@ import cn.lineai.core.kernel.error.DomainException;
 import cn.lineai.core.kernel.error.ErrorCode;
 import cn.lineai.core.model.ModelConfig;
 
-/** One-shot non-streaming completion used by the "Test" action in the model form. */
+/**
+ * One-shot non-streaming completion used by the "Test" action in the model form.
+ *
+ * <p>The probe is intentionally tiny (64 max tokens, no tools, no reasoning) so that it verifies
+ * reachability and credentials without generating real content. Transport failures surface as
+ * {@link DomainException} with {@link ErrorCode#NETWORK}; parse problems fall back to the raw
+ * body so the user always sees something.</p>
+ */
 public final class ModelProbe {
 
+    /** Canonical probe prompt sent by the single-argument {@link #complete(ModelConfig)}. */
     public static final String PROMPT = "Calculate 1+1 and reply with any result.";
 
+    /**
+     * Sends the canonical probe prompt.
+     *
+     * @param model model configuration to test
+     * @return the model's reply text
+     * @throws DomainException with {@link ErrorCode#NETWORK} on transport failure
+     */
     public String complete(ModelConfig model) {
         return complete(model, PROMPT);
     }
 
+    /**
+     * Sends one probe prompt and extracts the reply.
+     *
+     * @param model model configuration to test
+     * @param prompt prompt text to send
+     * @return the model's reply text, or the raw body when no known response shape matches
+     * @throws DomainException with {@link ErrorCode#NETWORK} on transport failure
+     */
     public String complete(ModelConfig model, String prompt) {
         try {
             switch (model.protocol) {
@@ -40,6 +63,7 @@ public final class ModelProbe {
         }
     }
 
+    /** Sends a non-streaming chat completion and extracts the reply from the choices array. */
     private String openAi(ModelConfig model, String prompt) throws IOException {
         JSONObject body = new JSONObject();
         try {
@@ -70,6 +94,7 @@ public final class ModelProbe {
         }
     }
 
+    /** Sends a minimal Messages API request and joins the reply's text blocks. */
     private String anthropic(ModelConfig model, String prompt) throws IOException {
         JSONObject body = new JSONObject();
         try {
@@ -103,6 +128,7 @@ public final class ModelProbe {
         }
     }
 
+    /** Sends a minimal Responses API request and extracts the reply from the output items. */
     private String codex(ModelConfig model, String prompt) throws IOException {
         JSONObject body = new JSONObject();
         try {
@@ -141,12 +167,14 @@ public final class ModelProbe {
         }
     }
 
+    /** Returns the header map shared by all probe requests. */
     private static Map<String, String> headers() {
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Accept", "application/json");
         return headers;
     }
 
+    /** Resolves the OpenAI-compatible chat completions endpoint for probe requests. */
     private static final class OpenAiChatCodecEndpoint {
         private static String chatCompletions(String baseUrl) {
             return ModelCatalogClient.endpoint(baseUrl, "/chat/completions");

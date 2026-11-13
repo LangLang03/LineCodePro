@@ -24,11 +24,30 @@ public abstract class ExtensionPage extends SettingsPage {
 
     private final Runnable back;
 
+    /**
+     * Builds the page with the default kit header.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param title string resource of the page title
+     */
     protected ExtensionPage(Context context, Tokens tokens, Runnable back, int title) {
         super(context, title, tokens, back);
         this.back = back;
     }
 
+    /**
+     * Builds the page with a kit header carrying a right-side action.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param title string resource of the page title
+     * @param rightIcon icon resource of the right-side action
+     * @param rightDescription content description resource of the right-side action
+     * @param rightAction action invoked when the right-side control is tapped
+     */
     protected ExtensionPage(Context context, Tokens tokens, Runnable back, int title,
                             int rightIcon, int rightDescription, Runnable rightAction) {
         super(context, title, tokens, back, rightIcon, rightDescription, rightAction);
@@ -42,16 +61,33 @@ public abstract class ExtensionPage extends SettingsPage {
                 0, new LayoutParams(-1, -2));
     }
 
+    /**
+     * Replaces the header with the legacy header without a trailing control.
+     *
+     * @param title string resource of the page title
+     */
     protected final void header(int title) {
         header(title, null);
     }
 
+    /**
+     * Adds a titled section to the page content.
+     *
+     * @param title section heading text, may contain data-driven labels
+     * @return the created section ready to receive rows
+     */
     protected final SettingsSection sectionText(CharSequence title) {
         SettingsSection section = new SettingsSection(getContext(), title, theme);
         content.addView(section, new LayoutParams(-1, -2));
         return section;
     }
 
+    /**
+     * Appends a view to the page content with the given top margin.
+     *
+     * @param view view to append
+     * @param topMarginDp top margin in density-independent pixels
+     */
     protected final void add(View view, int topMarginDp) {
         LayoutParams params = new LayoutParams(-1, -2);
         params.topMargin = Ui.dp(getContext(), topMarginDp);
@@ -65,6 +101,15 @@ public abstract class ExtensionPage extends SettingsPage {
         private final ThemeBinder theme;
         private final TextView title;
 
+        /**
+         * Builds the header; null slots reserve their space so the title stays centred.
+         *
+         * @param context Android context used to inflate views
+         * @param theme theme binder shared with the page
+         * @param titleRes string resource of the page title
+         * @param back back action; null renders an inert slot
+         * @param trailing trailing control; null renders an inert slot
+         */
         ExtensionHeader(Context context, ThemeBinder theme, int titleRes, Runnable back,
                         View trailing) {
             super(context);
@@ -101,6 +146,7 @@ public abstract class ExtensionPage extends SettingsPage {
             });
         }
 
+        /** Draws the hairline separator along the header bottom edge. */
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             border.setColor(theme.current().border);

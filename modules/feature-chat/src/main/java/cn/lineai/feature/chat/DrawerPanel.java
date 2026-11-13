@@ -37,11 +37,19 @@ public final class DrawerPanel extends FrameLayout {
 
     /** One workspace tree node; children render only while expanded. */
     public static final class FileNode {
+        /** Display name of the node. */
         public final String name;
+        /** Slash-separated path relative to the workspace root. */
         public final String path;
+        /** True for directories. */
         public final boolean directory;
+        /** Child nodes; unmodifiable copy. */
         public final List<FileNode> children;
 
+        /** @param name      display name
+         * @param path      workspace-relative path
+         * @param directory true for directories
+         * @param children  child nodes, defensively copied */
         public FileNode(String name, String path, boolean directory, List<FileNode> children) {
             this.name = name == null ? "" : name;
             this.path = path == null ? "" : path;
@@ -53,20 +61,29 @@ public final class DrawerPanel extends FrameLayout {
 
     /** Application-owned commands; the drawer never navigates or touches storage itself. */
     public interface Listener {
+        /** Starts an empty conversation and closes the drawer. */
         void onNewConversation();
+        /** Opens the selected conversation and closes the drawer. */
         void onSelect(String conversationId);
+        /** Deletes the conversation without closing the drawer. */
         void onDelete(String conversationId);
 
+        /** Opens or attaches the tapped file. */
         default void onFileSelected(String path, String name) { }
 
+        /** Attachment entry point for the long-pressed tree node. */
         default void onFileLongPressed(String path, String name, boolean directory, boolean root) { }
 
+        /** Long-press on a removable project strip. */
         default void onProjectRemoveRequested() { }
 
+        /** Label shown in the files tab; empty falls back to the default label. */
         default String projectLabel() { return ""; }
 
+        /** Path shown under the project label. */
         default String projectPath() { return ""; }
 
+        /** True when the project strip supports long-press removal. */
         default boolean projectRemovable() { return false; }
 
         /** Loads the whole tree once; {@code null} keeps the "preparing" empty state. */
@@ -99,6 +116,7 @@ public final class DrawerPanel extends FrameLayout {
     private String currentId = "";
     private boolean filesMode;
 
+    /** Builds scrim, sidebar, header, tabs, conversation list and the files group. */
     public DrawerPanel(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -208,24 +226,29 @@ public final class DrawerPanel extends FrameLayout {
 
     // --------------------------------------------------------------- helpers
 
+    /** Localized string shorthand. */
     private String string(int res) {
         return getContext().getString(res);
     }
 
+    /** Instance dp conversion. */
     private int dp(float value) {
         return Ui.dp(getContext(), value);
     }
 
+    /** Static dp conversion. */
     private static int dp(Context context, float value) {
         return Ui.dp(context, value);
     }
 
+    /** Vertical container. */
     private static LinearLayout column(Context context) {
         LinearLayout layout = new LinearLayout(context);
         layout.setOrientation(LinearLayout.VERTICAL);
         return layout;
     }
 
+    /** Centered horizontal container. */
     private static LinearLayout row(Context context) {
         LinearLayout layout = new LinearLayout(context);
         layout.setOrientation(LinearLayout.HORIZONTAL);
@@ -233,14 +256,17 @@ public final class DrawerPanel extends FrameLayout {
         return layout;
     }
 
+    /** Bare layout parameters. */
     private static LinearLayout.LayoutParams lp(int width, int height) {
         return new LinearLayout.LayoutParams(width, height);
     }
 
+    /** Weighted layout parameters. */
     private static LinearLayout.LayoutParams lp(int width, int height, float weight) {
         return new LinearLayout.LayoutParams(width, height, weight);
     }
 
+    /** Layout parameters in dp with all four margins. */
     private LinearLayout.LayoutParams margins(int width, int height, int left, int top,
             int right, int bottom) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
@@ -252,12 +278,14 @@ public final class DrawerPanel extends FrameLayout {
         return params;
     }
 
+    /** Single-line ellipsized label with a height cap. */
     private static void oneLine(TextView view, int maxHeightDp) {
         view.setSingleLine(true);
         view.setEllipsize(TextUtils.TruncateAt.END);
         view.setMaxHeight(Ui.dp(view.getContext(), maxHeightDp));
     }
 
+    /** Non-clickable square glyph. */
     private static IconButton inlineIcon(Context context, int icon, int sizeDp) {
         IconButton button = new IconButton(context, icon);
         button.setIconSizeDp(sizeDp, sizeDp);
@@ -267,6 +295,7 @@ public final class DrawerPanel extends FrameLayout {
         return button;
     }
 
+    /** Centered tertiary empty-state label. */
     private TextView emptyState(Context context, int text) {
         TextView view = Ui.text(context, context.getString(text), Tokens.FONT_SM,
                 tokens.textTertiary, Typeface.NORMAL);
@@ -277,6 +306,7 @@ public final class DrawerPanel extends FrameLayout {
 
     // ------------------------------------------------------------------ chrome
 
+    /** Switches between conversations and files; entering files binds the project and tree. */
     private void selectTab(boolean files) {
         if (filesMode == files) {
             return;
@@ -294,6 +324,7 @@ public final class DrawerPanel extends FrameLayout {
         }
     }
 
+    /** Refreshes the project strip from the listener, wiring removal when supported. */
     private void bindProject() {
         String label = listener == null ? "" : listener.projectLabel();
         projectLabel.setText(label.isEmpty() ? string(R.string.header_project_default) : label);
@@ -314,10 +345,12 @@ public final class DrawerPanel extends FrameLayout {
 
     // ---------------------------------------------------------- conversations
 
+    /** Re-renders the conversation list keeping the current selection. */
     public void setConversations(List<Conversation> conversations) {
         setConversations(conversations, currentId);
     }
 
+    /** Re-renders the conversation list with the given selection; null input means empty. */
     public void setConversations(List<Conversation> conversations, String currentId) {
         this.currentId = currentId == null ? "" : currentId;
         conversationList.removeAllViews();
@@ -330,12 +363,14 @@ public final class DrawerPanel extends FrameLayout {
         }
     }
 
+    /** One selectable conversation row with title, timestamp and delete action. */
     private final class ConversationRow extends LinearLayout {
         private final TextView title;
         private final TextView time;
         private final IconButton trash;
         private final boolean selected;
 
+        /** Builds the row; the selected one is highlighted and opens on tap. */
         ConversationRow(Conversation conversation, boolean selected) {
             super(DrawerPanel.this.getContext());
             this.selected = selected;
@@ -376,6 +411,7 @@ public final class DrawerPanel extends FrameLayout {
             restyle();
         }
 
+        /** Applies the selected or plain card styling. */
         void restyle() {
             setBackground(Ui.roundedStroke(getContext(),
                     selected ? tokens.inputBg : tokens.surfaceElevated, 12,
@@ -388,6 +424,7 @@ public final class DrawerPanel extends FrameLayout {
 
     // ------------------------------------------------------------------ files
 
+    /** Triggers a tree reload through the listener; no listener means the empty state. */
     private void loadTree() {
         if (listener == null) {
             fileTree.setTree(null);
@@ -399,11 +436,13 @@ public final class DrawerPanel extends FrameLayout {
 
     // ------------------------------------------------------------------- tabs
 
+    /** One 14dp-height tab with an active pill background. */
     private final class TabView extends LinearLayout {
         private final IconButton glyph;
         private final TextView label;
         private final boolean conversations;
 
+        /** Builds the tab; styling depends on which tab is active. */
         TabView(Context context, int icon, int labelRes, boolean conversations) {
             super(context);
             this.conversations = conversations;
@@ -422,6 +461,7 @@ public final class DrawerPanel extends FrameLayout {
             restyle();
         }
 
+        /** Applies the active or inactive tab styling. */
         void restyle() {
             boolean active = conversations != filesMode;
             setBackground(active ? Ui.rounded(getContext(), tokens.surfaceElevated, 6) : null);
@@ -433,6 +473,7 @@ public final class DrawerPanel extends FrameLayout {
         }
     }
 
+    /** Restyles every chrome element and delegates to rows, tabs and the tree. */
     private void restyleStatic() {
         scrim.setBackgroundColor(tokens.overlay);
         sidebar.setBackgroundColor(tokens.bg);
@@ -457,6 +498,7 @@ public final class DrawerPanel extends FrameLayout {
 
     // -------------------------------------------------------------------- API
 
+    /** Installs the application-owned commands. */
     public void setListener(Listener value) {
         listener = value;
     }
@@ -473,6 +515,7 @@ public final class DrawerPanel extends FrameLayout {
                 sidebar.getPaddingRight(), sidebar.getPaddingBottom());
     }
 
+    /** Shows the drawer and slides the sidebar in with the C++ easing. */
     public void open() {
         refreshProject();
         setVisibility(VISIBLE);
@@ -487,12 +530,14 @@ public final class DrawerPanel extends FrameLayout {
         }
     }
 
+    /** Slides the drawer out and hides it when the animation ends. */
     public void close() {
         if (getVisibility() == VISIBLE) {
             animateSidebar(0f, -width(), 150L, false);
         }
     }
 
+    /** Runs the paired sidebar translation and scrim fade. */
     private void animateSidebar(float from, float to, long duration, boolean opening) {
         sidebar.animate().cancel();
         scrim.animate().cancel();
@@ -512,17 +557,20 @@ public final class DrawerPanel extends FrameLayout {
                 .setInterpolator(easing).start();
     }
 
+    /** Current sidebar width, falling back to the computed default. */
     private int width() {
         ViewGroup.LayoutParams params = sidebar.getLayoutParams();
         return params != null && params.width > 0 ? params.width : sidebarWidth(getContext());
     }
 
+    /** Sidebar width clamped to 240..360dp with a 48dp reveal floor. */
     private static int sidebarWidth(Context context) {
         int available = context.getResources().getDisplayMetrics().widthPixels - dp(context, 48);
         return Math.max(dp(context, MIN_WIDTH_DP),
                 Math.min(dp(context, MAX_WIDTH_DP), available));
     }
 
+    /** Compact "M/d HH:mm" timestamp; non-positive values render empty. */
     private static String formatTime(long timestamp) {
         return timestamp <= 0 ? "" : new SimpleDateFormat("M/d HH:mm", Locale.getDefault())
                 .format(new Date(timestamp));

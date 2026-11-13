@@ -16,21 +16,52 @@ import cn.lineai.ui.tokens.Tokens;
 /** MCP extension detail: add a server, toggle or delete installed servers. */
 public final class McpExtensionsPage extends ExtensionPage implements Refreshable {
 
+    /** Host callbacks for MCP server extension management. */
     public interface Listener {
+        /**
+         * Loads the installed MCP extensions.
+         *
+         * @return current extensions; may be null or empty
+         */
         List<McpExtension> load();
 
+        /**
+         * Enables or disables one MCP extension.
+         *
+         * @param id extension identifier
+         * @param enabled true to enable the extension
+         */
         void setEnabled(String id, boolean enabled);
 
+        /**
+         * Deletes one MCP extension.
+         *
+         * @param id extension identifier
+         */
         void delete(String id);
 
+        /** Opens the editor for creating a new MCP extension. */
         void add();
 
+        /**
+         * Opens the editor for an existing MCP extension.
+         *
+         * @param extension extension to edit
+         */
         void edit(McpExtension extension);
     }
 
     private final Listener listener;
     private final LinearLayout installedHost;
 
+    /**
+     * Builds the MCP extension page.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param listener host callbacks for extension management
+     */
     public McpExtensionsPage(Context context, Tokens tokens, Runnable back, Listener listener) {
         super(context, tokens, back, R.string.screen_extensions_section_mcp);
         this.listener = listener;
@@ -47,14 +78,17 @@ public final class McpExtensionsPage extends ExtensionPage implements Refreshabl
         renderInstalled();
     }
 
+    /** Re-renders the installed list when the page returns to the foreground. */
     @Override public void onShown() {
         renderInstalled();
     }
 
+    /** Forces a re-render of the installed list after external changes. */
     public void reload() {
         renderInstalled();
     }
 
+    /** Rebuilds the installed servers section with switch rows and empty-state handling. */
     private void renderInstalled() {
         installedHost.removeAllViews();
         SettingsSection installed = ExtensionKit.section(getContext(), theme,
@@ -78,6 +112,7 @@ public final class McpExtensionsPage extends ExtensionPage implements Refreshabl
         }
     }
 
+    /** Shows the long-press menu with edit and confirmed delete actions for one server. */
     private void openItemMenu(McpExtension server) {
         List<ExtensionKit.SheetItem> items = new ArrayList<>();
         items.add(new ExtensionKit.SheetItem(R.string.screen_extension_detail_modify,

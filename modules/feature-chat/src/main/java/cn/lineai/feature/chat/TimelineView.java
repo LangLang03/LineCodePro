@@ -36,9 +36,12 @@ import cn.lineai.ui.tokens.Tokens;
  */
 public final class TimelineView extends FrameLayout implements SelectionHost {
 
+    /** Empty-state actions surfaced when no model is configured. */
     public interface EmptyAction {
+        /** Opens the model configuration. */
         void onAddModel();
 
+        /** Opens the workspace page. */
         void onOpenWorkspace();
     }
 
@@ -65,6 +68,7 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
     private boolean multiSelect;
     private List<TurnAssembler.Row> current = new ArrayList<>();
 
+    /** Builds the scroll column, empty state and jump-to-bottom affordance. */
     public TimelineView(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -113,10 +117,12 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         addView(jumpToBottom, buttonParams);
     }
 
+    /** Installs the empty-state actions. */
     public void setEmptyAction(EmptyAction action) {
         emptyAction = action;
     }
 
+    /** Replaces the tool presentation source and rebinds every row. */
     public void toolPresentations(ToolPresentationProvider provider) {
         presentationProvider = provider;
         rebindAll();
@@ -134,12 +140,17 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         rebindAll();
     }
 
+    /** Replaces display preferences and the markdown link handler, then rebinds all rows. */
     public void preferences(UiPreferences values, Consumer<String> linkHandler) {
         preferences = values == null ? UiPreferences.defaults() : values;
         links = linkHandler;
         rebindAll();
     }
 
+    /**
+     * Renders one state snapshot: reconciles keyed rows in place and follows the tail while the
+     * user has not scrolled up. The empty state handles both "no messages" and "no model".
+     */
     public void render(ChatState state, Tokens current) {
         if (current != tokens) {
             applyTokens(current);
@@ -162,6 +173,7 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         }
     }
 
+    /** Restyles the container, empty state and every row in place. */
     public void applyTokens(Tokens current) {
         tokens = current;
         setBackgroundColor(current.bg);
@@ -179,6 +191,7 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         dismissActions();
     }
 
+    /** Enters or exits multi-select mode, clearing the selection when it ends. */
     public void setMultiSelectMode(boolean enabled) {
         dismissActions();
         multiSelect = enabled;
@@ -195,10 +208,12 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         notifySelection();
     }
 
+    /** True while multi-select mode is active. */
     public boolean isMultiSelectMode() {
         return multiSelect;
     }
 
+    /** Selected messages in timeline order. */
     public List<Message> selectedMessages() {
         List<Message> result = new ArrayList<>();
         for (TurnAssembler.Row row : current) {
@@ -209,16 +224,19 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         return result;
     }
 
+    /** {@link SelectionHost}: reports the current mode to rows. */
     @Override
     public boolean multiSelect() {
         return multiSelect;
     }
 
+    /** {@link SelectionHost}: membership of a message in the selection. */
     @Override
     public boolean isSelected(String messageId) {
         return selectedIds.contains(messageId);
     }
 
+    /** {@link SelectionHost}: hides every open action bar (single-open invariant). */
     @Override
     public void dismissActions() {
         for (MessageRow row : rows.values()) {
@@ -226,6 +244,7 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         }
     }
 
+    /** {@link SelectionHost}: flips membership and notifies the action hooks. */
     @Override
     public void toggleSelection(String messageId, Message message) {
         if (messageId == null || messageId.isEmpty()) {
@@ -238,6 +257,7 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         notifySelection();
     }
 
+    /** Refreshes the selection visuals of every row rendering the message. */
     private void rowFor(String messageId) {
         for (TurnAssembler.Row row : current) {
             if (row.subject != null && messageId.equals(row.subject.id)) {
@@ -249,12 +269,14 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         }
     }
 
+    /** Forwards the selection to the action hooks. */
     private void notifySelection() {
         if (actions != null) {
             actions.onSelectionChanged(selectedMessages());
         }
     }
 
+    /** Diff-based row sync: create missing rows, rebind in place, reorder, drop vanished ones. */
     private void reconcile(List<TurnAssembler.Row> next) {
         Set<String> seen = new HashSet<>();
         RowEnv env = env();
@@ -288,6 +310,7 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         }
     }
 
+    /** Rebinds every live row against its current data, used when env inputs change. */
     private void rebindAll() {
         for (Map.Entry<String, MessageRow> entry : rows.entrySet()) {
             TurnAssembler.Row data = dataFor(entry.getKey());
@@ -297,6 +320,7 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         }
     }
 
+    /** Row data for a row key, or null when the row vanished. */
     private TurnAssembler.Row dataFor(String key) {
         for (TurnAssembler.Row data : current) {
             if (data.key.equals(key)) {
@@ -306,11 +330,13 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         return null;
     }
 
+    /** Fresh per-bind environment; disclosure memory outlives rows. */
     private RowEnv env() {
         return new RowEnv(disclosure, presentationProvider, preferences, actions, this,
                 diffLookup, links);
     }
 
+    /** Call ids of the pending approval batch, used to mark rows as awaiting. */
     private static Set<String> pendingCallIds(ChatState state) {
         Set<String> ids = new HashSet<>();
         for (ToolApprovalItem item : state.pendingApprovals) {
@@ -321,6 +347,7 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         return ids;
     }
 
+    /** Scrolls to the bottom on the next layout pass and re-enables tail following. */
     private void scrollToBottom() {
         followTail = true;
         scroll.post(() -> {
@@ -329,6 +356,7 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         });
     }
 
+    /** Tracks tail-following state and shows the jump button when scrolled away. */
     private void updateJumpButton() {
         boolean canScroll = column.getHeight() > scroll.getHeight() + Ui.dp(getContext(), 4);
         boolean atBottom = scroll.getScrollY() + scroll.getHeight()
@@ -340,6 +368,7 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         }
     }
 
+    /** Rebuilds the empty state; the configure variant adds the add-model action. */
     private void rebuildEmptyState(boolean configure, Tokens current) {
         emptyConfigure = configure;
         Context context = getContext();
@@ -379,6 +408,7 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         restyleEmptyState();
     }
 
+    /** Restyles the empty-state texts in place. */
     private void restyleEmptyState() {
         if (emptyTitle == null) {
             return;
@@ -392,6 +422,7 @@ public final class TimelineView extends FrameLayout implements SelectionHost {
         }
     }
 
+    /** Builds a pill-shaped empty-state action button. */
     private TextView actionButton(Context context, Tokens tokens, String label, boolean primary) {
         TextView button = Ui.text(context, label, Tokens.FONT_MD,
                 primary ? tokens.textOnColor : tokens.text, Typeface.NORMAL);

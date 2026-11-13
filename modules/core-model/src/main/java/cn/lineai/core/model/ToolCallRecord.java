@@ -7,6 +7,12 @@ public final class ToolCallRecord {
     public final String name;
     public final String arguments;
 
+    /**
+     * Creates a record, normalising null fields.
+     * @param id provider tool-call identifier
+     * @param name tool name
+     * @param arguments JSON argument object, null becomes {@code "{}"}
+     */
     public ToolCallRecord(String id, String name, String arguments) {
         this.id = id == null ? "" : id;
         this.name = name == null ? "" : name;

@@ -10,11 +10,19 @@ import cn.lineai.tool.api.ToolPresentation;
 import cn.lineai.tool.api.ToolResult;
 import cn.lineai.tool.api.ToolSchemaBuilder;
 
-/** Saves a durable user/project/environment memory when the model explicitly asks to remember. */
+/**
+ * Saves a durable user/project/environment memory when the model explicitly asks to remember.
+ *
+ * <p>The tool guards the memory store against noise: titles and content are length-capped,
+ * unknown scopes fall back to {@code user}, and content that looks like credentials is
+ * rejected outright so secrets never reach durable storage.</p>
+ */
 public final class MemoryUpdateTool implements Tool {
 
+    /** {@inheritDoc} */
     @Override public String name() { return "memory_update"; }
 
+    /** {@inheritDoc} */
     @Override public String description() {
         return "Save a durable long-term memory for future sessions. Call only when the user "
                 + "states a lasting preference, project constraint, or environment fact that "
@@ -23,6 +31,7 @@ public final class MemoryUpdateTool implements Tool {
                 + "preference), project (this workspace only), environment (device/build setup).";
     }
 
+    /** {@inheritDoc} */
     @Override public String parametersJson() {
         return ToolSchemaBuilder.object()
                 .string("title", "Short label for this memory, at most 40 chars")
@@ -32,14 +41,22 @@ public final class MemoryUpdateTool implements Tool {
                 .required("title").required("content").build();
     }
 
+    /** {@inheritDoc} */
     @Override public boolean mutating() { return true; }
 
+    /** {@inheritDoc} */
     @Override public ToolPresentation presentation(JSONObject arguments) {
         String title = arguments == null ? "" : arguments.optString("title", "");
         return new ToolPresentation("Save memory", ToolIcon.MEMORY, title,
                 ToolPresentation.reason(arguments));
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Rejects empty title or content, content over the length caps is clipped, and content
+     * containing credential-like keywords is refused rather than stored.</p>
+     */
     @Override public ToolResult execute(ToolContext context, JSONObject arguments) {
         MemorySink sink = context == null ? null : context.memory();
         if (sink == null) return ToolResult.failure("", "Memory store is not available");

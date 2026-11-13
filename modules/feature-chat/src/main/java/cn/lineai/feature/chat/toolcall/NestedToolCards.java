@@ -9,9 +9,18 @@ import cn.lineai.tool.api.ToolPresentation;
 /** Renders the nested tool calls carried by agent/pipeline progress payloads. */
 final class NestedToolCards {
 
+    /** Static utility; not instantiable. */
     private NestedToolCards() {
     }
 
+    /**
+     * Appends one full production card per nested call; running nested calls (no result yet)
+     * render as live.
+     *
+     * @param frame  owning card frame
+     * @param parent container receiving the cards
+     * @param calls  nested call objects from the progress payload
+     */
     static void add(ToolCardFrame frame, LinearLayout parent, ToolJsonArray calls) {
         if (calls == null || calls.length() == 0) return;
         for (int i = 0; i < calls.length(); i++) {

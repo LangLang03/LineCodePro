@@ -18,9 +18,26 @@ import java.util.List;
 import cn.lineai.core.model.McpHeader;
 import cn.lineai.core.model.McpToolInfo;
 
-/** Minimal MCP HTTP client: tools/list discovery and tools/call execution. */
+/**
+ * Minimal MCP HTTP client: tools/list discovery and tools/call execution.
+ *
+ * <p>Requests are JSON-RPC 2.0 POSTs; responses are accepted either as plain JSON or as an SSE
+ * body whose last {@code data:} line carries the JSON payload, matching servers that answer
+ * {@code text/event-stream}.</p>
+ */
 public final class McpClient {
 
+    /**
+     * Validates and normalises an MCP endpoint URL.
+     *
+     * <p>HTTPS is mandatory except for loopback and emulator-local HTTP, which keeps MCP traffic
+     * and credentials off plaintext transport on public networks.</p>
+     *
+     * @param raw candidate URL
+     * @return trimmed URL without trailing slashes
+     * @throws IllegalArgumentException when the URL is not absolute HTTPS, or HTTP on a
+     *         loopback/emulator host
+     */
     public static String normalizeUrl(String raw) {
         String value = raw == null ? "" : raw.trim();
         while (value.endsWith("/") && value.length() > 8) {
@@ -44,6 +61,16 @@ public final class McpClient {
         return value;
     }
 
+    /**
+     * Extracts tool descriptors from a tools/list response.
+     *
+     * <p>Accepts the {@code result.tools}, top-level {@code tools}, {@code data.tools} and
+     * {@code servers} shapes used by different MCP servers and gateways.</p>
+     *
+     * @param body raw response body
+     * @return tool descriptors with name, description and input schema JSON
+     * @throws org.json.JSONException when the body is not JSON at all
+     */
     public static List<McpToolInfo> parseTools(String body) {
         List<McpToolInfo> result = new ArrayList<>();
         JSONObject parsed = new JSONObject(jsonPayload(body));
@@ -68,6 +95,14 @@ public final class McpClient {
         return result;
     }
 
+    /**
+     * Extracts human-readable text from a tools/call response.
+     *
+     * @param body raw response body
+     * @return joined text blocks, the serialized result when no text blocks exist, or a prefixed
+     *         message when the response carries a JSON-RPC error
+     * @throws org.json.JSONException when the body is not JSON at all
+     */
     public static String toolResultText(String body) {
         JSONObject parsed = new JSONObject(jsonPayload(body));
         JSONObject error = parsed.optJSONObject("error");
@@ -90,6 +125,15 @@ public final class McpClient {
         return text.length() == 0 ? result.toString() : text.toString();
     }
 
+    /**
+     * Discovers the tools exposed by an MCP server.
+     *
+     * @param url MCP endpoint URL, validated by {@link #normalizeUrl(String)}
+     * @param headers authentication headers to send
+     * @return discovered tools
+     * @throws IOException on transport failure or non-2xx status
+     * @throws org.json.JSONException when the response is not JSON at all
+     */
     public List<McpToolInfo> listTools(String url, List<McpHeader> headers) throws IOException {
         JSONObject request = new JSONObject();
         request.put("jsonrpc", "2.0");
@@ -99,6 +143,18 @@ public final class McpClient {
         return parseTools(post(url, headers, request.toString()));
     }
 
+    /**
+     * Invokes one MCP tool.
+     *
+     * @param url MCP endpoint URL, validated by {@link #normalizeUrl(String)}
+     * @param headers authentication headers to send
+     * @param toolName tool to invoke
+     * @param argumentsJson JSON object of tool arguments; blank yields an empty object
+     * @return result text as produced by {@link #toolResultText(String)}
+     * @throws IOException on transport failure or non-2xx status
+     * @throws org.json.JSONException when the arguments are not a JSON object or the response is
+     *         not JSON at all
+     */
     public String callTool(String url, List<McpHeader> headers, String toolName,
                            String argumentsJson) throws IOException {
         JSONObject request = new JSONObject();
@@ -113,6 +169,11 @@ public final class McpClient {
         return toolResultText(post(url, headers, request.toString()));
     }
 
+    /**
+     * Posts one JSON-RPC request and returns the raw response body.
+     *
+     * @throws IOException on transport failure or non-2xx status
+     */
     private String post(String url, List<McpHeader> headers, String body) throws IOException {
         String endpoint = normalizeUrl(url);
         HttpURLConnection connection = null;
@@ -147,6 +208,7 @@ public final class McpClient {
         }
     }
 
+    /** Reads a UTF-8 response body; a null stream yields the empty string. */
     private static String read(InputStream stream) throws IOException {
         if (stream == null) return "";
         StringBuilder out = new StringBuilder();
@@ -161,6 +223,7 @@ public final class McpClient {
         return out.toString();
     }
 
+    /** Extracts the JSON object from a body that may be plain JSON or an SSE data line. */
     private static String jsonPayload(String body) {
         String text = body == null ? "" : body.trim();
         if (text.startsWith("{") || text.startsWith("[")) return text;

@@ -20,25 +20,49 @@ public final class CrashHandler implements Thread.UncaughtExceptionHandler {
     private final Context context;
     private final Thread.UncaughtExceptionHandler previous;
 
+    /** Created by {@link #install}; never instantiated directly. */
     private CrashHandler(Context context, Thread.UncaughtExceptionHandler previous) {
         this.context = context;
         this.previous = previous;
     }
 
+    /**
+     * Installs this handler as the default uncaught exception handler.
+     *
+     * @param context context used to resolve the application files directory
+     */
     public static void install(Context context) {
         Context app = context.getApplicationContext();
         Thread.setDefaultUncaughtExceptionHandler(
                 new CrashHandler(app, Thread.getDefaultUncaughtExceptionHandler()));
     }
 
+    /**
+     * Location of the newest crash report, read by {@code CrashActivity}.
+     *
+     * @param context context used to resolve the files directory
+     * @return the crash report file, which may not exist yet
+     */
     public static File crashFile(Context context) {
         return new File(new File(context.getFilesDir(), DIRECTORY), FILE);
     }
 
+    /**
+     * Location of the log captured when an error was handled without crashing, so it can
+     * be attached to the next crash report.
+     *
+     * @param context context used to resolve the files directory
+     * @return the pending log file, which may not exist yet
+     */
     public static File pendingFile(Context context) {
         return new File(new File(context.getFilesDir(), DIRECTORY), "pending-log.txt");
     }
 
+    /**
+     * Writes the report, launches the crash activity, and then chains to the previous
+     * handler or kills the process. Must stay allocation-tolerant: any failure inside this
+     * path degrades to stderr instead of skipping the hand-off.
+     */
     @Override public void uncaughtException(Thread thread, Throwable error) {
         File file = crashFile(context);
         try {

@@ -32,9 +32,20 @@ import cn.lineai.ui.tokens.Tokens;
 /** Create or edit one MCP extension, including headers, tools/list discovery and tools. */
 public final class McpExtensionEditPage extends ExtensionPage {
 
+    /** Persistence callbacks for the editor. */
     public interface Listener {
+        /**
+         * Persists the edited extension.
+         *
+         * @param extension assembled extension, validated for name, URL, and a completed query
+         */
         void onSave(McpExtension extension);
 
+        /**
+         * Deletes the extension being edited.
+         *
+         * @param id identifier of the extension to delete
+         */
         void onDelete(String id);
     }
 
@@ -52,6 +63,16 @@ public final class McpExtensionEditPage extends ExtensionPage {
     private boolean queried;
     private boolean querying;
 
+    /**
+     * Builds the editor, seeding the form from the extension being edited when present.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param editing extension to edit, or null to create a new one
+     * @param scheduler scheduler enforcing the I/O-to-main threading contract
+     * @param listener persistence callbacks
+     */
     public McpExtensionEditPage(Context context, Tokens tokens, Runnable back,
                                 McpExtension editing, Scheduler scheduler, Listener listener) {
         super(context, tokens, back, R.string.screen_mcp_add_title);
@@ -89,6 +110,7 @@ public final class McpExtensionEditPage extends ExtensionPage {
         if (!this.editing.id.isEmpty()) renderDelete();
     }
 
+    /** Wraps a form field with vertical spacing and an optional URL helper hint. */
     private LinearLayout form(FormField field, int topDp, int bottomDp, boolean helper) {
         LinearLayout wrapper = new LinearLayout(getContext());
         wrapper.setOrientation(LinearLayout.VERTICAL);
@@ -99,6 +121,7 @@ public final class McpExtensionEditPage extends ExtensionPage {
         return wrapper;
     }
 
+    /** Rebuilds the headers section with an add row and one editable row per header. */
     private void renderHeaders() {
         headersHost.removeAllViews();
         SettingsSection section = ExtensionKit.section(getContext(), theme,
@@ -118,6 +141,7 @@ public final class McpExtensionEditPage extends ExtensionPage {
         }
     }
 
+    /** Builds one editable name/value header row with a delete control. */
     private LinearLayout headerRow(int index) {
         LinearLayout row = new LinearLayout(getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -147,6 +171,7 @@ public final class McpExtensionEditPage extends ExtensionPage {
         return row;
     }
 
+    /** Creates a compact input writing through to the header lists as the user types. */
     private EditText compactField(String value, int hint, int index, boolean key) {
         EditText input = new EditText(getContext());
         input.setText(value == null ? "" : value);
@@ -182,6 +207,7 @@ public final class McpExtensionEditPage extends ExtensionPage {
         return input;
     }
 
+    /** Rebuilds the discovery section for the idle, busy, or completed state. */
     private void renderQuery() {
         queryHost.removeAllViews();
         SettingsSection section = ExtensionKit.section(getContext(), theme,
@@ -200,6 +226,7 @@ public final class McpExtensionEditPage extends ExtensionPage {
         section.row(row, false, 0);
     }
 
+    /** Builds the busy row shown while a tools/list query is running. */
     private LinearLayout busyRow() {
         LinearLayout row = new LinearLayout(getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -230,6 +257,7 @@ public final class McpExtensionEditPage extends ExtensionPage {
         return row;
     }
 
+    /** Rebuilds the tools section with a per-tool enable switch. */
     private void renderTools() {
         toolsHost.removeAllViews();
         int enabled = 0;
@@ -265,6 +293,7 @@ public final class McpExtensionEditPage extends ExtensionPage {
         }
     }
 
+    /** Returns an updated tool list with the target tool's enablement replaced. */
     private void replaceTool(McpToolInfo target, boolean enabled) {
         List<McpToolInfo> updated = new ArrayList<>();
         for (McpToolInfo tool : tools) {
@@ -273,6 +302,7 @@ public final class McpExtensionEditPage extends ExtensionPage {
         tools = updated;
     }
 
+    /** Runs tools/list discovery on I/O against the normalized endpoint and current headers. */
     private void query() {
         final String endpoint;
         try {
@@ -297,6 +327,7 @@ public final class McpExtensionEditPage extends ExtensionPage {
         });
     }
 
+    /** Merges discovered tools, preserving prior enablement by tool name. */
     private void applyQuery(List<McpToolInfo> found) {
         querying = false;
         queried = true;
@@ -316,6 +347,7 @@ public final class McpExtensionEditPage extends ExtensionPage {
                 Toast.LENGTH_SHORT).show();
     }
 
+    /** Leaves the busy state and reports the discovery failure with a toast. */
     private void failQuery(String message) {
         querying = false;
         renderQuery();
@@ -324,6 +356,7 @@ public final class McpExtensionEditPage extends ExtensionPage {
                 R.string.screen_mcp_query_failed, message), Toast.LENGTH_SHORT).show();
     }
 
+    /** Assembles non-blank headers from the parallel name/value lists. */
     private List<McpHeader> headers() {
         List<McpHeader> result = new ArrayList<>();
         for (int index = 0; index < headerNames.size(); index++) {
@@ -334,6 +367,7 @@ public final class McpExtensionEditPage extends ExtensionPage {
         return result;
     }
 
+    /** Adds the delete section with confirmation, shown only when editing an existing extension. */
     private void renderDelete() {
         SettingsSection section = section(R.string.screen_extension_detail_delete_title);
         section.row(ExtensionKit.dangerAction(getContext(), theme, R.string.common_delete,
@@ -343,6 +377,7 @@ public final class McpExtensionEditPage extends ExtensionPage {
                         () -> listener.onDelete(editing.id))), false, 0);
     }
 
+    /** Validates name, URL, and a completed discovery before handing the extension to the host. */
     private void save() {
         if (name.value().isEmpty() || url.value().isEmpty()) {
             Toast.makeText(getContext(), R.string.screen_mcp_save_require_name_url,

@@ -27,21 +27,30 @@ import cn.lineai.ui.tokens.Tokens;
  */
 public final class ChatScreenView extends FrameLayout implements Observable.Observer<ChatState> {
 
+    /** Application-owned commands the screen forwards; the view never navigates itself. */
     public interface Host {
+        /** Opens the model configuration page. */
         void onOpenModelSettings();
 
+        /** Opens the settings home. */
         void onOpenSettings();
 
+        /** Opens the reasoning picker. */
         void onReasoning();
 
+        /** Opens the more-options sheet. */
         void onMore();
 
+        /** Opens the project picker. */
         void onProject();
 
+        /** Opens the permission-mode sheet. */
         void onPermission();
 
+        /** Legacy attach entry (system image picker). */
         void onAttach();
 
+        /** Legacy file attach entry (workspace picker). */
         void onAttachFile();
 
         /** Opens the model-picker sheet; falls back to the models page when no model is set. */
@@ -53,16 +62,22 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
             return null;
         }
 
+        /** Opens the context-usage sheet. */
         void onContextUsage();
 
+        /** Opens the chat-mode picker. */
         void onChatMode();
 
+        /** Applies a chat mode typed as a slash command. */
         void setChatMode(String mode);
 
+        /** Opens a workspace file selected in the drawer tree. */
         void openFile(String relativePath);
 
+        /** Label shown in the drawer's files tab. */
         String projectLabel();
 
+        /** Path shown under the project label. */
         String projectPath();
 
         /** Loads the whole workspace tree for the drawer and the attachment picker. */
@@ -121,6 +136,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
     private String drawerConversationId = "";
     private String drawerProject = "";
 
+    /** Builds the column and binds every child to the controller and host hooks. */
     public ChatScreenView(Context context, ChatController controller, Tokens tokens) {
         super(context);
         this.controller = controller;
@@ -177,6 +193,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         installInsets();
     }
 
+    /** Routes header taps to the drawer or the host. */
     private void bindHeader() {
         header.setListener(new ChatHeaderView.Listener() {
             @Override
@@ -219,6 +236,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         });
     }
 
+    /** Routes composer sends/stops to the controller and menu rows to the host. */
     private void bindComposer() {
         composer.setListener(new ChatComposer.Listener() {
             @Override
@@ -281,6 +299,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         });
     }
 
+    /** Wires tool presentation, diff lookup, message actions and the empty state. */
     private void bindTimeline() {
         timeline.toolPresentations(new ToolPresentationProvider() {
             @Override
@@ -339,6 +358,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         });
     }
 
+    /** Routes approval decisions to the controller (queued on the event queue). */
     private void bindApproval() {
         approval.setListener(new ChatApprovalView.Listener() {
             @Override public void onDeny() {
@@ -355,6 +375,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         });
     }
 
+    /** Routes drawer conversation actions to the controller and file taps to the host. */
     private void bindDrawer() {
         drawer.setListener(new DrawerPanel.Listener() {
             @Override
@@ -415,20 +436,24 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         });
     }
 
+    /** Installs the host hooks; most commands no-op until this is called. */
     public void setHost(Host value) {
         host = value;
     }
 
+    /** Applies display preferences and the markdown link handler. */
     public void preferences(cn.lineai.core.model.UiPreferences values,
                             java.util.function.Consumer<String> links) {
         composer.preferences(values);
         timeline.preferences(values, links);
     }
 
+    /** Attaches an image to the composer (host-side import). */
     public void addAttachment(String path) {
         composer.addAttachment(path);
     }
 
+    /** Attaches a file to the composer (host-side import). */
     public void addFileAttachment(String path) {
         composer.addFileAttachment(path);
     }
@@ -443,7 +468,9 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         composer.toggleFileAttachment(path);
     }
 
+    /** Persists composer state across configuration changes. */
     public android.os.Bundle saveComposer() { return composer.save(); }
+    /** Restores composer state saved by {@link #saveComposer}. */
     public void restoreComposer(android.os.Bundle saved) { composer.restore(saved); }
 
     /** Starts observing the controller; call once the view is attached. */
@@ -460,6 +487,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         controller.start();
     }
 
+    /** Detaches observers; the drawer keeps its last rendered conversations. */
     public void stop() {
         if (scope != null) {
             scope.close();
@@ -467,6 +495,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         }
     }
 
+    /** Re-renders every child from one snapshot; also syncs the drawer id/project caches. */
     @Override
     public void onChanged(ChatState state) {
         String currentId = controller.conversationId();
@@ -499,11 +528,13 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         }
     }
 
+    /** Leaves multi-select mode and hides the selection bar. */
     private void exitMultiSelect() {
         timeline.setMultiSelectMode(false);
         selectionBar.setVisibility(GONE);
     }
 
+    /** Restyles every child in place. */
     public void applyTokens(Tokens current) {
         tokens = current;
         setBackgroundColor(current.bg);
@@ -517,14 +548,17 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         drawer.applyTokens(current);
     }
 
+    /** True while the drawer covers the screen. */
     public boolean isDrawerOpen() {
         return drawer.getVisibility() == VISIBLE;
     }
 
+    /** Opens the drawer. */
     public void openDrawer() {
         drawer.open();
     }
 
+    /** Closes the drawer; false when it was already hidden. */
     public boolean closeDrawer() {
         if (isDrawerOpen()) {
             drawer.close();
@@ -533,10 +567,12 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         return false;
     }
 
+    /** Back handling: the drawer consumes the event when open. */
     public boolean handleBack() {
         return closeDrawer();
     }
 
+    /** Applies system-bar and IME insets to the column and the drawer sidebar. */
     private void installInsets() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             return;

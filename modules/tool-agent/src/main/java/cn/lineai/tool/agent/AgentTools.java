@@ -10,12 +10,26 @@ import cn.lineai.core.model.AgentExtension;
 import cn.lineai.tool.api.Tool;
 import cn.lineai.tool.api.ToolRegistry;
 
-/** Adds every enabled agent as a callable tool. */
+/**
+ * Adds every enabled agent as a callable tool.
+ *
+ * <p>Names are derived from the agent slug and disambiguated against the existing registry so
+ * a renamed or duplicated agent can never shadow a built-in tool.</p>
+ */
 public final class AgentTools {
 
+    /** Utility class; not instantiable. */
     private AgentTools() {
     }
 
+    /**
+     * Copies the base registry and registers one tool per enabled agent with a non-empty prompt.
+     *
+     * @param base registry to extend; may be {@code null} to start empty
+     * @param agents supplier of the current agent extension list; may be {@code null}
+     * @param runner runner executing an agent task
+     * @return a new registry containing the base tools plus one tool per enabled agent
+     */
     public static ToolRegistry augment(ToolRegistry base,
                                        Supplier<List<AgentExtension>> agents,
                                        AgentRunner runner) {
@@ -38,6 +52,13 @@ public final class AgentTools {
         return registry;
     }
 
+    /**
+     * Appends the lowest numeric suffix that makes the candidate name unique.
+     *
+     * @param base preferred name
+     * @param used names already claimed in this registry build
+     * @return a name not present in {@code used}
+     */
     private static String unique(String base, Set<String> used) {
         if (!used.contains(base)) return base;
         int index = 2;
@@ -45,6 +66,12 @@ public final class AgentTools {
         return base + "_" + index;
     }
 
+    /**
+     * Reduces an agent slug or name to lowercase letters, digits and underscore separators.
+     *
+     * @param value raw agent slug or name
+     * @return the slug, or {@code "custom"} when nothing usable remains
+     */
     private static String slug(String value) {
         StringBuilder out = new StringBuilder();
         String lower = value.toLowerCase(Locale.ROOT);

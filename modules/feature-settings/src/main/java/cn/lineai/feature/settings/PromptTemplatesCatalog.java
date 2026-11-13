@@ -7,7 +7,12 @@ import cn.lineai.engine.prompt.PromptId;
 import cn.lineai.engine.prompt.PromptStore;
 import cn.lineai.ui.i18n.R;
 
-/** Maps the packaged prompt registry onto the editable list, in the legacy display order. */
+/**
+ * Maps the packaged prompt registry onto the editable list, in the legacy display order.
+ *
+ * <p>The fixed ordering array is the contract between the settings screen and the prompt engine;
+ * the catalog resolves resources rather than letting the screen introspect prompt internals.</p>
+ */
 public final class PromptTemplatesCatalog {
 
     private static final PromptId[] ORDER = {
@@ -33,9 +38,17 @@ public final class PromptTemplatesCatalog {
             PromptId.CONTEXT_COMPACTION_RESPONSES_FALLBACK
     };
 
+    /** Utility class; not instantiable. */
     private PromptTemplatesCatalog() {
     }
 
+    /**
+     * Builds the editable template list in the fixed display order.
+     *
+     * @param store prompt store supplying default and current text
+     * @param context context used for source labels
+     * @return one entry per catalogued prompt, in display order
+     */
     public static List<PromptTemplateEntry> entries(PromptStore store, android.content.Context context) {
         List<PromptTemplateEntry> entries = new ArrayList<>(ORDER.length);
         for (PromptId prompt : ORDER) {
@@ -51,10 +64,23 @@ public final class PromptTemplatesCatalog {
         return entries;
     }
 
+    /**
+     * Resolves a prompt identifier from its stable string id.
+     *
+     * @param id prompt identifier string
+     * @return matching {@link PromptId}, or null when unknown
+     */
     public static PromptId prompt(String id) {
         return PromptId.byId(id);
     }
 
+    /**
+     * Returns the title string resource for a catalogued prompt.
+     *
+     * @param prompt prompt identifier
+     * @return title string resource
+     * @throws IllegalArgumentException when the prompt is not catalogued
+     */
     static int title(PromptId prompt) {
         switch (prompt) {
             case SYSTEM_PROMPT: return R.string.prompt_template_system_prompt_title;
@@ -81,6 +107,13 @@ public final class PromptTemplatesCatalog {
         }
     }
 
+    /**
+     * Returns the description string resource for a catalogued prompt.
+     *
+     * @param prompt prompt identifier
+     * @return description string resource
+     * @throws IllegalArgumentException when the prompt is not catalogued
+     */
     static int description(PromptId prompt) {
         switch (prompt) {
             case SYSTEM_PROMPT: return R.string.prompt_template_system_prompt_description;
@@ -107,6 +140,14 @@ public final class PromptTemplatesCatalog {
         }
     }
 
+    /**
+     * Returns the human-readable source label, using builtin labels for chat modes and the
+     * packaged file path for everything else.
+     *
+     * @param prompt prompt identifier
+     * @param context context used for builtin labels
+     * @return source label string
+     */
     static String source(PromptId prompt, android.content.Context context) {
         switch (prompt) {
             case CHAT_MODE_CHAT: return context.getString(R.string.prompt_template_source_builtin_chat);

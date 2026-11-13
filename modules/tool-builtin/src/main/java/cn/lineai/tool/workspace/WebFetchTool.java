@@ -28,17 +28,23 @@ import cn.lineai.tool.api.ToolSchemaBuilder;
  */
 public final class WebFetchTool implements Tool {
 
+    /** Hard cap on the downloaded body, applied while reading to abort oversized pages. */
     private static final int MAX_BYTES = 2 * 1024 * 1024;
+    /** Character budget used when the model does not request one. */
     private static final int DEFAULT_CHARS = 12_000;
+    /** Upper clamp on the requested character budget. */
     private static final int MAX_CHARS = 30_000;
 
+    /** {@inheritDoc} */
     @Override public String name() { return "web_fetch"; }
 
+    /** {@inheritDoc} */
     @Override public String description() {
         return "View and extract the text content of a web page. The URL must use HTTPS, "
                 + "or HTTP on localhost/127.0.0.1/10.0.2.2.";
     }
 
+    /** {@inheritDoc} */
     @Override public String parametersJson() {
         return ToolSchemaBuilder.object()
                 .string("url", "The web page URL to view")
@@ -47,13 +53,21 @@ public final class WebFetchTool implements Tool {
                 .build();
     }
 
+    /** {@inheritDoc} */
     @Override public boolean mutating() { return false; }
 
+    /** {@inheritDoc} */
     @Override public ToolPresentation presentation(JSONObject arguments) {
         return new ToolPresentation("Web fetch", ToolIcon.FETCH,
                 arguments.optString("url", ""), ToolPresentation.reason(arguments));
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Rejects disallowed URLs and unusable budgets before any network activity; transport
+     * and HTTP errors surface as failure results with the server-provided detail.</p>
+     */
     @Override public ToolResult execute(ToolContext context, JSONObject arguments) {
         String url = arguments.optString("url", "").trim();
         if (url.isEmpty()) {
@@ -72,6 +86,15 @@ public final class WebFetchTool implements Tool {
         }
     }
 
+    /**
+     * Performs the HTTP GET, converts HTML bodies to readable text and applies the character
+     * budget; non-2xx responses fail with a detail excerpt from the error body.
+     *
+     * @param rawUrl validated URL to fetch
+     * @param limit maximum characters of extracted text to return
+     * @return extracted text, possibly truncated, or an explanatory note for empty pages
+     * @throws IOException on transport failure, oversized body or non-2xx status
+     */
     private String fetch(String rawUrl, int limit) throws IOException {
         HttpURLConnection connection = null;
         try {
@@ -126,6 +149,14 @@ public final class WebFetchTool implements Tool {
         }
     }
 
+    /**
+     * Reduces an HTML page to readable text: removes scripts, styles and noscript blocks,
+     * turns block ends and {@code br} into line breaks, drops remaining tags, decodes the
+     * common entities and collapses runs of whitespace.
+     *
+     * @param html raw HTML body; may be {@code null}
+     * @return collapsed plain text
+     */
     static String htmlToText(String html) {
         String value = html == null ? "" : html;
         value = value.replaceAll("(?is)<script[\\s\\S]*?</script>", " ");
@@ -145,6 +176,14 @@ public final class WebFetchTool implements Tool {
                 .trim();
     }
 
+    /**
+     * Reads the body with the byte cap enforced mid-stream so oversized pages abort early.
+     *
+     * @param response stream to read; may be {@code null}, yielding the empty string
+     * @param contentType content-type header used to pick the decoding charset
+     * @return decoded body text
+     * @throws IOException when the body exceeds {@link #MAX_BYTES} or reading fails
+     */
     private static String read(InputStream stream, String contentType) throws IOException {
         if (stream == null) return "";
         Charset charset = charsetOf(contentType);
@@ -162,6 +201,12 @@ public final class WebFetchTool implements Tool {
         return new String(out.toByteArray(), charset);
     }
 
+    /**
+     * Decodes the charset declared in the content-type header, falling back to UTF-8.
+     *
+     * @param contentType content-type header value; may be {@code null}
+     * @return the declared charset, or UTF-8 when absent or unknown
+     */
     private static Charset charsetOf(String contentType) {
         if (contentType != null) {
             for (String part : contentType.split(";")) {

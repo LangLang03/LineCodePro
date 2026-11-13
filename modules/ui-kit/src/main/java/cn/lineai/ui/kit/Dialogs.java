@@ -14,12 +14,33 @@ import java.util.function.Consumer;
 
 import cn.lineai.ui.tokens.Tokens;
 
-/** Small themed confirmation dialogs (title, message, cancel / confirm). */
+/**
+ * Themed confirmation dialogs rendered as borderless rounded panels.
+ *
+ * <p>The dialog is built and shown synchronously; the outcome is reported exactly once through the
+ * supplied consumer, either from a button press or from the system cancel path (back gesture or
+ * outside touch reporting cancel). Callers that need to release resources afterwards should dispose
+ * them from the consumer, not assume the dialog is still showing.</p>
+ */
 public final class Dialogs {
 
+    /** Not instantiable; the dialog is created through the static factory. */
     private Dialogs() {
     }
 
+    /**
+     * Builds and shows a two-button confirmation dialog.
+     *
+     * @param context hosting context
+     * @param tokens palette snapshot used for the panel, text and accent colors
+     * @param title bold heading line
+     * @param message body text below the heading
+     * @param cancel label of the negative button and of the cancel path
+     * @param confirm label of the positive button, tinted with the accent color
+     * @param result receives {@code true} for confirm and {@code false} for cancel or system
+     *     dismissal; invoked exactly once, after the dialog has been dismissed
+     * @return the showing dialog; callers may dismiss it programmatically
+     */
     public static Dialog confirm(Context context, Tokens tokens, CharSequence title,
                                  CharSequence message, CharSequence cancel, CharSequence confirm,
                                  Consumer<Boolean> result) {

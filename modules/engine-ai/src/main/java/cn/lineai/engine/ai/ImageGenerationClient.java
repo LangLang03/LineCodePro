@@ -10,9 +10,22 @@ import java.util.Map;
 
 import cn.lineai.core.model.ModelConfig;
 
-/** Calls an OpenAI-compatible images/generations endpoint and returns PNG bytes. */
+/**
+ * Calls an OpenAI-compatible images/generations endpoint and returns PNG bytes.
+ *
+ * <p>Providers answer either with inline Base64 data or with a URL; both response shapes are
+ * handled, and URL results are downloaded with the size cap enforced by the shared downloader.</p>
+ */
 public final class ImageGenerationClient {
 
+    /**
+     * Generates one 1024x1024 image for a prompt.
+     *
+     * @param model model configuration selecting the endpoint and credentials
+     * @param prompt image description
+     * @return decoded image bytes
+     * @throws IOException when the request fails, the response is malformed or carries no image
+     */
     public byte[] generate(ModelConfig model, String prompt) throws IOException {
         JSONObject body = new JSONObject();
         try {
@@ -42,6 +55,12 @@ public final class ImageGenerationClient {
         return bytes;
     }
 
+    /**
+     * Decodes the inline Base64 image from a generation response.
+     *
+     * @param raw response body
+     * @return decoded bytes of the first {@code b64_json} entry, or null when absent or invalid
+     */
     static byte[] extractBase64(String raw) {
         try {
             JSONArray data = new JSONObject(raw).optJSONArray("data");
@@ -53,6 +72,12 @@ public final class ImageGenerationClient {
         }
     }
 
+    /**
+     * Extracts the hosted image URL from a generation response.
+     *
+     * @param raw response body
+     * @return URL of the first data entry, or an empty string when absent or invalid
+     */
     static String extractUrl(String raw) {
         try {
             JSONArray data = new JSONObject(raw).optJSONArray("data");

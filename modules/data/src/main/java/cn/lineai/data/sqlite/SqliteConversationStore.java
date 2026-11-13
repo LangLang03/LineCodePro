@@ -21,11 +21,23 @@ public final class SqliteConversationStore implements ConversationStore {
     private final LineCodeDatabase database;
     private final Clock clock;
 
+    /**
+     * Creates the store.
+     *
+     * @param database shared database connection holder
+     * @param clock clock used to timestamp created and renamed conversations
+     */
     public SqliteConversationStore(LineCodeDatabase database, Clock clock) {
         this.database = database;
         this.clock = clock;
     }
 
+    /**
+     * Reads every conversation header, most recently updated first.
+     *
+     * @return all conversation headers ordered by update time, descending
+     * @throws DomainException with {@code ErrorCode.STORAGE} when the query fails
+     */
     @Override
     public List<Conversation> list() {
         SQLiteDatabase db = database.open();
@@ -47,6 +59,13 @@ public final class SqliteConversationStore implements ConversationStore {
         return result;
     }
 
+    /**
+     * Inserts a new conversation with a generated identifier, current timestamps and a zero
+     * message count.
+     *
+     * @param title initial display title
+     * @return the created conversation
+     */
     @Override
     public Conversation create(String title) {
         long now = clock.nowMs();
@@ -62,6 +81,12 @@ public final class SqliteConversationStore implements ConversationStore {
         return conversation;
     }
 
+    /**
+     * Renames a conversation and refreshes its update timestamp so it sorts back to the top.
+     *
+     * @param id conversation identifier; unknown identifiers are ignored
+     * @param title new display title
+     */
     @Override
     public void rename(String id, String title) {
         ContentValues values = new ContentValues();
@@ -70,11 +95,25 @@ public final class SqliteConversationStore implements ConversationStore {
         database.open().update("conversations", values, "id=?", new String[] {id});
     }
 
+    /**
+     * Deletes a conversation; dependent messages, blocks and tool calls are removed by foreign
+     * keys.
+     *
+     * @param id conversation identifier; unknown identifiers are ignored
+     */
     @Override
     public void delete(String id) {
         database.open().delete("conversations", "id=?", new String[] {id});
     }
 
+    /**
+     * Updates only the sort timestamp and the denormalized message counter, leaving title and
+     * project binding untouched.
+     *
+     * @param id conversation identifier; unknown identifiers are ignored
+     * @param nowMs new update timestamp in epoch milliseconds
+     * @param messageCount number of messages now held by the conversation
+     */
     @Override
     public void touch(String id, long nowMs, int messageCount) {
         ContentValues values = new ContentValues();

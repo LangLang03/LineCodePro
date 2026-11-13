@@ -11,11 +11,13 @@ import cn.lineai.tool.api.ToolPresentation;
  */
 final class ReadToolRenderer implements ToolCardRenderer {
 
+    /** Shared stateless instance. */
     static final ReadToolRenderer INSTANCE = new ReadToolRenderer();
 
     private ReadToolRenderer() {
     }
 
+    /** Renders the non-clickable status row; failures add the error code box. */
     @Override
     public void render(ToolCardFrame frame, ToolCallEntry entry, ToolPresentation presentation) {
         boolean failed = entry.failed;
@@ -31,6 +33,7 @@ final class ReadToolRenderer implements ToolCardRenderer {
         }
     }
 
+    /** Read-style rows never expand; failure output is always visible instead. */
     @Override
     public boolean expandable(ToolCallEntry entry, ToolPresentation presentation) {
         return false;

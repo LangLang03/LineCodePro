@@ -3,23 +3,31 @@ package cn.lineai.core.model;
 /** Immutable model configuration. Secrets live in the same row; the UI never logs this object. */
 public final class ModelConfig {
 
+    /** Wire protocol spoken by the provider endpoint. */
     public enum Protocol {
+        /** Chat-completions style API. */
         OPENAI_COMPATIBLE(true),
+        /** OpenAI Responses protocol. */
         CODEX_RESPONSES(true),
+        /** Anthropic Messages protocol. */
         ANTHROPIC_MESSAGES(false),
+        /** On-device GGUF inference. */
         LOCAL_GGUF(false);
 
         private final boolean dedicatedCompression;
 
+        /** Records whether the protocol exposes a dedicated compression endpoint. */
         Protocol(boolean dedicatedCompression) {
             this.dedicatedCompression = dedicatedCompression;
         }
 
+        /** Returns whether history compression can use a dedicated model request. */
         public boolean supportsDedicatedCompression() {
             return dedicatedCompression;
         }
     }
 
+    /** Requested reasoning depth for models exposing a reasoning mode. */
     public enum ReasoningEffort {
         LOW,
         MEDIUM,
@@ -51,10 +59,14 @@ public final class ModelConfig {
     public final String localModelPath;
     public final String localAcceleration;
 
+    /** Sentinel passed to {@link Builder#toolCalls(int)} to disable the per-turn call cap. */
     public static final int UNLIMITED_TOOL_CALLS = -1;
+    /** Factory default for the per-turn tool-call cap. */
     public static final int DEFAULT_TOOL_CALL_LIMIT = 200;
+    /** Sentinel stored when the user has not set an explicit context size. */
     public static final int CONTEXT_SIZE_UNSET = 0;
 
+    /** Creates a configuration from builder state, applying defaults for blank fields. */
     private ModelConfig(Builder b) {
         this.id = b.id;
         this.name = b.name == null || b.name.isEmpty() ? b.modelId : b.name;
@@ -82,19 +94,27 @@ public final class ModelConfig {
         this.localAcceleration = orEmpty(b.localAcceleration);
     }
 
+    /**
+     * Normalises a tool-call limit.
+     * @param value configured limit
+     * @return {@link #UNLIMITED_TOOL_CALLS} unchanged, otherwise at least one
+     */
     public static int normalizeToolCalls(int value) {
         if (value == UNLIMITED_TOOL_CALLS) return UNLIMITED_TOOL_CALLS;
         return Math.max(1, value);
     }
 
+    /** Returns {@code value}, or an empty string when null. */
     private static String orEmpty(String value) {
         return value == null ? "" : value;
     }
 
+    /** Returns the display name, falling back to the raw model id when blank. */
     public String displayName() {
         return name == null || name.isEmpty() ? modelId : name;
     }
 
+    /** Returns a builder pre-filled with every field of this configuration. */
     public Builder toBuilder() {
         return new Builder()
                 .identity(id, name)
@@ -112,6 +132,7 @@ public final class ModelConfig {
                 .multimodal(supportsReasoning, supportsVision, supportsVideo);
     }
 
+    /** Returns a new builder with the documented defaults. */
     public static Builder builder() {
         return new Builder();
     }
@@ -143,12 +164,25 @@ public final class ModelConfig {
         private String localModelPath = "";
         private String localAcceleration = "automatic";
 
+        /**
+         * Sets the stored identity.
+         * @param idValue configuration identifier
+         * @param nameValue display name, blank falls back to the model id
+         * @return this builder
+         */
         public Builder identity(String idValue, String nameValue) {
             id = idValue == null ? "" : idValue;
             name = nameValue == null ? "" : nameValue;
             return this;
         }
 
+        /**
+         * Sets the endpoint identity.
+         * @param provider provider identifier
+         * @param model provider-side model id
+         * @param url API base URL
+         * @return this builder
+         */
         public Builder endpoint(String provider, String model, String url) {
             providerId = provider == null ? "" : provider;
             modelId = model == null ? "" : model;
@@ -156,16 +190,33 @@ public final class ModelConfig {
             return this;
         }
 
+        /**
+         * Sets the provider label shown in the UI.
+         * @param value label to assign
+         * @return this builder
+         */
         public Builder providerLabel(String value) {
             providerLabel = value == null ? "" : value;
             return this;
         }
 
+        /**
+         * Sets the per-turn tool-call cap.
+         * @param value limit, or {@link #UNLIMITED_TOOL_CALLS} to disable the cap
+         * @return this builder
+         */
         public Builder toolCalls(int value) {
             toolCallLimit = value;
             return this;
         }
 
+        /**
+         * Sets history-compression behaviour.
+         * @param enabled whether compression runs at all
+         * @param auto whether compression triggers without user action
+         * @param modelId model used for dedicated compression, may be blank
+         * @return this builder
+         */
         public Builder compression(boolean enabled, boolean auto, String modelId) {
             compressionEnabled = enabled;
             compressionAuto = auto;
@@ -173,40 +224,80 @@ public final class ModelConfig {
             return this;
         }
 
+        /**
+         * Sets local GGUF inference options.
+         * @param path model file path, null becomes empty
+         * @param acceleration acceleration hint, null becomes {@code "automatic"}
+         * @return this builder
+         */
         public Builder local(String path, String acceleration) {
             localModelPath = path == null ? "" : path;
             localAcceleration = acceleration == null ? "automatic" : acceleration;
             return this;
         }
 
+        /**
+         * Sets the API credential.
+         * @param value secret stored alongside the configuration, null becomes empty
+         * @return this builder
+         */
         public Builder secret(String value) {
             apiKey = value == null ? "" : value;
             return this;
         }
 
+        /**
+         * Sets the wire protocol.
+         * @param value protocol, null falls back to {@link Protocol#OPENAI_COMPATIBLE}
+         * @return this builder
+         */
         public Builder protocol(Protocol value) {
             protocol = value == null ? Protocol.OPENAI_COMPATIBLE : value;
             return this;
         }
 
+        /**
+         * Sets context-window sizing.
+         * @param size input context size in tokens
+         * @param outputLimit completion token limit
+         * @return this builder
+         */
         public Builder context(int size, int outputLimit) {
             contextSize = size;
             maxTokens = outputLimit;
             return this;
         }
 
+        /**
+         * Sets sampling behaviour.
+         * @param value temperature
+         * @param effort reasoning effort, null falls back to {@link ReasoningEffort#MEDIUM}
+         * @return this builder
+         */
         public Builder sampling(float value, ReasoningEffort effort) {
             temperature = value;
             reasoningEffort = effort == null ? ReasoningEffort.MEDIUM : effort;
             return this;
         }
 
+        /**
+         * Sets the default and enabled flags.
+         * @param isDefaultModel whether this configuration is the default
+         * @param isEnabled whether the configuration is selectable
+         * @return this builder
+         */
         public Builder flags(boolean isDefaultModel, boolean isEnabled) {
             isDefault = isDefaultModel;
             enabled = isEnabled;
             return this;
         }
 
+        /**
+         * Sets legacy capability switches.
+         * @param vision whether image inputs are accepted
+         * @param tools whether tool calling is enabled
+         * @return this builder
+         */
         public Builder capabilities(boolean vision, boolean tools) {
             supportsVision = vision;
             supportsTools = tools;
@@ -221,6 +312,10 @@ public final class ModelConfig {
             return this;
         }
 
+        /**
+         * Returns the immutable configuration accumulated by this builder.
+         * @return a new {@link ModelConfig}
+         */
         public ModelConfig build() {
             return new ModelConfig(this);
         }

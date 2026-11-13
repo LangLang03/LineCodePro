@@ -37,20 +37,59 @@ import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.ThemeBinder;
 import cn.lineai.ui.tokens.Tokens;
 
-/** Long-term memory management with scopes, editor and batch deletion. */
+/**
+ * Long-term memory management screen with scopes, a content editor, and batch deletion.
+ *
+ * <p>Threading contract: data loading happens on the I/O scheduler and rendering on the main
+ * thread. The page supports multi-selection entered via long press, in which case the header
+ * switches to a batch-action bar until the selection is cleared.</p>
+ */
 public final class MemoryPage extends LinearLayout {
 
+    /** Data operations supplied by the host; implementations must be safe to call from I/O. */
     public interface Listener {
+        /**
+         * Loads all long-term memory items.
+         *
+         * @return current memory items; never null
+         */
         List<MemoryItem> load();
 
+        /**
+         * Creates or updates a memory item.
+         *
+         * @param id identifier of the item to update, or an empty string to create one
+         * @param scope memory scope identifier to assign
+         * @param content memory content to persist
+         */
         void save(String id, String scope, String content);
 
+        /**
+         * Deletes one memory item.
+         *
+         * @param id identifier of the item to remove
+         */
         void delete(String id);
 
+        /**
+         * Deletes the given memory items in one batch.
+         *
+         * @param ids identifiers to remove; callers pass the current selection
+         */
         void deleteAll(List<String> ids);
 
+        /**
+         * Loads the short-term memory entries for the read-only section.
+         *
+         * @return current short-term items; never null
+         */
         List<TodoItem> loadShortTerm();
 
+        /**
+         * Loads the chat index entries for the read-only section.
+         *
+         * @return current conversation summaries; never null
+         */
         List<Conversation> loadChatIndex();
     }
 
@@ -61,6 +100,16 @@ public final class MemoryPage extends LinearLayout {
     private final Set<String> selected = new HashSet<>();
     private List<MemoryItem> memories = new ArrayList<>();
 
+    /**
+     * Builds the memory page and performs the initial asynchronous load.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param listener data operations for loading, saving, and deleting memories
+     * @param scheduler scheduler enforcing the I/O-to-main threading contract; may be null for
+     *                  synchronous loading in tests
+     */
     public MemoryPage(Context context, Tokens tokens, Runnable back, Listener listener,
                       cn.lineai.core.kernel.time.Scheduler scheduler) {
         super(context);
@@ -103,6 +152,7 @@ public final class MemoryPage extends LinearLayout {
         });
     }
 
+    /** Rebuilds the header bar, switching between navigation mode and selection mode. */
     private void renderHeader() {
         Context context = getContext();
         headerHost.removeAllViews();
@@ -128,6 +178,7 @@ public final class MemoryPage extends LinearLayout {
         headerHost.addView(bar, new FrameLayout.LayoutParams(-1, -2));
     }
 
+    /** Rebuilds the content list from the loaded memories plus the read-only sections. */
     private void refresh() {
         content.removeAllViews();
         Tokens tokens = theme.current();
@@ -152,6 +203,7 @@ public final class MemoryPage extends LinearLayout {
                 listener.loadChatIndex());
     }
 
+    /** Returns the loaded memories matching the given scope, preserving load order. */
     private List<MemoryItem> filter(String scope) {
         List<MemoryItem> result = new ArrayList<>();
         for (MemoryItem memory : memories) {
@@ -160,6 +212,7 @@ public final class MemoryPage extends LinearLayout {
         return result;
     }
 
+    /** Adds one long-term memory section with selectable rows and detail/actions handling. */
     private void addSection(int title, int icon, List<MemoryItem> rows) {
         SettingsSection section = new SettingsSection(getContext(),
                 MemoryText.sectionTitle(getContext(), title, rows.size()), theme);
@@ -193,6 +246,7 @@ public final class MemoryPage extends LinearLayout {
         }
     }
 
+    /** Adds a read-only section for short-term or chat index entries. */
     private void addSimpleSection(int title, int icon, List<?> entries) {
         SettingsSection section = new SettingsSection(getContext(),
                 MemoryText.sectionTitle(getContext(), title, entries.size()), theme);
@@ -227,6 +281,7 @@ public final class MemoryPage extends LinearLayout {
         }
     }
 
+    /** Adds a section header with only the empty-state placeholder. */
     private void emptySection(int title) {
         SettingsSection section = new SettingsSection(getContext(),
                 MemoryText.sectionTitle(getContext(), title, 0), theme);
@@ -234,6 +289,7 @@ public final class MemoryPage extends LinearLayout {
         section.row(emptyView(), false, 0);
     }
 
+    /** Builds the placeholder view shown when a section has no entries. */
     private View emptyView() {
         TextView empty = Ui.text(getContext(), getContext().getString(R.string.screen_memory_empty_text),
                 Tokens.FONT_SM, theme.current().textTertiary, Typeface.NORMAL);
@@ -242,12 +298,14 @@ public final class MemoryPage extends LinearLayout {
         return empty;
     }
 
+    /** Toggles the selection state of one memory item and re-renders header and content. */
     private void toggle(String id) {
         if (!selected.remove(id)) selected.add(id);
         renderHeader();
         refresh();
     }
 
+    /** Shows the bottom sheet with edit, select, and delete actions for one memory item. */
     private void showActions(MemoryItem memory) {
         Tokens tokens = theme.current();
         LinearLayout panel = sheetPanel(tokens);
@@ -276,6 +334,7 @@ public final class MemoryPage extends LinearLayout {
         holder[0] = Sheets.showBottom(getContext(), tokens, panel);
     }
 
+    /** Asks for confirmation, then deletes one memory item and reloads. */
     private void confirmDelete(MemoryItem memory) {
         Dialogs.confirm(getContext(), theme.current(),
                 getContext().getString(R.string.screen_memory_delete_title),
@@ -290,6 +349,7 @@ public final class MemoryPage extends LinearLayout {
                 });
     }
 
+    /** Asks for confirmation, then deletes every selected memory item and clears the selection. */
     private void confirmBatchDelete() {
         if (selected.isEmpty()) return;
         Dialogs.confirm(getContext(), theme.current(),
@@ -305,12 +365,14 @@ public final class MemoryPage extends LinearLayout {
                 });
     }
 
+    /** Shows a read-only detail dialog for the full content of a memory item. */
     private void showDetail(String title, String body) {
         Dialogs.confirm(getContext(), theme.current(), title, body,
                 getContext().getString(R.string.common_close),
                 getContext().getString(R.string.common_close), confirmed -> { });
     }
 
+    /** Shows the scope-and-content editor dialog; passing null creates a new memory item. */
     private void showEditor(MemoryItem memory) {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -377,6 +439,7 @@ public final class MemoryPage extends LinearLayout {
         }
     }
 
+    /** Creates a scope radio button carrying its scope identifier as a tag. */
     private RadioButton scopeButton(Context context, Tokens tokens, int label, String scope) {
         RadioButton button = new RadioButton(context);
         button.setText(context.getString(label));
@@ -387,12 +450,14 @@ public final class MemoryPage extends LinearLayout {
         return button;
     }
 
+    /** Resolves the scope identifier of the checked button, defaulting to the user scope. */
     private String checkedScope(RadioGroup group) {
         View checked = group.findViewById(group.getCheckedRadioButtonId());
         return checked == null || checked.getTag() == null
                 ? MemoryItem.SCOPE_USER : String.valueOf(checked.getTag());
     }
 
+    /** Creates a tinted text button used in dialogs and sheets. */
     private TextView dialogButton(Context context, Tokens tokens, int label, int color,
                                   Runnable action) {
         TextView button = Ui.bold(context, context.getString(label), Tokens.FONT_MD, color);
@@ -401,6 +466,7 @@ public final class MemoryPage extends LinearLayout {
         return button;
     }
 
+    /** Builds the rounded-top container used for bottom sheets. */
     private LinearLayout sheetPanel(Tokens tokens) {
         LinearLayout panel = new LinearLayout(getContext());
         panel.setOrientation(VERTICAL);
@@ -408,12 +474,14 @@ public final class MemoryPage extends LinearLayout {
         return panel;
     }
 
+    /** Adds the bold title row of a bottom sheet. */
     private void sheetTitle(LinearLayout panel, Tokens tokens, String title) {
         TextView view = Ui.bold(getContext(), title, Tokens.FONT_LG, tokens.text);
         Ui.padding(view, 16, 0, 16, 12);
         panel.addView(view, new LayoutParams(-1, -2));
     }
 
+    /** Adds one tappable action row to a bottom sheet panel. */
     private void sheetRow(LinearLayout panel, Tokens tokens, String label, int color,
                           Runnable action) {
         TextView view = Ui.text(getContext(), label, Tokens.FONT_MD, color, Typeface.NORMAL);

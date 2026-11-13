@@ -6,20 +6,34 @@ import java.util.List;
 
 import cn.lineai.core.model.Message;
 
-/** Immutable snapshot rendered by the chat screen. */
+/**
+ * Immutable snapshot rendered by the chat screen.
+ *
+ * <p>Instances are only replaced, never mutated: {@link ChatController} publishes new snapshots
+ * on the main thread and the UI rebinds when {@code revision} changes. Messages are sorted by
+ * {@code seq} at construction so a late event can never render out of order.</p>
+ */
 public final class ChatState {
 
+    /** Transcript ordered by persisted {@code seq}; unmodifiable. */
     public final List<Message> messages;
+    /** Tool calls awaiting user approval; unmodifiable. */
     public final List<ToolApprovalItem> pendingApprovals;
+    /** True while a model turn is streaming into the timeline. */
     public final boolean streaming;
     public final String projectLabel;
+    /** Estimated context usage, clamped to 0..100. */
     public final int contextPercent;
     public final String modelLabel;
     public final String statusText;
+    /** Normalized chat permission mode (see {@code ChatMode}). */
     public final String chatMode;
+    /** True when a model is configured; drives the "no model" affordances. */
     public final boolean hasModel;
+    /** Monotonic revision stamp; identical values let views skip a rebind. */
     public final long revision;
 
+    /** Sorts the accumulated messages by seq and freezes all lists. */
     private ChatState(Builder b) {
         List<Message> ordered = new ArrayList<>(b.messages);
         // Sequence is assigned on the single event queue; sorting here is the last line of defence
@@ -37,18 +51,22 @@ public final class ChatState {
         this.revision = b.revision;
     }
 
+    /** Snapshot with no messages and no pending approvals. */
     public static ChatState empty() {
         return builder().build();
     }
 
+    /** True when the transcript has no messages. */
     public boolean isEmpty() {
         return messages.isEmpty();
     }
 
+    /** True when tool calls are awaiting user approval. */
     public boolean hasPendingApproval() {
         return !pendingApprovals.isEmpty();
     }
 
+    /** Copy preset carrying every field of this snapshot for incremental updates. */
     public Builder toBuilder() {
         return new Builder()
                 .messages(messages)
@@ -63,10 +81,12 @@ public final class ChatState {
                 .revision(revision);
     }
 
+    /** Fresh builder with default field values. */
     public static Builder builder() {
         return new Builder();
     }
 
+    /** Accumulates the snapshot fields; defensive copies keep built states immutable. */
     public static final class Builder {
         private List<Message> messages = new ArrayList<>();
         private List<ToolApprovalItem> pendingApprovals = new ArrayList<>();
@@ -79,11 +99,13 @@ public final class ChatState {
         private boolean hasModel;
         private long revision;
 
+        /** Replaces the transcript; null yields an empty list, otherwise a defensive copy. */
         public Builder messages(List<Message> value) {
             messages = value == null ? new ArrayList<>() : new ArrayList<>(value);
             return this;
         }
 
+        /** Appends one message to the transcript; null is ignored. */
         public Builder add(Message message) {
             if (message != null) {
                 messages.add(message);
@@ -91,6 +113,7 @@ public final class ChatState {
             return this;
         }
 
+        /** Replaces the message with the same id in place, or appends it when the id is unknown. */
         public Builder replace(Message message) {
             if (message == null) {
                 return this;
@@ -105,52 +128,62 @@ public final class ChatState {
             return this;
         }
 
+        /** Sets whether a model turn is streaming. */
         public Builder streaming(boolean value) {
             streaming = value;
             return this;
         }
 
+        /** Replaces the approval batch; null yields an empty list, otherwise a defensive copy. */
         public Builder pendingApprovals(List<ToolApprovalItem> value) {
             pendingApprovals = value == null
                     ? new ArrayList<ToolApprovalItem>() : new ArrayList<>(value);
             return this;
         }
 
+        /** Sets the project label shown in the header; null yields an empty label. */
         public Builder project(String value) {
             projectLabel = value == null ? "" : value;
             return this;
         }
 
+        /** Sets estimated context usage, clamped to 0..100. */
         public Builder contextPercent(int value) {
             contextPercent = Math.max(0, Math.min(100, value));
             return this;
         }
 
+        /** Sets the model display name; null yields an empty label. */
         public Builder model(String value) {
             modelLabel = value == null ? "" : value;
             return this;
         }
 
+        /** Sets the status line text; null yields an empty text. */
         public Builder status(String value) {
             statusText = value == null ? "" : value;
             return this;
         }
 
+        /** Sets and normalizes the chat permission mode. */
         public Builder chatMode(String value) {
             chatMode = cn.lineai.core.model.ChatMode.normalize(value);
             return this;
         }
 
+        /** Sets whether a model is configured. */
         public Builder hasModel(boolean value) {
             hasModel = value;
             return this;
         }
 
+        /** Sets the revision stamp used to skip redundant rebinds. */
         public Builder revision(long value) {
             revision = value;
             return this;
         }
 
+        /** Builds the immutable snapshot, sorting messages by seq. */
         public ChatState build() {
             return new ChatState(this);
         }

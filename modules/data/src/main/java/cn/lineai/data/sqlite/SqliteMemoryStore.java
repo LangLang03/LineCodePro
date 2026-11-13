@@ -18,11 +18,24 @@ public final class SqliteMemoryStore implements MemoryStore {
     private final LineCodeDatabase database;
     private final Clock clock;
 
+    /**
+     * Creates the store.
+     *
+     * @param database shared database connection holder
+     * @param clock clock used to timestamp saved memories
+     */
     public SqliteMemoryStore(LineCodeDatabase database, Clock clock) {
         this.database = database;
         this.clock = clock;
     }
 
+    /**
+     * Reads every non-project memory plus the memories scoped to the given project, newest update
+     * first.
+     *
+     * @param projectId project whose scoped memories are included; empty selects none
+     * @return the memories visible in that project context
+     */
     @Override
     public List<MemoryItem> list(String projectId) {
         List<MemoryItem> memories = new ArrayList<>();
@@ -34,6 +47,14 @@ public final class SqliteMemoryStore implements MemoryStore {
         return memories;
     }
 
+    /**
+     * Rewrites scope and content of one memory, carrying over the stored project binding, title,
+     * source and usage statistics.
+     *
+     * @param id memory identifier; unknown identifiers store a minimal new row
+     * @param scope new scope value
+     * @param content new content text
+     */
     @Override
     public void update(String id, String scope, String content) {
         MemoryItem existing = null;
@@ -51,6 +72,12 @@ public final class SqliteMemoryStore implements MemoryStore {
                 existing == null ? 0 : existing.useCount));
     }
 
+    /**
+     * Inserts one memory with a generated identifier and fresh timestamps, or replaces an
+     * existing row while refreshing its update timestamp.
+     *
+     * @param memory memory to persist; an empty identifier requests insertion
+     */
     @Override
     public void save(MemoryItem memory) {
         long now = clock.nowMs();
@@ -72,11 +99,21 @@ public final class SqliteMemoryStore implements MemoryStore {
                 SQLiteDatabase.CONFLICT_REPLACE);
     }
 
+    /**
+     * Deletes one memory.
+     *
+     * @param id memory identifier; unknown identifiers are ignored
+     */
     @Override
     public void delete(String id) {
         database.open().delete("memories", "id=?", new String[] {id});
     }
 
+    /**
+     * Deletes several memories inside one transaction so the removal cannot end half-applied.
+     *
+     * @param ids memory identifiers; null or empty leaves the store untouched
+     */
     @Override
     public void deleteAll(List<String> ids) {
         if (ids == null || ids.isEmpty()) return;
@@ -90,6 +127,7 @@ public final class SqliteMemoryStore implements MemoryStore {
         }
     }
 
+    /** Maps the current row onto a memory item. */
     private static MemoryItem read(Cursor cursor) {
         return new MemoryItem(
                 cursor.getString(cursor.getColumnIndexOrThrow("id")),
@@ -105,6 +143,7 @@ public final class SqliteMemoryStore implements MemoryStore {
                 cursor.getInt(cursor.getColumnIndexOrThrow("use_count")));
     }
 
+    /** Substitutes the empty string for null. */
     private static String safe(String value) {
         return value == null ? "" : value;
     }

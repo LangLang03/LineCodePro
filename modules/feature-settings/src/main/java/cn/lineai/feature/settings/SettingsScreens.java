@@ -4,6 +4,12 @@ import cn.lineai.core.mvi.nav.Params;
 import cn.lineai.core.mvi.nav.ScreenId;
 import cn.lineai.core.mvi.nav.ScreenRegistry;
 
+/**
+ * Registry of navigation screen identifiers for the settings feature.
+ *
+ * <p>Each constant declares the screen's routing key and its parent, which defines the back-stack
+ * hierarchy. All settings screens share {@link SettingsState} and take no navigation parameters.</p>
+ */
 public final class SettingsScreens {
     public static final ScreenId<SettingsState, Params.Empty> HOME =
             new ScreenId<>("settings", null, true, Params.Empty::fromArgs);
@@ -53,8 +59,14 @@ public final class SettingsScreens {
     public static final ScreenId<SettingsState, Params.Empty> TOOL_PREVIEW =
             new ScreenId<>("settings.toolPreview", OUTPUT, true, Params.Empty::fromArgs);
 
+    /** Utility class; not instantiable. */
     private SettingsScreens() { }
 
+    /**
+     * Registers every settings screen with the navigation registry.
+     *
+     * @param registry registry to populate; must not already contain these identifiers
+     */
     public static void register(ScreenRegistry registry) {
         registry.register(HOME).register(INPUT).register(OUTPUT)
                 .register(BEHAVIOR).register(THEME).register(ABOUT).register(LICENSES)

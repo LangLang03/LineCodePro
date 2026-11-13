@@ -19,16 +19,42 @@ import cn.lineai.ui.kit.Sheets;
 import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
 
-/** Bottom sheet listing the model ids returned by the provider catalog. */
+/**
+ * Bottom sheet listing the model ids returned by the provider catalog.
+ *
+ * <p>Package-private utility built once per invocation; rows report through {@link Listener} and
+ * the sheet dismisses itself before the callback so a slow listener cannot interact with a visible
+ * sheet. A trailing "custom" row lets callers accept a free-form model id that the catalog did not
+ * list.</p>
+ */
 final class ModelPickerSheet {
 
+    /**
+     * Consumer of the picker outcome.
+     */
     interface Listener {
+        /**
+         * Reports the chosen model.
+         *
+         * @param modelId catalog id when {@code custom} is false, empty string when true
+         * @param custom true when the trailing custom-entry row was chosen
+         */
         void onModelSelected(String modelId, boolean custom);
     }
 
+    /** Not instantiable; the sheet is created through the static {@link #show}. */
     private ModelPickerSheet() {
     }
 
+    /**
+     * Builds and shows the sheet.
+     *
+     * @param context hosting context
+     * @param tokens palette snapshot used for the panel, rows and check glyph
+     * @param modelIds catalog ids to list, rendered in order
+     * @param selectedId currently selected catalog id, shown with a check glyph
+     * @param listener outcome consumer; may be null, in which case the sheet only dismisses
+     */
     static void show(Context context, Tokens tokens, List<String> modelIds, String selectedId,
                      Listener listener) {
         Dialog dialog = new Dialog(context);
@@ -72,6 +98,10 @@ final class ModelPickerSheet {
         dialog.setContentView(panel);
     }
 
+    /**
+     * Builds one selectable row. Custom rows render in accent color and never show the check glyph,
+     * keeping the catalog selection visually distinct from the free-form entry.
+     */
     private static void row(Context context, Tokens tokens, LinearLayout list, Dialog dialog,
                             String label, boolean selected, boolean custom, Listener listener) {
         LinearLayout row = new LinearLayout(context);

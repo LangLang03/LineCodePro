@@ -15,6 +15,20 @@ public final class PromptRenderer {
     private PromptRenderer() {
     }
 
+    /**
+     * Substitutes {@code {{NAME}}} placeholders in a template.
+     *
+     * <p>Every declared variable must be present in {@code values}; extra entries are ignored.
+     * Substituted values are inserted literally, so braces inside them are never re-interpreted
+     * as placeholders.</p>
+     *
+     * @param prompt prompt the template belongs to; declares the allowed placeholders
+     * @param template template text with {@code {{NAME}}} placeholders
+     * @param values substitution values keyed by placeholder name
+     * @return rendered text
+     * @throws IllegalArgumentException when a declared variable is missing, the template is
+     *         malformed, or the template uses an undeclared placeholder
+     */
     public static String render(PromptId prompt, String template, Map<String, String> values) {
         for (String variable : prompt.variables()) {
             if (!values.containsKey(variable)) {
@@ -33,7 +47,14 @@ public final class PromptRenderer {
         return output.toString();
     }
 
-    /** Rejects malformed templates and placeholders that the prompt does not declare. */
+    /**
+     * Rejects malformed templates and placeholders that the prompt does not declare.
+     *
+     * @param prompt prompt whose declared placeholders define the allowed set
+     * @param template template text to check
+     * @throws IllegalArgumentException when a leftover {@code {{}} sequence or an undeclared
+     *         placeholder is found
+     */
     public static void validate(PromptId prompt, String template) {
         if (PLACEHOLDER.matcher(template).replaceAll("").indexOf("{{") >= 0) {
             throw new IllegalArgumentException("Malformed placeholder in " + prompt.id);

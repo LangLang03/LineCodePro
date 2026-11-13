@@ -25,12 +25,14 @@ public enum ToolRunStatus {
     IN_PROGRESS("in_progress"),
     COMPLETED("completed");
 
+    /** Wire token of the status. */
     public final String wire;
 
     ToolRunStatus(String wire) {
         this.wire = wire;
     }
 
+    /** True when the wire value equals this status. */
     public boolean matches(String value) {
         return wire.equals(value);
     }

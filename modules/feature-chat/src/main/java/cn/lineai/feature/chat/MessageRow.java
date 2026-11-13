@@ -36,6 +36,7 @@ final class MessageRow extends LinearLayout {
     private boolean actionsVisible;
     private boolean selected;
 
+    /** Builds either the user bubble stack or the assistant turn, plus selection click handlers. */
     private MessageRow(Context context, Tokens tokens, boolean user) {
         super(context);
         this.tokens = tokens;
@@ -112,10 +113,16 @@ final class MessageRow extends LinearLayout {
         });
     }
 
+    /** Factory: the row variant is fixed by the kind of the first row it binds. */
     static MessageRow create(Context context, TurnAssembler.Row row, Tokens tokens) {
         return new MessageRow(context, tokens, row.user);
     }
 
+    /**
+     * Rebinds from a render row. Identical signature and environment skip the work entirely,
+     * which keeps streaming rebinds cheap; selection state is refreshed separately because it
+     * changes without the row content changing.
+     */
     void bind(TurnAssembler.Row value, Tokens current, RowEnv rowEnv) {
         boolean envChanged = lastEnv == null || lastEnv.provider != rowEnv.provider
                 || !lastEnv.preferences.equals(rowEnv.preferences)
@@ -152,6 +159,7 @@ final class MessageRow extends LinearLayout {
         applyTokens(current);
     }
 
+    /** Restyles in place so focus, scroll position and disclosures survive theme switches. */
     void applyTokens(Tokens current) {
         tokens = current;
         setBackgroundColor(current.bg);
@@ -167,11 +175,13 @@ final class MessageRow extends LinearLayout {
         applySelection();
     }
 
+    /** Reflects the multi-select highlight for this row. */
     void setRowSelected(boolean value) {
         selected = value;
         applySelection();
     }
 
+    /** Clears the highlight when multi-select mode ends. */
     void setMultiSelect(boolean enabled) {
         if (!enabled) {
             selected = false;
@@ -189,6 +199,7 @@ final class MessageRow extends LinearLayout {
         }
     }
 
+    /** Restyles attachment chips and image frames in place. */
     private void restyleAttachments(Tokens current) {
         for (int index = 0; index < attachments.getChildCount(); index++) {
             android.view.View child = attachments.getChildAt(index);
@@ -203,11 +214,13 @@ final class MessageRow extends LinearLayout {
         }
     }
 
+    /** Flips the user action bar's visibility. */
     private void toggleActions() {
         actionsVisible = !actionsVisible;
         actions.setVisibility(actionsVisible ? VISIBLE : GONE);
     }
 
+    /** Draws the selected outline or the plain background. */
     private void applySelection() {
         if (selected) {
             setBackground(Ui.roundedStroke(getContext(), tokens.accentMuted, 12,
@@ -217,6 +230,7 @@ final class MessageRow extends LinearLayout {
         }
     }
 
+    /** Rebuilds image thumbnails and file chips only when the attachment blocks changed. */
     private void renderAttachments(Message user) {
         StringBuilder key = new StringBuilder();
         if (user != null) {
@@ -245,6 +259,7 @@ final class MessageRow extends LinearLayout {
         attachments.setVisibility(count == 0 ? GONE : VISIBLE);
     }
 
+    /** Adds a cropped image thumbnail; returns 0 when the file no longer decodes. */
     private int addImage(String path) {
         android.graphics.Bitmap bitmap = BitmapFactory.decodeFile(path);
         if (bitmap == null) {
@@ -263,6 +278,7 @@ final class MessageRow extends LinearLayout {
         return 1;
     }
 
+    /** Adds an ellipsized file-name chip; always returns 1. */
     private int addFileChip(String path) {
         TextView chip = Ui.medium(getContext(), new java.io.File(path).getName(),
                 Tokens.FONT_XS, tokens.textSecondary);
@@ -280,6 +296,7 @@ final class MessageRow extends LinearLayout {
         return 1;
     }
 
+    /** Caps the user bubble at 90% of the row width. */
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         if (user) {

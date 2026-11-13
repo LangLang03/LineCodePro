@@ -15,6 +15,8 @@ final class BoundedScrollView extends ScrollView {
     private final int maxHeightPx;
     private float lastTouchY;
 
+    /** @param context    hosting context
+     * @param maxHeightDp hard height cap in dp; non-positive disables the cap */
     BoundedScrollView(Context context, int maxHeightDp) {
         super(context);
         this.maxHeightPx = maxHeightDp <= 0 ? 0
@@ -23,6 +25,7 @@ final class BoundedScrollView extends ScrollView {
         setVerticalScrollBarEnabled(true);
     }
 
+    /** Caps the measured height at the configured maximum. */
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         if (maxHeightPx > 0) {
@@ -35,6 +38,7 @@ final class BoundedScrollView extends ScrollView {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
     }
 
+    /** Claims the drag only while the content can still scroll in the gesture direction. */
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
         switch (event.getActionMasked()) {
@@ -60,12 +64,14 @@ final class BoundedScrollView extends ScrollView {
         return super.dispatchTouchEvent(event);
     }
 
+    /** True when the child is taller than the padded viewport. */
     private boolean canScrollContent() {
         return getChildCount() > 0
                 && canScrollContent(getHeight() - getPaddingTop() - getPaddingBottom(),
                         getChildAt(0).getHeight());
     }
 
+    /** Asks the outer scroll container to release the gesture to this view. */
     private void requestParentDisallowIntercept(boolean disallow) {
         ViewParent parent = getParent();
         if (parent != null) {
@@ -73,10 +79,12 @@ final class BoundedScrollView extends ScrollView {
         }
     }
 
+    /** Pure scrollability check shared with the instance helper. */
     private static boolean canScrollContent(int viewportHeight, int childHeight) {
         return viewportHeight > 0 && childHeight > viewportHeight;
     }
 
+    /** Whether this view should keep the drag: only while the edge has not been reached. */
     private static boolean shouldHandleDrag(boolean contentScrollable, float deltaY,
                                             boolean canScrollUp, boolean canScrollDown) {
         if (!contentScrollable) return false;
@@ -85,6 +93,7 @@ final class BoundedScrollView extends ScrollView {
         return true;
     }
 
+    /** Claims the gesture on touch-down when the bounded content is present and visible. */
     private static boolean shouldDisallowOnDown(boolean visible, boolean hasContent,
                                                 boolean hasMaxHeight) {
         return visible && hasContent && hasMaxHeight;

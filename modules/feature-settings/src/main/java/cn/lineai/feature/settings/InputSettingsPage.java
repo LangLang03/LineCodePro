@@ -18,6 +18,9 @@ import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
 import java.util.function.Consumer;
 
+/**
+ * Input settings screen controlling the enter-key behavior of the composer.
+ */
 public final class InputSettingsPage extends SettingsPage {
     private final Consumer<SettingsAction> dispatch;
     private final LinearLayout selector;
@@ -25,6 +28,14 @@ public final class InputSettingsPage extends SettingsPage {
     private String behavior = "send";
     private PopupWindow popup;
 
+    /**
+     * Builds the input settings screen.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param dispatch consumer receiving settings actions for the selector
+     */
     public InputSettingsPage(Context context, Tokens tokens, Runnable back, Consumer<SettingsAction> dispatch) {
         super(context, R.string.screen_input_title, tokens, back);
         this.dispatch = dispatch;
@@ -68,12 +79,18 @@ public final class InputSettingsPage extends SettingsPage {
         });
     }
 
+    /**
+     * Syncs the selector label and enablement to the given state.
+     *
+     * @param state current settings state from the presenter
+     */
     public void render(SettingsState state) {
         behavior = state.values.get(Field.ENTER_BEHAVIOR);
         value.setText("newline".equals(behavior) ? R.string.screen_input_enter_newline : R.string.screen_input_enter_send);
         selector.setEnabled(state.loaded);
     }
 
+    /** Toggles the drop-down options popup anchored below the selector. */
     private void showOptions() {
         if (popup != null && popup.isShowing()) { popup.dismiss(); return; }
         Context context = getContext();
@@ -91,6 +108,7 @@ public final class InputSettingsPage extends SettingsPage {
         popup.showAsDropDown(selector, selector.getWidth() - width, Ui.dp(context, 4));
     }
 
+    /** Adds one option entry that dispatches the selection and closes the popup. */
     private void option(LinearLayout options, String key, int label) {
         Context context = getContext();
         Tokens t = theme.current();
@@ -107,10 +125,12 @@ public final class InputSettingsPage extends SettingsPage {
         options.addView(choice, new LayoutParams(-1, Ui.dp(context, 38)));
     }
 
+    /** Dismisses the options popup if it is showing. */
     @Override public void dispose() {
         if (popup != null) popup.dismiss();
     }
 
+    /** Detaches the popup window to avoid leaking it past the view lifetime. */
     @Override protected void onDetachedFromWindow() {
         dispose();
         super.onDetachedFromWindow();

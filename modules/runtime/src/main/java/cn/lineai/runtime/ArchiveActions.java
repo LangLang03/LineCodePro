@@ -9,15 +9,23 @@ import cn.lineai.core.kernel.time.Scheduler;
 import cn.lineai.ui.i18n.R;
 import cn.lineai.ui.kit.Dialogs;
 
-/** SAF export/import of the user-data archive. */
+/** SAF export/import of the user-data archive: conversation, model and settings state. */
 public final class ArchiveActions {
 
+    /** Request code of the export create-document picker. */
     public static final int REQUEST_EXPORT = 7401;
+    /** Request code of the import open-document picker. */
     public static final int REQUEST_IMPORT = 7402;
 
+    /** Utility class; instantiation is not permitted. */
     private ArchiveActions() {
     }
 
+    /**
+     * Launches the SAF create-document picker for a new archive file.
+     *
+     * @param host host providing the activity for the picker
+     */
     public static void requestExport(PageHost host) {
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -31,6 +39,11 @@ public final class ArchiveActions {
         }
     }
 
+    /**
+     * Launches the SAF open-document picker for an existing archive file.
+     *
+     * @param host host providing the activity for the picker
+     */
     public static void requestImport(PageHost host) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -42,6 +55,14 @@ public final class ArchiveActions {
         }
     }
 
+    /**
+     * Dispatches a picker result to the matching export or import flow.
+     *
+     * @param host host providing the graph, scheduler and dialogs
+     * @param requestCode request code of the finished picker
+     * @param uri selected document, {@code null} when the user cancelled
+     * @return {@code true} when this class consumed the request code
+     */
     public static boolean handleResult(PageHost host, int requestCode, Uri uri) {
         if (requestCode == REQUEST_EXPORT) {
             export(host, uri);
@@ -61,6 +82,7 @@ public final class ArchiveActions {
         return false;
     }
 
+    /** Writes the archive on an io thread and toasts the summary on main. */
     private static void export(PageHost host, Uri uri) {
         Scheduler scheduler = host.graph().graph().get(Scheduler.class);
         scheduler.io(() -> {
@@ -79,6 +101,7 @@ public final class ArchiveActions {
         });
     }
 
+    /** Halts chat, imports on io, then reloads settings and chat state on main. */
     private static void importArchive(PageHost host, Uri uri) {
         // Halt the chat before the import wipes conversations/messages; otherwise a running
         // turn keeps writing into tables the import is deleting underneath it.

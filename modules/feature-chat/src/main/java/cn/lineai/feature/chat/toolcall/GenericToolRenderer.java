@@ -16,11 +16,13 @@ import cn.lineai.ui.kit.Ui;
  */
 final class GenericToolRenderer implements ToolCardRenderer {
 
+    /** Shared stateless instance. */
     static final GenericToolRenderer INSTANCE = new GenericToolRenderer();
 
     private GenericToolRenderer() {
     }
 
+    /** Renders the MCP header plus bounded INPUT/OUTPUT sections when expanded. */
     @Override
     public void render(ToolCardFrame frame, ToolCallEntry entry, ToolPresentation presentation) {
         ToolJson arguments = ToolCardSupport.arguments(entry);
@@ -46,6 +48,7 @@ final class GenericToolRenderer implements ToolCardRenderer {
         frame.body.addView(frame.bounded(box, 240), frame.fill());
     }
 
+    /** Adds one selectable mono section, optionally separated by a hairline. */
     private void addSection(ToolCardFrame frame, LinearLayout box, int headingRes,
                             String value, ToolCardFrame.Tint tint, boolean dividerAbove) {
         if (dividerAbove) box.addView(frame.divider());

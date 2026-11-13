@@ -17,12 +17,16 @@ public final class IpcServerPermission {
 
     private static final String TAG = "IpcServerPermission";
 
+    /** Utility class; never instantiated. */
     private IpcServerPermission() {
     }
 
     /**
      * Reports whether the given package declares the requested permission.
      *
+     * @param context context used to reach the package manager
+     * @param packageName the calling package to inspect; never the uid
+     * @param permission the permission name to look for
      * @return true when declared; false when the package is absent or has not requested it
      */
     public static boolean callerHasPermission(Context context, String packageName, String permission) {

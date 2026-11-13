@@ -13,6 +13,7 @@ import cn.lineai.core.model.Role;
  */
 public final class ChatTranscript {
 
+    /** Static utility; not instantiable. */
     private ChatTranscript() {
     }
 
@@ -63,6 +64,7 @@ public final class ChatTranscript {
         return markdown.toString();
     }
 
+    /** Only visible user or assistant messages with non-empty text are exported. */
     private static boolean isExportable(Message message) {
         if (message == null || message.visibility != Message.Visibility.VISIBLE) {
             return false;
@@ -73,6 +75,7 @@ public final class ChatTranscript {
         return !message.plainText().trim().isEmpty();
     }
 
+    /** Null-safe role label. */
     private static String label(String value) {
         return value == null ? "" : value;
     }

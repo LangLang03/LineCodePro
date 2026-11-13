@@ -31,12 +31,16 @@ import cn.lineai.ui.tokens.Tokens;
  */
 final class DrawerFileTree extends ScrollView {
 
+    /** Drawer callbacks: a tapped file and a long-press (or root plus action). */
     interface Callback {
+        /** Opens or attaches the selected file. */
         void onFileSelected(String path, String name);
 
+        /** Attachment entry point for the long-pressed node. */
         void onLongPressed(String path, String name, boolean directory, boolean root);
     }
 
+    /** Fixed tree metrics: deepest indent level and per-level indent. */
     private static final int MAX_DEPTH = 5;
     private static final int INDENT_DP = 16;
     private static final int XML_COLOR = Color.rgb(255, 159, 10);
@@ -53,6 +57,7 @@ final class DrawerFileTree extends ScrollView {
     private Callback callback;
     private boolean loading;
 
+    /** Builds the empty-state label and the row list container. */
     DrawerFileTree(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -71,6 +76,7 @@ final class DrawerFileTree extends ScrollView {
         addView(content, new LayoutParams(-1, -2));
     }
 
+    /** Installs selection and long-press callbacks. */
     void setCallback(Callback value) {
         callback = value;
     }
@@ -83,6 +89,7 @@ final class DrawerFileTree extends ScrollView {
         }
     }
 
+    /** Replaces the tree, expands its root and re-renders. */
     void setTree(DrawerPanel.FileNode node) {
         loading = false;
         tree = node;
@@ -92,6 +99,7 @@ final class DrawerFileTree extends ScrollView {
         render();
     }
 
+    /** Rebuilds rows from the expanded set; shows the empty or preparing label otherwise. */
     private void render() {
         list.removeAllViews();
         empty.setVisibility(tree == null ? VISIBLE : GONE);
@@ -102,6 +110,7 @@ final class DrawerFileTree extends ScrollView {
         }
     }
 
+    /** Depth-first append of expanded directories. */
     private void append(DrawerPanel.FileNode node, int depth, boolean root) {
         list.addView(new Row(node, depth, root), new LinearLayout.LayoutParams(-1, -2));
         if (!node.directory || !expanded.contains(node.path)) {
@@ -112,6 +121,7 @@ final class DrawerFileTree extends ScrollView {
         }
     }
 
+    /** Restyles the empty label and every row in place. */
     void applyTokens(Tokens current) {
         tokens = current;
         empty.setTextColor(current.textTertiary);
@@ -123,6 +133,7 @@ final class DrawerFileTree extends ScrollView {
         }
     }
 
+    /** One 48dp tree row with the kFilePresentationRules glyph and the root plus action. */
     private final class Row extends LinearLayout {
         private final DrawerPanel.FileNode node;
         private final IconButton glyph;
@@ -130,6 +141,7 @@ final class DrawerFileTree extends ScrollView {
         private final IconButton plus;
         private final boolean root;
 
+        /** Builds the row; taps toggle directories, select files, and long-press attaches. */
         Row(DrawerPanel.FileNode node, int depth, boolean root) {
             super(DrawerFileTree.this.getContext());
             this.node = node;
@@ -176,6 +188,7 @@ final class DrawerFileTree extends ScrollView {
             restyle();
         }
 
+        /** Reports the long-press to the callback. */
         private void press() {
             if (callback != null) {
                 callback.onLongPressed(node.path, node.name, node.directory, root);
@@ -202,6 +215,7 @@ final class DrawerFileTree extends ScrollView {
             return new int[] {Icons.FILE, tokens.textTertiary};
         }
 
+        /** Applies the presentation rules to the glyph and name. */
         void restyle() {
             int[] presentation = presentation();
             glyph.setIconType(presentation[0]);
@@ -214,6 +228,7 @@ final class DrawerFileTree extends ScrollView {
         }
     }
 
+    /** Whether the lowercased name ends with one of the extensions. */
     private static boolean hasExtension(String name, String[] extensions) {
         for (String extension : extensions) {
             if (name.endsWith(extension)) {

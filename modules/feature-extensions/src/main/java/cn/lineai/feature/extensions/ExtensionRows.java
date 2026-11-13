@@ -15,9 +15,15 @@ import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.ThemeBinder;
 import cn.lineai.ui.tokens.Tokens;
 
-/** Rows from the C++ extension screens whose labels are data (names, URLs, tool titles). */
+/**
+ * Rows from the C++ extension screens whose labels are data (names, URLs, tool titles).
+ *
+ * <p>These rows accept CharSequence content so the extension pages can render user data verbatim;
+ * callers must never hard-code tool names into row titles.</p>
+ */
 final class ExtensionRows {
 
+    /** Utility class; not instantiable. */
     private ExtensionRows() {
     }
 
@@ -32,6 +38,15 @@ final class ExtensionRows {
         private Consumer<Boolean> listener;
         private boolean binding;
 
+        /**
+         * Builds the switch row.
+         *
+         * @param context Android context used to inflate views
+         * @param theme theme binder shared with the page
+         * @param glyph icon resource shown before the labels
+         * @param name row title text
+         * @param desc row description text; may be null or empty to hide the label
+         */
         SwitchRow(Context context, ThemeBinder theme, int glyph, CharSequence name,
                   CharSequence desc) {
             super(context);
@@ -69,6 +84,12 @@ final class ExtensionRows {
             });
         }
 
+        /**
+         * Sets the switch state without firing the toggle listener.
+         *
+         * @param value checked state to display
+         * @return this row for chaining
+         */
         SwitchRow checked(boolean value) {
             binding = true;
             toggle.setChecked(value);
@@ -76,6 +97,12 @@ final class ExtensionRows {
             return this;
         }
 
+        /**
+         * Registers the listener invoked for user-initiated toggle changes.
+         *
+         * @param value consumer receiving the new checked state
+         * @return this row for chaining
+         */
         SwitchRow onToggle(Consumer<Boolean> value) {
             listener = value;
             toggle.setOnCheckedChangeListener((button, checked) -> {
@@ -84,6 +111,12 @@ final class ExtensionRows {
             return this;
         }
 
+        /**
+         * Registers a long-press action on the row.
+         *
+         * @param action action to run on long press
+         * @return this row for chaining
+         */
         SwitchRow onLongClick(Runnable action) {
             setOnLongClickListener(v -> {
                 action.run();
@@ -103,6 +136,17 @@ final class ExtensionRows {
         private final int glyph;
         private boolean active;
 
+        /**
+         * Builds the option row; clicks toggle the selected state and re-style the row.
+         *
+         * @param context Android context used to inflate views
+         * @param theme theme binder shared with the page
+         * @param glyph icon resource shown before the labels
+         * @param name row title text
+         * @param desc row description text; may be null or empty
+         * @param selected initial selected state
+         * @param click action invoked after every click, or null to style only
+         */
         OptionRow(Context context, ThemeBinder theme, int glyph, CharSequence name,
                   CharSequence desc, boolean selected, Runnable click) {
             super(context);
@@ -139,6 +183,7 @@ final class ExtensionRows {
             });
         }
 
+        /** Applies the selected or unselected visual treatment from the given tokens. */
         private void restyle(Tokens tokens) {
             setBackgroundColor(active ? tokens.accentMuted : Color.TRANSPARENT);
             setSelected(active);

@@ -19,6 +19,14 @@ import cn.lineai.ui.tokens.Tokens;
 /** Experimental feature entries. */
 public final class AdvancedFeaturesPage extends SettingsPage {
 
+    /**
+     * Builds the advanced features screen.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param open consumer notified with the identifier of the entry to open
+     */
     public AdvancedFeaturesPage(Context context, Tokens tokens, Runnable back,
                                 Consumer<String> open) {
         super(context, R.string.screen_advanced_title, tokens, back);
@@ -28,6 +36,7 @@ public final class AdvancedFeaturesPage extends SettingsPage {
                 Icons.SMARTPHONE, open);
     }
 
+    /** Adds one tappable entry card with icon, badge, description, and theme re-tinting. */
     private void addCard(Context context, Tokens tokens, String id, int title, int description,
                          int badge, int icon, Consumer<String> open) {
         LinearLayout card = new LinearLayout(context);

@@ -14,21 +14,30 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public final class Observable<T> {
 
+    /** Callback invoked with the current value on subscription and with each new value after. */
     public interface Observer<T> {
+        /** Receives a value synchronously on the thread that produced it. */
         void onChanged(T value);
     }
 
     private final List<Observer<T>> observers = new CopyOnWriteArrayList<>();
     private volatile T value;
 
+    /** Creates an observable holding {@code initial} as its current value. */
     public Observable(T initial) {
         this.value = initial;
     }
 
+    /** Returns the current value. */
     public T value() {
         return value;
     }
 
+    /**
+     * Replaces the current value and notifies every observer synchronously on the calling thread.
+     *
+     * @param next new value to publish
+     */
     public void set(T next) {
         value = next;
         for (Observer<T> observer : observers) {
@@ -36,6 +45,12 @@ public final class Observable<T> {
         }
     }
 
+    /**
+     * Subscribes an observer and immediately delivers the current value to it.
+     *
+     * @param observer callback to register; {@code null} yields a no-op handle
+     * @return handle that removes the observer when cancelled; cancelling twice is safe
+     */
     public Cancellable observe(Observer<T> observer) {
         if (observer == null) {
             return Cancellable.NONE;

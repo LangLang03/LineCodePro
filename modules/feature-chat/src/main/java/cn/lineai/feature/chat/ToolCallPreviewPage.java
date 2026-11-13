@@ -27,6 +27,7 @@ public final class ToolCallPreviewPage extends SettingsPage {
     private final List<TextView> headings = new ArrayList<>();
     private TextView note;
 
+    /** Builds the note and one preview card per sample, grouped by category headings. */
     public ToolCallPreviewPage(Context context, Tokens tokens, Runnable onBack) {
         super(context, R.string.screen_toolcall_preview_title, tokens, onBack);
         Ui.padding(content, 0, 0, 0, 100);
@@ -49,6 +50,7 @@ public final class ToolCallPreviewPage extends SettingsPage {
         theme.bind(this::applyTheme);
     }
 
+    /** Letter-spaced small-caps style category heading. */
     private void addHeading(int categoryRes) {
         TextView heading = Ui.bold(getContext(),
                 getContext().getString(categoryRes), Tokens.FONT_XS,
@@ -59,6 +61,7 @@ public final class ToolCallPreviewPage extends SettingsPage {
         headings.add(heading);
     }
 
+    /** Binds one production card with the sample data and its initial expansion state. */
     private void addCard(ToolPreviewSamples.Sample sample,
                          cn.lineai.feature.chat.ToolPresentationProvider provider) {
         ToolCallCardView card = new ToolCallCardView(getContext(), theme.current());
@@ -74,6 +77,7 @@ public final class ToolCallPreviewPage extends SettingsPage {
         cards.add(card);
     }
 
+    /** Restyles the cards and labels in place when the theme changes. */
     private void applyTheme(Tokens tokens) {
         for (ToolCallCardView card : cards) card.applyTokens(tokens);
         note.setTextColor(tokens.textTertiary);

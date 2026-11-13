@@ -13,11 +13,13 @@ import cn.lineai.ui.tokens.Tokens;
 /** Agent pipeline card: git-branch ring, stage counters and one row per pipeline stage. */
 final class PipelineToolRenderer implements ToolCardRenderer {
 
+    /** Shared stateless instance. */
     static final PipelineToolRenderer INSTANCE = new PipelineToolRenderer();
 
     private PipelineToolRenderer() {
     }
 
+    /** Renders the header row with counters and, when expanded, one block per stage. */
     @Override
     public void render(ToolCardFrame frame, ToolCallEntry entry, ToolPresentation presentation) {
         PipelineProgress progress = PipelineProgress.parse(entry);
@@ -78,6 +80,7 @@ final class PipelineToolRenderer implements ToolCardRenderer {
         frame.body.addView(list, frame.fill());
     }
 
+    /** One stage block: header pills, status, thinking/output and nested tool cards. */
     private LinearLayout stage(final ToolCardFrame frame, PipelineProgress.Stage stage) {
         LinearLayout box = frame.column();
         final int typeColor = "explore".equals(normalizeType(stage.type)) ? 0 : 1;
@@ -131,6 +134,7 @@ final class PipelineToolRenderer implements ToolCardRenderer {
         return box;
     }
 
+    /** Localized status label and tint of one stage. */
     private TextView statusLabel(ToolCardFrame frame, PipelineProgress.Stage stage) {
         int res;
         if (stage.error || ToolRunStatus.ERROR.matches(stage.status)) {
@@ -150,6 +154,7 @@ final class PipelineToolRenderer implements ToolCardRenderer {
         return frame.text(frame.context().getString(res), 11, tint, Typeface.BOLD);
     }
 
+    /** Dot-separated header counters: completed, running, pending, waiting, failed. */
     private String summary(ToolCardFrame frame, PipelineProgress progress) {
         StringBuilder builder = new StringBuilder();
         append(builder, frame.context().getString(
@@ -175,11 +180,13 @@ final class PipelineToolRenderer implements ToolCardRenderer {
         return builder.toString();
     }
 
+    /** Appends a counter with the middot separator. */
     private void append(StringBuilder builder, String value) {
         if (builder.length() > 0) builder.append(" \u00b7 ");
         builder.append(value);
     }
 
+    /** Normalized agent type; legacy snake_case variants collapse to "sub-coding". */
     private String normalizeType(String type) {
         String value = type == null ? "" : type.trim().toLowerCase(java.util.Locale.US);
         if ("sub_coding".equals(value) || "subcoding".equals(value)
@@ -189,6 +196,7 @@ final class PipelineToolRenderer implements ToolCardRenderer {
         return value.isEmpty() ? "explore" : value;
     }
 
+    /** Pipeline cards open so running stages stay visible without a tap. */
     @Override
     public boolean initiallyExpanded() {
         return true;

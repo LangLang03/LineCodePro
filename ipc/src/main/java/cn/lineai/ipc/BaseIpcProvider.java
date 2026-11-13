@@ -22,16 +22,26 @@ public abstract class BaseIpcProvider {
 
     private static final String TAG = "BaseIpcProvider";
 
+    /** Immutable configuration this provider was created from. */
     protected final IpcProviderConfig config;
+    /** The live AIDL binder once connected; null while disconnected. Subclasses read it directly. */
     protected volatile IBinder serviceBinder;
+    /** Reflects the ServiceConnection callbacks, not the intent issued in {@link #bind}. */
     protected volatile boolean bound;
+    /** Non-null from the first bind attempt until unbind, so CONNECTING stays unbindable. */
     private ServiceConnection connection;
     /** Application context captured at bind time; used for the automatic rebind. */
     private Context boundContext;
 
+    /** Current lifecycle phase; written on Binder or main threads, read anywhere. */
     private volatile IpcProviderConnectionState connectionState = IpcProviderConnectionState.DISCONNECTED;
     private final List<IpcProviderStateListener> stateListeners = new CopyOnWriteArrayList<>();
 
+    /**
+     * Creates a provider; binding happens later through {@link #bind}.
+     *
+     * @param config immutable configuration for this provider
+     */
     protected BaseIpcProvider(IpcProviderConfig config) {
         this.config = config;
     }
@@ -100,14 +110,20 @@ public abstract class BaseIpcProvider {
         transitionTo(IpcProviderConnectionState.DISCONNECTED, null);
     }
 
+    /**
+     * Reports whether a live binder has been delivered by the system. False while
+     * CONNECTING even though the ServiceConnection is already registered.
+     */
     public final boolean isBound() {
         return bound;
     }
 
+    /** Returns the immutable configuration this provider was created from. */
     public final IpcProviderConfig getConfig() {
         return config;
     }
 
+    /** Returns the live AIDL binder, or null while the provider is not connected. */
     public final IBinder getServiceBinder() {
         return serviceBinder;
     }
@@ -156,6 +172,10 @@ public abstract class BaseIpcProvider {
         transitionTo(IpcProviderConnectionState.DISCONNECTED, null);
     }
 
+    /**
+     * Publishes a state change to the listeners; listener failures are logged and
+     * swallowed so one broken observer cannot corrupt the state machine.
+     */
     private void transitionTo(IpcProviderConnectionState newState, Throwable cause) {
         if (this.connectionState == newState) {
             return;
@@ -172,6 +192,7 @@ public abstract class BaseIpcProvider {
         }
     }
 
+    /** Wraps the four system callbacks into the corresponding state-machine transitions. */
     private ServiceConnection createConnection() {
         return new ServiceConnection() {
             @Override

@@ -19,6 +19,14 @@ import cn.lineai.ui.tokens.Tokens;
 /** Entry cards for the five extension families. */
 public final class ExtensionsPage extends SettingsPage {
 
+    /**
+     * Builds the extensions overview screen.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param open consumer notified with the identifier of the extension family to open
+     */
     public ExtensionsPage(Context context, Tokens tokens, Runnable back, Consumer<String> open) {
         super(context, R.string.screen_extensions_title, tokens, back);
         Ui.padding(content, 16, 16, 16, 108);
@@ -39,6 +47,7 @@ public final class ExtensionsPage extends SettingsPage {
                 R.string.screen_extensions_badge_terminal_provider, Icons.TERMINAL, 93, open);
     }
 
+    /** Adds one entry card with icon, badge, description, and theme re-tinting. */
     private void card(String id, int title, int description, int badge, int icon,
                       int minimumHeightDp, Consumer<String> open) {
         Context context = getContext();

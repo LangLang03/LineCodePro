@@ -12,16 +12,25 @@ import java.util.List;
  */
 final class DiffLines {
 
+    /** One diff line with its kind and rendered line number. */
     static final class Line {
+        /** Kind token: removed line. */
         static final int REMOVED = -1;
+        /** Kind token: line present in both versions. */
         static final int UNCHANGED = 0;
+        /** Kind token: added line. */
         static final int ADDED = 1;
 
+        /** One of {@code REMOVED}/{@code UNCHANGED}/{@code ADDED}. */
         final int kind;
+        /** Line number in the receiving (old for removed, new otherwise) version. */
         final int number;
+        /** Line content without the trailing newline. */
         final String text;
+        /** True when the source line ended with a newline. */
         final boolean terminated;
 
+        /** Splits off the trailing newline for display. */
         Line(int kind, int number, String text) {
             this.kind = kind;
             this.number = number;
@@ -31,8 +40,11 @@ final class DiffLines {
         }
     }
 
+    /** Diff lines in render order; unmodifiable. */
     final List<Line> lines;
+    /** Count of added lines. */
     final int added;
+    /** Count of removed lines. */
     final int removed;
 
     private DiffLines(List<Line> lines) {
@@ -47,6 +59,10 @@ final class DiffLines {
         removed = minus;
     }
 
+    /**
+     * Computes the diff: a shared prefix/suffix shortcut plus an LCS over the middle region,
+     * degrading to remove-then-add when the LCS table would exceed a million cells.
+     */
     static DiffLines calculate(String oldText, String newText) {
         String[] a = split(oldText);
         String[] b = split(newText);
@@ -92,6 +108,7 @@ final class DiffLines {
         return new DiffLines(lines);
     }
 
+    /** Normalizes line endings and keeps the trailing-newline information per line. */
     private static String[] split(String text) {
         if (text == null || text.isEmpty()) return new String[0];
         String normalized = text.replace("\r\n", "\n");

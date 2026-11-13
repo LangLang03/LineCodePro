@@ -21,8 +21,11 @@ import cn.lineai.engine.prompt.PromptStore;
 /** Builds the learning-mode context from memories, chat titles, skills and skill paths. */
 public final class LearningContextProvider {
 
+    /** Cap on injected memory items. */
     private static final int MAX_MEMORIES = 20;
+    /** Cap on injected conversation titles. */
     private static final int MAX_HISTORY = 10;
+    /** Cap on the length of a single injected memory. */
     private static final int MAX_MEMORY_CHARS = 600;
 
     private final SettingsStore settings;
@@ -33,6 +36,15 @@ public final class LearningContextProvider {
     private final PromptStore prompts;
     private final File skillsRoot;
 
+    /**
+     * @param settings  preference store; learning mode must be enabled
+     * @param memories  long-term memory items
+     * @param conversations recent conversation titles
+     * @param skills    enabled skills
+     * @param projects  selected project for scope and skill paths
+     * @param prompts   store holding the learning-context prompt template
+     * @param skillsRoot app-private skills directory injected as the readable boundary
+     */
     public LearningContextProvider(SettingsStore settings, MemoryStore memories,
                             ConversationStore conversations, SkillStore skills,
                             ProjectStore projects, PromptStore prompts, File skillsRoot) {
@@ -45,6 +57,11 @@ public final class LearningContextProvider {
         this.skillsRoot = skillsRoot;
     }
 
+    /**
+     * Renders the learning-context prompt when learning mode is enabled.
+     *
+     * @return rendered prompt text; empty when learning mode is off
+     */
     public String build() {
         if (!Boolean.parseBoolean(
                 settings.get(UiPreferences.Field.LEARNING_MODE.key, "false"))) {
@@ -62,6 +79,7 @@ public final class LearningContextProvider {
                 prompts.current(PromptId.LEARNING_CONTEXT), values);
     }
 
+    /** Long-term memory list scoped to the project, capped and truncated per item. */
     private String memorySection(String projectId) {
         StringBuilder out = new StringBuilder();
         int count = 0;
@@ -81,6 +99,7 @@ public final class LearningContextProvider {
         return out.length() == 0 ? "" : "### Long-term memory" + out;
     }
 
+    /** Recent conversation titles, capped at {@link #MAX_HISTORY}. */
     private String historySection() {
         StringBuilder out = new StringBuilder();
         List<Conversation> items = conversations.list();
@@ -92,6 +111,7 @@ public final class LearningContextProvider {
         return out.length() == 0 ? "" : "### Recent conversations" + out;
     }
 
+    /** Readable skill directories (app, project, ssh) injected as the file-tool boundary. */
     private String skillPaths(String projectId) {
         StringBuilder out = new StringBuilder("### Skills paths");
         out.append("\n- app: ").append(skillsRoot.getAbsolutePath());
@@ -103,6 +123,7 @@ public final class LearningContextProvider {
         return out.toString();
     }
 
+    /** Names and descriptions of enabled skills, capped in length. */
     private String skillSection() {
         StringBuilder out = new StringBuilder();
         for (Skill skill : skills.enabled()) {
@@ -113,6 +134,7 @@ public final class LearningContextProvider {
         return out.length() == 0 ? "" : "### Enabled skills" + out;
     }
 
+    /** Hard privacy rule confining file tools to the injected skills directories. */
     private String boundary() {
         return "### Private directory boundary\nFile tools may use the injected Skills paths ("
                 + skillsRoot.getAbsolutePath()

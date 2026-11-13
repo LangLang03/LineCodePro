@@ -27,23 +27,32 @@ import cn.lineai.ui.tokens.Tokens;
  */
 public final class ChatHeaderView extends LinearLayout {
 
+    /** Header taps forwarded to the screen. */
     public interface Listener {
+        /** Opens the navigation drawer. */
         void onMenu();
 
+        /** Opens the project picker. */
         void onProject();
 
+        /** Opens the permission-mode sheet. */
         void onPermission();
 
+        /** Starts a new conversation. */
         void onNewConversation();
 
+        /** Opens the more-options sheet. */
         void onMore();
 
+        /** Opens the context-usage detail. */
         void onContext();
     }
 
+    /** Fixed header action metrics in dp. */
     private static final int ACTION_WIDTH_DP = 40;
     private static final int ACTION_HEIGHT_DP = 48;
     private static final int ACTION_ICON_DP = 19;
+    /** Width reserved for trailing actions when clamping the title. */
     private static final int RESERVED_WIDTH_DP = 212;
 
     private final List<IconButton> actions = new ArrayList<>();
@@ -53,6 +62,7 @@ public final class ChatHeaderView extends LinearLayout {
     private Listener listener;
     private Tokens tokens;
 
+    /** Builds menu, project brand, context ring and the trailing actions in that order. */
     public ChatHeaderView(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -123,11 +133,13 @@ public final class ChatHeaderView extends LinearLayout {
         });
     }
 
+    /** Fixed 40x48dp parameters shared by every header action. */
     private LinearLayout.LayoutParams actionParams(Context context) {
         return new LayoutParams(Ui.dp(context, ACTION_WIDTH_DP),
                 Ui.dp(context, ACTION_HEIGHT_DP));
     }
 
+    /** Appends one trailing action button with the shared metrics. */
     private void addAction(Context context, int icon, int description, Runnable action) {
         IconButton button = new IconButton(context, icon);
         button.setIconSizeDp(ACTION_WIDTH_DP, ACTION_ICON_DP);
@@ -138,10 +150,12 @@ public final class ChatHeaderView extends LinearLayout {
         addView(button, actionParams(context));
     }
 
+    /** Installs the header callbacks. */
     public void setListener(Listener value) {
         listener = value;
     }
 
+    /** Clamps the title width so the growing label never pushes the actions out. */
     @Override
     protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
         super.onSizeChanged(width, height, oldWidth, oldHeight);
@@ -149,6 +163,7 @@ public final class ChatHeaderView extends LinearLayout {
                 - Ui.dp(getContext(), RESERVED_WIDTH_DP)));
     }
 
+    /** Renders the project label and the context percentage ring. */
     public void render(ChatState state, Tokens current) {
         applyTokens(current);
         String label = state.projectLabel.isEmpty()
@@ -160,6 +175,7 @@ public final class ChatHeaderView extends LinearLayout {
                 R.string.header_context_desc, state.contextPercent));
     }
 
+    /** The brand container is always the second child. */
     private View findBrand() {
         return getChildAt(1);
     }
@@ -176,6 +192,7 @@ public final class ChatHeaderView extends LinearLayout {
         ring.applyTokens(current);
     }
 
+    /** 2dp circular context-usage ring; turns warning-colored at 80% usage. */
     private static final class ContextRing extends View {
         private final Paint track = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint progress = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -193,16 +210,19 @@ public final class ChatHeaderView extends LinearLayout {
             progress.setStrokeCap(Paint.Cap.ROUND);
         }
 
+        /** Sets the usage percentage, clamped to 0..100, and redraws. */
         void setPercent(int value) {
             percent = Math.max(0, Math.min(100, value));
             invalidate();
         }
 
+        /** Applies tokens and redraws. */
         void applyTokens(Tokens current) {
             tokens = current;
             invalidate();
         }
 
+        /** Draws the full track plus the progress arc starting at 12 o'clock. */
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);

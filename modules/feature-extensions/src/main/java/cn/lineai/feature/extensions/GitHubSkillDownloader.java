@@ -6,14 +6,29 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
-/** Downloads a GitHub repository archive for skill installation. */
+/**
+ * Downloads a GitHub repository archive for skill installation.
+ *
+ * <p>Only GitHub hosts are accepted and the archive size is capped, so arbitrary URLs cannot
+ * turn the installer into a generic download proxy.</p>
+ */
 final class GitHubSkillDownloader {
 
     private static final int MAX_BYTES = 20 * 1024 * 1024;
 
+    /** Utility class; not instantiable. */
     private GitHubSkillDownloader() {
     }
 
+    /**
+     * Downloads the repository archive, trying the {@code main} branch first and falling back to
+     * {@code master} for older repositories.
+     *
+     * @param rawUrl GitHub repository URL or direct archive URL
+     * @return archive bytes
+     * @throws IOException when the URL is not a GitHub URL, the HTTP status is not successful,
+     *                     or the archive exceeds the size cap
+     */
     static byte[] download(String rawUrl) throws IOException {
         String input = rawUrl == null ? "" : rawUrl.trim();
         if (!input.startsWith("https://")) throw new IOException("GitHub URL must use https://");
@@ -27,6 +42,15 @@ final class GitHubSkillDownloader {
         }
     }
 
+    /**
+     * Converts a GitHub repository URL into its archive URL, honoring an explicit
+     * {@code /tree/<branch>} path or the default branch otherwise.
+     *
+     * @param rawUrl repository or archive URL
+     * @param defaultBranch branch used when the URL does not specify one
+     * @return archive URL on github.com
+     * @throws IOException when the URL is not a permitted GitHub URL
+     */
     static String archiveUrl(String rawUrl, String defaultBranch) throws IOException {
         String value = rawUrl == null ? "" : rawUrl.trim();
         while (value.endsWith("/")) value = value.substring(0, value.length() - 1);
@@ -54,6 +78,7 @@ final class GitHubSkillDownloader {
                 + branch + ".zip";
     }
 
+    /** Performs the HTTP GET with timeouts and the archive size cap. */
     private static byte[] fetch(String url) throws IOException {
         HttpURLConnection connection = null;
         try {
