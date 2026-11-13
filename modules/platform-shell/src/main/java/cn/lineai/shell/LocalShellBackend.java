@@ -76,9 +76,11 @@ final class LocalShellBackend {
         } catch (Exception error) {
             synchronized (registry.lock) {
                 if (task.status == BackgroundTask.Status.RUNNING) {
-                    boolean alive = task.process != null && task.process.isAlive();
-                    if (!alive) {
-                        // The stream broke because the task was killed; keep that status.
+                    // A broken stream right after a kill request is the kill itself taking
+                    // effect: isAlive() can still report true while the SIGKILL is being
+                    // reaped, so the kill flag always wins over the FAILED escalation.
+                    if (task.killRequested || task.process == null
+                            || !task.process.isAlive()) {
                         registry.finish(task, BackgroundTask.Status.KILLED, Integer.MIN_VALUE);
                     } else {
                         registry.appendOutput(task, "\n" + message(error));
