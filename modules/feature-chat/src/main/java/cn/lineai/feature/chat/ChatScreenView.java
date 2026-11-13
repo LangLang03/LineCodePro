@@ -65,8 +65,6 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
 
         String projectPath();
 
-        java.util.List<cn.lineai.core.model.WorkspaceNode> workspaceFiles(String path);
-
         /** Loads the whole workspace tree for the drawer and the attachment picker. */
         default void loadWorkspaceTree(java.util.function.Consumer<DrawerPanel.FileNode> callback) {
             callback.accept(null);

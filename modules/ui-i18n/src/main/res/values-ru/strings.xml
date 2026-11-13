@@ -324,6 +324,21 @@
     <string name="screen_security_title">Безопасность</string>
     <string name="screen_security_section_http">HTTP ограничения</string>
     <string name="screen_security_section_browser">Встроенный браузер</string>
+    <string name="tool_group_local_shell_name">Shell</string>
+    <string name="tool_group_local_shell_desc">Выполнять shell-команды в локальной рабочей области, включая фоновые задачи (вывод через shell_output, остановка через shell_kill); отключите, чтобы запретить локальный shell</string>
+    <string name="screen_security_section_extensions">Расширения</string>
+    <string name="settings_row_security_trust_extensions_title">Доверять расширениям с другой подписью</string>
+    <string name="settings_row_security_trust_extensions_desc">Автоматически загружать пакеты расширений и терминальных провайдеров, подписанные другим сертификатом</string>
+    <string name="screen_mcp_terminal_provider_status_none">Терминальный провайдер не настроен</string>
+    <string name="screen_mcp_terminal_provider_status_disconnected">Терминальный провайдер не подключён</string>
+    <string name="screen_mcp_terminal_provider_status_connected">Подключено: %1$s</string>
+    <string name="screen_mcp_terminal_provider_manage">Терминальные провайдеры</string>
+    <string name="screen_mcp_terminal_provider_test">Проверить подключение</string>
+    <string name="screen_mcp_terminal_provider_testing_title">Проверка терминального провайдера</string>
+    <string name="screen_mcp_terminal_provider_testing_message">Выполняется команда в среде провайдера</string>
+    <string name="screen_mcp_terminal_provider_test_success_title">Проверка терминального провайдера пройдена</string>
+    <string name="screen_mcp_terminal_provider_test_failed_title">Проверка терминального провайдера не пройдена</string>
+    <string name="toast_terminal_provider_signature_untrusted">Провайдер подписан другим сертификатом. Сначала включите «Доверять расширениям с другой подписью» в настройках безопасности.</string>
     <string name="screen_security_section_path">Защита путей</string>
     <string name="settings_row_security_bypass_path_title">Обойти защиту путей</string>
     <string name="settings_row_security_bypass_path_desc">Разрешить инструментам и Agent доступ к любому пути, не ограничиваясь рабочей областью</string>
@@ -613,6 +628,8 @@
     <string name="screen_mcp_ssh_desc">Подключить удалённый Linux сервер и использовать его как цель выполнения</string>
     <string name="screen_mcp_ssh_settings">Настройки SSH подключения</string>
     <string name="screen_mcp_termux_integration">Интеграция с Termux</string>
+    <string name="screen_mcp_section_terminal_provider">Терминальный провайдер</string>
+    <string name="screen_mcp_terminal_provider_overview">Режим терминального провайдера выполняет shell-команды и передаёт файлы через внешнее приложение-провайдер по IPC. Перед использованием отсканируйте и добавьте приложение-провайдер на странице терминальных провайдеров.</string>
 
     <string name="screen_mcp_edit_title">Изменить MCP</string>
     <string name="screen_mcp_list_empty">Расширений MCP пока нет.</string>
@@ -1208,7 +1225,7 @@
     <string name="tool_group_image_understanding_desc">Чтение локальных или SSH изображений рабочей области и вызов выбранной модели зрения для понимания содержимого</string>
     <string name="tool_group_image_generation_name">Генерация изображений</string>
     <string name="tool_group_image_generation_desc">Вызов выбранной модели для генерации изображений, возвращаемых как встроенные Markdown изображения</string>
-    <string name="tool_group_shell_desc">Выполнение shell-команд через SSH</string>
+    <string name="tool_group_shell_desc">Выполнение shell-команд на удалённом узле через SSH или терминальный провайдер, включая фоновые задачи (вывод через shell_output, остановка через shell_kill)</string>
     <string name="tool_group_web_search_name">Веб-поиск</string>
     <string name="tool_group_web_search_desc">Поиск в интернете и просмотр веб-страниц</string>
     <string name="tool_group_memory_name">Память</string>
@@ -1282,10 +1299,10 @@
     <string name="prompt_user_message_label">Сообщение пользователя </string>
 
     <!-- AgentPromptBuilder fallback role prompts -->
-    <string name="agent_fallback_role_explore_remote">Вы — Agent исследования в удалённой среде Shell. Вы можете использовать shell_execute для выполнения команд только для чтения.\nПравила:\n- Только чтение кода, не вносите никаких изменений.\n- Предпочитайте инструменты только для чтения для поиска и чтения ключевых файлов; вы можете использовать shell_execute для выполнения команд только для чтения.</string>
-    <string name="agent_fallback_role_coding_remote">Вы — Agent программирования в удалённой среде Shell (текущая рабочая область находится на удалённом SSH или в контейнере терминального провайдера; локальные file_read / file_write / file_edit / glob / list_dir могут быть недоступны).\nПравила:\n- Большинство работы должно выполняться через shell_execute: чтение через cat/ls/grep, запись через sed/awk/python heredoc или tee, проверка через cat.\n- Изменяйте только файлы или каталоги, указанные в write_scope; при отсутствии write_scope запись в файлы запрещена.</string>
-    <string name="agent_fallback_role_explore_local">Вы — Agent исследования кода. Ваша задача — быстро находить и анализировать код.\nПравила:\n- Только чтение кода, не вносите никаких изменений и не вызывайте инструменты записи.\n- Предпочитайте инструменты только для чтения для поиска и чтения ключевых файлов; вы можете использовать shell_execute для выполнения команд только для чтения.\n- Давайте краткие и точные ответы.</string>
-    <string name="agent_fallback_role_coding_local">Вы — Agent программирования. Ваша задача — выполнение чётко ограниченных подзадач программирования.\nПравила:\n- Изменяйте только файлы или каталоги, указанные в write_scope; при отсутствии write_scope запись в файлы запрещена.\n- Предпочитайте file_read / file_write / file_edit / glob / list_dir для выполнения работы; используйте shell_execute только когда файловые инструменты действительно не могут справиться.</string>
+    <string name="agent_fallback_role_explore_remote">Вы — Agent исследования в удалённой среде Shell. Вы можете использовать shell для выполнения команд только для чтения.\nПравила:\n- Только чтение кода, не вносите никаких изменений.\n- Предпочитайте инструменты только для чтения для поиска и чтения ключевых файлов; вы можете использовать shell для выполнения команд только для чтения.</string>
+    <string name="agent_fallback_role_coding_remote">Вы — Agent программирования в удалённой среде Shell (текущая рабочая область находится на удалённом SSH или в контейнере терминального провайдера; локальные read_file / write_file / edit_file / glob / list_dir могут быть недоступны).\nПравила:\n- Большинство работы должно выполняться через shell: чтение через cat/ls/grep, запись через sed/awk/python heredoc или tee, проверка через cat.\n- Изменяйте только файлы или каталоги, указанные в write_scope; при отсутствии write_scope запись в файлы запрещена.</string>
+    <string name="agent_fallback_role_explore_local">Вы — Agent исследования кода. Ваша задача — быстро находить и анализировать код.\nПравила:\n- Только чтение кода, не вносите никаких изменений и не вызывайте инструменты записи.\n- Предпочитайте инструменты только для чтения для поиска и чтения ключевых файлов; вы можете использовать shell для выполнения команд только для чтения.\n- Давайте краткие и точные ответы.</string>
+    <string name="agent_fallback_role_coding_local">Вы — Agent программирования. Ваша задача — выполнение чётко ограниченных подзадач программирования.\nПравила:\n- Изменяйте только файлы или каталоги, указанные в write_scope; при отсутствии write_scope запись в файлы запрещена.\n- Предпочитайте read_file / write_file / edit_file / glob / list_dir для выполнения работы; используйте shell только когда файловые инструменты действительно не могут справиться.</string>
     <string name="screen_output_section_toolcall">UI вызовов инструментов</string>
     <string name="screen_output_toolcall_preview_label">Предпросмотр карточек вызовов</string>
     <string name="screen_output_toolcall_preview_desc">Просмотр всех карточек инструментов с тестовыми данными</string>

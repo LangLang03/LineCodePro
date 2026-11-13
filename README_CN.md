@@ -159,4 +159,4 @@ LineCode Pro 采用双重许可：
 
 ## 致谢
 
-LineCode Pro 受益于 [llama.cpp](https://github.com/ggml-org/llama.cpp)（MIT）、[commonmark-java](https://github.com/commonmark/commonmark-java)（BSD-2-Clause）、[JSch](https://github.com/mwiede/jsch)（BSD 风格）以及 Android Jetpack 等开源项目。所有第三方组件仍受其各自许可证约束；随 APK 分发的声明继续适用。
+LineCode Pro 受益于 [llama.cpp](https://github.com/ggml-org/llama.cpp)（MIT）、[commonmark-java](https://github.com/commonmark/commonmark-java)（BSD-2-Clause）与 [JSch](https://github.com/mwiede/jsch)（BSD 风格）。所有第三方组件仍受其各自许可证约束；随 APK 分发的声明继续适用。

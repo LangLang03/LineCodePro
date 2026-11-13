@@ -47,12 +47,8 @@ import cn.lineai.tool.api.ToolResult;
  */
 public final class ChatController {
 
-    public static final String KEY_BASE_URL = "model.baseUrl";
-    public static final String KEY_API_KEY = "model.apiKey";
-    public static final String KEY_MODEL_ID = "model.modelId";
-    public static final String KEY_MODEL_NAME = "model.name";
+    /** Settings keys shared beyond this module; the model.* seed keys live in SqliteModelStore. */
     public static final String KEY_CONTEXT_SIZE = "model.contextSize";
-    public static final String KEY_MAX_TOKENS = "model.maxTokens";
     public static final String KEY_PROJECT_LABEL = "project.label";
 
     // Package-private for ChatTurnPipeline, which owns the streaming draft on the same event queue.
@@ -72,7 +68,7 @@ public final class ChatController {
     final Observable<ChatState> state = new Observable<>(ChatState.empty());
     private final Observable<List<Conversation>> conversationList =
             new Observable<>(Collections.<Conversation>emptyList());
-    private final Set<String> alwaysAllowed = new HashSet<>();
+    private final ApprovalPolicy approvals;
     final SerialWrites writes;
     final SerialEvents events;
 
@@ -95,6 +91,8 @@ public final class ChatController {
         this.messages = messages;
         this.models = models;
         this.settings = settings;
+        this.approvals = new ApprovalPolicy(this::toolsForLookup,
+                () -> ToolModes.mode(settings));
         this.client = client;
         this.scheduler = scheduler;
         this.clock = clock;
@@ -177,8 +175,10 @@ public final class ChatController {
 
     public void deleteConversation(String id) {
         if (id.equals(conversationId)) {
-            if (engine != null) stop();
-            invalidatePendingGeneration();
+            stop();
+            // The conversation is going away: the posted cancel event must not persist a
+            // stopped draft into rows the io task below is deleting underneath it.
+            discardPipeline();
         }
         scheduler.io(() -> {
             conversations.delete(id);
@@ -209,7 +209,9 @@ public final class ChatController {
 
     /** Summarizes older messages now and shows a compact marker in the timeline. */
     public void compactContext(java.util.function.Consumer<CompactionResult> callback) {
-        if (engine != null) {
+        // starting covers the io-side prepare window: a concurrent compact could otherwise
+        // interleave with startGeneration's seq/conversationId writes.
+        if (engine != null || starting) {
             events.post(() -> callback.accept(CompactionResult.BUSY));
             return;
         }
@@ -410,8 +412,12 @@ public final class ChatController {
             events.post(() -> draft.finishAssistant(message));
         }
 
-        @Override public void onToolFinished(ToolCall call, ToolResult result) {
-            events.post(() -> draft.appendTool(call, result));
+        @Override public void onToolFinished(Message toolRow, ToolCall call, ToolResult result) {
+            events.post(() -> draft.appendTool(toolRow, call, result));
+        }
+
+        @Override public void onNoticeInjected(Message message) {
+            events.post(() -> draft.appendNotice(message));
         }
 
         @Override public void onConfirmationRequired(List<ToolCall> calls) {
@@ -443,17 +449,7 @@ public final class ChatController {
     }
 
     boolean autoApprove(List<ToolCall> calls) {
-        if (calls.isEmpty() || ToolModes.AUTO.equals(ToolModes.mode(settings))) {
-            return true;
-        }
-        for (ToolCall call : calls) {
-            Tool tool = toolsForLookup().find(call.name);
-            boolean readOnly = tool != null && !tool.mutating();
-            if (!readOnly && !alwaysAllowed.contains(call.name)) {
-                return false;
-            }
-        }
-        return true;
+        return approvals.autoApprove(calls);
     }
 
     public ToolPresentation presentationFor(String toolName) {
@@ -489,9 +485,7 @@ public final class ChatController {
         if (engine == null || pipeline == null || pipeline.pendingApprovals().isEmpty()) {
             return;
         }
-        for (ToolApprovalItem item : pipeline.pendingApprovals()) {
-            alwaysAllowed.add(item.call.name);
-        }
+        approvals.allowAll(pipeline.pendingApprovals());
         approveOnceNow();
     }
 
@@ -524,6 +518,12 @@ public final class ChatController {
         if (active != null) {
             active.cancel();
         }
+    }
+
+    /** Halts any turn and drops the draft writer before an archive import wipes the tables. */
+    public void haltForDataReset() {
+        stop();
+        discardPipeline();
     }
 
     void publish(ChatState snapshot) {
@@ -573,22 +573,8 @@ public final class ChatController {
         return model == null ? "" : model.displayName();
     }
 
+    /** The selected model only: legacy settings keys are seeded into the store by AppGraph. */
     private ModelConfig modelConfig() {
-        ModelConfig selected = models.selected();
-        if (selected != null) {
-            return selected;
-        }
-        String baseUrl = settings.get(KEY_BASE_URL, "");
-        String modelId = settings.get(KEY_MODEL_ID, "");
-        if (baseUrl.isEmpty() || modelId.isEmpty()) {
-            return null;
-        }
-        return ModelConfig.builder()
-                .identity("default", settings.get(KEY_MODEL_NAME, modelId))
-                .endpoint(settings.get("provider.label", "custom"), modelId, baseUrl)
-                .secret(settings.get(KEY_API_KEY, ""))
-                .context(settings.getInt(KEY_CONTEXT_SIZE, 128000), settings.getInt(KEY_MAX_TOKENS, 4096))
-                .build();
+        return models.selected();
     }
-
 }

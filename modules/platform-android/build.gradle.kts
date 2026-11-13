@@ -1,5 +1,6 @@
 plugins {
     id("linecode.android")
+    id("linecode.verify")
 }
 
 android {

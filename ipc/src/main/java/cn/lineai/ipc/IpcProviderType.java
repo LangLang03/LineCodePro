@@ -27,13 +27,13 @@ public enum IpcProviderType {
 
     public static IpcProviderType fromId(String id) {
         if (id == null) {
-            throw new IllegalArgumentException("IPC 提供者类型 id 为空");
+            throw new IllegalArgumentException("ipc provider type id is empty");
         }
         for (IpcProviderType type : values()) {
             if (type.id.equals(id)) {
                 return type;
             }
         }
-        throw new IllegalArgumentException("未知的 IPC 提供者类型: " + id);
+        throw new IllegalArgumentException("unknown ipc provider type: " + id);
     }
 }

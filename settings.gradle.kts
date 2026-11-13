@@ -57,7 +57,7 @@ listOf(
     "feature-models",
     "feature-extensions",
     "feature-workspace",
-    "feature-terminal",
+    "platform-shell",
     "platform-android",
     "runtime",
     "arch-test"

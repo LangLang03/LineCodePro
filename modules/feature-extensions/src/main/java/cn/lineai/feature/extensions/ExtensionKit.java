@@ -308,8 +308,15 @@ final class ExtensionKit {
 
     static void confirm(Context context, ThemeBinder theme, int title, CharSequence message,
                         Runnable confirmed) {
-        Dialogs.confirm(context, theme.current(), context.getString(title), message,
-                context.getString(R.string.common_cancel), context.getString(R.string.common_delete),
+        confirmAction(context, theme, context.getString(title), message,
+                R.string.common_delete, confirmed);
+    }
+
+    /** Confirm dialog with a formatted title and an explicit action label. */
+    static void confirmAction(Context context, ThemeBinder theme, CharSequence title,
+                              CharSequence message, int confirmLabel, Runnable confirmed) {
+        Dialogs.confirm(context, theme.current(), title, message,
+                context.getString(R.string.common_cancel), context.getString(confirmLabel),
                 accepted -> {
                     if (accepted) confirmed.run();
                 });

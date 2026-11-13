@@ -1,5 +1,6 @@
 package cn.lineai.feature.settings;
 
+import cn.lineai.core.service.SettingsAction;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;

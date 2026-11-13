@@ -6,10 +6,10 @@ import cn.lineai.ipc.IpcProviderFactory;
 import cn.lineai.ipc.IpcProviderType;
 
 /**
- * 终端 Provider 工厂（单例）。
+ * Singleton factory for the terminal provider client.
  *
- * <p>负责在 {@link cn.lineai.ipc.IpcProviderRegistry} 中注册自身，
- * 并按需创建 {@link TerminalIpcProvider} 实例。
+ * <p>Registers itself with {@link cn.lineai.ipc.IpcProviderRegistry} and creates
+ * {@link TerminalIpcProvider} instances on demand.
  */
 public final class TerminalProviderServiceFactory implements IpcProviderFactory {
 

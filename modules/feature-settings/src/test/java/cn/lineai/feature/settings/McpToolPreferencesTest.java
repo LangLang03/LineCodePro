@@ -31,6 +31,15 @@ public class McpToolPreferencesTest {
         assertEquals("local", settings.get("mcp.executionMode", ""));
     }
 
+    @Test public void localShellDefaultsOnAndRoundTrips() {
+        Memory settings = new Memory();
+        McpPreferences mcp = new McpPreferences(settings);
+        assertTrue(mcp.localShell());
+        mcp.setLocalShell(false);
+        assertFalse(new McpPreferences(settings).localShell());
+        assertFalse(Boolean.parseBoolean(settings.get("mcp.local.local_shell", "true")));
+    }
+
     @Test public void invalidModeFallsBackToLocal() {
         Memory settings = new Memory();
         McpPreferences mcp = new McpPreferences(settings);

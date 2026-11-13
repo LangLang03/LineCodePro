@@ -12,5 +12,5 @@ dependencies {
     implementation(project(":core-kernel"))
     implementation(project(":ui-tokens"))
     implementation(project(":ui-i18n"))
-    implementation(project(":platform-android"))
+    implementation(project(":core-service"))
 }

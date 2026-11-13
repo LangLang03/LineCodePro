@@ -43,6 +43,11 @@ public interface ToolContext {
         return null;
     }
 
+    /** Background shell task registry; may be null in tests and headless contexts. */
+    default BackgroundTasks backgrounds() {
+        return null;
+    }
+
     /** True when the selected workspace lives on a remote SSH host. */
     default boolean remoteWorkspace() {
         return false;

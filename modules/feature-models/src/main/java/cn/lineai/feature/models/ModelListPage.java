@@ -52,16 +52,19 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
     private String selectedId;
     private java.util.function.Supplier<List<ModelConfig>> loader;
     private java.util.function.Supplier<String> selection;
+    private final cn.lineai.core.kernel.time.Scheduler scheduler;
 
     public ModelListPage(Context context, Tokens tokens, List<ModelConfig> models, String selectedId,
-                         Listener listener) {
+                         Listener listener, cn.lineai.core.kernel.time.Scheduler scheduler) {
         this(context, tokens, models, selectedId, context.getString(R.string.screen_models_title),
-                true, listener);
+                true, listener, scheduler);
     }
 
     public ModelListPage(Context context, Tokens tokens, List<ModelConfig> models, String selectedId,
-                         String title, boolean management, Listener listener) {
+                         String title, boolean management, Listener listener,
+                         cn.lineai.core.kernel.time.Scheduler scheduler) {
         super(context);
+        this.scheduler = scheduler;
         this.theme = new ThemeBinder(tokens);
         this.models.addAll(models == null ? new ArrayList<ModelConfig>() : models);
         this.selectedId = selectedId == null ? "" : selectedId;
@@ -94,8 +97,20 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
 
     @Override public void onShown() {
         if (loader == null) return;
-        List<ModelConfig> latest = loader.get();
-        String current = selection == null ? selectedId : selection.get();
+        if (scheduler == null) {
+            apply(loader.get(), selection == null ? selectedId : selection.get());
+            return;
+        }
+        // The loader hits the store on io and renders on main; the factory supplies plain
+        // store lambdas, so the page owns the async idiom.
+        scheduler.io(() -> {
+            List<ModelConfig> latest = loader.get();
+            String current = selection == null ? selectedId : selection.get();
+            scheduler.main(() -> apply(latest, current));
+        });
+    }
+
+    private void apply(List<ModelConfig> latest, String current) {
         boolean changed = !latest.equals(models) || !current.equals(selectedId);
         if (!changed) return;
         models.clear();

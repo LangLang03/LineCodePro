@@ -4,6 +4,8 @@ plugins {
 }
 
 dependencies {
-    implementation(project(":core-model"))
+    api(project(":core-model"))
+    api(project(":core-kernel"))
+    api(project(":core-mvi"))
     testImplementation("junit:junit:4.13.2")
 }

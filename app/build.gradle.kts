@@ -12,7 +12,7 @@ val bundleLocalModel =
     (providers.gradleProperty("linecodeLocalModelBundle").orNull ?: enableLocalModel.toString())
         .toBoolean()
 
-val releaseVersionName = "2.0.2"
+val releaseVersionName = "2.1.0"
 val releaseVariant = if (enableLocalModel) "local" else "slim"
 val releaseApkName = "LineCode Pro $releaseVersionName-$releaseVariant.APK"
 val releaseIdsigName = "$releaseApkName.idsig"
@@ -121,7 +121,7 @@ android {
         applicationId = "cn.lineai"
         minSdk = 26
         targetSdk = 37
-        versionCode = 48
+        versionCode = 49
         versionName = releaseVersionName
     }
 
@@ -266,10 +266,11 @@ dependencies {
     implementation(project(":engine-prompt"))
     implementation(project(":feature-chat"))
     implementation(project(":feature-settings"))
-    implementation(project(":feature-terminal"))
+    implementation(project(":platform-shell"))
     implementation(project(":feature-extensions"))
     implementation(project(":feature-workspace"))
     implementation(project(":core-mvi"))
+    implementation(project(":core-service"))
     implementation(project(":feature-models"))
     implementation(project(":platform-android"))
     implementation(project(":runtime"))

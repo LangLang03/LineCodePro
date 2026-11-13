@@ -24,6 +24,10 @@ public final class ToolSchemaBuilder {
         return property(name, new JSONObject().put("type", "number").put("description", description));
     }
 
+    public ToolSchemaBuilder bool(String name, String description) {
+        return property(name, new JSONObject().put("type", "boolean").put("description", description));
+    }
+
     public ToolSchemaBuilder enumString(String name, String description, String... values) {
         JSONArray options = new JSONArray();
         for (String value : values) options.put(value);

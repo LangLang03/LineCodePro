@@ -326,6 +326,21 @@
     <string name="screen_security_title">Security</string>
     <string name="screen_security_section_http">HTTP restrictions</string>
     <string name="screen_security_section_browser">Built-in browser</string>
+    <string name="tool_group_local_shell_name">Shell</string>
+    <string name="tool_group_local_shell_desc">Run shell commands in the local workspace, including background tasks readable via shell_output and stoppable via shell_kill. Turn off to block local shell execution</string>
+    <string name="screen_security_section_extensions">Extensions</string>
+    <string name="settings_row_security_trust_extensions_title">Trust extensions with a different signature</string>
+    <string name="settings_row_security_trust_extensions_desc">Automatically load provider and extension packages signed with a different certificate</string>
+    <string name="screen_mcp_terminal_provider_status_none">No terminal provider configured</string>
+    <string name="screen_mcp_terminal_provider_status_disconnected">Terminal provider not connected</string>
+    <string name="screen_mcp_terminal_provider_status_connected">Connected: %1$s</string>
+    <string name="screen_mcp_terminal_provider_manage">Terminal providers</string>
+    <string name="screen_mcp_terminal_provider_test">Test connection</string>
+    <string name="screen_mcp_terminal_provider_testing_title">Testing terminal provider</string>
+    <string name="screen_mcp_terminal_provider_testing_message">Running a command inside the provider environment</string>
+    <string name="screen_mcp_terminal_provider_test_success_title">Terminal provider test passed</string>
+    <string name="screen_mcp_terminal_provider_test_failed_title">Terminal provider test failed</string>
+    <string name="toast_terminal_provider_signature_untrusted">This provider is signed with a different certificate. Enable "Trust extensions with a different signature" in Security settings first.</string>
     <string name="screen_security_section_path">Path protection</string>
     <string name="settings_row_security_bypass_path_title">Bypass path protection</string>
     <string name="settings_row_security_bypass_path_desc">Allow tools and agents to access any path, not limited to the workspace</string>
@@ -631,6 +646,8 @@
     <string name="screen_mcp_ssh_desc">Connect a remote Linux server and use it as the execution target</string>
     <string name="screen_mcp_ssh_settings">SSH connection settings</string>
     <string name="screen_mcp_termux_integration">Termux integration</string>
+    <string name="screen_mcp_section_terminal_provider">Terminal provider</string>
+    <string name="screen_mcp_terminal_provider_overview">Terminal provider mode runs shell commands and file transfer through an external provider app over IPC. Scan and add a provider app on the terminal providers page before using this mode.</string>
 
     <string name="screen_mcp_edit_title">Edit MCP</string>
     <string name="screen_mcp_list_empty">No MCP extensions yet.</string>
@@ -1228,7 +1245,7 @@
     <string name="tool_group_image_understanding_desc">Read local or SSH workspace images and call the selected vision model to understand the content</string>
     <string name="tool_group_image_generation_name">Image generation</string>
     <string name="tool_group_image_generation_desc">Call the selected image model to generate images, returned as inline Markdown images</string>
-    <string name="tool_group_shell_desc">Run shell commands via SSH</string>
+    <string name="tool_group_shell_desc">Run shell commands on the remote host via SSH or a terminal provider, including background tasks readable via shell_output and stoppable via shell_kill</string>
     <string name="tool_group_web_search_name">Web search</string>
     <string name="tool_group_web_search_desc">Search the internet and view web pages</string>
     <string name="tool_group_memory_name">Memory</string>
@@ -1302,10 +1319,10 @@
     <string name="prompt_user_message_label">User message </string>
 
     <!-- AgentPromptBuilder fallback role prompts -->
-    <string name="agent_fallback_role_explore_remote">You are an exploration Agent in a remote Shell environment. You can use shell_execute to execute read-only commands.\nRules:\n- Only read code, do not make any modifications.\n- Prefer read-only tools to search and read key files; you can use shell_execute to execute read-only commands.</string>
-    <string name="agent_fallback_role_coding_remote">You are a coding Agent in a remote Shell environment (the current workspace is on an SSH remote or terminal provider container; local file_read / file_write / file_edit / glob / list_dir may not be available).\nRules:\n- Most work must be done via shell_execute: read with cat/ls/grep, write with sed/awk/python heredoc or tee, verify with cat.\n- Only modify files or directories listed in write_scope; when there is no write_scope, writing to files is prohibited.</string>
-    <string name="agent_fallback_role_explore_local">You are a code exploration Agent. Your task is to quickly locate and analyze code.\nRules:\n- Only read code, do not make any modifications, and do not call any write tools.\n- Prefer read-only tools to search and read key files; you can use shell_execute to execute read-only commands.\n- Provide concise and accurate answers.</string>
-    <string name="agent_fallback_role_coding_local">You are a coding Agent. Your task is to complete well-scoped coding subtasks.\nRules:\n- Only modify files or directories listed in write_scope; when there is no write_scope, writing to files is prohibited.\n- Prefer file_read / file_write / file_edit / glob / list_dir to complete work; only use shell_execute when file tools truly cannot meet the need.</string>
+    <string name="agent_fallback_role_explore_remote">You are an exploration Agent in a remote Shell environment. You can use shell to execute read-only commands.\nRules:\n- Only read code, do not make any modifications.\n- Prefer read-only tools to search and read key files; you can use shell to execute read-only commands.</string>
+    <string name="agent_fallback_role_coding_remote">You are a coding Agent in a remote Shell environment (the current workspace is on an SSH remote or terminal provider container; local read_file / write_file / edit_file / glob / list_dir may not be available).\nRules:\n- Most work must be done via shell: read with cat/ls/grep, write with sed/awk/python heredoc or tee, verify with cat.\n- Only modify files or directories listed in write_scope; when there is no write_scope, writing to files is prohibited.</string>
+    <string name="agent_fallback_role_explore_local">You are a code exploration Agent. Your task is to quickly locate and analyze code.\nRules:\n- Only read code, do not make any modifications, and do not call any write tools.\n- Prefer read-only tools to search and read key files; you can use shell to execute read-only commands.\n- Provide concise and accurate answers.</string>
+    <string name="agent_fallback_role_coding_local">You are a coding Agent. Your task is to complete well-scoped coding subtasks.\nRules:\n- Only modify files or directories listed in write_scope; when there is no write_scope, writing to files is prohibited.\n- Prefer read_file / write_file / edit_file / glob / list_dir to complete work; only use shell when file tools truly cannot meet the need.</string>
     <string name="screen_output_section_toolcall">Tool call UI</string>
     <string name="screen_output_toolcall_preview_label">Tool call card preview</string>
     <string name="screen_output_toolcall_preview_desc">Preview every tool card with sample data</string>

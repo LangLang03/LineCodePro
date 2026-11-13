@@ -190,32 +190,16 @@ public final class FeaturePageFactory {
                 });
     }
 
-    /** Renders the draft prompt, calls the selected model and filters the tool names. */
+    /** Wires the selected model, the tool catalog and the prompt template into the use case. */
     private cn.lineai.core.model.AgentExtension agentDraft(String description) throws Exception {
         cn.lineai.core.model.ModelConfig model = host.graph().models().selected();
         if (model == null) {
             throw new IllegalStateException("No model selected");
         }
-        java.util.List<cn.lineai.tool.api.Tool> all =
-                new java.util.ArrayList<>(host.graph().tools().registry().all());
-        java.util.List<String> names = new java.util.ArrayList<>();
-        StringBuilder tools = new StringBuilder();
-        for (cn.lineai.tool.api.Tool tool : all) {
-            if (tool.kind() == cn.lineai.tool.api.ToolKind.PHONE) continue;
-            if (tools.length() > 0) tools.append('\n');
-            tools.append(tool.name()).append(": ").append(tool.description());
-            names.add(tool.name());
-        }
-        java.util.Map<String, String> values = new java.util.HashMap<>();
-        values.put("USER_NEED", description);
-        values.put("AVAILABLE_TOOLS", tools.toString());
-        String prompt = cn.lineai.engine.prompt.PromptRenderer.render(
-                cn.lineai.engine.prompt.PromptId.AGENT_DRAFT,
+        return AgentDrafts.generate(model,
                 host.graph().prompts().current(cn.lineai.engine.prompt.PromptId.AGENT_DRAFT),
-                values);
-        return new cn.lineai.engine.ai.AgentDraftGenerator(
-                new cn.lineai.engine.ai.ModelProbe()::complete)
-                .generate(model, prompt, names);
+                host.graph().tools().registry().all(), description,
+                new cn.lineai.engine.ai.ModelProbe());
     }
 
     private McpExtensionsPage mcpExtensionsPage() {
@@ -323,34 +307,35 @@ public final class FeaturePageFactory {
     }
 
     private TerminalProvidersPage terminalProvidersPage() {
+        host.graph().refreshTerminalProviders();
         return new TerminalProvidersPage(host.activity(), host.tokens(), host.navigation()::back,
                 new TerminalProvidersPage.Listener() {
                     public java.util.List<cn.lineai.core.model.TerminalProviderConfig> installed() {
                         return host.graph().terminalProviders().list();
                     }
                     public java.util.List<cn.lineai.core.model.ScannedTerminalProvider> scan() {
-                        java.util.List<cn.lineai.core.model.ScannedTerminalProvider> result =
-                                new java.util.ArrayList<>();
-                        for (cn.lineai.ipc.ScannedProvider provider :
-                                new cn.lineai.ipc.IpcProviderScanner().scan(host.activity(),
-                                        cn.lineai.ipc.IpcProviderType.TERMINAL)) {
-                            result.add(new cn.lineai.core.model.ScannedTerminalProvider(
-                                    provider.getLabel(), provider.getPackageName(),
-                                    provider.getServiceClass(), provider.getProviderType()));
-                        }
-                        return result;
+                        return cn.lineai.shell.TerminalProviderDiscovery.scan(host.activity());
                     }
                     public void add(cn.lineai.core.model.ScannedTerminalProvider provider) {
+                        if (!host.graph().trustsProviderSignature(provider.packageName)) {
+                            Toast.makeText(host.activity(),
+                                    R.string.toast_terminal_provider_signature_untrusted,
+                                    Toast.LENGTH_LONG).show();
+                            return;
+                        }
                         host.graph().terminalProviders().add(
                                 new cn.lineai.core.model.TerminalProviderConfig(
                                         "", true, provider.name, provider.packageName,
                                         provider.serviceClass, provider.providerType, 0, 0));
+                        host.graph().refreshTerminalProviders();
                     }
                     public void setEnabled(String id, boolean enabled) {
                         host.graph().terminalProviders().setEnabled(id, enabled);
+                        host.graph().refreshTerminalProviders();
                     }
                     public void delete(String id) {
                         host.graph().terminalProviders().delete(id);
+                        host.graph().refreshTerminalProviders();
                     }
                 });
     }
@@ -389,7 +374,7 @@ public final class FeaturePageFactory {
                     public void shareWorkspace() { host.shareWorkspace(); }
                     public String sshAddress() {
                         cn.lineai.core.model.SshConfig config =
-                                new cn.lineai.feature.terminal.SshPreferences(
+                                new cn.lineai.shell.SshPreferences(
                                         host.graph().settings()).config();
                         if (config.host == null || config.host.isEmpty()) return "";
                         return (config.username.isEmpty() ? "" : config.username + "@")
@@ -431,7 +416,7 @@ public final class FeaturePageFactory {
                         host.graph().models().delete(ids);
                         host.graph().chat().refreshModel();
                     }
-                });
+                }, host.graph().scheduler());
         page.loader(() -> host.graph().models().list(), this::selectedModelId);
         return page;
     }

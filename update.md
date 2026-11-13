@@ -1,5 +1,78 @@
 # Changelog / 更新日志
 
+## v2.1.0
+
+### English
+
+#### Shell and background tasks
+
+- **Native tool passing** - tool schemas are delivered through the native `tools` field for OpenAI, Claude and Codex protocols instead of a name list in the system prompt; models without native tool support keep the prompt-name fallback. Minimal mode renders the bare template with no tool names at all.
+- **Unified shell family** - `shell_execute` is renamed to `shell`, joined by `shell_output` (blocking reads with a timeout) and `shell_kill`; one tool name serves the local, SSH and terminal-provider targets and the execution mode routes them.
+- **Background execution** - `shell` accepts `background=true` and returns a `bg-N` task id. A new `BackgroundShellRegistry` drives three backends: local processes with concurrent output draining, SSH via `setsid` plus a polled temp log, and terminal-provider AIDL v2 handles. The loop is notified about finished-but-unobserved tasks through a hidden user message, and `shell_output` reports a single completion exactly once.
+
+#### Stability fixes
+
+- **Archives keep tool calls** - the export/import archive now carries `message_tool_calls` plus the memories, projects, extension, IPC-provider and file-diff tables. Restoring an archive no longer leaves tool-using conversations with orphaned tool results that strict providers reject with 400; imports accept version-1 archives and strip API keys from model rows as before.
+- **Restore is validated before anything is deleted** - file entries are path-checked and staged first, so a malformed archive can no longer restore the database while wiping `workspace/`, `skills/` or `attachments/`.
+- **Provider binding lifecycle** - unbinding during CONNECTING no longer leaks the ServiceConnection (a phantom reconnect could revive a deliberately removed provider), and a dead provider process now triggers an automatic rebind instead of idling in DISCONNECTED.
+- **Delete and import while streaming** - deleting the active conversation or importing an archive mid-turn can no longer crash the process through the write queue; writes are guarded, drafts are discarded before the tables are removed and the chat is halted before an import wipes the data.
+- **Compaction boundary** - the summarization tail is snapped past raw TOOL rows, so the request can no longer open with an orphan tool result after context compaction.
+- **Background output race** - the consumed offset of provider and SSH background tasks is reconciled against streamed delivery, which removes duplicated lines and permanently lost output.
+- **Gateway thread safety** - the terminal-provider binding table is now concurrent; a provider disconnecting while the settings page refreshes no longer risks a `ConcurrentModificationException` on a binder thread.
+
+#### Architecture
+
+- **`platform-shell` module** - the shell subsystem (background-shell registry and backends, terminal-provider gateway, SSH service/workspace, Termux client) moved out of `runtime` into its own platform module, the only rewritten module allowed to depend on the frozen `:ipc`. The legacy `:feature-terminal` module is gone.
+- **`runtime` is a composition root again** - chat sheets, attachment picker, chat export, tool preview page, learning-context provider and local tool policy moved to their owning features behind a new `ChatHost` interface; the SAF dispatcher delegates chat attachments to feature-chat; the agent-draft use case and the SSH/Termux diagnostics moved into named classes instead of page-factory branches.
+- **One seq authority** - `ToolLoopEngine` keeps its wire history in list order and never assigns persisted sequence numbers; `ChatTurnPipeline` stamps every delivered row exactly once, removing the double-bookkeeping that a defensive sort previously papered over. Approval decisions live in a dedicated `ApprovalPolicy`.
+- **`core-service` is real** - `SettingsAction` and `LinkPolicy` moved into the cross-feature module, `engine-prompt` reads assets through an injected `PromptAssetSource` instead of an Android import, and `ui-kit` no longer depends on the platform layer.
+- **Guards tightened** - `arch-test` now scans `:app`, `:ipc` and `:terminal-provider` (CJK check covers comments too), adds a lock check with an explicit sanctioned list, enforces the 1,500-line `:app` budget, and pins the migration settings keys against feature-chat. `platform-android` adopts `linecode.verify`. The prompt-catalog guard failures left behind by the previous commit are fixed.
+- **Comment policy** - every comment is formal English Javadoc; CJK in comments is now a guard failure, and the legacy `:ipc`/`terminal-provider` sources are fully translated.
+
+#### Tests
+
+- New regression tests for the archive round-trip (tool calls, unsafe paths, v1 archives), the write-queue resilience, the compaction tail boundary and the background-output reconciliation; `SerialWritesTest`, `SshShellBackend`/`LocalShellBackend` coverage via the existing registry tests.
+
+#### Release
+
+- Version `2.1.0` (versionCode 49); the release workflow builds and publishes both the slim and local variants.
+
+### 中文
+
+#### Shell 与后台任务
+
+- **原生工具传递** - 工具 schema 改为经 OpenAI/Claude/Codex 的原生 `tools` 字段下发，不再在系统提示词里拼接工具名列表；不支持原生工具的模型保留提示词名称回退，极简模式渲染不含任何工具名的裸模板。
+- **统一 shell 家族** - `shell_execute` 更名为 `shell`，新增 `shell_output`（带超时的阻塞读取）与 `shell_kill`；同一个工具名覆盖本地、SSH 与终端提供者三种目标，由执行模式路由。
+- **后台执行** - `shell` 支持 `background=true` 并返回 `bg-N` 任务 id。新的 `BackgroundShellRegistry` 驱动三个后端：本地进程（并发排空输出）、SSH（`setsid` + 轮询临时日志）与终端提供者 AIDL v2 句柄。未被读取就结束的任务通过隐藏用户消息通知循环，`shell_output` 保证完成只上报一次。
+
+#### 稳定性修复
+
+- **归档保留工具调用** - 导出/导入归档现在包含 `message_tool_calls` 以及 memories、projects、扩展、IPC 提供者与 file_diffs 表。恢复归档后，用过工具的会话不再因孤儿 tool result 被严格 provider 以 400 拒绝；导入兼容 v1 归档，且照旧剥离模型行中的 API key。
+- **恢复先校验后删除** - 文件条目先做路径校验并写入暂存目录，损坏的归档不再出现「数据库已恢复而 workspace/skills/attachments 被清空」的中间状态。
+- **提供者绑定生命周期** - CONNECTING 阶段解绑不再泄漏 ServiceConnection（幽灵重连可能复活已被移除的 provider）；provider 进程死亡后自动重bind，不再停留在 DISCONNECTED 无人恢复。
+- **流式中删会话与导入** - 生成中途删除当前会话或导入归档不再让写入队列的异常穿透线程池导致崩溃：写操作有兜底、草稿在删表前丢弃、导入前先停聊天。
+- **压缩边界** - 摘要尾部边界吸附越过裸 TOOL 行，上下文压缩后请求不再以孤儿 tool result 开头。
+- **后台输出竞态** - provider 与 SSH 后台任务的消费 offset 与流式回调对账，消除输出重复行与永久丢失。
+- **网关线程安全** - 终端提供者绑定表改为并发结构，设置页刷新时 provider 掉线不再有 binder 线程 `ConcurrentModificationException` 风险。
+
+#### 架构
+
+- **`platform-shell` 模块** - shell 子系统（后台 shell 注册表与后端、终端提供者网关、SSH 服务/工作区、Termux 客户端）从 `runtime` 迁入独立平台模块，这是唯一允许依赖冻结 `:ipc` 的重构模块；遗留 `:feature-terminal` 模块删除。
+- **`runtime` 回归组合根** - 聊天底部面板、附件选择、对话导出、工具预览页、学习上下文提供者与本地工具策略迁回各自 feature，经由新的 `ChatHost` 接口与宿主解耦；SAF 分发中的聊天附件委托给 feature-chat；agent 草稿用例与 SSH/Termux 诊断提取为命名类，页面工厂回归纯路由。
+- **唯一 seq 权威** - `ToolLoopEngine` 的内存历史按列表顺序维护，不再写持久化序号；`ChatTurnPipeline` 在事件队列上对每行只打一次 seq，原先靠防御性排序兜底的双账本问题根除。审批决策独立为 `ApprovalPolicy`。
+- **`core-service` 填实** - `SettingsAction` 与 `LinkPolicy` 移入跨 feature 模块；`engine-prompt` 经注入的 `PromptAssetSource` 读取资源、去掉 Android import；`ui-kit` 不再依赖 platform 层。
+- **守卫收紧** - `arch-test` 扫描范围扩至 `:app`、`:ipc` 与 `:terminal-provider`（CJK 检查连注释一并覆盖），新增锁检查与显式豁免清单、`:app` 1500 行总预算、迁移设置键与 feature-chat 常量的防漂移测试；`platform-android` 接入 `linecode.verify`。上一提交遗留的 prompt-catalog 守卫失败已修复。
+- **注释规范** - 全部注释为正式英文 Javadoc；注释中的 CJK 同样被守卫拦截，遗留 `:ipc`/`terminal-provider` 源码注释已全部翻译。
+
+#### 测试
+
+- 新增回归测试：归档往返（工具调用、恶意路径、v1 归档）、写队列韧性、压缩尾部边界、后台输出对账；`SerialWritesTest`，以及经由既有注册表测试覆盖的 `SshShellBackend`/`LocalShellBackend`。
+
+#### 版本
+
+- 版本号 `2.1.0`（versionCode 49）；Release 工作流继续同时构建并发布 slim 与本地版。
+
+
 ## v2.0.2
 
 ### English

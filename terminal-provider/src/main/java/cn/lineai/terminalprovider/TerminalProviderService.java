@@ -2,50 +2,66 @@ package cn.lineai.terminalprovider;
 
 import android.os.IBinder;
 import android.os.RemoteException;
-import android.system.Os;
 import android.util.Log;
 import cn.lineai.ipc.service.AbstractIpcProviderService;
 import cn.lineai.ipc.service.IpcServerExecutors;
 import cn.lineai.ipc.terminal.ITerminalProviderCallback;
 import cn.lineai.ipc.terminal.ITerminalProviderService;
-import java.io.BufferedReader;
+import cn.lineai.ipc.terminal.TerminalShellBackgroundState;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.RandomAccessFile;
-import java.lang.reflect.Field;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
+/**
+ * The terminal provider AIDL service: blocking shell execution, background shell handles and
+ * chunked file access. Background tasks live in {@link BackgroundShellTasks}; process-tree
+ * teardown lives in {@link ProcessKiller}.
+ */
 public final class TerminalProviderService extends AbstractIpcProviderService {
     private static final String TAG = "TerminalProvider";
     private static final String SHELL = "/system/bin/sh";
-    // 单次分块传输的默认上限（1MB），避免 AIDL Binder 事务超限。
+    // Default chunk cap for one transfer (1 MB): keeps a single AIDL transaction below the binder limit.
     private static final int DEFAULT_CHUNK_SIZE = 1024 * 1024;
     private static final int MAX_CHUNK_SIZE = DEFAULT_CHUNK_SIZE;
-    // readFile 一次性读入内存的字节上限（32MB），避免超大文件耗尽堆内存。
+    // Byte cap for one readFile call (32 MB): avoids exhausting the heap on huge files.
     private static final long MAX_READ_FILE_BYTES = 32L * 1024L * 1024L;
+    /** Error strings are a protocol with the host app; keep them stable and CJK-free. */
+    static final String ERROR_EMPTY_COMMAND = "empty command";
+    static final String ERROR_TIMEOUT = "command timed out";
 
-    // 进程级共享线程池，由 :ipc 库统一管理。
+    // Process-wide shared executor owned by the :ipc library.
     private final ExecutorService executor = IpcServerExecutors.shared();
+    /** Created lazily: getFilesDir() is unavailable before the service context is attached. */
+    private BackgroundShellTasks backgroundTasks;
+
+    private static void notifyError(ITerminalProviderCallback callback, String message) {
+        if (callback == null) {
+            return;
+        }
+        try {
+            callback.onError(message);
+        } catch (RemoteException callbackGone) {
+            Log.w(TAG, "onError not delivered", callbackGone);
+        }
+    }
 
     @Override
     protected IBinder createBinder() {
+        if (backgroundTasks == null) {
+            backgroundTasks = new BackgroundShellTasks(getFilesDir());
+        }
         return new ITerminalProviderService.Stub() {
 
             @Override
@@ -58,18 +74,20 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 JSONObject info = new JSONObject();
                 try {
                     info.put("name", "Android Shell Terminal Provider");
-                    info.put("version", "1.0");
+                    info.put("version", "2.0");
                     info.put("shell", SHELL);
                     info.put("home", getFilesDir().getAbsolutePath());
-                    info.put("capabilities", new org.json.JSONArray()
+                    info.put("capabilities", new JSONArray()
                             .put("executeShell")
+                            .put("backgroundShell")
                             .put("readFile")
                             .put("writeFile")
                             .put("deleteFile")
                             .put("listDir")
                             .put("fileExists")
                             .put("fileSize"));
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    Log.w(TAG, "provider info build failed", e);
                 }
                 return info.toString();
             }
@@ -83,17 +101,12 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
             public int executeShell(String command, String cwd, long timeoutMs,
                                      ITerminalProviderCallback callback) {
                 if (command == null || command.length() == 0) {
-                    if (callback != null) {
-                        try {
-                            callback.onError("命令为空");
-                        } catch (RemoteException ignored) {
-                        }
-                    }
+                    notifyError(callback, ERROR_EMPTY_COMMAND);
                     return -1;
                 }
                 File workingDir = (cwd != null && cwd.length() > 0)
                         ? new File(cwd)
-                        : new File(getFilesDir().getAbsolutePath());
+                        : getFilesDir();
                 if (!workingDir.exists()) {
                     workingDir = getFilesDir();
                 }
@@ -102,71 +115,26 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 final AtomicBoolean finished = new AtomicBoolean(false);
                 Future<Integer> future = executor.submit(() -> {
                     Process process = null;
-                    BufferedReader stdoutReader = null;
-                    BufferedReader stderrReader = null;
                     try {
                         ProcessBuilder pb = new ProcessBuilder(SHELL, "-c", command);
                         pb.directory(finalWorkingDir);
                         pb.redirectErrorStream(false);
                         process = pb.start();
                         processRef.set(process);
-                        stdoutReader = new BufferedReader(
-                                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
-                        stderrReader = new BufferedReader(
-                                new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8));
-                        final BufferedReader finalStdout = stdoutReader;
-                        final BufferedReader finalStderr = stderrReader;
-                        final Process finalProcess = process;
-                        Thread stdoutThread = new Thread(() -> {
-                            String line;
-                            try {
-                                while ((line = finalStdout.readLine()) != null) {
-                                    if (callback != null && !finished.get()) {
-                                        callback.onOutput(line + "\n");
-                                    }
-                                }
-                            } catch (IOException | RemoteException ignored) {
-                            }
-                        });
-                        Thread stderrThread = new Thread(() -> {
-                            String line;
-                            try {
-                                while ((line = finalStderr.readLine()) != null) {
-                                    if (callback != null && !finished.get()) {
-                                        callback.onOutput(line + "\n");
-                                    }
-                                }
-                            } catch (IOException | RemoteException ignored) {
-                            }
-                        });
-                        stdoutThread.start();
-                        stderrThread.start();
-                        int exitCode = finalProcess.waitFor();
-                        stdoutThread.join(1000);
-                        stderrThread.join(1000);
-                        if (callback != null && !finished.get()) {
-                            callback.onComplete(exitCode);
-                        }
+                        int exitCode = runWithPumps(process, callback, finished);
                         return exitCode;
                     } catch (Exception e) {
                         Log.e(TAG, "executeShell failed", e);
                         if (callback != null && !finished.get()) {
-                            try {
-                                callback.onError(e.getMessage() == null ? e.toString() : e.getMessage());
-                            } catch (RemoteException ignored) {
-                            }
+                            notifyError(callback, e.getMessage() == null
+                                    ? e.toString() : e.getMessage());
                         }
                         return -1;
                     } finally {
-                        if (stdoutReader != null) {
-                            try { stdoutReader.close(); } catch (IOException ignored) {}
-                        }
-                        if (stderrReader != null) {
-                            try { stderrReader.close(); } catch (IOException ignored) {}
-                        }
                         if (process != null) {
-                            // 正常完成/异常时只销毁 shell 本身，保留用户启动的后台子进程
-                            // （如 nohup server &）；进程树击杀仅用于超时路径。
+                            // On normal completion and on errors destroy only the shell itself and
+                            // keep user-spawned background children (e.g. `nohup server &`); the
+                            // process-tree kill is reserved for the timeout path.
                             process.destroy();
                         }
                     }
@@ -176,30 +144,69 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                     return future.get(effectiveTimeout, TimeUnit.MILLISECONDS);
                 } catch (TimeoutException e) {
                     future.cancel(true);
-                    // 超时：终止整个进程树并把结果状态置为已结束，阻止后续任何回调。
+                    // Timeout: kill the whole process tree and mark the outcome finished so no further callbacks fire.
                     if (finished.compareAndSet(false, true)) {
-                        Process shell = processRef.get();
-                        if (shell != null) {
-                            killProcessTree(shell);
-                        }
-                        if (callback != null) {
-                            try {
-                                callback.onError("命令执行超时");
-                            } catch (RemoteException ignored) {
-                            }
-                        }
+                        ProcessKiller.killTree(processRef.get());
+                        notifyError(callback, ERROR_TIMEOUT);
                     }
                     return -2;
                 } catch (Exception e) {
                     Log.e(TAG, "executeShell wait failed", e);
                     if (callback != null) {
-                        try {
-                            callback.onError(e.getMessage() == null ? e.toString() : e.getMessage());
-                        } catch (RemoteException ignored) {
-                        }
+                        notifyError(callback, e.getMessage() == null
+                                ? e.toString() : e.getMessage());
                     }
                     return -1;
                 }
+            }
+
+            /** Runs the shell to completion with per-stream pump threads. */
+            private int runWithPumps(Process process, ITerminalProviderCallback callback,
+                                     AtomicBoolean finished) throws InterruptedException {
+                Thread stdoutThread = ShellPumps.pump(process.getInputStream(), callback,
+                        finished, "sh-stdout");
+                Thread stderrThread = ShellPumps.pump(process.getErrorStream(), callback,
+                        finished, "sh-stderr");
+                stdoutThread.start();
+                stderrThread.start();
+                int exitCode = process.waitFor();
+                stdoutThread.join(1000);
+                stderrThread.join(1000);
+                // Marking finished stops post-completion onOutput spam from pumps that are
+                // still blocked on an inherited background child (e.g. `nohup server &`).
+                if (callback != null && finished.compareAndSet(false, true)) {
+                    try {
+                        callback.onComplete(exitCode);
+                    } catch (RemoteException callbackGone) {
+                        Log.w(TAG, "onComplete not delivered", callbackGone);
+                    }
+                }
+                return exitCode;
+            }
+
+            @Override
+            public long startShellBackground(String command, String cwd,
+                                             ITerminalProviderCallback callback) {
+                if (command == null || command.length() == 0) {
+                    notifyError(callback, ERROR_EMPTY_COMMAND);
+                    return -1;
+                }
+                return backgroundTasks.start(command, cwd, callback);
+            }
+
+            @Override
+            public TerminalShellBackgroundState readShellBackground(long handleId, long offset) {
+                return backgroundTasks.read(handleId, offset);
+            }
+
+            @Override
+            public boolean killShellBackground(long handleId) {
+                return backgroundTasks.kill(handleId);
+            }
+
+            @Override
+            public void forgetShellBackground(long handleId) {
+                backgroundTasks.forget(handleId);
             }
 
             @Override
@@ -216,12 +223,13 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                     return new byte[0];
                 }
                 if (size > MAX_READ_FILE_BYTES) {
-                    Log.e(TAG, "readFile: 文件超过读取上限 " + MAX_READ_FILE_BYTES + " 字节: " + path
-                            + " (size=" + size + ")，请使用 readFileChunk 分块读取");
+                    Log.w(TAG, "readFile: " + path + " exceeds the "
+                            + MAX_READ_FILE_BYTES + " byte cap (size=" + size
+                            + "); use readFileChunk instead");
                     return new byte[0];
                 }
                 if (size > Integer.MAX_VALUE) {
-                    Log.e(TAG, "readFile: 文件超过 int 范围: " + path);
+                    Log.w(TAG, "readFile: " + path + " exceeds the int range");
                     return new byte[0];
                 }
                 int total = (int) size;
@@ -311,7 +319,7 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                     return new byte[0];
                 }
                 if (offset < 0L) {
-                    Log.w(TAG, "readFileChunk: offset<0 已按 0 处理: " + path);
+                    Log.w(TAG, "readFileChunk: negative offset treated as 0: " + path);
                     offset = 0L;
                 }
                 int want = size <= 0 ? DEFAULT_CHUNK_SIZE : size;
@@ -375,15 +383,13 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                         return false;
                     }
                 }
-                if (offset < 0L) {
-                    offset = 0L;
-                }
+                long at = Math.max(0L, offset);
                 try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
-                    raf.seek(offset);
+                    raf.seek(at);
                     raf.write(payload);
                     return true;
                 } catch (IOException e) {
-                    Log.e(TAG, "writeFileChunk failed: " + path + "@" + offset, e);
+                    Log.e(TAG, "writeFileChunk failed: " + path + "@" + at, e);
                     return false;
                 }
             }
@@ -406,7 +412,7 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 if (files == null) {
                     return "[]";
                 }
-                org.json.JSONArray array = new org.json.JSONArray();
+                JSONArray array = new JSONArray();
                 for (File f : files) {
                     try {
                         JSONObject entry = new JSONObject();
@@ -414,7 +420,8 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                         entry.put("dir", f.isDirectory());
                         entry.put("size", f.length());
                         array.put(entry);
-                    } catch (Exception ignored) {
+                    } catch (Exception e) {
+                        Log.w(TAG, "listDirDetailed entry skipped", e);
                     }
                 }
                 return array.toString();
@@ -424,131 +431,32 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
 
     @Override
     protected void onProviderDestroy() {
-        // 共享线程池由 :ipc 库统一管理生命周期，此处无需 shutdown。
-        // 保留钩子供未来按需扩展。
-        Log.i(TAG, "TerminalProviderService 销毁");
+        // Provider teardown kills every still-running background task.
+        if (backgroundTasks != null) {
+            backgroundTasks.shutdown();
+        }
+        Log.i(TAG, "TerminalProviderService destroyed");
     }
 
-    /**
-     * 终止指定进程及其全部后代进程（扫描 /proc 下各进程的 stat 文件建立 ppid 链）。
-     * 依赖父进程持有该进程树，先杀后代再杀 shell 自身，最后兜底 destroy()。
-     */
-    private static void killProcessTree(Process process) {
-        if (process == null) {
-            return;
-        }
-        int pid = processPid(process);
-        if (pid <= 0) {
-            process.destroy();
-            return;
-        }
-        for (int descendant : collectDescendants(pid)) {
-            safeKill(descendant);
-        }
-        safeKill(pid);
-        process.destroy();
-    }
-
-    /**
-     * 获取 Process 的 pid。Android 的 {@link java.lang.Process} 未公开 pid() 方法，
-     * 通过反射读取内部 pid 字段（ProcessImpl）。
-     */
-    private static int processPid(Process process) {
-        if (process == null) {
-            return -1;
-        }
-        try {
-            Field field = process.getClass().getDeclaredField("pid");
-            field.setAccessible(true);
-            Object value = field.get(process);
-            if (value instanceof Integer) {
-                return (Integer) value;
-            }
-        } catch (Throwable ignored) {
-        }
-        return -1;
-    }
-
-    /**
-     * 扫描 /proc 下各进程的 stat 文件，收集以 rootPid 为根的全部后代进程 pid。
-     */
-    private static Set<Integer> collectDescendants(int rootPid) {
-        Map<Integer, Integer> ppidByPid = new HashMap<>();
-        File[] dirs = new File("/proc").listFiles();
-        if (dirs != null) {
-            for (File dir : dirs) {
-                int pid;
-                try {
-                    pid = Integer.parseInt(dir.getName());
-                } catch (NumberFormatException ignored) {
-                    continue;
+    /** Pump threads shared by the blocking execute path. */
+    private static final class ShellPumps {
+        static Thread pump(java.io.InputStream stream, ITerminalProviderCallback callback,
+                           AtomicBoolean finished, String name) {
+            return new Thread(() -> {
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (callback != null && !finished.get()) {
+                            callback.onOutput(line + "\n");
+                        }
+                    }
+                } catch (IOException streamClosed) {
+                    Log.w(TAG, "shell stream closed", streamClosed);
+                } catch (RemoteException callbackGone) {
+                    Log.w(TAG, "shell onOutput not delivered", callbackGone);
                 }
-                String stat = readStatLine(dir);
-                if (stat == null) {
-                    continue;
-                }
-                int ppid = parsePpid(stat);
-                if (ppid > 0 && pid != rootPid) {
-                    ppidByPid.put(pid, ppid);
-                }
-            }
-        }
-        Set<Integer> descendants = new HashSet<>();
-        boolean changed;
-        do {
-            changed = false;
-            for (Map.Entry<Integer, Integer> entry : ppidByPid.entrySet()) {
-                int child = entry.getKey();
-                int parent = entry.getValue();
-                if ((parent == rootPid || descendants.contains(parent)) && descendants.add(child)) {
-                    changed = true;
-                }
-            }
-        } while (changed);
-        return descendants;
-    }
-
-    /**
-     * 从 /proc/<pid>/stat 的单行内容解析 ppid。格式为：pid (comm) state ppid ...
-     */
-    private static int parsePpid(String stat) {
-        int close = stat.lastIndexOf(')');
-        if (close < 0) {
-            return -1;
-        }
-        String rest = stat.substring(close + 1).trim();
-        if (rest.isEmpty()) {
-            return -1;
-        }
-        String[] fields = rest.split("\\s+");
-        if (fields.length < 2) {
-            return -1;
-        }
-        try {
-            return Integer.parseInt(fields[1]);
-        } catch (NumberFormatException ignored) {
-            return -1;
-        }
-    }
-
-    private static String readStatLine(File procDir) {
-        File stat = new File(procDir, "stat");
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(new FileInputStream(stat), StandardCharsets.UTF_8))) {
-            return reader.readLine();
-        } catch (IOException ignored) {
-            return null;
-        }
-    }
-
-    private static void safeKill(int pid) {
-        if (pid <= 0) {
-            return;
-        }
-        try {
-            Os.kill(pid, android.system.OsConstants.SIGKILL);
-        } catch (Throwable ignored) {
-            // 进程可能已退出或权限受限，忽略。
+            }, name);
         }
     }
 }

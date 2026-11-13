@@ -1,21 +1,23 @@
 package cn.lineai.ipc;
 
 /**
- * IPC 提供者工厂接口（工厂方法模式）。
+ * Factory interface for IPC provider clients (factory-method pattern).
  *
- * <p>具体实现由各 Provider 子包提供；通过 {@link IpcProviderRegistry} 注册后，
- * {@link IpcProviderManager} 即可按 {@link IpcProviderType} 创建对应实例，遵守 OCP。
+ * <p>Concrete implementations live in the provider sub-packages. Once a factory is
+ * registered with {@link IpcProviderRegistry}, {@link IpcProviderManager} can create
+ * instances for its {@link IpcProviderType} without modification, per the open/closed
+ * principle.
  */
 public interface IpcProviderFactory {
 
-    /** 该工厂能创建的 Provider 类型 */
+    /** Returns the provider type this factory creates. */
     IpcProviderType getProviderType();
 
     /**
-     * 根据配置创建一个已绑定（未执行 bind）的 Provider 实例。
+     * Creates an unbound provider instance for the given configuration.
      *
-     * @param config Provider 配置（不可变值对象）
-     * @return 新创建的 Provider；调用方负责调用 {@link BaseIpcProvider#bind}
+     * @param config immutable provider configuration
+     * @return a new provider; the caller owns the subsequent {@link BaseIpcProvider#bind}
      */
     BaseIpcProvider create(IpcProviderConfig config);
 }

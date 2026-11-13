@@ -53,7 +53,7 @@ public class BuiltinToolsTest {
     }
 
     @Test public void registryContainsEveryTool() {
-        assertEquals(11, registry.all().size());
+        assertEquals(13, registry.all().size());
         assertNull(registry.find("missing"));
     }
 
@@ -70,7 +70,7 @@ public class BuiltinToolsTest {
                 return "remote-output";
             }
         };
-        ToolResult result = registry.find("shell_execute")
+        ToolResult result = registry.find("shell")
                 .execute(ssh, new JSONObject("{\"command\":\"pwd\"}"));
         assertFalse(result.error);
         assertEquals("remote-output", result.content.trim());
@@ -90,7 +90,7 @@ public class BuiltinToolsTest {
                 return "";
             }
         };
-        registry.find("shell_execute")
+        registry.find("shell")
                 .execute(ssh, new JSONObject("{\"command\":\"ls\",\"cwd\":\"/tmp\"}"));
         assertEquals("cd '/tmp' && ls", commands.get(0));
     }
@@ -100,7 +100,7 @@ public class BuiltinToolsTest {
                 "glob", "list_dir"}) {
             assertTrue(name, registry.find(name).needsLocalWorkspace());
         }
-        assertFalse(registry.find("shell_execute").needsLocalWorkspace());
+        assertFalse(registry.find("shell").needsLocalWorkspace());
     }
 
     @Test public void presentationWithoutArgumentsNeverCrashes() {
@@ -111,20 +111,134 @@ public class BuiltinToolsTest {
 
     @Test public void shellRunsInsideTheWorkspace() throws Exception {
         Files.write(new File(root, "note.txt").toPath(), "content".getBytes(StandardCharsets.UTF_8));
-        ToolResult result = run("shell_execute", "{\"command\":\"cat note.txt\"}");
+        ToolResult result = run("shell", "{\"command\":\"cat note.txt\"}");
         assertFalse(result.content, result.error);
         assertEquals("content", result.content.trim());
     }
 
     @Test public void shellReportsNonZeroExit() throws Exception {
-        ToolResult result = run("shell_execute", "{\"command\":\"exit 3\"}");
+        ToolResult result = run("shell", "{\"command\":\"exit 3\"}");
         assertTrue(result.error);
         assertTrue(result.content.contains("exit 3"));
     }
 
     @Test public void shellRejectsCwdOutsideWorkspace() throws Exception {
-        assertTrue(run("shell_execute",
+        assertTrue(run("shell",
                 "{\"command\":\"pwd\",\"cwd\":\"../\"}").error);
+    }
+
+    @Test public void shellHonoursTimeoutMsOnLocalRuns() throws Exception {
+        long start = System.currentTimeMillis();
+        ToolResult result = run("shell",
+                "{\"command\":\"sleep 5\",\"timeout_ms\":1000}");
+        assertTrue(result.error);
+        assertTrue(result.content.contains("timed out"));
+        assertTrue(System.currentTimeMillis() - start < 4000);
+    }
+
+    @Test public void backgroundStartReturnsATaskIdWithoutWaiting() throws Exception {
+        final java.util.List<String> started = new java.util.ArrayList<>();
+        ToolContext withBackground = new ToolContext() {
+            @Override public File workspaceRoot() { return root; }
+            @Override public String modelId() { return null; }
+            @Override public boolean mutationAllowed() { return true; }
+            @Override public cn.lineai.tool.api.BackgroundTasks backgrounds() {
+                return new cn.lineai.tool.api.BackgroundTasks() {
+                    @Override public String start(String command, String cwd, boolean remote) {
+                        started.add(command);
+                        return "bg-1";
+                    }
+                    @Override public String output(String id, boolean block, int timeoutMs) {
+                        return "";
+                    }
+                    @Override public String kill(String id) { return ""; }
+                    @Override public java.util.List<String> drainCompleted() {
+                        return new java.util.ArrayList<>();
+                    }
+                    @Override public void shutdown() { }
+                };
+            }
+        };
+        long start = System.currentTimeMillis();
+        ToolResult result = registry.find("shell").execute(withBackground, new JSONObject(
+                "{\"command\":\"sleep 30\",\"background\":true}"));
+        assertFalse(result.content, result.error);
+        assertTrue(result.content.contains("bg-1"));
+        assertTrue(result.content.contains("shell_output"));
+        assertTrue(System.currentTimeMillis() - start < 2000);
+        assertEquals(java.util.Collections.singletonList("sleep 30"), started);
+    }
+
+    @Test public void backgroundFailsCleanlyWithoutARegistry() throws Exception {
+        ToolResult result = run("shell", "{\"command\":\"ls\",\"background\":true}");
+        assertTrue(result.error);
+        assertTrue(result.content.contains("Background tasks are unavailable"));
+    }
+
+    @Test public void shellOutputReadsFromTheRegistry() throws Exception {
+        final java.util.List<Boolean> blocking = new java.util.ArrayList<>();
+        ToolContext withBackground = new ToolContext() {
+            @Override public File workspaceRoot() { return root; }
+            @Override public String modelId() { return null; }
+            @Override public boolean mutationAllowed() { return true; }
+            @Override public cn.lineai.tool.api.BackgroundTasks backgrounds() {
+                return new cn.lineai.tool.api.BackgroundTasks() {
+                    @Override public String start(String command, String cwd, boolean remote) {
+                        return "bg-2";
+                    }
+                    @Override public String output(String id, boolean block, int timeoutMs) {
+                        blocking.add(block);
+                        return "Task " + id + " finished (exit 0)\nhello";
+                    }
+                    @Override public String kill(String id) { return ""; }
+                    @Override public java.util.List<String> drainCompleted() {
+                        return new java.util.ArrayList<>();
+                    }
+                    @Override public void shutdown() { }
+                };
+            }
+        };
+        ToolResult read = registry.find("shell_output").execute(withBackground, new JSONObject(
+                "{\"id\":\"bg-2\",\"block\":true,\"timeout_ms\":5000}"));
+        assertFalse(read.error);
+        assertTrue(read.content.contains("exit 0"));
+        assertEquals(java.util.Collections.singletonList(true), blocking);
+    }
+
+    @Test public void shellOutputIsReadOnlyWhileKillMutates() {
+        assertFalse(registry.find("shell_output").mutating());
+        assertTrue(registry.find("shell_kill").mutating());
+    }
+
+    @Test public void shellKillRoutesThroughTheRegistry() throws Exception {
+        final java.util.List<String> killed = new java.util.ArrayList<>();
+        ToolContext withBackground = new ToolContext() {
+            @Override public File workspaceRoot() { return root; }
+            @Override public String modelId() { return null; }
+            @Override public boolean mutationAllowed() { return true; }
+            @Override public cn.lineai.tool.api.BackgroundTasks backgrounds() {
+                return new cn.lineai.tool.api.BackgroundTasks() {
+                    @Override public String start(String command, String cwd, boolean remote) {
+                        return "";
+                    }
+                    @Override public String output(String id, boolean block, int timeoutMs) {
+                        return "";
+                    }
+                    @Override public String kill(String id) {
+                        killed.add(id);
+                        return "Task " + id + " killed";
+                    }
+                    @Override public java.util.List<String> drainCompleted() {
+                        return new java.util.ArrayList<>();
+                    }
+                    @Override public void shutdown() { }
+                };
+            }
+        };
+        ToolResult result = registry.find("shell_kill").execute(withBackground, new JSONObject(
+                "{\"id\":\"bg-7\"}"));
+        assertFalse(result.error);
+        assertEquals(java.util.Collections.singletonList("bg-7"), killed);
     }
 
     @Test public void todoToolReplacesSessionState() throws Exception {

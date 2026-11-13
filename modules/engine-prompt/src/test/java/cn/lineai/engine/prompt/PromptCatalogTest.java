@@ -19,7 +19,7 @@ public class PromptCatalogTest {
 
     @Test public void everyTemplateAssetExistsAndIsNonEmpty() {
         AssetPromptCatalog catalog = new AssetPromptCatalog(
-                RuntimeEnvironment.getApplication().getAssets());
+                path -> RuntimeEnvironment.getApplication().getAssets().open(path));
         for (PromptId prompt : PromptId.values()) {
             assertFalse("empty prompt " + prompt.id, catalog.text(prompt).trim().isEmpty());
         }
@@ -111,7 +111,7 @@ public class PromptCatalogTest {
 
     @Test public void assemblerRendersToneIdentityAndMode() {
         AssetPromptCatalog catalog = new AssetPromptCatalog(
-                RuntimeEnvironment.getApplication().getAssets());
+                path -> RuntimeEnvironment.getApplication().getAssets().open(path));
         SystemPromptAssembler assembler = new SystemPromptAssembler(
                 new PromptStore(catalog, PromptOverrides.none()));
         String coding = assembler.assemble("deepseek-chat", "DeepSeek Chat", "custom",

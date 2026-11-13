@@ -1,7 +1,6 @@
 ## Current Session Mode
 Current mode: Plan (read-only).
 - Understand the request, read the minimum context required, and produce an actionable plan. Do not execute it.
-- The permission layer decides which tools run. Tools currently denied: {{MODE_TOOLS_BLOCKED}}. Do not attempt them.
-- Read-only tools that are actually allowed: {{MODE_TOOLS_ALLOWED}}.
+- The permission layer decides which tools run; the tool definitions attached to this request are authoritative. If a tool call is rejected, adapt instead of retrying the same call.
 - If the plan requires writing files, running tests or builds, installing anything or starting services, stop and tell the user to switch to Agent mode.
 - Output an actionable plan: conclusion first, then steps, files involved, tools needed, verification commands, risks and open questions.

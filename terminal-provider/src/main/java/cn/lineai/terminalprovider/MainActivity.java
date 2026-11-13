@@ -34,7 +34,7 @@ public final class MainActivity extends Activity {
             service = ITerminalProviderService.Stub.asInterface(binder);
             bound = true;
             updateStatus();
-            appendLog("服务已绑定");
+            appendLog("service bound");
         }
 
         @Override
@@ -42,7 +42,7 @@ public final class MainActivity extends Activity {
             service = null;
             bound = false;
             updateStatus();
-            appendLog("服务已断开");
+            appendLog("service disconnected");
         }
     };
 
@@ -50,59 +50,59 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         boolean dark = (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
-        TerminalTheme.apply(dark);
-        getWindow().setStatusBarColor(TerminalTheme.BG);getWindow().setNavigationBarColor(TerminalTheme.BG);
+        TerminalTheme.Palette theme = TerminalTheme.Palette.of(dark);
+        getWindow().setStatusBarColor(theme.bg);getWindow().setNavigationBarColor(theme.bg);
         getWindow().getDecorView().setSystemUiVisibility(dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
-        ScrollView scrollView = new ScrollView(this);scrollView.setBackgroundColor(TerminalTheme.BG);scrollView.setFillViewport(true);
+        ScrollView scrollView = new ScrollView(this);scrollView.setBackgroundColor(theme.bg);scrollView.setFillViewport(true);
         LinearLayout root = new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);
         TerminalTheme.padding(root,28,28,28,32);scrollView.addView(root);
-        TextView title=TerminalTheme.textMedium(this,getString(R.string.app_name),26,TerminalTheme.TEXT);
+        TextView title=TerminalTheme.textMedium(this,getString(R.string.app_name),26,theme.text);
         root.addView(title);
-        statusView=TerminalTheme.text(this,"",14,TerminalTheme.TEXT_SECONDARY,android.graphics.Typeface.NORMAL);
+        statusView=TerminalTheme.text(this,"",14,theme.textSecondary,android.graphics.Typeface.NORMAL);
         TerminalTheme.padding(statusView,0,16,0,28);root.addView(statusView);
-        addAction(root,R.string.bind_service, true,this::bindLocalService);
-        addAction(root,R.string.test_identity,false,()->testShell("whoami"));
-        addAction(root,R.string.test_files,false,()->testShell("ls /"));
-        addAction(root,R.string.provider_info,false,this::testProviderInfo);
+        addAction(theme,root,R.string.bind_service, true,this::bindLocalService);
+        addAction(theme,root,R.string.test_identity,false,()->testShell("whoami"));
+        addAction(theme,root,R.string.test_files,false,()->testShell("ls /"));
+        addAction(theme,root,R.string.provider_info,false,this::testProviderInfo);
         LinearLayout logHeader=new LinearLayout(this);logHeader.setGravity(android.view.Gravity.CENTER_VERTICAL);
         TerminalTheme.padding(logHeader,0,24,0,12);
-        logHeader.addView(TerminalTheme.textMedium(this,getString(R.string.logs),16,TerminalTheme.TEXT),new LinearLayout.LayoutParams(0,-2,1));
-        TextView clear=TerminalTheme.text(this,getString(R.string.clear_logs),14,TerminalTheme.TEXT_SECONDARY,android.graphics.Typeface.NORMAL);
+        logHeader.addView(TerminalTheme.textMedium(this,getString(R.string.logs),16,theme.text),new LinearLayout.LayoutParams(0,-2,1));
+        TextView clear=TerminalTheme.text(this,getString(R.string.clear_logs),14,theme.textSecondary,android.graphics.Typeface.NORMAL);
         clear.setMinimumHeight(TerminalTheme.dp(this,48));clear.setGravity(android.view.Gravity.CENTER_VERTICAL);
         clear.setOnClickListener(v->{logBuilder.setLength(0);logView.setText("");});logHeader.addView(clear);root.addView(logHeader);
-        logView=TerminalTheme.text(this,"",13,TerminalTheme.TEXT,android.graphics.Typeface.NORMAL);
+        logView=TerminalTheme.text(this,"",13,theme.text,android.graphics.Typeface.NORMAL);
         logView.setTypeface(android.graphics.Typeface.MONOSPACE);logView.setTextIsSelectable(true);
-        logView.setLineSpacing(TerminalTheme.dp(this,6),1);logView.setBackground(TerminalTheme.rounded(this,TerminalTheme.INPUT_BG,12));
+        logView.setLineSpacing(TerminalTheme.dp(this,6),1);logView.setBackground(TerminalTheme.rounded(this,theme.inputBg,12));
         TerminalTheme.padding(logView,16,16,16,16);root.addView(logView,new LinearLayout.LayoutParams(-1,-2));
         setContentView(scrollView);
         updateStatus();
-        appendLog("Terminal Provider 测试 APP 已启动");
+        appendLog("Terminal Provider test app started");
         appendLog("Shell: /system/bin/sh exists=" + new File("/system/bin/sh").exists());
         appendLog("Android API: " + Build.VERSION.SDK_INT);
-        appendLog("包名: " + getPackageName());
+        appendLog("package: " + getPackageName());
     }
 
-    private void addAction(LinearLayout parent,int label,boolean primary,Runnable onClick) {
-        TextView button=TerminalTheme.textMedium(this,getString(label),16,primary?TerminalTheme.TEXT_ON_COLOR:TerminalTheme.TEXT);
+    private void addAction(TerminalTheme.Palette theme, LinearLayout parent,int label,boolean primary,Runnable onClick) {
+        TextView button=TerminalTheme.textMedium(this,getString(label),16,primary?theme.textOnColor:theme.text);
         button.setGravity(android.view.Gravity.CENTER_VERTICAL);button.setMinimumHeight(TerminalTheme.dp(this,52));
-        TerminalTheme.padding(button,16,14,16,14);button.setBackground(TerminalTheme.rounded(this,primary?TerminalTheme.ACCENT:TerminalTheme.INPUT_BG,12));
+        TerminalTheme.padding(button,16,14,16,14);button.setBackground(TerminalTheme.rounded(this,primary?theme.accent:theme.inputBg,12));
         button.setOnClickListener(v->onClick.run());
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=TerminalTheme.dp(this,12);parent.addView(button,p);
     }
 
     private void bindLocalService() {
         if (bound) {
-            appendLog("服务已绑定，无需重复绑定");
+            appendLog("service already bound");
             return;
         }
         Intent intent = new Intent(this, TerminalProviderService.class);
         bindService(intent, connection, Context.BIND_AUTO_CREATE);
-        appendLog("正在绑定本地服务...");
+        appendLog("binding local service...");
     }
 
     private void testShell(String command) {
         if (!bound || service == null) {
-            appendLog("错误: 服务未绑定，请先绑定");
+            appendLog("error: bind the service first");
             return;
         }
         appendLog(">>> " + command);
@@ -124,16 +124,16 @@ public final class MainActivity extends Activity {
                 }
             });
             if (exitCode != 0) {
-                appendLog("命令退出码: " + exitCode);
+                appendLog("command exit code: " + exitCode);
             }
         } catch (RemoteException e) {
-            appendLog("远程调用失败: " + e.getMessage());
+            appendLog("remote call failed: " + e.getMessage());
         }
     }
 
     private void testProviderInfo() {
         if (!bound || service == null) {
-            appendLog("错误: 服务未绑定，请先绑定");
+            appendLog("error: bind the service first");
             return;
         }
         try {
@@ -144,16 +144,17 @@ public final class MainActivity extends Activity {
             appendLog("ProviderInfo: " + info);
             appendLog("Available: " + available);
         } catch (RemoteException e) {
-            appendLog("远程调用失败: " + e.getMessage());
+            appendLog("remote call failed: " + e.getMessage());
         }
     }
 
     private void updateStatus() {
-        String status = bound ? "服务状态: 已绑定" : "服务状态: 未绑定";
+        String status = bound ? "service: bound" : "service: not bound";
         try {
             PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
-            status += "\n版本: " + pi.versionName + " (" + pi.versionCode + ")";
-        } catch (PackageManager.NameNotFoundException ignored) {
+            status += "\nversion: " + pi.versionName + " (" + pi.versionCode + ")";
+        } catch (PackageManager.NameNotFoundException firstLaunch) {
+            status += "\nversion: unknown";
         }
         statusView.setText(status);
     }

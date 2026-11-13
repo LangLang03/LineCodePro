@@ -1,7 +1,5 @@
 package cn.lineai.engine.prompt;
 
-import android.content.res.AssetManager;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,7 +12,7 @@ public final class AssetPromptCatalog implements PromptCatalog {
 
     private final Map<PromptId, String> texts = new EnumMap<>(PromptId.class);
 
-    public AssetPromptCatalog(AssetManager assets) {
+    public AssetPromptCatalog(PromptAssetSource assets) {
         for (PromptId prompt : PromptId.values()) {
             texts.put(prompt, read(assets, "prompts/" + prompt.file));
         }
@@ -26,7 +24,7 @@ public final class AssetPromptCatalog implements PromptCatalog {
         return value;
     }
 
-    private static String read(AssetManager assets, String path) {
+    private static String read(PromptAssetSource assets, String path) {
         try (InputStream input = assets.open(path)) {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             byte[] buffer = new byte[8192];

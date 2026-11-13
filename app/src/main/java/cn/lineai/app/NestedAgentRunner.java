@@ -57,6 +57,10 @@ public final class NestedAgentRunner implements AgentRunner {
             @Override public boolean mutationAllowed() { return false; }
             @Override public cn.lineai.tool.api.TodoStore todos() { return toolContext.todos(); }
             @Override public cn.lineai.tool.api.DiffSink diffs() { return null; }
+            // Reading background output is a read-only operation, so agents may observe tasks.
+            @Override public cn.lineai.tool.api.BackgroundTasks backgrounds() {
+                return toolContext.backgrounds();
+            }
         };
         final ToolLoopEngine loop = new ToolLoopEngine(client, registry, readOnly, scheduler, 200);
         loop.listener(new ToolLoopEngine.Listener() {
@@ -66,7 +70,7 @@ public final class NestedAgentRunner implements AgentRunner {
                 synchronized (text) { text.append(delta); }
             }
             @Override public void onReasoning(String delta) { }
-            @Override public void onToolFinished(ToolCall call, ToolResult result) { }
+            @Override public void onToolFinished(cn.lineai.core.model.Message row, ToolCall call, ToolResult result) { }
             @Override public void onConfirmationRequired(List<ToolCall> calls) { loop.confirm(true); }
             @Override public void onFinished(FinishReason reason) { latch.countDown(); }
             @Override public void onFailed(DomainException error) {

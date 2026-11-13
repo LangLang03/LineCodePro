@@ -61,8 +61,10 @@ public final class MemoryPage extends LinearLayout {
     private final Set<String> selected = new HashSet<>();
     private List<MemoryItem> memories = new ArrayList<>();
 
-    public MemoryPage(Context context, Tokens tokens, Runnable back, Listener listener) {
+    public MemoryPage(Context context, Tokens tokens, Runnable back, Listener listener,
+                      cn.lineai.core.kernel.time.Scheduler scheduler) {
         super(context);
+        this.scheduler = scheduler;
         this.theme = new ThemeBinder(tokens);
         this.listener = listener;
         setOrientation(VERTICAL);
@@ -82,10 +84,23 @@ public final class MemoryPage extends LinearLayout {
     }
 
     private final Runnable backAction;
+    private final cn.lineai.core.kernel.time.Scheduler scheduler;
 
+    /** Reloads on io and renders on main; falls back to a synchronous load when absent. */
     public void load() {
-        memories = new ArrayList<>(listener.load());
-        refresh();
+        if (scheduler == null) {
+            memories = new ArrayList<>(listener.load());
+            refresh();
+            return;
+        }
+        scheduler.io(() -> {
+            List<cn.lineai.core.model.MemoryItem> loaded = new ArrayList<>(listener.load());
+            List<cn.lineai.core.model.TodoItem> shortTerm = listener.loadShortTerm();
+            scheduler.main(() -> {
+                memories = loaded;
+                refresh();
+            });
+        });
     }
 
     private void renderHeader() {

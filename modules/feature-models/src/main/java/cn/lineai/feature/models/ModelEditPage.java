@@ -500,9 +500,8 @@ public final class ModelEditPage extends LinearLayout {
                 scheduler.main(() -> {
                     fetching = false;
                     updateQueryState();
-                    Toast.makeText(getContext(), error.getMessage() == null
-                                    ? getContext().getString(R.string.toast_query_failed)
-                                    : error.getMessage(), Toast.LENGTH_LONG).show();
+                    Toast.makeText(getContext(), R.string.toast_query_failed,
+                            Toast.LENGTH_LONG).show();
                 });
             }
         });

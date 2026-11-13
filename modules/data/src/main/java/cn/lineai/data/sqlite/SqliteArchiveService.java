@@ -33,9 +33,21 @@ import cn.lineai.data.api.ArchiveService;
 public final class SqliteArchiveService implements ArchiveService {
 
     private static final String FORMAT = "linecode-archive";
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
     private static final long MAX_ENTRY_BYTES = 64L * 1024 * 1024;
+    /** Per-file cap mirrored from {@link #writeDirectory}; enforced again on import. */
+    private static final int MAX_FILE_BYTES = 8 * 1024 * 1024;
+    private static final String STAGING_DIR = ".restore-staging";
+    private static final java.util.List<String> RESTORE_ROOTS =
+            java.util.Arrays.asList("workspace", "skills", "attachments");
+    /** Order matters: parents must be restored before the rows that reference them. */
     private static final String[] TABLES = {
+            "conversations", "messages", "message_blocks", "message_tool_calls",
+            "settings", "models", "error_logs", "memories",
+            "extension_agents", "extension_mcps", "file_diffs", "projects", "ipc_providers"
+    };
+    /** v1 archives carried only the conversation/settings core. */
+    private static final String[] V1_TABLES = {
             "conversations", "messages", "message_blocks", "settings", "models", "error_logs"
     };
 
@@ -68,7 +80,7 @@ public final class SqliteArchiveService implements ArchiveService {
             int settings = 0;
             if (filesDir != null) writeFiles(zip);
             for (String table : TABLES) {
-                JSONArray rows = readTable(db, table);
+                JSONArray rows = sanitize(table, readTable(db, table));
                 write(zip, table + ".json", rows.toString());
                 if ("conversations".equals(table)) conversations = rows.length();
                 if ("models".equals(table)) models = rows.length();
@@ -84,45 +96,82 @@ public final class SqliteArchiveService implements ArchiveService {
     @Override
     public Summary importFrom(InputStream input) {
         Map<String, byte[]> entries = readZip(input);
-        requireEntries(entries);
         try {
+            if (!entries.containsKey("manifest.json")) {
+                throw new DomainException(ErrorCode.INVALID_INPUT, "missing manifest");
+            }
             JSONObject manifest = new JSONObject(text(entries, "manifest.json"));
-            if (!FORMAT.equals(manifest.optString("format")) || manifest.optInt("version") != VERSION) {
+            int version = manifest.optInt("version");
+            if (!FORMAT.equals(manifest.optString("format")) || version < 1 || version > VERSION) {
                 throw new DomainException(ErrorCode.INVALID_INPUT, "unsupported archive");
             }
+            requireEntries(entries, version);
+            // Validate (and stage) every file entry before any live data is touched, so a
+            // malformed archive can never leave the database restored but files destroyed.
+            if (filesDir != null) validateFileEntries(entries);
             SQLiteDatabase db = database.open();
             db.beginTransaction();
             try {
                 for (String table : TABLES) db.delete(table, null, null);
                 for (String table : TABLES) {
-                    JSONArray rows = new JSONArray(text(entries, table + ".json"));
+                    String payload = text(entries, table + ".json");
+                    if (payload.isEmpty()) continue; // v1 archives carry only the core tables
+                    JSONArray rows = new JSONArray(payload);
                     for (int i = 0; i < rows.length(); i++) {
                         db.insertOrThrow(table, null, values(rows.getJSONObject(i)));
                     }
                 }
                 db.setTransactionSuccessful();
-                if (filesDir != null) restoreFiles(entries);
-                return new Summary(
-                        new JSONArray(text(entries, "conversations.json")).length(),
-                        new JSONArray(text(entries, "models.json")).length(),
-                        new JSONArray(text(entries, "settings.json")).length());
             } finally {
                 db.endTransaction();
             }
+            if (filesDir != null) restoreFiles(entries);
+            return new Summary(
+                    new JSONArray(text(entries, "conversations.json")).length(),
+                    new JSONArray(text(entries, "models.json")).length(),
+                    new JSONArray(text(entries, "settings.json")).length());
         } catch (JSONException | IOException error) {
             throw new DomainException(ErrorCode.INVALID_INPUT, "invalid archive", error);
         }
     }
 
-    private static void requireEntries(Map<String, byte[]> entries) {
-        if (!entries.containsKey("manifest.json")) {
-            throw new DomainException(ErrorCode.INVALID_INPUT, "missing manifest");
-        }
-        for (String table : TABLES) {
+    private static void requireEntries(Map<String, byte[]> entries, int version) {
+        String[] required = version < 2 ? V1_TABLES : TABLES;
+        for (String table : required) {
             if (!entries.containsKey(table + ".json")) {
                 throw new DomainException(ErrorCode.INVALID_INPUT, "missing " + table);
             }
         }
+    }
+
+    /** Exports must not contain secrets: models lose api_key, secret settings rows are dropped. */
+    private static JSONArray sanitize(String table, JSONArray rows) throws JSONException {
+        if ("models".equals(table)) {
+            for (int i = 0; i < rows.length(); i++) rows.getJSONObject(i).remove("api_key");
+            return rows;
+        }
+        if ("settings".equals(table)) {
+            JSONArray kept = new JSONArray();
+            for (int i = 0; i < rows.length(); i++) {
+                JSONObject row = rows.getJSONObject(i);
+                if (!isSecretSetting(row.optString("key"))) kept.put(row);
+            }
+            return kept;
+        }
+        return rows;
+    }
+
+    private static final String[] SECRET_KEY_SUFFIXES = {
+            "apikey", "password", "privatekey", "passphrase"
+    };
+
+    private static boolean isSecretSetting(String key) {
+        String normalized = key.toLowerCase(java.util.Locale.ROOT)
+                .replace("_", "").replace("-", "");
+        for (String suffix : SECRET_KEY_SUFFIXES) {
+            if (normalized.endsWith(suffix)) return true;
+        }
+        return false;
     }
 
     private static JSONArray readTable(SQLiteDatabase db, String table) throws JSONException {
@@ -200,31 +249,59 @@ public final class SqliteArchiveService implements ArchiveService {
         }
     }
 
-    private void restoreFiles(Map<String, byte[]> entries) throws IOException {
-        List<String> roots = new ArrayList<>();
-        for (String name : new String[] {"workspace", "skills", "attachments"}) {
-            for (String entry : entries.keySet()) {
-                if (entry.startsWith("files/" + name + "/")) {
-                    roots.add(name);
-                    break;
-                }
-            }
-        }
-        for (String name : roots) deleteTree(new File(filesDir, name));
+    /** Rejects any files/ entry that could escape its root or exceed the export cap. */
+    private static void validateFileEntries(Map<String, byte[]> entries) throws IOException {
         for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
             String key = entry.getKey();
             if (!key.startsWith("files/")) continue;
             String[] parts = key.split("/", 3);
-            if (parts.length < 3) continue;
-            if (!"workspace".equals(parts[1]) && !"skills".equals(parts[1])
-                    && !"attachments".equals(parts[1])) {
-                continue;
+            if (parts.length < 3) continue; // directory marker, nothing to write
+            if (!RESTORE_ROOTS.contains(parts[1])) {
+                throw new IOException("unsafe archive root: " + key);
             }
             String relative = parts[2];
-            if (relative.contains("..") || relative.startsWith("/")) {
+            if (relative.isEmpty() || relative.contains("..") || relative.startsWith("/")) {
                 throw new IOException("unsafe archive path: " + key);
             }
-            File target = new File(new File(filesDir, parts[1]), relative);
+            if (entry.getValue().length > MAX_FILE_BYTES) {
+                throw new IOException("archive file too large: " + key);
+            }
+        }
+    }
+
+    private void restoreFiles(Map<String, byte[]> entries) throws IOException {
+        // Stage every file first, swap the roots in only after the database has committed.
+        File staging = new File(filesDir, STAGING_DIR);
+        deleteTree(staging);
+        stageFiles(entries, staging);
+        for (String name : RESTORE_ROOTS) {
+            boolean present = false;
+            for (String entry : entries.keySet()) {
+                if (entry.startsWith("files/" + name + "/")) {
+                    present = true;
+                    break;
+                }
+            }
+            if (present) deleteTree(new File(filesDir, name));
+        }
+        for (String name : RESTORE_ROOTS) {
+            File staged = new File(staging, name);
+            if (!staged.exists()) continue;
+            if (!staged.renameTo(new File(filesDir, name))) {
+                throw new IOException("archive restore could not activate " + name);
+            }
+        }
+        deleteTree(staging);
+    }
+
+    private static void stageFiles(Map<String, byte[]> entries, File staging) throws IOException {
+        for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
+            String key = entry.getKey();
+            if (!key.startsWith("files/")) continue;
+            String[] parts = key.split("/", 3);
+            if (parts.length < 3 || parts[2].isEmpty()) continue;
+            if (!RESTORE_ROOTS.contains(parts[1])) continue; // already rejected on validation
+            File target = new File(new File(staging, parts[1]), parts[2]);
             File parent = target.getParentFile();
             if (parent != null) parent.mkdirs();
             Files.write(target.toPath(), entry.getValue());

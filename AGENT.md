@@ -17,7 +17,7 @@ the original repository. All code now lives under `modules/` (plus the thin `:ap
 - `:core-model` — pure domain models (`Message`, `ModelConfig`, `ThemePalette`, `Project`, `Skill`, ...)
 - `:core-kernel` — `Graph` DI, `Scheduler`, `Clock`, `Observable`, `Scope`, errors, `Ids`
 - `:core-mvi` — `Store/Presenter`, `ScreenId/ScreenKey/BackStack/ScreenRegistry`
-- `:core-service` — cross-feature interfaces
+- `:core-service` — cross-feature interfaces (`SettingsAction`, `LinkPolicy`)
 - `:engine-protocol` — wire DTOs, SSE parser, OpenAI/Anthropic/Codex codecs, `ToolCallMerger`
 - `:engine-prompt` — `assets/prompts/**` single source of prompt templates + strict renderer
 - `:engine-ai` — `HttpModelClient`, probes, MCP/SkillHub/vision/image clients
@@ -28,15 +28,18 @@ the original repository. All code now lives under `modules/` (plus the thin `:ap
 - `:tool-mcp` / `:tool-agent` / `:tool-media` / `:tool-phone` — tool families
 - `:data` — Store interfaces + SQLite implementations, migrations, archive
 - `:ui-tokens` / `:ui-i18n` / `:ui-kit` / `:ui-markdown` — tokens, strings, Views, Markdown
-- `:feature-chat/settings/models/extensions/workspace/terminal` — screens and controllers
-- `:platform-android` — scheduler, link policy, accessibility service, keep-alive service
-- `:runtime` — composition root (`AppGraph`), screen factories, dialog/archive helpers
+- `:feature-chat/settings/models/extensions/workspace` — screens and controllers
+- `:platform-shell` — shell subsystem: background-shell registry + backends, terminal provider
+  gateway, SSH service/workspace, Termux client, provider discovery facade. The only rewritten
+  module allowed to depend on the frozen `:ipc`
+- `:platform-android` — scheduler, accessibility service, keep-alive service
+- `:runtime` — composition root (`AppGraph`), screen factories, SAF/archive dispatch
 - `:app` — `NextApp` + `MainActivity` shell only (≤1,500 Java lines, no page construction)
 - `:arch-test` — mechanical architecture guards
 
 ## Data
 
-`modules/data/.../LineCodeDatabase` owns schema **VERSION = 12**: conversations, messages,
+`modules/data/.../LineCodeDatabase` owns schema **VERSION = 13**: conversations, messages,
 message_blocks, message_tool_calls, settings, models, error_logs, memories, extension_agents,
 extension_mcps, ipc_providers, projects, file_diffs. Stores are synchronous; callers use
 `Scheduler.io`. `SettingsStore` is write-through with `invalidate()` after archive restore.
@@ -49,11 +52,32 @@ are persisted in `message_tool_calls`, TOOL results as messages (optionally with
 modes (`auto`/`confirm`/`readonly`) and session modes (`chat`/`plan`/`agent`/`control`) both filter
 the tool catalog. Enabled Agent/Skill extensions are injected into the prompt; enabled Agents are
 also exposed as `agent_<slug>` tools (read-only nested loop). MCP tools come from `tools/list` and
-always require approval. Context compaction summarizes older messages at 80% of the model context,
-or 50% when soft compaction is enabled. Minimal mode uses a one-sentence role prompt and skips
-extension, skill and learning sections; learning mode injects memories, recent conversation titles,
-enabled skills and skill paths through `runtime.LearningContextProvider`. Thinking scroll/auto-expand
-and process auto-expand preferences are applied by `MessageRow`/`ToolRow` without recreating views.
+always require approval; approval decisions live in feature-chat's `ApprovalPolicy`. Context
+compaction summarizes older messages at 80% of the model context, or 50% when soft compaction is
+enabled; the tail boundary never opens on a TOOL row. Minimal mode uses a one-sentence role prompt
+and skips extension, skill and learning sections; learning mode injects memories, recent
+conversation titles, enabled skills and skill paths through feature-chat's
+`LearningContextProvider`. Thinking scroll/auto-expand and process auto-expand preferences are
+applied by `MessageRow`/`toolcall/ToolCallCardView` without recreating views.
+
+Seq authority: `ToolLoopEngine` keeps its in-memory history in list order and never assigns
+persisted seq; `ChatTurnPipeline` is the only writer of `Message.seq` (it stamps rows when they
+are delivered on the event queue). Chat sheets/attachment picker/export live in feature-chat and
+speak to the app shell through `ChatHost`.
+
+## Comment policy
+
+- Every source comment is written in formal English. CJK is forbidden in comments as well as
+  in literals; `verifyNoCjkLiterals` and the arch-test CJK check scan the whole source file,
+  comments included.
+- Comments describe intent and invariants, not narrate code. One line only when one line
+  suffices; say why, not what.
+- Every class and every non-obvious public method carries a Javadoc comment. `{@param}`,
+  `{@return}` and `{@throws}` style is welcome; contractions, slang and first-person phrasing
+  are not.
+- Do not leave commented-out code behind. History belongs to git.
+- Keep a comment attached to the change that made it necessary: update stale comments in the
+  same commit as the code they describe.
 
 ## UI rules
 
@@ -74,10 +98,19 @@ and process auto-expand preferences are applied by `MessageRow`/`ToolRow` withou
 - Lint: `./gradlew :app:lintVitalRelease`
 
 Architecture guards: `linecode.java`, `linecode.android`, `linecode.verify`, `linecode.app`
-(build-logic); they enforce package ownership, dependency direction, file size, CJK-free code,
-no raw threads, no UI string concatenation, stringly-typed state, en/zh/ru string key parity,
-prompt-catalog consistency (manifest ↔ `PromptId` ↔ placeholders, no duplicate or orphan assets),
-and no hand-written JSON object literals in main sources (`noHandWrittenJsonObjects`).
+(build-logic) plus `:arch-test` (scans every module's main sources including `:app`, `:ipc`,
+`:terminal-provider`). They enforce package ownership, dependency direction, file size, CJK-free
+literals, no raw threads/locks outside sanctioned files, no UI string concatenation, stringly-typed
+state (statuses only inside enums), en/zh/ru string key parity, prompt-catalog consistency
+(manifest ↔ `PromptId` ↔ placeholders, no duplicate or orphan assets), the `:app` shell budget
+(≤1,500 Java lines total), settings-key parity between `LegacyMigration` and `ToolModes`, and no
+hand-written JSON object literals in main sources (`noHandWrittenJsonObjects`).
+
+Sanctioned blocking-thread files (each documented here, list must stay minimal): `app/NestedAgentRunner`
+(synchronous agent bridge), `platform-shell/LocalShellBackend` + `tool-builtin/ShellTool` (process
+pipes cannot be drained with a timeout without a reader thread), `platform-android/AndroidScheduler`
++ `LineCodeAccessibilityService` (the scheduler/accessibility owners), and the legacy
+`:ipc`/`:terminal-provider` provider processes (their own pump threads).
 
 ## Agent environment
 
@@ -108,8 +141,8 @@ and no hand-written JSON object literals in main sources (`noHandWrittenJsonObje
 - Do not create a second Skill/SkillHub/GitHub install path. Reuse `SkillStore.importSkill` and
   `RemoteSkillInstall`.
 - Do not add `new Thread`, `Executors`, `Handler`, locks/latches, `Thread.sleep` or `while(true)` in
-  feature/core/engine code. `platform-android` owns the scheduler; `NestedAgentRunner` is the single
-  documented synchronous-agent exception.
+  feature/core/engine code. `platform-android` owns the scheduler; exceptions are only the files
+  listed under "Sanctioned blocking-thread files" above.
 - Do not add static mutable fields, `rawJson`/`raw_json`, stringly-typed state, empty catches,
   `getMessage()` in user-visible text, CJK literals or UI text concatenation.
 - Do not build views with XML layouts, Kotlin, Compose or a new UI framework. Views are written in

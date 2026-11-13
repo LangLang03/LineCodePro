@@ -5,6 +5,7 @@ import java.util.List;
 
 import cn.lineai.core.model.Message;
 import cn.lineai.core.model.ModelConfig;
+import cn.lineai.core.model.Role;
 import cn.lineai.data.api.ModelStore;
 import cn.lineai.data.api.SettingsStore;
 
@@ -42,7 +43,9 @@ final class ContextCompactor {
                           String conversationId, List<Message> loaded, boolean softCompaction,
                           String instruction, Summarizer summarizer) {
         String summary = settings.get(key(conversationId), "");
-        int tailStart = Math.max(0, loaded.size() - TAIL_MESSAGES);
+        // The boundary is snapped past raw TOOL rows first, so the summarized range and the
+        // returned tail cover the message list completely with no gap in between.
+        int tailStart = safeTailStart(loaded, Math.max(0, loaded.size() - TAIL_MESSAGES));
         int threshold = softCompaction ? SOFT_THRESHOLD_PERCENT : HARD_THRESHOLD_PERCENT;
         int contextSize = ChatContextLimits.of(model, settings);
         if (model.compressionEnabled && model.compressionAuto
@@ -64,10 +67,22 @@ final class ContextCompactor {
                 System.err.println("Context compaction failed: " + error);
             }
         }
-        if (summary.isEmpty() || loaded.size() <= TAIL_MESSAGES) {
+        if (summary.isEmpty() || loaded.size() <= TAIL_MESSAGES || tailStart >= loaded.size()) {
             return new Result(loaded, "");
         }
         return new Result(new ArrayList<>(loaded.subList(tailStart, loaded.size())), summary);
+    }
+
+    /**
+     * The wire history must never open with a TOOL row: its owning assistant tool_calls
+     * would sit in the summarized range and strict providers reject the orphan tool_result.
+     * Advance past any leading tool rows so they are summarized away with the older range.
+     */
+    private static int safeTailStart(List<Message> loaded, int tailStart) {
+        while (tailStart < loaded.size() && loaded.get(tailStart).role == Role.TOOL) {
+            tailStart++;
+        }
+        return Math.min(tailStart, loaded.size());
     }
 
     /**

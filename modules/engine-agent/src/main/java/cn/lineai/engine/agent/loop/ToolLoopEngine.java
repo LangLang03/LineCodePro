@@ -21,6 +21,7 @@ import cn.lineai.engine.protocol.StreamEvent;
 import cn.lineai.engine.protocol.ToolCallDraft;
 import cn.lineai.engine.protocol.ToolCallMerger;
 import cn.lineai.engine.protocol.ToolSchema;
+import cn.lineai.tool.api.BackgroundTasks;
 import cn.lineai.tool.api.Tool;
 import cn.lineai.tool.api.ToolCall;
 import cn.lineai.tool.api.ToolContext;
@@ -40,7 +41,14 @@ public final class ToolLoopEngine implements Cancellable {
 
         void onAssistantMessage(Message message);
 
-        void onToolFinished(ToolCall call, ToolResult result);
+        /** Delivers the engine-built TOOL row (seq/conversationId still unset). */
+        void onToolFinished(Message toolMessage, ToolCall call, ToolResult result);
+
+        /**
+         * A hidden user message carrying background-task completion notices was appended to the
+         * history; the feature layer persists it so it survives reloads.
+         */
+        default void onNoticeInjected(Message message) { }
 
         void onConfirmationRequired(List<ToolCall> calls);
 
@@ -73,7 +81,6 @@ public final class ToolLoopEngine implements Cancellable {
     private ReasoningSpec reasoning;
     private Cancellable generation;
     private StringBuilder text;
-    private long seq = 1;
     private boolean cancelled;
 
     public ToolLoopEngine(ModelClient client, ToolRegistry tools, ToolContext toolContext,
@@ -100,9 +107,19 @@ public final class ToolLoopEngine implements Cancellable {
         this.conversationId = conversationId == null ? "loop" : conversationId;
         this.systemPrompt = systemPrompt == null ? "" : systemPrompt;
         this.reasoning = reasoning;
-        seq = 1;
-        for (Message message : this.history) seq = Math.max(seq, message.seq + 1);
-        dispatch(new ToolLoopEvent.Start());
+        // The loop's history is ordered by list position; the persisted seq is assigned
+        // once, by the feature pipeline when a row is delivered.
+        if (toolContext.backgrounds() == null) {
+            dispatch(new ToolLoopEvent.Start());
+            return;
+        }
+        // Notices from tasks that finished while the loop was idle ride along with the first
+        // request; the drain may poll remote tasks, so it runs on IO.
+        scheduler.io(() -> {
+            if (cancelled) return;
+            injectNotices();
+            dispatch(new ToolLoopEvent.Start());
+        });
     }
 
     public void confirm(boolean allowed) {
@@ -165,7 +182,10 @@ public final class ToolLoopEngine implements Cancellable {
                 .model(model.modelId)
                 .system(systemPrompt)
                 .messages(history)
-                .tools(schemas())
+                // Models without native tool support must not receive a tools field at all;
+                // their tool awareness comes from the prompt fallback built by the caller.
+                .tools(model.supportsTools ? schemas()
+                        : java.util.Collections.<ToolSchema>emptyList())
                 .sampling(model.temperature, model.maxTokens)
                 .reasoning(reasoning)
                 .stream(true)
@@ -214,21 +234,24 @@ public final class ToolLoopEngine implements Cancellable {
         }
         Message assistant = Message.builder()
                 .id(Ids.prefixed("msg"))
-                .conversationId(conversationId)
-                .seq(seq)
                 .role(Role.ASSISTANT)
                 .status(Message.Status.COMPLETE)
                 .addBlock(ContentBlock.text(text.toString()))
                 .toolCalls(records)
                 .build();
         if (!records.isEmpty()) {
-            seq++;
             history.add(assistant);
         }
         final Message delivered = assistant;
         scheduler.main(() -> {
             if (listener != null) listener.onAssistantMessage(delivered);
         });
+        if (calls.isEmpty() && injectNotices()) {
+            // A background task finished unnoticed: keep the turn alive with a hidden user
+            // message instead of ending it, so the model can read the output and continue.
+            dispatch(new ToolLoopEvent.ToolsFinished());
+            return;
+        }
         dispatch(new ToolLoopEvent.ResponseReady(calls));
     }
 
@@ -239,23 +262,57 @@ public final class ToolLoopEngine implements Cancellable {
                 ToolResult result = execute(call);
                 Message.Builder toolMessage = Message.builder()
                         .id(Ids.prefixed("msg"))
-                        .conversationId(conversationId)
-                        .seq(seq++)
                         .role(Role.TOOL)
                         .tool(call.id, call.name)
                         .addBlock(ContentBlock.text(result.content));
                 if (!result.imagePath.isEmpty()) {
                     toolMessage.addBlock(ContentBlock.image(result.imagePath));
                 }
-                history.add(toolMessage.build());
-                final ToolCall finished = call;
-                final ToolResult outcome = result;
+                final Message toolRow = toolMessage.build();
+                history.add(toolRow);
                 scheduler.main(() -> {
-                    if (listener != null) listener.onToolFinished(finished, outcome);
+                    if (listener != null) listener.onToolFinished(toolRow, call, result);
                 });
             }
+            // The next tool call round is the moment the model learns about background
+            // completions; the notice rides along with the tool results in the next request.
+            injectNotices();
             dispatch(new ToolLoopEvent.ToolsFinished());
         });
+    }
+
+    /**
+     * Appends one hidden USER message for background tasks that completed without the model
+     * observing their terminal state. Runs on the IO scheduler; returns true when injected.
+     */
+    private boolean injectNotices() {
+        BackgroundTasks backgrounds = toolContext.backgrounds();
+        if (backgrounds == null) return false;
+        List<String> notices;
+        try {
+            notices = backgrounds.drainCompleted();
+        } catch (Exception error) {
+            return false;
+        }
+        if (notices.isEmpty()) return false;
+        StringBuilder body = new StringBuilder(
+                "(background task notice - not from the user)\n");
+        for (String notice : notices) {
+            body.append("- ").append(notice).append('\n');
+        }
+        Message notice = Message.builder()
+                .id(Ids.prefixed("msg"))
+                .role(Role.USER)
+                .visibility(Message.Visibility.HIDDEN)
+                .status(Message.Status.COMPLETE)
+                .addBlock(ContentBlock.text(body.toString()))
+                .build();
+        history.add(notice);
+        final Message delivered = notice;
+        scheduler.main(() -> {
+            if (listener != null) listener.onNoticeInjected(delivered);
+        });
+        return true;
     }
 
     private ToolResult execute(ToolCall call) {

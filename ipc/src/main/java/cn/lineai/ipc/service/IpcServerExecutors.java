@@ -6,13 +6,14 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * IPC 服务端共享线程池。
+ * Process-wide shared executor for the IPC server side.
  *
- * <p>多个 Service 可共享同一个 {@link ExecutorService}，避免每个 Service 各自
- * newCachedThreadPool 带来的线程数不可控。线程标记为守护线程，不会阻止进程退出。
+ * <p>Provider services share one {@link ExecutorService} instead of each creating its own
+ * cached pool, which keeps the thread count bounded. All workers are daemon threads and
+ * never block process exit.
  *
- * <p>本工具属于进程级单例；不要在 Service.onDestroy 中调用 {@code shutdown}，
- * 共享线程池生命周期与进程一致。
+ * <p>The pool lives for the lifetime of the process: never call {@code shutdown} from
+ * {@code Service.onDestroy}.
  */
 public final class IpcServerExecutors {
 
@@ -31,7 +32,7 @@ public final class IpcServerExecutors {
     private IpcServerExecutors() {
     }
 
-    /** 获取进程级共享线程池。 */
+    /** Returns the process-wide shared executor. */
     public static ExecutorService shared() {
         return SHARED;
     }

@@ -1,19 +1,19 @@
 package cn.lineai.ipc;
 
 /**
- * IPC 提供者连接状态枚举（状态机）。
+ * Connection lifecycle of an IPC provider client.
  *
- * <p>替代单一的 {@code boolean bound} 字段，能更精确地表达连接生命周期。
- * 状态迁移由 {@link BaseIpcProvider} 内部驱动，业务方通过 {@link IpcProviderStateListener}
- * 订阅状态变化。
+ * <p>Replaces a plain {@code boolean bound} flag with the four phases of a binding.
+ * Transitions are driven inside {@link BaseIpcProvider}; consumers subscribe through
+ * {@link IpcProviderStateListener}.
  */
 public enum IpcProviderConnectionState {
-    /** 未连接（初始或已解绑） */
+    /** Initial state, or unbound again after a successful connection. */
     DISCONNECTED,
-    /** 正在执行 bindService，等待系统回调 */
+    /** bindService has been issued; waiting for the system callback. */
     CONNECTING,
-    /** 已成功绑定并持有有效的 IBinder */
+    /** Bound with a live IBinder. */
     CONNECTED,
-    /** bind 失败或连接中断（详情见异常） */
+    /** Binding failed or was interrupted; the cause carries the details. */
     FAILED
 }
