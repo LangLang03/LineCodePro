@@ -35,6 +35,23 @@ public final class SqliteMemoryStore implements MemoryStore {
     }
 
     @Override
+    public void update(String id, String scope, String content) {
+        MemoryItem existing = null;
+        for (MemoryItem memory : list("")) {
+            if (memory.id.equals(id)) existing = memory;
+        }
+        save(new MemoryItem(id, scope,
+                existing == null ? "" : existing.projectId,
+                existing == null ? "" : existing.title, content,
+                existing == null ? "manual" : existing.source,
+                existing == null ? 1.0 : existing.confidence,
+                existing == null ? 0L : existing.createdAt,
+                existing == null ? 0L : existing.updatedAt,
+                existing == null ? 0L : existing.lastUsedAt,
+                existing == null ? 0 : existing.useCount));
+    }
+
+    @Override
     public void save(MemoryItem memory) {
         long now = clock.nowMs();
         boolean insert = memory.id.isEmpty();

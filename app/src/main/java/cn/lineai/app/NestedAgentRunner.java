@@ -70,7 +70,7 @@ public final class NestedAgentRunner implements AgentRunner {
                 synchronized (text) { text.append(delta); }
             }
             @Override public void onReasoning(String delta) { }
-            @Override public void onToolFinished(ToolCall call, ToolResult result) { }
+            @Override public void onToolFinished(cn.lineai.core.model.Message row, ToolCall call, ToolResult result) { }
             @Override public void onConfirmationRequired(List<ToolCall> calls) { loop.confirm(true); }
             @Override public void onFinished(FinishReason reason) { latch.countDown(); }
             @Override public void onFailed(DomainException error) {

@@ -80,6 +80,9 @@ public final class ArchiveActions {
     }
 
     private static void importArchive(PageHost host, Uri uri) {
+        // Halt the chat before the import wipes conversations/messages; otherwise a running
+        // turn keeps writing into tables the import is deleting underneath it.
+        host.graph().chat().haltForDataReset();
         Scheduler scheduler = host.graph().graph().get(Scheduler.class);
         scheduler.io(() -> {
             try (java.io.InputStream input = host.activity().getContentResolver()
@@ -89,7 +92,7 @@ public final class ArchiveActions {
                 scheduler.main(() -> {
                     host.graph().settings().invalidate();
                     host.graph().preferences().dispatch(
-                            new cn.lineai.feature.settings.SettingsAction.Reload());
+                            new cn.lineai.core.service.SettingsAction.Reload());
                     host.graph().chat().reload();
                     Toast.makeText(host.activity(), host.activity().getString(
                             R.string.archive_imported, summary.conversations,

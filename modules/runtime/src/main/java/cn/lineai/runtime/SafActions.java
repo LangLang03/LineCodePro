@@ -1,6 +1,5 @@
 package cn.lineai.runtime;
 
-import android.content.Context;
 import android.net.Uri;
 import android.widget.Toast;
 
@@ -13,7 +12,11 @@ import java.io.OutputStream;
 import cn.lineai.core.kernel.time.Scheduler;
 import cn.lineai.ui.i18n.R;
 
-/** SAF result handling for chat attachments, skill import and workspace roots. */
+/**
+ * SAF result dispatch. Chat attachments delegate to feature-chat's {@code ChatAttachments};
+ * the skill/model/workspace imports stay here because they drive page reloads owned by the
+ * composition root's page factories.
+ */
 public final class SafActions {
 
     public static final int REQUEST_ATTACH = 7403;
@@ -28,11 +31,11 @@ public final class SafActions {
 
     public static boolean handle(PageHost host, PageFactory pages, int requestCode, Uri uri) {
         if (requestCode == REQUEST_ATTACH) {
-            copyAttachment(host, uri);
+            cn.lineai.feature.chat.ChatAttachments.importImage(host, uri);
             return true;
         }
         if (requestCode == REQUEST_ATTACH_FILE || requestCode == REQUEST_VIDEO) {
-            copyFileAttachment(host, uri);
+            cn.lineai.feature.chat.ChatAttachments.importFile(host, uri);
             return true;
         }
         if (requestCode == REQUEST_SKILL_IMPORT) {
@@ -48,99 +51,6 @@ public final class SafActions {
             return true;
         }
         return false;
-    }
-
-    private static void copyAttachment(PageHost host, Uri uri) {
-        Scheduler scheduler = scheduler(host);
-        String mime = host.activity().getContentResolver().getType(uri);
-        String extension = "jpg";
-        if (mime != null && mime.contains("/")) {
-            String suffix = mime.substring(mime.indexOf('/') + 1)
-                    .toLowerCase(java.util.Locale.ROOT);
-            if (suffix.equals("jpeg")) suffix = "jpg";
-            if (suffix.matches("[a-z0-9]{2,5}")) extension = suffix;
-        }
-        final String fileName = "image-" + System.currentTimeMillis() + "." + extension;
-        scheduler.io(() -> {
-            File target = new File(attachmentsDir(host), fileName);
-            try (InputStream input = host.activity().getContentResolver().openInputStream(uri);
-                 OutputStream output = new FileOutputStream(target)) {
-                if (input == null) throw new IOException("no stream");
-                copy(input, output);
-                scheduler.main(() -> host.addChatImage(target.getAbsolutePath()));
-            } catch (IOException error) {
-                target.delete();
-                scheduler.main(() -> Toast.makeText(host.activity(),
-                        R.string.screen_model_add_local_import_failed, Toast.LENGTH_SHORT).show());
-            }
-        });
-    }
-
-    private static void copyFileAttachment(PageHost host, Uri uri) {
-        Scheduler scheduler = scheduler(host);
-        final String fileName = attachmentName(host, uri);
-        scheduler.io(() -> {
-            File target = new File(attachmentsDir(host),
-                    System.currentTimeMillis() + "-" + fileName);
-            try (InputStream input = host.activity().getContentResolver().openInputStream(uri);
-                 OutputStream output = new FileOutputStream(target)) {
-                if (input == null) throw new IOException("no stream");
-                copy(input, output);
-                scheduler.main(() -> host.addChatFile(target.getAbsolutePath()));
-            } catch (IOException error) {
-                target.delete();
-                scheduler.main(() -> Toast.makeText(host.activity(),
-                        R.string.screen_model_add_local_import_failed, Toast.LENGTH_SHORT).show());
-            }
-        });
-    }
-
-    /**
-     * Photo Picker URIs are opaque media ids, so the last path segment has no extension. Prefer
-     * the provider's DISPLAY_NAME and fall back to the MIME suffix.
-     */
-    private static String attachmentName(PageHost host, Uri uri) {
-        String name = "";
-        try (android.database.Cursor cursor = host.activity().getContentResolver().query(uri,
-                new String[] {android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
-            if (cursor != null && cursor.moveToFirst()) {
-                name = cursor.getString(0);
-            }
-        } catch (RuntimeException error) {
-            // Some providers reject DISPLAY_NAME; the path/MIME fallback below still works.
-            android.util.Log.w("SafActions", "display name unavailable", error);
-        }
-        if (name == null) {
-            name = "";
-        }
-        name = name.trim();
-        if (name.isEmpty()) {
-            String last = uri.getLastPathSegment();
-            if (last != null) {
-                int slash = last.lastIndexOf('/');
-                name = slash >= 0 ? last.substring(slash + 1) : last;
-            }
-        }
-        if (!name.contains(".")) {
-            String extension = extension(host.activity().getContentResolver().getType(uri));
-            if (!extension.isEmpty()) {
-                name = name + "." + extension;
-            }
-        }
-        return name.isEmpty() ? "attachment.bin" : name;
-    }
-
-    private static String extension(String mime) {
-        if (mime == null || !mime.contains("/")) {
-            return "";
-        }
-        String suffix = mime.substring(mime.indexOf('/') + 1)
-                .toLowerCase(java.util.Locale.ROOT);
-        if (suffix.equals("jpeg")) return "jpg";
-        if (suffix.equals("quicktime")) return "mov";
-        if (suffix.equals("mpeg")) return "mpg";
-        if (suffix.equals("x-matroska")) return "mkv";
-        return suffix.matches("[a-z0-9]{2,5}") ? suffix : "";
     }
 
     private static void importSkill(PageHost host, PageFactory pages, Uri uri) {
@@ -235,12 +145,6 @@ public final class SafActions {
 
     private static Scheduler scheduler(PageHost host) {
         return host.graph().graph().get(Scheduler.class);
-    }
-
-    private static File attachmentsDir(PageHost host) {
-        File dir = new File(host.activity().getFilesDir(), "attachments");
-        dir.mkdirs();
-        return dir;
     }
 
     private static void copy(InputStream input, OutputStream output) throws IOException {

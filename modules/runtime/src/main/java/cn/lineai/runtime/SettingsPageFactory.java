@@ -36,9 +36,9 @@ import cn.lineai.feature.settings.ThemeSettingsPage;
 import cn.lineai.feature.settings.ToolPreferences;
 import cn.lineai.feature.settings.ToolSettingsPage;
 import cn.lineai.feature.settings.TutorialPage;
-import cn.lineai.feature.terminal.SshPreferences;
-import cn.lineai.feature.terminal.SshService;
-import cn.lineai.feature.terminal.TermuxClient;
+import cn.lineai.shell.SshPreferences;
+import cn.lineai.shell.SshService;
+import cn.lineai.shell.TermuxClient;
 import cn.lineai.ui.i18n.R;
 import cn.lineai.ui.kit.WebPage;
 
@@ -78,12 +78,12 @@ public final class SettingsPageFactory {
             return page;
         }
         if (key.id() == SettingsScreens.SECURITY) {
-            java.util.function.Consumer<cn.lineai.feature.settings.SettingsAction> dispatch =
+            java.util.function.Consumer<cn.lineai.core.service.SettingsAction> dispatch =
                     action -> {
                         host.graph().preferences().dispatch(action);
-                        if (action instanceof cn.lineai.feature.settings.SettingsAction.Change) {
-                            cn.lineai.feature.settings.SettingsAction.Change change =
-                                    (cn.lineai.feature.settings.SettingsAction.Change) action;
+                        if (action instanceof cn.lineai.core.service.SettingsAction.Change) {
+                            cn.lineai.core.service.SettingsAction.Change change =
+                                    (cn.lineai.core.service.SettingsAction.Change) action;
                             if (change.field == cn.lineai.core.model.UiPreferences.Field
                                     .TRUST_EXTENSION_SIGNATURES) {
                                 // Persist synchronously so auto-load picks the new trust policy up
@@ -186,7 +186,7 @@ public final class SettingsPageFactory {
                     values.browserJavaScript(), host.navigation()::back);
         }
         if (key.id() == SettingsScreens.TOOL_PREVIEW) {
-            return new ToolCallPreviewPage(host.activity(), host.tokens(),
+            return new cn.lineai.feature.chat.ToolCallPreviewPage(host.activity(), host.tokens(),
                     host.navigation()::back);
         }
         throw new IllegalArgumentException("Unregistered settings screen: " + key.id().route());
@@ -215,20 +215,7 @@ public final class SettingsPageFactory {
                         return host.graph().memories().list("");
                     }
                     public void save(String id, String scope, String content) {
-                        cn.lineai.core.model.MemoryItem existing = null;
-                        for (cn.lineai.core.model.MemoryItem memory
-                                : host.graph().memories().list("")) {
-                            if (memory.id.equals(id)) existing = memory;
-                        }
-                        host.graph().memories().save(new cn.lineai.core.model.MemoryItem(
-                                id, scope, existing == null ? "" : existing.projectId,
-                                existing == null ? "" : existing.title, content,
-                                existing == null ? "manual" : existing.source,
-                                existing == null ? 1.0 : existing.confidence,
-                                existing == null ? 0L : existing.createdAt,
-                                existing == null ? 0L : existing.updatedAt,
-                                existing == null ? 0L : existing.lastUsedAt,
-                                existing == null ? 0 : existing.useCount));
+                        host.graph().memories().update(id, scope, content);
                     }
                     public void delete(String id) { host.graph().memories().delete(id); }
                     public void deleteAll(java.util.List<String> ids) {
@@ -240,7 +227,7 @@ public final class SettingsPageFactory {
                     public java.util.List<cn.lineai.core.model.Conversation> loadChatIndex() {
                         return host.graph().conversations().list();
                     }
-                });
+                }, host.graph().scheduler());
     }
 
     private View sshPage() {
@@ -254,26 +241,23 @@ public final class SettingsPageFactory {
                         preferences.save(config);
                     }
                     public void test(cn.lineai.core.model.SshConfig config) {
-                        Scheduler scheduler = host.graph().graph().get(Scheduler.class);
-                        scheduler.io(() -> {
-                            try {
-                                String output = service.testConnection(config);
-                                scheduler.main(() -> {
+                        holder[0].setTesting(true);
+                        cn.lineai.shell.SshDiagnostics.test(service, config,
+                                host.graph().graph().get(Scheduler.class),
+                                report -> {
                                     holder[0].setTesting(false);
-                                    holder[0].showStatus(string(R.string.screen_ssh_status_success_title),
-                                            output.trim().isEmpty()
-                                                    ? string(R.string.screen_ssh_status_success_message)
-                                                    : output.trim(), false);
+                                    if (report.success) {
+                                        holder[0].showStatus(
+                                                string(R.string.screen_ssh_status_success_title),
+                                                report.output.isEmpty()
+                                                        ? string(R.string.screen_ssh_status_success_message)
+                                                        : report.output, false);
+                                    } else {
+                                        holder[0].showStatus(
+                                                string(R.string.screen_ssh_status_failed_title),
+                                                report.output, true);
+                                    }
                                 });
-                            } catch (cn.lineai.core.kernel.error.DomainException error) {
-                                scheduler.main(() -> {
-                                    holder[0].setTesting(false);
-                                    holder[0].showStatus(string(R.string.screen_ssh_status_failed_title),
-                                            error.detail().isEmpty() ? error.code().name()
-                                                    : error.detail(), true);
-                                });
-                            }
-                        });
                     }
                     public void onOpenTermux() {
                         host.navigation().push(SettingsScreens.TERMUX.key(Params.Empty.INSTANCE));
@@ -319,27 +303,26 @@ public final class SettingsPageFactory {
                                         service.clearKnownHosts();
                                         Scheduler scheduler = host.graph().graph().get(Scheduler.class);
                                         scheduler.io(() -> {
-                                            try {
-                                                String output = service.testConnection(result.config);
-                                                scheduler.main(() -> {
-                                                    holder[0].setSetupRunning(false);
+                                            cn.lineai.shell.SshDiagnostics.Report report =
+                                                    cn.lineai.shell.SshDiagnostics.report(service,
+                                                            result.config, scheduler);
+                                            scheduler.main(() -> {
+                                                holder[0].setSetupRunning(false);
+                                                if (report.success) {
                                                     holder[0].showStatus(
                                                             string(R.string.screen_termux_status_setup_done_title),
                                                             string(R.string.screen_termux_status_setup_done_message,
                                                                     result.shell.isEmpty() ? "unknown" : result.shell,
                                                                     result.rcPath.isEmpty() ? "unknown" : result.rcPath,
-                                                                    TermuxClient.redact(output.trim().isEmpty()
-                                                                            ? result.output : output)),
+                                                                    TermuxClient.redact(report.output.isEmpty()
+                                                                            ? result.output : report.output)),
                                                             false);
-                                                });
-                                            } catch (cn.lineai.core.kernel.error.DomainException error) {
-                                                scheduler.main(() -> {
-                                                    holder[0].setSetupRunning(false);
+                                                } else {
                                                     holder[0].showStatus(
                                                             string(R.string.screen_termux_status_setup_failed_title),
-                                                            TermuxClient.redact(error.detail()), true);
-                                                });
-                                            }
+                                                            TermuxClient.redact(report.output), true);
+                                                }
+                                            });
                                         });
                                     }
                                     public void onError(String message) {

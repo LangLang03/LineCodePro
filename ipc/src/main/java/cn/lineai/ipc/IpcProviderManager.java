@@ -8,18 +8,18 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * IPC Provider 管理器（外观模式 + 观察者聚合）。
+ * Facade over the registered IPC providers (facade plus observer aggregation).
  *
- * <p>负责：
+ * <p>Responsibilities:
  * <ul>
- *   <li>注册 / 注销 Provider</li>
- *   <li>触发 {@link BaseIpcProvider#bind} / {@link BaseIpcProvider#unbind}</li>
- *   <li>按 id / 类型查找已绑定 Provider</li>
- *   <li>聚合所有 Provider 的状态变化并对外发布（观察者）</li>
+ *   <li>Register and unregister providers</li>
+ *   <li>Drive {@link BaseIpcProvider#bind} / {@link BaseIpcProvider#unbind}</li>
+ *   <li>Look up bound providers by id or type</li>
+ *   <li>Aggregate provider state changes and republish them to global listeners</li>
  * </ul>
  *
- * <p>Provider 实例通过 {@link IpcProviderRegistry} 注册的 {@link IpcProviderFactory} 创建，
- * 遵守 OCP：新增类型无需修改本类。
+ * <p>Providers are created by the {@link IpcProviderFactory} instances held in
+ * {@link IpcProviderRegistry}; new provider types require no change to this class.
  */
 public final class IpcProviderManager {
 
@@ -38,13 +38,14 @@ public final class IpcProviderManager {
     }
 
     /**
-     * 注册 Provider 并尝试 bind。
+     * Registers a provider and binds it.
      *
-     * <p>若同 id 的 Provider 已存在则先解绑旧实例，再创建新实例。
+     * <p>When a provider with the same id already exists, the old instance is unbound
+     * first and then replaced by the newly created one.
      */
     public BaseIpcProvider registerAndBind(IpcProviderConfig config) {
         if (config == null) {
-            throw new IllegalArgumentException("config 不能为空");
+            throw new IllegalArgumentException("config must not be null");
         }
         BaseIpcProvider existing = activeProviders.get(config.getId());
         if (existing != null) {
@@ -53,7 +54,7 @@ public final class IpcProviderManager {
         }
         BaseIpcProvider provider = createProvider(config);
         if (provider == null) {
-            throw new IllegalStateException("未找到 Provider 工厂: " + config.getProviderType());
+            throw new IllegalStateException("no provider factory for type: " + config.getProviderType());
         }
         provider.addStateListener(providerStateForwarder);
         provider.bind(context);
@@ -61,7 +62,7 @@ public final class IpcProviderManager {
         return provider;
     }
 
-    /** 注销并解绑指定 id 的 Provider。 */
+    /** Unregisters and unbinds the provider with the given id. */
     public void unregisterAndUnbind(String providerId) {
         BaseIpcProvider provider = activeProviders.remove(providerId);
         if (provider != null) {
@@ -70,7 +71,7 @@ public final class IpcProviderManager {
         }
     }
 
-    /** 注销所有 Provider。 */
+    /** Unregisters and unbinds every active provider. */
     public void unregisterAll() {
         for (BaseIpcProvider provider : new ArrayList<>(activeProviders.values())) {
             provider.removeStateListener(providerStateForwarder);
@@ -79,7 +80,7 @@ public final class IpcProviderManager {
         activeProviders.clear();
     }
 
-    /** 按 id 与类型查找已注册 Provider；类型不匹配返回 null。 */
+    /** Returns the registered provider for the id, or null when its type differs. */
     public <T extends BaseIpcProvider> T getProvider(String providerId, Class<T> type) {
         BaseIpcProvider provider = activeProviders.get(providerId);
         if (provider == null || !type.isInstance(provider)) {
@@ -88,7 +89,7 @@ public final class IpcProviderManager {
         return type.cast(provider);
     }
 
-    /** 按类型查找第一个已绑定的 Provider。 */
+    /** Returns the first bound provider of the type, or null. */
     public BaseIpcProvider getProviderByType(IpcProviderType type) {
         if (type == null) {
             return null;
@@ -101,7 +102,7 @@ public final class IpcProviderManager {
         return null;
     }
 
-    /** 按类型查找所有已注册 Provider。 */
+    /** Returns every registered provider of the type. */
     public List<BaseIpcProvider> getProvidersByType(IpcProviderType type) {
         List<BaseIpcProvider> result = new ArrayList<>();
         if (type == null) {
@@ -115,14 +116,14 @@ public final class IpcProviderManager {
         return result;
     }
 
-    /** 添加全局状态监听器；所有 Provider 状态变化都会转发到此监听器。 */
+    /** Registers a global listener; every provider state change is forwarded to it. */
     public void addStateListener(IpcProviderStateListener listener) {
         if (listener != null) {
             globalListeners.add(listener);
         }
     }
 
-    /** 移除全局状态监听器。 */
+    /** Removes a previously registered global listener. */
     public void removeStateListener(IpcProviderStateListener listener) {
         if (listener != null) {
             globalListeners.remove(listener);
@@ -133,15 +134,15 @@ public final class IpcProviderManager {
         for (IpcProviderStateListener listener : globalListeners) {
             try {
                 listener.onStateChanged(provider, newState, cause);
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException brokenListener) {
+                android.util.Log.w("IpcProviderManager", "state listener threw", brokenListener);
             }
         }
     };
 
     /**
-     * 通过注册表创建 Provider 实例；找不到工厂时返回 null。
-     *
-     * <p>替换旧的 {@code switch} 结构，遵守 OCP。
+     * Creates a provider instance through the registry; returns null when no factory is
+     * registered for the type (open/closed principle, no type-specific branches here).
      */
     private BaseIpcProvider createProvider(IpcProviderConfig config) {
         IpcProviderType type = IpcProviderType.fromId(config.getProviderType());

@@ -10,17 +10,13 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * IPC 提供者抽象基类（模板方法 + 状态机 + 观察者）。
+ * Base class for IPC provider clients. It combines the template-method pattern for the
+ * {@code bindService}/{@code unbindService} flow, an {@link IpcProviderConnectionState}
+ * state machine for the connection lifecycle, and an observer list that publishes state
+ * transitions to the owning feature layer.
  *
- * <p>职责：
- * <ul>
- *   <li>封装 {@code bindService}/{@code unbindService} 通用流程</li>
- *   <li>用 {@link IpcProviderConnectionState} 状态机描述连接生命周期</li>
- *   <li>通过 {@link IpcProviderStateListener} 列表向业务方发布状态变化</li>
- * </ul>
- *
- * <p>子类实现 {@link #getProviderType()} 声明自身类型，并通过 {@code TerminalIpcProvider}
- * 等具体类对外暴露 AIDL 调用。
+ * <p>Subclasses declare their type through {@link #getProviderType()} and expose the AIDL
+ * calls of a concrete provider such as {@code TerminalIpcProvider}.
  */
 public abstract class BaseIpcProvider {
 
@@ -30,6 +26,8 @@ public abstract class BaseIpcProvider {
     protected volatile IBinder serviceBinder;
     protected volatile boolean bound;
     private ServiceConnection connection;
+    /** Application context captured at bind time; used for the automatic rebind. */
+    private Context boundContext;
 
     private volatile IpcProviderConnectionState connectionState = IpcProviderConnectionState.DISCONNECTED;
     private final List<IpcProviderStateListener> stateListeners = new CopyOnWriteArrayList<>();
@@ -38,19 +36,25 @@ public abstract class BaseIpcProvider {
         this.config = config;
     }
 
-    /** 子类声明自身的 Provider 类型。 */
+    /** Returns the provider type declared by the concrete subclass. */
     public abstract IpcProviderType getProviderType();
 
     /**
-     * 绑定远端服务（final 模板方法）。
+     * Binds the remote provider service (final template method).
      *
-     * <p>内部驱动状态机：DISCONNECTED → CONNECTING → CONNECTED / FAILED。
+     * <p>Drives the state machine DISCONNECTED &rarr; CONNECTING &rarr; CONNECTED / FAILED.
      */
     public final synchronized boolean bind(Context context) {
         if (bound) {
             return true;
         }
+        if (connection != null) {
+            // A second bind() while CONNECTING would overwrite the connection field and
+            // leak the already-registered ServiceConnection.
+            return false;
+        }
         Context appContext = context.getApplicationContext();
+        boundContext = appContext;
         Intent intent = new Intent(getProviderType().getIntentAction());
         intent.setPackage(config.getPackageName());
         if (config.getServiceClass() != null && config.getServiceClass().length() > 0) {
@@ -62,35 +66,32 @@ public abstract class BaseIpcProvider {
         try {
             result = appContext.bindService(intent, connection, Context.BIND_AUTO_CREATE);
         } catch (SecurityException e) {
-            Log.w(TAG, "bindService 权限拒绝: " + e.getMessage());
+            Log.w(TAG, "bindService permission denied: " + e.getMessage());
             transitionTo(IpcProviderConnectionState.FAILED, e);
             connection = null;
             return false;
         }
         if (!result) {
             transitionTo(IpcProviderConnectionState.FAILED,
-                    new IllegalStateException("bindService 返回 false"));
+                    new IllegalStateException("bindService returned false"));
             connection = null;
         }
         return result;
     }
 
     /**
-     * 解绑远端服务（final 模板方法）。
+     * Unbinds the remote provider service (final template method).
      *
-     * <p>驱动状态机：* → DISCONNECTED。
+     * <p>Drives the state machine to DISCONNECTED from any prior state.
      */
     public final synchronized void unbind(Context context) {
-        if (!bound && connection == null) {
-            transitionTo(IpcProviderConnectionState.DISCONNECTED, null);
-            serviceBinder = null;
-            return;
-        }
-        if (bound && connection != null) {
+        if (connection != null) {
+            // While CONNECTING the bound flag is still false, but the ServiceConnection is
+            // already registered with the system and must be unbound here.
             try {
                 context.getApplicationContext().unbindService(connection);
             } catch (IllegalArgumentException e) {
-                Log.w(TAG, "unbindService 异常: " + e.getMessage());
+                Log.w(TAG, "unbindService failed: " + e.getMessage());
             }
         }
         connection = null;
@@ -111,20 +112,21 @@ public abstract class BaseIpcProvider {
         return serviceBinder;
     }
 
-    /** 当前连接状态。 */
+    /** Returns the current connection state. */
     public final IpcProviderConnectionState getConnectionState() {
         return connectionState;
     }
 
     /**
-     * 是否需要在用户层做二次确认（仅作为 UI 提示用，IPC 权限校验在系统层完成）。
-     * 默认 false；子类可覆盖（如 shell 执行类需 true）。
+     * Whether callers should show an extra user-side confirmation. This is a UI hint only;
+     * enforcement of the IPC permission happens at the system layer. Defaults to false;
+     * shell-execution providers override it to true.
      */
     public boolean requiresConfirmation() {
         return false;
     }
 
-    /** 添加状态监听器。 */
+    /** Registers a state listener; registration is idempotent per listener instance. */
     public final void addStateListener(IpcProviderStateListener listener) {
         if (listener == null) {
             return;
@@ -132,7 +134,7 @@ public abstract class BaseIpcProvider {
         stateListeners.add(listener);
     }
 
-    /** 移除状态监听器。 */
+    /** Removes a previously registered state listener. */
     public final void removeStateListener(IpcProviderStateListener listener) {
         if (listener == null) {
             return;
@@ -140,14 +142,14 @@ public abstract class BaseIpcProvider {
         stateListeners.remove(listener);
     }
 
-    /** 子类在 ServiceConnection 回调时通知基类（受保护，供 {@link IpcProviderManager} 等调用）。 */
+    /** Called by the concrete subclass when the ServiceConnection delivers the binder. */
     protected final void onServiceConnected(IBinder binder) {
         this.serviceBinder = binder;
         this.bound = true;
         transitionTo(IpcProviderConnectionState.CONNECTED, null);
     }
 
-    /** 子类在 ServiceConnection 断开时通知基类。 */
+    /** Called by the concrete subclass when the ServiceConnection drops. */
     protected final void onServiceDisconnected() {
         this.serviceBinder = null;
         this.bound = false;
@@ -160,12 +162,12 @@ public abstract class BaseIpcProvider {
         }
         IpcProviderConnectionState oldState = this.connectionState;
         this.connectionState = newState;
-        Log.i(TAG, getProviderType() + " 状态迁移: " + oldState + " -> " + newState);
+        Log.i(TAG, getProviderType() + " state: " + oldState + " -> " + newState);
         for (IpcProviderStateListener listener : stateListeners) {
             try {
                 listener.onStateChanged(this, newState, cause);
             } catch (RuntimeException e) {
-                Log.w(TAG, "stateListener 回调异常", e);
+                Log.w(TAG, "stateListener callback failed", e);
             }
         }
     }
@@ -181,6 +183,44 @@ public abstract class BaseIpcProvider {
             public void onServiceDisconnected(ComponentName name) {
                 BaseIpcProvider.this.onServiceDisconnected();
             }
+
+            @Override
+            public void onBindingDied(ComponentName name) {
+                BaseIpcProvider.this.onBindingDied();
+            }
+
+            @Override
+            public void onNullBinding(ComponentName name) {
+                BaseIpcProvider.this.onBindingDied();
+            }
         };
+    }
+
+    /**
+     * Releases the stale binding when the provider process dies and rebinds once; a failed
+     * rebind enters FAILED and is left to the owner's refresh flow instead of idling in
+     * DISCONNECTED with no recovery path.
+     */
+    private synchronized void onBindingDied() {
+        if (connection == null) {
+            return;
+        }
+        Context context = boundContext;
+        try {
+            if (context != null) {
+                context.unbindService(connection);
+            }
+        } catch (IllegalArgumentException e) {
+            Log.w(TAG, "unbindService failed: " + e.getMessage());
+        }
+        connection = null;
+        serviceBinder = null;
+        bound = false;
+        if (context == null) {
+            transitionTo(IpcProviderConnectionState.DISCONNECTED, null);
+            return;
+        }
+        Log.w(TAG, getProviderType() + " binding died, rebinding");
+        bind(context);
     }
 }

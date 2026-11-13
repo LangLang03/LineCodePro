@@ -1,5 +1,6 @@
 package cn.lineai.feature.settings;
 
+import cn.lineai.core.service.SettingsAction;
 import cn.lineai.core.kernel.error.DomainException;
 import cn.lineai.core.kernel.error.ErrorCode;
 import cn.lineai.core.kernel.time.Scheduler;

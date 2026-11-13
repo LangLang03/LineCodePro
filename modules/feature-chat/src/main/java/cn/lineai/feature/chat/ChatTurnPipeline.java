@@ -6,7 +6,6 @@ import java.util.List;
 
 import cn.lineai.core.kernel.error.DomainException;
 import cn.lineai.core.kernel.util.Ids;
-import cn.lineai.core.model.ContentBlock;
 import cn.lineai.core.model.Message;
 import cn.lineai.core.model.ModelConfig;
 import cn.lineai.core.model.Role;
@@ -138,25 +137,22 @@ final class ChatTurnPipeline {
         chat.writes.submit(() -> chat.messages.append(finished));
     }
 
-    /** One tool result is appended behind the call that requested it. */
-    void appendTool(ToolCall call, ToolResult result) {
+    /**
+     * One tool result is appended behind the call that requested it. The engine already built
+     * the row (role, call binding, output blocks); the pipeline assigns the only persisted
+     * seq and the final status/timestamps.
+     */
+    void appendTool(Message engineRow, ToolCall call, ToolResult result) {
         if (stale()) {
             return;
         }
         long now = chat.clock.nowMs();
-        Message.Builder toolBuilder = Message.builder()
-                .id(Ids.prefixed("msg"))
+        final Message tool = engineRow.toBuilder()
                 .conversationId(chat.conversationId)
                 .seq(chat.seq++)
-                .role(Role.TOOL)
                 .status(result.error ? Message.Status.FAILED : Message.Status.COMPLETE)
-                .tool(call.id, call.name)
-                .addBlock(ContentBlock.text(result.content))
-                .times(now, now);
-        if (!result.imagePath.isEmpty()) {
-            toolBuilder.addBlock(ContentBlock.image(result.imagePath));
-        }
-        final Message tool = toolBuilder.build();
+                .times(now, now)
+                .build();
         chat.publish(chat.state.value().toBuilder()
                 .add(tool)
                 .revision(System.nanoTime())

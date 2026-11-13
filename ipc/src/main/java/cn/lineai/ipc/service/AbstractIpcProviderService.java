@@ -6,17 +6,17 @@ import android.os.IBinder;
 import android.util.Log;
 
 /**
- * IPC 服务端抽象基类（模板方法模式）。
+ * Base class for the IPC server side (template-method pattern).
  *
- * <p>封装 Service 生命周期的样板代码：
+ * <p>Wraps the Service lifecycle boilerplate:
  * <ul>
- *   <li>{@link #onBind(Intent)}：返回 {@link #createBinder()} 提供的 AIDL Stub</li>
- *   <li>{@link #onUnbind(Intent)}：调用 {@link #onProviderUnbind(Intent)} 钩子</li>
- *   <li>{@link #onDestroy()}：调用 {@link #onProviderDestroy()} 钩子</li>
+ *   <li>{@link #onBind(Intent)} returns the AIDL stub produced by {@link #createBinder()}</li>
+ *   <li>{@link #onUnbind(Intent)} invokes the {@link #onProviderUnbind(Intent)} hook</li>
+ *   <li>{@link #onDestroy()} invokes the {@link #onProviderDestroy()} hook</li>
  * </ul>
  *
- * <p>子类仅需实现 {@link #createBinder()} 即可完成一个最小可用的 Provider Service；
- * 需要更多控制时覆盖对应钩子方法。
+ * <p>A subclass implements {@link #createBinder()} for a minimal provider service and
+ * overrides the hooks when it needs more control.
  */
 public abstract class AbstractIpcProviderService extends Service {
 
@@ -42,16 +42,16 @@ public abstract class AbstractIpcProviderService extends Service {
     }
 
     /**
-     * 子类返回 AIDL Stub（通常为 {@code IXxxService.Stub} 匿名实例）。
-     * 该方法在主线程调用，应只做对象创建，不做耗时操作。
+     * Returns the AIDL stub (usually an anonymous {@code IXxxService.Stub}). Called on
+     * the main thread: create objects only, never do blocking work.
      */
     protected abstract IBinder createBinder();
 
-    /** 解绑时的资源清理钩子；默认无操作。 */
+    /** Cleanup hook for unbind; the default implementation does nothing. */
     protected void onProviderUnbind(Intent intent) {
     }
 
-    /** Service 销毁时的资源清理钩子；默认无操作。 */
+    /** Cleanup hook for service destruction; the default implementation does nothing. */
     protected void onProviderDestroy() {
     }
 }

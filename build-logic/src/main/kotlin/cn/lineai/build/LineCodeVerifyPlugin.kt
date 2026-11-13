@@ -184,18 +184,28 @@ abstract class VerifyNoCjkLiteralsTask : DefaultTask() {
         val violations = ArrayList<String>()
         for (root in sources.files) {
             if (!root.exists()) continue
+            // Comments are not exempt: every comment must be formal English as well.
             for (file in JavaSourceScanner.javaFiles(root)) {
-                val code = JavaSourceScanner.stripComments(file.readText())
+                val code = file.readText()
                 for (literal in JavaSourceScanner.literals(code)) {
                     if (JavaSourceScanner.looksLikeCjk(literal)) {
                         violations.add("${JavaSourceScanner.relative(projectDir, file)}: \"${literal.take(40)}\"")
+                    }
+                }
+                for (line in code.lines()) {
+                    val stripped = line.trim().removePrefix("*").trim()
+                    if ((stripped.startsWith("//") || line.trim().startsWith("*")
+                            || line.trim().startsWith("/*")) && JavaSourceScanner.looksLikeCjk(line)
+                    ) {
+                        violations.add("${JavaSourceScanner.relative(projectDir, file)}: comment")
                     }
                 }
             }
         }
         if (violations.isNotEmpty()) {
             throw GradleException(
-                "CJK literals are forbidden in modules (move text to R.string):\n" +
+                "CJK is forbidden in modules, in literals and in comments (move text to" +
+                    " R.string; write comments in formal English):\n" +
                     violations.joinToString("\n")
             )
         }
@@ -401,11 +411,7 @@ abstract class VerifyNoRawThreadsTask : DefaultTask() {
             if (!root.exists()) continue
             for (file in JavaSourceScanner.javaFiles(root)) {
                 val relative = JavaSourceScanner.relative(projectDir, file)
-                // The nested Agent tool is synchronous by contract; this bridge waits on a
-                // worker thread while the tool loop streams. It is the only sanctioned wait.
-                if (project.path == ":app" &&
-                    relative == "src/main/java/cn/lineai/app/NestedAgentRunner.java"
-                ) {
+                if (sanctionedBlockingFile(project.path, relative)) {
                     continue
                 }
                 val code = JavaSourceScanner.stripComments(file.readText())
@@ -422,6 +428,43 @@ abstract class VerifyNoRawThreadsTask : DefaultTask() {
                     violations.joinToString("\n")
             )
         }
+    }
+
+    /**
+     * Files with a documented blocking-wait contract. Each entry needs the same justification
+     * review as its AGENT.md note; the list must stay minimal.
+     */
+    private fun sanctionedBlockingFile(project: String, relative: String): Boolean {
+        // The nested Agent tool is synchronous by contract; this bridge waits on a
+        // worker thread while the tool loop streams.
+        if (project == ":app" &&
+            relative == "src/main/java/cn/lineai/app/NestedAgentRunner.java"
+        ) {
+            return true
+        }
+        // Local process pipes cannot be drained with a timeout without a dedicated reader
+        // thread; poll-based draining would stall tasks once the 64 KB pipe buffer fills.
+        if (project == ":platform-shell" &&
+            relative == "src/main/java/cn/lineai/shell/LocalShellBackend.java"
+        ) {
+            return true
+        }
+        // Same process-drain constraint for the foreground shell tool: the reader thread
+        // is what lets waitFor(timeout) fire while the merged pipe is still blocking.
+        if (project == ":tool-builtin" &&
+            relative == "src/main/java/cn/lineai/tool/workspace/ShellTool.java"
+        ) {
+            return true
+        }
+        // platform-android owns the scheduler and the accessibility event loop; its
+        // worker threads are the sanctioned implementation of that contract.
+        if (project == ":platform-android" &&
+            (relative == "src/main/java/cn/lineai/platform/AndroidScheduler.java" ||
+             relative == "src/main/java/cn/lineai/platform/LineCodeAccessibilityService.java")
+        ) {
+            return true
+        }
+        return false
     }
 }
 

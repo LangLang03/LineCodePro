@@ -1,5 +1,6 @@
 package cn.lineai.feature.settings;
 
+import cn.lineai.core.service.SettingsAction;
 import android.content.Context;
 import cn.lineai.core.model.UiPreferences.Field;
 import cn.lineai.ui.i18n.R;

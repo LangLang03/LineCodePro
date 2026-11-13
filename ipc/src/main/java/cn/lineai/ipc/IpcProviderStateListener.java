@@ -1,18 +1,19 @@
 package cn.lineai.ipc;
 
 /**
- * IPC 提供者连接状态监听器（观察者）。
+ * Observer for IPC provider connection state.
  *
- * <p>由 {@link BaseIpcProvider} 在状态机迁移时回调；允许业务方按需订阅连接生命周期事件。
- * 实现需保证线程安全——回调可能在 Binder 线程上发生。
+ * <p>Invoked by {@link BaseIpcProvider} on every state-machine transition, so owners can
+ * subscribe to the connection lifecycle. Implementations must be thread-safe: callbacks
+ * may arrive on a Binder thread.
  */
 public interface IpcProviderStateListener {
     /**
-     * 状态变化回调。
+     * Reports a state transition.
      *
-     * @param provider 触发事件的具体 Provider
-     * @param newState 新状态
-     * @param cause 进入 FAILED 状态时的异常；其他状态为 null
+     * @param provider the provider that produced the event
+     * @param newState the state entered
+     * @param cause the failure when entering FAILED; null for other states
      */
     void onStateChanged(BaseIpcProvider provider,
                         IpcProviderConnectionState newState,

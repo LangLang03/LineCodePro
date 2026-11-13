@@ -24,7 +24,7 @@ public final class TerminalIpcProvider extends BaseIpcProvider {
 
     private ITerminalProviderService getService() {
         if (!isBound() || serviceBinder == null) {
-            throw new IllegalStateException("终端提供者服务未绑定");
+            throw new IllegalStateException("terminal provider service is not bound");
         }
         return ITerminalProviderService.Stub.asInterface(serviceBinder);
     }

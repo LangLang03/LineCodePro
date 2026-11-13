@@ -108,6 +108,31 @@ public class ContextCompactorTest {
         assertEquals("", result.summary);
     }
 
+    @Test public void tailBoundaryNeverOpensOnAToolRow() {
+        final List<String> prompts = new ArrayList<>();
+        List<Message> loaded = new ArrayList<>(messages(3));
+        loaded.add(Message.builder().id("a3").conversationId("c").seq(4).role(Role.ASSISTANT)
+                .addBlock(ContentBlock.text("assistant call")).build());
+        loaded.add(Message.builder().id("t4").conversationId("c").seq(5).role(Role.TOOL)
+                .addBlock(ContentBlock.text("4:tool output")).build());
+        loaded.add(Message.builder().id("t5").conversationId("c").seq(6).role(Role.TOOL)
+                .addBlock(ContentBlock.text("5:tool output")).build());
+        loaded.addAll(messages(14, 200));
+        assertEquals(20, loaded.size());
+
+        ContextCompactor.Result result = ContextCompactor.prepare(model(true), null, settings(),
+                "c", loaded, true, "Summarize.", (model, prompt) -> {
+                    prompts.add(prompt);
+                    return "SUMMARY";
+                });
+
+        // The raw boundary (row 4) lands inside the tool batch; the snapped boundary
+        // pushes the batch into the summarized range instead of opening the wire on it.
+        assertEquals(14, result.history.size());
+        assertFalse(result.history.get(0).role == Role.TOOL);
+        assertTrue(prompts.get(0).contains("[tool]"));
+    }
+
     @Test public void manualCompactionIgnoresAutomaticThresholds() throws Exception {
         assertTrue(ContextCompactor.compactNow(model(false), null, settings(), "c", messages(20),
                 "Summarize.", (compressor, prompt) -> "MANUAL"));

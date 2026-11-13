@@ -21,7 +21,7 @@ public class SystemPromptAssemblerTest {
 
     private SystemPromptAssembler assembler() {
         PromptCatalog catalog = new AssetPromptCatalog(
-                RuntimeEnvironment.getApplication().getAssets());
+                path -> RuntimeEnvironment.getApplication().getAssets().open(path));
         return new SystemPromptAssembler(new PromptStore(catalog, null));
     }
 

@@ -10,12 +10,9 @@ import android.app.Dialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Color;
-import android.graphics.Typeface;
-import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
 import android.widget.FrameLayout;
@@ -65,7 +62,7 @@ import cn.lineai.feature.workspace.WorkspaceProjectsPage;
 import cn.lineai.feature.workspace.WorkspaceScreens;
 import cn.lineai.feature.settings.InputSettingsPage;
 import cn.lineai.feature.settings.OutputSettingsPage;
-import cn.lineai.feature.settings.SettingsAction;
+import cn.lineai.core.service.SettingsAction;
 import cn.lineai.feature.settings.SecuritySettingsPage;
 import cn.lineai.feature.settings.DataSettingsPage;
 import cn.lineai.feature.settings.ErrorLogsPage;
@@ -211,7 +208,7 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
 
     @Override public void openLink(String url) {
         cn.lineai.core.model.UiPreferences values = graph.preferences().state().values;
-        if (!cn.lineai.platform.LinkPolicy.allows(url, values.allowAnyHttp())) {
+        if (!cn.lineai.core.service.LinkPolicy.allows(url, values.allowAnyHttp())) {
             Toast.makeText(this, R.string.browser_open_failed, Toast.LENGTH_SHORT).show();
             return;
         }
@@ -239,7 +236,7 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
 
     @Override public void onModelPicker() {
         hideKeyboard();
-        cn.lineai.runtime.DialogFactory.showModelPicker(this);
+        cn.lineai.feature.chat.ChatSheets.showModelPicker(this);
     }
 
     @Override public cn.lineai.tool.api.ToolPresentation toolPresentation(String name,
@@ -249,7 +246,7 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
 
     @Override public void loadWorkspaceTree(
             java.util.function.Consumer<cn.lineai.feature.chat.DrawerPanel.FileNode> callback) {
-        cn.lineai.runtime.ChatSheets.loadWorkspaceTree(this, callback);
+        cn.lineai.feature.chat.ChatSheets.loadWorkspaceTree(this, callback);
     }
 
     @Override public cn.lineai.feature.chat.ChatCapabilities capabilities() {
@@ -262,7 +259,7 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
 
     @Override public void onAttachmentPicker() {
         hideKeyboard();
-        cn.lineai.runtime.ChatSheets.showAttachmentTree(this,
+        cn.lineai.feature.chat.ChatSheets.showAttachmentTree(this,
                 chat::fileAttachmentPaths, chat::toggleFileAttachment);
     }
 
@@ -293,9 +290,7 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
                 });
     }
 
-    @Override public void showChatAttachmentPicker() {
-        onAttachmentPicker();
-    }
+    @Override public void showChatAttachmentPicker() { onAttachmentPicker(); }
 
     @Override public void pickChatImage() {
         onAttach();
@@ -303,12 +298,12 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
 
     @Override public void onReasoning() {
         hideKeyboard();
-        cn.lineai.runtime.DialogFactory.showReasoning(this);
+        cn.lineai.feature.chat.ChatSheets.showReasoningPicker(this);
     }
 
     @Override public void onMore() {
         hideKeyboard();
-        cn.lineai.runtime.DialogFactory.showMore(this);
+        cn.lineai.feature.chat.ChatSheets.showMore(this);
     }
 
     @Override public void openDrawer() {
@@ -349,15 +344,12 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
         navigation.push(WorkspaceScreens.PROJECTS.key(Params.Empty.INSTANCE), false);
     }
 
-    @Override public java.util.List<cn.lineai.core.model.WorkspaceNode> workspaceFiles(String path) {
-        return HostActions.workspaceFiles(graph, path);
-    }
     @Override public void onPermission() {
         showPermissionSheet();
     }
 
     private void showPermissionSheet() {
-        cn.lineai.runtime.DialogFactory.showPermission(this);
+        cn.lineai.feature.chat.ChatSheets.showPermission(this);
     }
 
     @Override public void onAttachFile() {
@@ -376,14 +368,11 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
         cn.lineai.runtime.ModelPickerFactory.save(this, understanding, id);
     }
 
-
     @Override public void requestExport() {
         cn.lineai.runtime.ArchiveActions.requestExport(this);
     }
 
-    @Override public void requestChatExport() {
-        cn.lineai.runtime.ChatExportActions.request(this);
-    }
+    @Override public void requestChatExport() { cn.lineai.feature.chat.ChatExportActions.request(this); }
 
     @Override public void requestImport() {
         cn.lineai.runtime.ArchiveActions.requestImport(this);
@@ -395,7 +384,7 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
         Uri uri = data.getData();
         try {
             if (cn.lineai.runtime.ArchiveActions.handleResult(this, requestCode, uri)) return;
-            if (cn.lineai.runtime.ChatExportActions.handleResult(this, requestCode, uri)) {
+            if (cn.lineai.feature.chat.ChatExportActions.handleResult(this, requestCode, uri)) {
                 return;
             }
             cn.lineai.runtime.SafActions.handle(this, pages, requestCode, uri);
@@ -412,7 +401,6 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
         }
     }
 
-
     @Override public void updateKeepAliveService() {
         HostActions.updateKeepAlive(this, graph);
     }
@@ -428,7 +416,6 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
     @Override public void probeModel(cn.lineai.core.model.ModelConfig model) {
         cn.lineai.runtime.ModelPickerFactory.probe(this, model);
     }
-
 
     @Override public Activity activity() { return this; }
     @Override public Tokens tokens() { return tokens; }
@@ -464,12 +451,22 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
 
     @Override public void unavailable() { Toast.makeText(this, R.string.rewrite_not_available, Toast.LENGTH_SHORT).show(); }
 
+    // ChatHost: the narrow slice the chat sheets need, delegated to the app graph.
+    @Override public cn.lineai.feature.chat.ChatController chat() { return graph.chat(); }
+    @Override public cn.lineai.data.api.ModelStore models() { return graph.models(); }
+    @Override public cn.lineai.data.api.ProjectStore projects() { return graph.projects(); }
+    @Override public cn.lineai.data.api.SettingsStore settings() { return graph.settings(); }
+    @Override public void dispatchSettings(cn.lineai.core.service.SettingsAction action) { graph.preferences().dispatch(action); }
+    @Override public cn.lineai.core.kernel.time.Scheduler scheduler() { return graph.graph().get(cn.lineai.core.kernel.time.Scheduler.class); }
+    @Override public void openTutorial() { navigation.push(cn.lineai.feature.settings.SettingsScreens.TUTORIAL.key(cn.lineai.core.mvi.nav.Params.Empty.INSTANCE)); }
+    @Override public void openSettings() { navigation.push(cn.lineai.feature.settings.SettingsScreens.HOME.key(cn.lineai.core.mvi.nav.Params.Empty.INSTANCE)); }
+    @Override public void openWorkspaceProjects() { navigation.push(cn.lineai.feature.workspace.WorkspaceScreens.PROJECTS.key(cn.lineai.core.mvi.nav.Params.Empty.INSTANCE)); }
+
     @SuppressLint("GestureBackNavigation") // API 33+ is wired through OnBackInvokedDispatcher above.
     @Override public void onBackPressed() {
         if (navigation.entries().size() > 1) navigation.back();
         else if (!chat.handleBack()) super.onBackPressed();
     }
-
 
     private void showCrashIfNeeded() {
         HostActions.showCrashIfNeeded(this);
@@ -504,11 +501,11 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
     }
 
     private void showChatModeSheet() {
-        cn.lineai.runtime.DialogFactory.showChatMode(this);
+        cn.lineai.feature.chat.ChatMenuSheets.showChatMode(this);
     }
 
     @Override public void onContextUsage() {
         if (dialog != null) dialog.dismiss();
-        dialog = cn.lineai.runtime.DialogFactory.showContextUsage(this);
+        dialog = cn.lineai.feature.chat.ChatSheets.showContextUsage(this);
     }
 }

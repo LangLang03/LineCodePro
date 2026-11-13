@@ -72,46 +72,6 @@ final class HostActions {
         }
     }
 
-    static List<WorkspaceNode> workspaceFiles(AppGraph graph, String path) {
-        Project project = graph.projects().selected();
-        if (project == null) {
-            return Collections.emptyList();
-        }
-        File baseDir = new File(project.path);
-        if (!baseDir.isDirectory()) {
-            return Collections.emptyList();
-        }
-        List<WorkspaceNode> nodes = new ArrayList<>();
-        try {
-            File base = baseDir.getCanonicalFile();
-            File dir = path == null || path.isEmpty()
-                    ? base : new File(base, path).getCanonicalFile();
-            if (!dir.equals(base) && !dir.getPath().startsWith(base.getPath() + File.separator)) {
-                return nodes;
-            }
-            File[] children = dir.listFiles();
-            if (children == null) {
-                return nodes;
-            }
-            Arrays.sort(children, (a, b) -> {
-                if (a.isDirectory() != b.isDirectory()) {
-                    return a.isDirectory() ? -1 : 1;
-                }
-                return a.getName().compareToIgnoreCase(b.getName());
-            });
-            for (File child : children) {
-                if (nodes.size() >= 300) {
-                    break;
-                }
-                String relative = base.toPath().relativize(child.toPath()).toString();
-                nodes.add(new WorkspaceNode(child.getName(), relative, child.isDirectory()));
-            }
-        } catch (java.io.IOException ignored) {
-            return Collections.emptyList();
-        }
-        return nodes;
-    }
-
     static void pickDocument(Activity activity, String mime, String[] extraMimes, int requestCode) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -144,6 +104,7 @@ final class HostActions {
                 return;
             } catch (ActivityNotFoundException | SecurityException ignored) {
                 // No Photo Picker on this build; DocumentsUI still works.
+                System.err.println("photo picker unavailable, falling back: " + ignored);
             }
         }
         pickDocument(activity, mime, null, requestCode);

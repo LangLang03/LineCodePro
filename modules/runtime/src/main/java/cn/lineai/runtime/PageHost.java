@@ -8,8 +8,8 @@ import cn.lineai.core.mvi.nav.BackStack;
 import cn.lineai.feature.settings.SettingsHome;
 import cn.lineai.ui.tokens.Tokens;
 
-/** Activity callbacks used by screen construction. */
-public interface PageHost {
+/** Activity callbacks used by screen construction; the chat slice lives in feature-chat. */
+public interface PageHost extends cn.lineai.feature.chat.ChatHost {
 
     Activity activity();
 
@@ -51,25 +51,12 @@ public interface PageHost {
 
     void openExternalWorkspace();
 
-    /** Opens the workspace attachment tree picker used by the composer plus button. */
-    default void showChatAttachmentPicker() {
-        unavailable();
-    }
-
     /** Opens the system picker for another app to read/write the LineCode workspace. */
     default void shareWorkspace() {
         unavailable();
     }
 
-    /** Opens the system image picker for the composer long-press action. */
-    default void pickChatImage() {
-        unavailable();
-    }
-
     void applyProjectLabel(Project project);
-
-
-
 
     void openLink(String url);
 

@@ -124,6 +124,7 @@ public final class ShellTool implements Tool {
             }
         } catch (Exception ignored) {
             // The process was killed or its stream broke; whatever was read is kept.
+            System.err.println("shell output drain interrupted: " + ignored);
         }
     }
 
@@ -168,12 +169,13 @@ public final class ShellTool implements Tool {
         long value = -1;
         if (raw instanceof Number) {
             value = ((Number) raw).longValue();
-        } else if (raw instanceof String) {
-            try {
-                value = Long.parseLong(((String) raw).trim());
-            } catch (NumberFormatException ignored) {
+            } else if (raw instanceof String) {
+                try {
+                    value = Long.parseLong(((String) raw).trim());
+                } catch (NumberFormatException ignored) {
+                    value = -1; // unparseable input falls through to the default below
+                }
             }
-        }
         if (value <= 0) value = defaultMs;
         return Math.min(Math.max(value, MIN_TIMEOUT_MS), MAX_TIMEOUT_MS);
     }

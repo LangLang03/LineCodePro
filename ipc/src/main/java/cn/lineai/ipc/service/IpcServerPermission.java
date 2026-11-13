@@ -6,11 +6,12 @@ import android.content.pm.PackageManager;
 import android.util.Log;
 
 /**
- * 服务端权限校验工具。
+ * Server-side permission verification helper.
  *
- * <p>Android 系统已通过 {@code <service android:permission="...">} 在系统层做了
- * 强制校验；本类提供可选的二次校验：检查调用方是否在 manifest 中声明了对应
- * {@code <uses-permission>}，便于服务端做更严格的访问控制。
+ * <p>Android already enforces {@code <service android:permission="...">} at the system
+ * layer. This class offers an optional second check that the calling package declares the
+ * corresponding {@code <uses-permission>}, for providers that want stricter access
+ * control than the platform gate.
  */
 public final class IpcServerPermission {
 
@@ -20,9 +21,9 @@ public final class IpcServerPermission {
     }
 
     /**
-     * 检查给定包名的应用是否声明了指定权限。
+     * Reports whether the given package declares the requested permission.
      *
-     * @return true 表示已声明；包未安装或权限未声明均返回 false
+     * @return true when declared; false when the package is absent or has not requested it
      */
     public static boolean callerHasPermission(Context context, String packageName, String permission) {
         if (context == null || packageName == null || packageName.length() == 0
@@ -42,7 +43,7 @@ public final class IpcServerPermission {
             }
             return false;
         } catch (PackageManager.NameNotFoundException e) {
-            Log.w(TAG, "调用方包未找到: " + packageName);
+            Log.w(TAG, "calling package not found: " + packageName);
             return false;
         }
     }

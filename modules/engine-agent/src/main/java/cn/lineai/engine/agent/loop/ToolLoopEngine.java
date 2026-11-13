@@ -41,7 +41,8 @@ public final class ToolLoopEngine implements Cancellable {
 
         void onAssistantMessage(Message message);
 
-        void onToolFinished(ToolCall call, ToolResult result);
+        /** Delivers the engine-built TOOL row (seq/conversationId still unset). */
+        void onToolFinished(Message toolMessage, ToolCall call, ToolResult result);
 
         /**
          * A hidden user message carrying background-task completion notices was appended to the
@@ -80,7 +81,6 @@ public final class ToolLoopEngine implements Cancellable {
     private ReasoningSpec reasoning;
     private Cancellable generation;
     private StringBuilder text;
-    private long seq = 1;
     private boolean cancelled;
 
     public ToolLoopEngine(ModelClient client, ToolRegistry tools, ToolContext toolContext,
@@ -107,8 +107,8 @@ public final class ToolLoopEngine implements Cancellable {
         this.conversationId = conversationId == null ? "loop" : conversationId;
         this.systemPrompt = systemPrompt == null ? "" : systemPrompt;
         this.reasoning = reasoning;
-        seq = 1;
-        for (Message message : this.history) seq = Math.max(seq, message.seq + 1);
+        // The loop's history is ordered by list position; the persisted seq is assigned
+        // once, by the feature pipeline when a row is delivered.
         if (toolContext.backgrounds() == null) {
             dispatch(new ToolLoopEvent.Start());
             return;
@@ -234,15 +234,12 @@ public final class ToolLoopEngine implements Cancellable {
         }
         Message assistant = Message.builder()
                 .id(Ids.prefixed("msg"))
-                .conversationId(conversationId)
-                .seq(seq)
                 .role(Role.ASSISTANT)
                 .status(Message.Status.COMPLETE)
                 .addBlock(ContentBlock.text(text.toString()))
                 .toolCalls(records)
                 .build();
         if (!records.isEmpty()) {
-            seq++;
             history.add(assistant);
         }
         final Message delivered = assistant;
@@ -265,19 +262,16 @@ public final class ToolLoopEngine implements Cancellable {
                 ToolResult result = execute(call);
                 Message.Builder toolMessage = Message.builder()
                         .id(Ids.prefixed("msg"))
-                        .conversationId(conversationId)
-                        .seq(seq++)
                         .role(Role.TOOL)
                         .tool(call.id, call.name)
                         .addBlock(ContentBlock.text(result.content));
                 if (!result.imagePath.isEmpty()) {
                     toolMessage.addBlock(ContentBlock.image(result.imagePath));
                 }
-                history.add(toolMessage.build());
-                final ToolCall finished = call;
-                final ToolResult outcome = result;
+                final Message toolRow = toolMessage.build();
+                history.add(toolRow);
                 scheduler.main(() -> {
-                    if (listener != null) listener.onToolFinished(finished, outcome);
+                    if (listener != null) listener.onToolFinished(toolRow, call, result);
                 });
             }
             // The next tool call round is the moment the model learns about background
@@ -308,8 +302,6 @@ public final class ToolLoopEngine implements Cancellable {
         }
         Message notice = Message.builder()
                 .id(Ids.prefixed("msg"))
-                .conversationId(conversationId)
-                .seq(seq++)
                 .role(Role.USER)
                 .visibility(Message.Visibility.HIDDEN)
                 .status(Message.Status.COMPLETE)

@@ -62,8 +62,11 @@ public class ModuleGraphTest {
 
     @Test
     public void engineAndCoreStayAndroidFree() {
+        // engine-local is intentionally Android/native-adjacent; tool-* families are UI
+        // adjacent by design. Everything else in core/engine must stay pure.
         String[] pure = {"core-model", "core-kernel", "core-mvi", "core-service",
-                "engine-protocol", "engine-ai", "tool-api", "engine-agent"};
+                "engine-protocol", "engine-prompt", "engine-skillhub", "engine-ai",
+                "tool-api", "engine-agent"};
         StringBuilder violations = new StringBuilder();
         for (String module : pure) {
             for (File file : Modules.javaFiles(module)) {
@@ -74,6 +77,27 @@ public class ModuleGraphTest {
             }
         }
         assertEquals("Android imports in pure modules:\n" + violations, 0, violations.length());
+    }
+
+    /**
+     * The legacy modules are frozen debt: only the composition root shell (:app) and the
+     * shell-platform module may touch them. Any other rewritten dependency re-glues the
+     * legacy tree into the new architecture.
+     */
+    @Test
+    public void rewrittenModulesNeverDependOnLegacyModules() {
+        StringBuilder violations = new StringBuilder();
+        for (String module : Modules.modules()) {
+            if (module.equals("arch-test") || module.equals("platform-shell")) {
+                continue;
+            }
+            for (String dependency : dependenciesOf(module)) {
+                if (dependency.equals("ipc") || dependency.equals("terminal-provider")) {
+                    violations.append(module).append(" -> ").append(dependency).append('\n');
+                }
+            }
+        }
+        assertEquals("rewritten -> legacy edges:\n" + violations, 0, violations.length());
     }
 
     @Test

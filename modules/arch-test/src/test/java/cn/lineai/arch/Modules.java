@@ -80,8 +80,8 @@ final class Modules {
         roots.put("feature-models", "cn.lineai.feature.models");
         roots.put("feature-extensions", "cn.lineai.feature.extensions");
         roots.put("feature-workspace", "cn.lineai.feature.workspace");
-        roots.put("feature-terminal", "cn.lineai.feature.terminal");
         roots.put("platform-android", "cn.lineai.platform");
+        roots.put("platform-shell", "cn.lineai.shell");
         roots.put("runtime", "cn.lineai.runtime");
         return roots;
     }
@@ -98,6 +98,30 @@ final class Modules {
             collect(local, result);
         }
         // Resource-only modules legitimately have no Java directory in a clean checkout.
+        return result;
+    }
+
+    /**
+     * The :app shell and the frozen :ipc/:terminal-provider modules live outside modules/
+     * and are scanned by the same hygiene rules (with per-check sanctioned skips).
+     */
+    static List<String> scannedRoots() {
+        List<String> roots = new ArrayList<>(modules());
+        roots.add("app");
+        roots.add("ipc");
+        roots.add("terminal-provider");
+        return roots;
+    }
+
+    /** Java sources of a scanned root; modules/ names resolve through modules/, the rest at top level. */
+    static List<File> sourcesOf(String root) {
+        File base = root.equals("app") || root.equals("ipc") || root.equals("terminal-provider")
+                ? ROOT : new File(ROOT, "modules");
+        File main = new File(base, root + "/src/main/java");
+        List<File> result = new ArrayList<>();
+        if (main.isDirectory()) {
+            collect(main, result);
+        }
         return result;
     }
 

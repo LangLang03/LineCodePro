@@ -1,7 +1,6 @@
 package cn.lineai.tool.api;
 
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 /** Builds tool argument schemas with org.json instead of hand-concatenated strings. */
@@ -26,13 +25,7 @@ public final class ToolSchemaBuilder {
     }
 
     public ToolSchemaBuilder bool(String name, String description) {
-        JSONObject schema = new JSONObject();
-        try {
-            schema.put("type", "boolean").put("description", description);
-        } catch (JSONException ignored) {
-            // Static schema text; neither key can be null.
-        }
-        return property(name, schema);
+        return property(name, new JSONObject().put("type", "boolean").put("description", description));
     }
 
     public ToolSchemaBuilder enumString(String name, String description, String... values) {

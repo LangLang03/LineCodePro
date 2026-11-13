@@ -40,7 +40,13 @@ final class SerialWrites {
                 }
             }
             if (next != null) {
-                next.run();
+                // A failed write (e.g. the conversation was deleted mid-turn) must not
+                // kill the io thread or stall the writes queued behind it.
+                try {
+                    next.run();
+                } catch (RuntimeException error) {
+                    System.err.println("Chat write failed: " + error);
+                }
             }
         }
     }

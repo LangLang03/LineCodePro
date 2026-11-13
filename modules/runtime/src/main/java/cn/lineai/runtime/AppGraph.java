@@ -69,7 +69,11 @@ import cn.lineai.tool.media.MediaTools;
 import cn.lineai.tool.workspace.BuiltinTools;
 import cn.lineai.ui.tokens.ThemeController;
 import cn.lineai.core.mvi.present.Store;
-import cn.lineai.feature.settings.SettingsAction;
+import cn.lineai.core.service.SettingsAction;
+import cn.lineai.shell.BackgroundShellRegistry;
+import cn.lineai.feature.chat.LearningContextProvider;
+import cn.lineai.shell.SshWorkspace;
+import cn.lineai.shell.TerminalProviderGateway;
 import cn.lineai.feature.settings.SettingsPresenter;
 import cn.lineai.feature.settings.SettingsState;
 
@@ -157,7 +161,8 @@ public final class AppGraph implements AutoCloseable {
         this.terminalProviders = providerStore;
         this.mcpPreferences = new McpPreferences(settingsStore);
         this.terminalProviderGateway = new TerminalProviderGateway(this.context, settingsStore,
-                providerStore);
+                providerStore, () -> cn.lineai.feature.settings.McpPreferences
+                        .MODE_TERMINAL_PROVIDER.equals(mcpPreferences.mode()));
         this.prompts = promptStore;
         final File workspace = new File(context.getFilesDir(), "workspace");
         workspace.mkdirs();
@@ -237,7 +242,8 @@ public final class AppGraph implements AutoCloseable {
     }
 
     private static PromptStore promptStore(Context context, SettingsStore settingsStore) {
-        PromptCatalog catalog = new AssetPromptCatalog(context.getAssets());
+        PromptCatalog catalog = new AssetPromptCatalog(
+                path -> context.getAssets().open(path));
         return new PromptStore(catalog, new SettingsPromptOverrides(settingsStore));
     }
 
@@ -254,10 +260,10 @@ public final class AppGraph implements AutoCloseable {
     private cn.lineai.tool.api.ToolRegistry applyWorkspacePolicy(
             cn.lineai.tool.api.ToolRegistry registry) {
         if (remoteWorkspaceActive()) {
-            return LocalToolPolicy.apply(SshWorkspace.remoteOnly(registry),
+            return cn.lineai.tool.workspace.LocalToolPolicy.apply(SshWorkspace.remoteOnly(registry),
                     mcpPreferences.remoteShell());
         }
-        return LocalToolPolicy.apply(registry, mcpPreferences.localShell());
+        return cn.lineai.tool.workspace.LocalToolPolicy.apply(registry, mcpPreferences.localShell());
     }
 
     private boolean remoteWorkspaceActive() {

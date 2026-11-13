@@ -74,13 +74,11 @@ public final class SystemPromptAssembler {
 
     /** One-sentence role prompt used by minimal mode; custom sections are skipped by the caller. */
     public String minimal(String toolNames) {
-        Map<String, String> values = new LinkedHashMap<>();
-        String names = safe(toolNames);
-        values.put("TOOL_NAMES", names);
+        // The template declares no placeholders: the prompt-name fallback below is the only
+        // tool-name surface, and native-tools models render the bare template untouched.
         String rendered = PromptRenderer.render(PromptId.MINIMAL_PROMPT,
-                prompts.current(PromptId.MINIMAL_PROMPT), values);
-        // Models without native tool support still need the name list as a prompt fallback;
-        // native-tools models render the bare template with no tool names at all.
+                prompts.current(PromptId.MINIMAL_PROMPT), new LinkedHashMap<String, String>());
+        String names = safe(toolNames);
         return names.isEmpty() ? rendered : rendered + "\n\nTools: " + names;
     }
 

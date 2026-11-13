@@ -166,4 +166,4 @@ Unless a written commercial agreement says otherwise, receiving or using the sou
 
 ## Acknowledgements
 
-LineCode Pro builds on the work of [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), [commonmark-java](https://github.com/commonmark/commonmark-java) (BSD-2-Clause), [JSch](https://github.com/mwiede/jsch) (BSD-style), and the Android Jetpack libraries. Every third-party component remains governed by its own license; notices shipped with the APK continue to apply.
+LineCode Pro builds on the work of [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), [commonmark-java](https://github.com/commonmark/commonmark-java) (BSD-2-Clause) and [JSch](https://github.com/mwiede/jsch) (BSD-style). Every third-party component remains governed by its own license; notices shipped with the APK continue to apply.

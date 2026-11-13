@@ -37,7 +37,7 @@ public class ToolLoopEngineTest {
             public void onAssistantMessage(Message message) { }
             public void onText(String delta) { texts.add(delta); }
             public void onReasoning(String delta) { }
-            public void onToolFinished(ToolCall call, ToolResult result) { results.add(result.content); }
+            public void onToolFinished(Message row, ToolCall call, ToolResult result) { results.add(result.content); }
             public void onConfirmationRequired(List<ToolCall> calls) { engine.confirm(true); }
             public void onFinished(FinishReason reason) { }
             public void onFailed(DomainException error) { fail(error.getMessage()); }
@@ -63,7 +63,7 @@ public class ToolLoopEngineTest {
             public void onAssistantMessage(Message message) { }
             public void onText(String delta) { }
             public void onReasoning(String delta) { }
-            public void onToolFinished(ToolCall call, ToolResult result) { }
+            public void onToolFinished(Message row, ToolCall call, ToolResult result) { }
             public void onConfirmationRequired(List<ToolCall> calls) { engine.confirm(true); }
             public void onFinished(FinishReason reason) { }
             public void onFailed(DomainException error) { }
@@ -84,7 +84,7 @@ public class ToolLoopEngineTest {
             public void onAssistantMessage(Message message) { }
             public void onText(String delta) { }
             public void onReasoning(String delta) { }
-            public void onToolFinished(ToolCall call, ToolResult result) { results.add(result.content); }
+            public void onToolFinished(Message row, ToolCall call, ToolResult result) { results.add(result.content); }
             public void onConfirmationRequired(List<ToolCall> calls) { engine.confirm(false); }
             public void onFinished(FinishReason reason) { }
             public void onFailed(DomainException error) { }
@@ -109,7 +109,7 @@ public class ToolLoopEngineTest {
             public void onAssistantMessage(Message message) { }
             public void onText(String delta) { }
             public void onReasoning(String delta) { }
-            public void onToolFinished(ToolCall call, ToolResult result) { }
+            public void onToolFinished(Message row, ToolCall call, ToolResult result) { }
             public void onConfirmationRequired(List<ToolCall> calls) { }
             public void onNoticeInjected(Message message) { injected.add(message); }
             public void onFinished(FinishReason reason) { }
@@ -142,7 +142,7 @@ public class ToolLoopEngineTest {
             public void onAssistantMessage(Message message) { }
             public void onText(String delta) { }
             public void onReasoning(String delta) { }
-            public void onToolFinished(ToolCall call, ToolResult result) { }
+            public void onToolFinished(Message row, ToolCall call, ToolResult result) { }
             public void onConfirmationRequired(List<ToolCall> calls) { engine.confirm(true); }
             public void onFinished(FinishReason reason) { }
             public void onFailed(DomainException error) { fail(error.getMessage()); }
@@ -169,7 +169,7 @@ public class ToolLoopEngineTest {
             public void onAssistantMessage(Message message) { }
             public void onText(String delta) { }
             public void onReasoning(String delta) { }
-            public void onToolFinished(ToolCall call, ToolResult result) { }
+            public void onToolFinished(Message row, ToolCall call, ToolResult result) { }
             public void onConfirmationRequired(List<ToolCall> calls) { }
             public void onFinished(FinishReason reason) { }
             public void onFailed(DomainException error) { }
@@ -191,7 +191,7 @@ public class ToolLoopEngineTest {
             public void onAssistantMessage(Message message) { }
             public void onText(String delta) { }
             public void onReasoning(String delta) { }
-            public void onToolFinished(ToolCall call, ToolResult result) { }
+            public void onToolFinished(Message row, ToolCall call, ToolResult result) { }
             public void onConfirmationRequired(List<ToolCall> calls) { engine.confirm(false); }
             public void onFinished(FinishReason reason) { }
             public void onFailed(DomainException error) { }

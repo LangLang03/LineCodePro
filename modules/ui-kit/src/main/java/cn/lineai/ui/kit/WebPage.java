@@ -51,7 +51,7 @@ public final class WebPage extends SettingsPage {
     }
 
     public static boolean allows(String value, boolean allowHttp) {
-        return cn.lineai.platform.LinkPolicy.allows(value, allowHttp);
+        return cn.lineai.core.service.LinkPolicy.allows(value, allowHttp);
     }
 
     @Override public void dispose() {
