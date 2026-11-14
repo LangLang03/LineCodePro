@@ -12,8 +12,9 @@ final class ChatDetachedView {
 
     /** Conversation currently displayed; falls back to the write target when attached. */
     static String viewed(ChatController chat) {
-        return chat.viewedConversationId.isEmpty()
-                ? chat.conversationId : chat.viewedConversationId;
+        // While detached the viewed id may legitimately be empty (a brand-new unsaved chat),
+        // and it must not collapse into the running conversation.
+        return chat.detached ? chat.viewedConversationId : chat.conversationId;
     }
 
     /** Conversation a background turn is writing into; empty when idle. */

@@ -11,13 +11,21 @@ public final class AgentEntry {
     public final String conversationId;
     /** Live status of the session. */
     public final AgentStatus status;
+    /** Conversation that spawned the agent; sessions are scoped to their parent chat. */
+    public final String parentId;
 
     public AgentEntry(String id, String name, String kind, String conversationId,
                       AgentStatus status) {
+        this(id, name, kind, conversationId, status, "");
+    }
+
+    public AgentEntry(String id, String name, String kind, String conversationId,
+                      AgentStatus status, String parentId) {
         this.id = id == null ? "" : id;
         this.name = name == null ? "" : name;
         this.kind = kind == null ? "" : kind;
         this.conversationId = conversationId == null ? "" : conversationId;
         this.status = status == null ? AgentStatus.COMPLETED : status;
+        this.parentId = parentId == null ? "" : parentId;
     }
 }

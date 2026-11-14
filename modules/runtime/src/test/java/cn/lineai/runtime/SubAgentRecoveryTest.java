@@ -31,7 +31,7 @@ public class SubAgentRecoveryTest {
                 record("failed", AgentSessionStatus.FAILED),
                 record("interrupted", AgentSessionStatus.INTERRUPTED));
 
-        List<AgentSessionRecord> changed = SubAgentRegistry.interruptedOnLoad(loaded, 99L);
+        List<AgentSessionRecord> changed = SubAgentSupport.interruptedOnLoad(loaded, 99L);
 
         assertEquals(2, changed.size());
         List<String> ids = new ArrayList<>();
@@ -49,6 +49,6 @@ public class SubAgentRecoveryTest {
         List<AgentSessionRecord> loaded = Arrays.asList(
                 record("done", AgentSessionStatus.COMPLETED),
                 record("failed", AgentSessionStatus.FAILED));
-        assertTrue(SubAgentRegistry.interruptedOnLoad(loaded, 99L).isEmpty());
+        assertTrue(SubAgentSupport.interruptedOnLoad(loaded, 99L).isEmpty());
     }
 }

@@ -49,6 +49,8 @@ public final class SubAgentRegistry implements AgentRuntime {
     static final class Session {
         final String agentId;
         final String name;
+        /** Conversation that spawned the agent; the UI only shows sessions of one root. */
+        final String parentId;
         final boolean persistent;
         final AgentExtension agent;
         final ChatController controller;
@@ -57,10 +59,11 @@ public final class SubAgentRegistry implements AgentRuntime {
         /** Last status announced to the parent; null until the first observed state. */
         volatile AgentStatus lastStatus;
 
-        Session(String agentId, String name, boolean persistent, AgentExtension agent,
-                ChatController controller, RuntimeInbox inbox) {
+        Session(String agentId, String name, String parentId, boolean persistent,
+                AgentExtension agent, ChatController controller, RuntimeInbox inbox) {
             this.agentId = agentId;
             this.name = name;
+            this.parentId = parentId;
             this.persistent = persistent;
             this.agent = agent;
             this.controller = controller;
@@ -155,15 +158,18 @@ public final class SubAgentRegistry implements AgentRuntime {
         if (binding == null) {
             return null;
         }
+        // The spawning conversation scopes the session: a new chat must never show agents
+        // that belong to an older one.
+        String parentId = graph.chat().conversationId();
         long now = graph.clock().nowMs();
         Conversation conversation = graph.conversations().create(
-                agent.name.isEmpty() ? agent.slug : agent.name + ": " + firstLine(task),
-                kind, graph.chat().conversationId());
+                agent.name.isEmpty() ? agent.slug : agent.name + ": " + SubAgentSupport.firstLine(task),
+                kind, parentId);
         String agentId = conversation.id;
-        writeRecord(new AgentSessionRecord(agentId, displayName(agent),
-                graph.chat().conversationId(), agentId, agent.slug, binding,
+        writeRecord(new AgentSessionRecord(agentId, SubAgentSupport.displayName(agent),
+                parentId, agentId, agent.slug, binding,
                 AgentSessionStatus.RUNNING, persistent, now, now, ""));
-        Session session = attach(agent, persistent, agentId, binding);
+        Session session = attach(agent, persistent, agentId, parentId, binding);
         session.controller.bindConversation(agentId);
         session.controller.send(task);
         if (!session.controller.busy()) {
@@ -177,15 +183,16 @@ public final class SubAgentRegistry implements AgentRuntime {
             return null;
         }
         publishEntries();
-        return new AgentEntry(agentId, session.name, kind, agentId, AgentStatus.RUNNING);
+        return new AgentEntry(agentId, session.name, kind, agentId, AgentStatus.RUNNING,
+                session.parentId);
     }
 
     /** Builds, registers and observes a session bound to an agent id and workspace path. */
     private Session attach(AgentExtension agent, boolean persistent, String agentId,
-                           String binding) {
+                           String parent, String binding) {
         RuntimeInbox inbox = bus.view("agent:" + agentId);
         ChatController controller = buildController(agent, persistent, agentId, inbox, binding);
-        Session session = new Session(agentId, displayName(agent), persistent, agent,
+        Session session = new Session(agentId, SubAgentSupport.displayName(agent), parent, persistent, agent,
                 controller, inbox);
         session.lastStatus = AgentStatus.RUNNING;
         sessions.put(agentId, session);
@@ -195,17 +202,35 @@ public final class SubAgentRegistry implements AgentRuntime {
 
     @Override
     public List<AgentEntry> list() {
+        return entriesFor(graph.chat().conversationId());
+    }
+
+    /** Every session regardless of its parent; the UI filters per viewed conversation. */
+    public List<AgentEntry> listAll() {
+        return entriesFor(null);
+    }
+
+    /**
+     * Sessions spawned by one root conversation (null collects every session).
+     *
+     * @param rootId the root conversation id, or null for the unfiltered view
+     * @return matching entries
+     */
+    private List<AgentEntry> entriesFor(String rootId) {
         List<AgentEntry> result = new ArrayList<>();
         Map<String, Boolean> live = new ConcurrentHashMap<>();
         for (Session session : sessions.values()) {
             live.put(session.agentId, Boolean.TRUE);
-            result.add(new AgentEntry(session.agentId, session.name, kindOf(session),
-                    session.agentId, statusOf(session)));
+            if (rootId != null && !rootId.equals(session.parentId)) continue;
+            result.add(new AgentEntry(session.agentId, session.name, SubAgentSupport.kindOf(session),
+                    session.agentId, statusOf(session), session.parentId));
         }
         for (AgentSessionRecord record : recordCache.values()) {
             if (live.containsKey(record.id)) continue;
-            result.add(new AgentEntry(record.id, record.name, kindOf(record),
-                    record.conversationId, entryStatus(record.status)));
+            if (rootId != null && !rootId.equals(record.parentConversationId)) continue;
+            result.add(new AgentEntry(record.id, record.name, SubAgentSupport.kindOf(record),
+                    record.conversationId, SubAgentSupport.entryStatus(record.status),
+                    record.parentConversationId));
         }
         return result;
     }
@@ -221,6 +246,11 @@ public final class SubAgentRegistry implements AgentRuntime {
         Session session = sessions.get(agentId);
         if (session == null) {
             return restore(agentId, message);
+        }
+        if (!session.parentId.isEmpty()
+                && !session.parentId.equals(graph.chat().conversationId())) {
+            return "Sub agent \"" + session.name + "\" belongs to another conversation."
+                    + " Switch back to that chat to message it.";
         }
         if (!session.persistent) {
             return "Sub agent \"" + session.name + "\" is transient and cannot receive"
@@ -282,13 +312,19 @@ public final class SubAgentRegistry implements AgentRuntime {
         if (!record.persistent) {
             return "Sub agent [" + agentId + "] was a transient run and cannot be revived.";
         }
+        if (!record.parentConversationId.isEmpty()
+                && !record.parentConversationId.equals(graph.chat().conversationId())) {
+            return "Sub agent [" + agentId + "] belongs to another conversation."
+                    + " Switch back to that chat to message it.";
+        }
         AgentExtension agent = definition(record.agentDefinitionId);
         if (agent == null) {
             return "Sub agent [" + agentId + "] cannot be revived: its agent definition ("
                     + record.agentDefinitionId + ") is missing or disabled.";
         }
         final AgentSessionRecord restored = record;
-        Session session = attach(agent, true, agentId, record.workspaceBinding);
+        Session session = attach(agent, true, agentId, record.parentConversationId,
+                record.workspaceBinding);
         // openThen restores the persisted transcript and the seq counter before the new
         // turn appends rows; appending to a fresh conversation would lose the context.
         session.controller.openThen(restored.conversationId, () -> {
@@ -385,33 +421,19 @@ public final class SubAgentRegistry implements AgentRuntime {
         synchronized (monitor) {
             monitor.notifyAll();
         }
-        updateRecord(session.agentId, recordStatus(status),
+        updateRecord(session.agentId, SubAgentSupport.recordStatus(status),
                 status == AgentStatus.COMPLETED || status == AgentStatus.FAILED
-                        ? lastAssistantId(state) : "");
+                        ? SubAgentSupport.lastAssistantId(state) : "");
         publishEntries();
         if (status == AgentStatus.COMPLETED || status == AgentStatus.FAILED) {
             bus.post(AgentEventBus.ROOT_OWNER, new RuntimeEvent.AgentTurnCompleted(
                     session.agentId, session.name, status == AgentStatus.FAILED,
-                    finalOutput(state)));
+                    SubAgentSupport.finalOutput(state)));
         }
         if (status == AgentStatus.WAITING_INPUT && session.persistent) {
             bus.post(AgentEventBus.ROOT_OWNER, new RuntimeEvent.AgentNeedsInput(
                     session.agentId, "approval requested for a mutating tool"));
         }
-    }
-
-    /** Scans backwards for the last completed assistant answer without tool calls. */
-    private static String finalOutput(cn.lineai.feature.chat.ChatState state) {
-        for (int i = state.messages.size() - 1; i >= 0; i--) {
-            cn.lineai.core.model.Message message = state.messages.get(i);
-            if (message.role == cn.lineai.core.model.Role.ASSISTANT
-                    && message.toolCalls.isEmpty()
-                    && message.status == cn.lineai.core.model.Message.Status.COMPLETE
-                    && message.visibility == cn.lineai.core.model.Message.Visibility.VISIBLE) {
-                return message.plainText();
-            }
-        }
-        return "";
     }
 
     private AgentStatus statusOf(Session session) {
@@ -421,16 +443,6 @@ public final class SubAgentRegistry implements AgentRuntime {
         return state.statusText.isEmpty() ? AgentStatus.COMPLETED : AgentStatus.FAILED;
     }
 
-    private static String kindOf(Session session) {
-        return session.persistent ? Conversation.KIND_AGENT : Conversation.KIND_AGENT_TRANSIENT;
-    }
-
-    private static String firstLine(String task) {
-        String line = task == null ? "" : task.trim();
-        int newline = line.indexOf('\n');
-        if (newline > 0) line = line.substring(0, newline);
-        return line.length() > 60 ? line.substring(0, 60) : line;
-    }
 
     /** Loads the persisted records, migrates legacy agent conversations, recovers victims. */
     private void loadRecords() {
@@ -470,30 +482,11 @@ public final class SubAgentRegistry implements AgentRuntime {
      * mid-turn: mark it INTERRUPTED so the drawer and the tools report the truth.
      */
     private void recoverInterrupted() {
-        for (AgentSessionRecord record : interruptedOnLoad(new ArrayList<>(recordCache.values()),
+        for (AgentSessionRecord record : SubAgentSupport.interruptedOnLoad(
+                new ArrayList<>(recordCache.values()),
                 graph.clock().nowMs())) {
             writeRecord(record);
         }
-    }
-
-    /**
-     * Visible for tests: returns the records that must be rewritten because they died
-     * mid-turn ({@code RUNNING}/{@code WAITING_INPUT} at load time become INTERRUPTED).
-     *
-     * @param records the loaded records
-     * @param now transition timestamp in epoch milliseconds
-     * @return the records that changed; empty when everything is consistent
-     */
-    static List<AgentSessionRecord> interruptedOnLoad(List<AgentSessionRecord> records,
-                                                      long now) {
-        List<AgentSessionRecord> changed = new ArrayList<>();
-        for (AgentSessionRecord record : records) {
-            if (record.status == AgentSessionStatus.RUNNING
-                    || record.status == AgentSessionStatus.WAITING_INPUT) {
-                changed.add(record.withStatus(AgentSessionStatus.INTERRUPTED, now, ""));
-            }
-        }
-        return changed;
     }
 
     /** Updates one cached record and persists it on the io scheduler. */
@@ -534,58 +527,9 @@ public final class SubAgentRegistry implements AgentRuntime {
         return bound.isDirectory() ? bound.getAbsolutePath() : null;
     }
 
-    private static String displayName(AgentExtension agent) {
-        return agent.name.isEmpty() ? agent.slug : agent.name;
-    }
-
-    private static String kindOf(AgentSessionRecord record) {
-        return record.persistent ? Conversation.KIND_AGENT : Conversation.KIND_AGENT_TRANSIENT;
-    }
-
-    private static AgentSessionStatus recordStatus(AgentStatus status) {
-        switch (status) {
-            case RUNNING:
-                return AgentSessionStatus.RUNNING;
-            case WAITING_INPUT:
-                return AgentSessionStatus.WAITING_INPUT;
-            case FAILED:
-                return AgentSessionStatus.FAILED;
-            default:
-                return AgentSessionStatus.COMPLETED;
-        }
-    }
-
-    private static AgentStatus entryStatus(AgentSessionStatus status) {
-        switch (status) {
-            case RUNNING:
-                return AgentStatus.RUNNING;
-            case WAITING_INPUT:
-                return AgentStatus.WAITING_INPUT;
-            case FAILED:
-                return AgentStatus.FAILED;
-            case INTERRUPTED:
-                return AgentStatus.INTERRUPTED;
-            default:
-                return AgentStatus.COMPLETED;
-        }
-    }
-
-    /** Id of the last completed assistant answer, used as the persisted last turn marker. */
-    private static String lastAssistantId(cn.lineai.feature.chat.ChatState state) {
-        for (int i = state.messages.size() - 1; i >= 0; i--) {
-            cn.lineai.core.model.Message message = state.messages.get(i);
-            if (message.role == cn.lineai.core.model.Role.ASSISTANT
-                    && message.toolCalls.isEmpty()
-                    && message.status == cn.lineai.core.model.Message.Status.COMPLETE
-                    && message.visibility == cn.lineai.core.model.Message.Visibility.VISIBLE) {
-                return message.id;
-            }
-        }
-        return "";
-    }
 
     /** Publishes on the main thread; every observable consumer is UI code. */
     private void publishEntries() {
-        graph.scheduler().main(() -> entries.set(list()));
+        graph.scheduler().main(() -> entries.set(listAll()));
     }
 }

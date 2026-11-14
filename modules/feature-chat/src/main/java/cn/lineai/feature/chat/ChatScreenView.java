@@ -140,7 +140,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
 
             @Override
             public void onAgents() {
-                AgentSessionSheet.show(getContext(), tokens, agents, currentAgentId(),
+                AgentSessionSheet.show(getContext(), tokens, visibleAgents(), currentAgentId(),
                         agentId -> {
                             if (host != null) host.onSelectAgent(agentId);
                         });
@@ -460,8 +460,38 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         this.agents = agents == null
                 ? java.util.Collections.<cn.lineai.tool.api.AgentEntry>emptyList()
                 : new java.util.ArrayList<>(agents);
-        drawer.setAgents(this.agents, currentAgentId());
-        header.setAgentCount(this.agents.size());
+        refreshVisibleAgents();
+    }
+
+    /** Re-renders the agent chip, drawer list and picker for the currently viewed chat. */
+    private void refreshVisibleAgents() {
+        java.util.List<cn.lineai.tool.api.AgentEntry> visible = visibleAgents();
+        drawer.setAgents(visible, currentAgentId());
+        header.setAgentCount(visible.size());
+    }
+
+    /**
+     * Sessions that belong to the viewed chat: the root conversation's own agents, or the
+     * siblings of the agent being viewed. A brand-new chat (empty id) shows none, so agents
+     * never leak across conversations.
+     */
+    private java.util.List<cn.lineai.tool.api.AgentEntry> visibleAgents() {
+        String viewed = controller.viewedConversationId();
+        if (viewed.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        String parent = viewed;
+        for (cn.lineai.tool.api.AgentEntry entry : agents) {
+            if (entry.id.equals(viewed)) {
+                parent = entry.parentId;
+                break;
+            }
+        }
+        java.util.List<cn.lineai.tool.api.AgentEntry> visible = new java.util.ArrayList<>();
+        for (cn.lineai.tool.api.AgentEntry entry : agents) {
+            if (entry.parentId.equals(parent)) visible.add(entry);
+        }
+        return visible;
     }
 
     /** The sub agent owning the currently displayed conversation; empty for the root view. */
@@ -476,6 +506,8 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         if (!currentId.equals(drawerConversationId)) {
             drawerConversationId = currentId;
             refreshDrawerConversations();
+            // Chat-specific isolation: the agent chip and picker follow the viewed chat.
+            refreshVisibleAgents();
         }
         if (!state.projectLabel.equals(drawerProject)) {
             drawerProject = state.projectLabel;
