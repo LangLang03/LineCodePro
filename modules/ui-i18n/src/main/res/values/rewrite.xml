@@ -11,7 +11,7 @@
     <string name="archive_import_title">Replace all data?</string>
     <string name="archive_import_message">Importing replaces every conversation, model and setting in this app.</string>
     <string name="tool_group_agent_name">Agent</string>
-    <string name="tool_group_shell_name">SSH Shell</string>
+    <string name="tool_group_shell_name">Shell</string>
     <string name="memory_section_count">%1$s (%2$d)</string>
     <string name="memory_project_hint">Current project: %1$s</string>
     <string name="chat_exported">Chat exported</string>

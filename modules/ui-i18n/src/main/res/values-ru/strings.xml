@@ -472,7 +472,7 @@
     <string name="screen_tools_hint_key_query">api_key, может быть пустым</string>
 
     <string name="screen_mcp_execution_local_desc">Локальная рабочая область выполняет чтение/запись файлов, поиск файлов, Agent, веб-поиск, понимание и генерацию изображений в пределах текущего пути рабочей области. Search API и модели изображений настраиваются в настройках инструментов.</string>
-    <string name="screen_mcp_execution_ssh_desc">Режим SSH Shell отключает локальное чтение/запись файлов и поиск файлов; Agent, Agent pipeline, TODO, веб-поиск, понимание и генерация изображений остаются доступными. Файловые операции следует выполнять через shell-команды в SSH среде.</string>
+    <string name="screen_mcp_execution_ssh_desc">Режим SSH Shell отключает локальное чтение/запись файлов и поиск файлов; агенты, TODO, веб-поиск, понимание и генерация изображений остаются доступными. Файловые операции следует выполнять через shell-команды в SSH среде.</string>
     <string name="screen_mcp_ssh_overview">SSH Shell может подключаться к удалённому Linux серверу, настольной машине разработчика, NAS или Termux на самом телефоне. Termux — отдельная опция и не является единственной целью.</string>
 
     <string name="screen_mcp_hint_name">напр. Корпоративный MCP сервер</string>
@@ -1182,13 +1182,6 @@
     <!-- Agent messages -->
     <string name="message_generation_interrupted">Предыдущая генерация была прервана.</string>
     <string name="message_agent_terminated">Agent завершён.</string>
-    <string name="message_agent_pipeline_running">Agent pipeline выполняется.</string>
-    <string name="message_agent_pipeline_no_model">Нет доступной модели, невозможно запустить Agent pipeline.</string>
-    <string name="message_agent_pipeline_agents_empty">agent_pipeline.agents не может быть пустым.</string>
-    <string name="message_agent_pipeline_circular">Agent pipeline содержит циклическую зависимость или дублирующийся id, невозможно выполнить.</string>
-    <string name="message_agent_pipeline_completed">Agent pipeline завершён: %1$d задач</string>
-    <string name="message_agent_pipeline_terminated">Agent pipeline прерван.</string>
-    <string name="message_agent_pipeline_self_dependency">Agent не может зависеть от самого себя: %1$s</string>
     <string name="tool_call_limit_not_executed">Достигнут лимит вызовов инструментов; вызовы этого раунда не выполнены.</string>
 
     <string name="settings_row_error_logs_title">Журнал ошибок</string>

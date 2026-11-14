@@ -491,7 +491,7 @@
     <string name="screen_tools_hint_key_query">api_key，可留空</string>
 
     <string name="screen_mcp_execution_local_desc">本地工作区会在当前工作区路径内执行文件读写、文件搜索、Agent、网页搜索、图片理解和图片生成。搜索 API 与图片模型在工具设置中配置。</string>
-    <string name="screen_mcp_execution_ssh_desc">SSH Shell 模式会禁用本地文件读写和文件搜索；Agent、Agent Pipeline、任务清单、网页搜索、图片理解和图片生成仍可用，文件相关操作请通过 shell 命令在 SSH 环境内完成。</string>
+    <string name="screen_mcp_execution_ssh_desc">SSH Shell 模式会禁用本地文件读写和文件搜索；Agent、任务清单、网页搜索、图片理解和图片生成仍可用，文件相关操作请通过 shell 命令在 SSH 环境内完成。</string>
     <string name="screen_mcp_ssh_overview">SSH Shell 可以连接远程 Linux 服务器、桌面开发机、NAS，也可以连接手机本机 Termux。Termux 是一个单独选项，不等于只能连接手机。</string>
 
     <string name="screen_mcp_hint_name">例如：公司 MCP 服务</string>
@@ -1203,13 +1203,6 @@
     <!-- Agent messages -->
     <string name="message_generation_interrupted">上次生成已中断。</string>
     <string name="message_agent_terminated">Agent 已终止。</string>
-    <string name="message_agent_pipeline_running">Agent 流水线运行中。</string>
-    <string name="message_agent_pipeline_no_model">当前没有可用模型，无法运行 Agent 流水线。</string>
-    <string name="message_agent_pipeline_agents_empty">agent_pipeline.agents 不能为空。</string>
-    <string name="message_agent_pipeline_circular">Agent 流水线存在循环依赖或重复 id，无法执行。</string>
-    <string name="message_agent_pipeline_completed">Agent 流水线完成: %1$d 个任务</string>
-    <string name="message_agent_pipeline_terminated">Agent 流水线已终止。</string>
-    <string name="message_agent_pipeline_self_dependency">Agent 不能依赖自身: %1$s</string>
     <string name="tool_call_limit_not_executed">工具调用次数已达到上限，本轮调用未执行。</string>
 
     <string name="settings_row_error_logs_title">错误日志</string>

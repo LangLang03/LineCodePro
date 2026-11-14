@@ -490,7 +490,7 @@
     <string name="screen_tools_hint_key_query">api_key, can be empty</string>
 
     <string name="screen_mcp_execution_local_desc">Local workspace runs file read/write, file search, Agent, web search, image understanding and image generation inside the current workspace path. Search API and image models are configured in Tool settings.</string>
-    <string name="screen_mcp_execution_ssh_desc">SSH Shell mode disables local file read/write and file search. Agent, Agent pipeline, todos, web search, image understanding and image generation remain available. File operations should be performed via shell commands inside the SSH environment.</string>
+    <string name="screen_mcp_execution_ssh_desc">SSH Shell mode disables local file read/write and file search. Agents, todos, web search, image understanding and image generation remain available. File operations should be performed via shell commands inside the SSH environment.</string>
     <string name="screen_mcp_ssh_overview">SSH Shell can connect to a remote Linux server, desktop dev machine, NAS, or Termux on the phone itself. Termux is a separate option and is not the only target.</string>
 
     <string name="screen_mcp_hint_name">e.g. Company MCP server</string>
@@ -1202,13 +1202,6 @@
     <!-- Agent messages -->
     <string name="message_generation_interrupted">Previous generation was interrupted.</string>
     <string name="message_agent_terminated">Agent terminated.</string>
-    <string name="message_agent_pipeline_running">Agent pipeline running.</string>
-    <string name="message_agent_pipeline_no_model">No model available, unable to run the agent pipeline.</string>
-    <string name="message_agent_pipeline_agents_empty">agent_pipeline.agents cannot be empty.</string>
-    <string name="message_agent_pipeline_circular">Agent pipeline has a circular dependency or duplicate id, unable to execute.</string>
-    <string name="message_agent_pipeline_completed">Agent pipeline completed: %1$d tasks</string>
-    <string name="message_agent_pipeline_terminated">Agent pipeline terminated.</string>
-    <string name="message_agent_pipeline_self_dependency">Agent cannot depend on itself: %1$s</string>
     <string name="tool_call_limit_not_executed">Tool call limit reached; this round of calls was not executed.</string>
 
     <string name="settings_row_error_logs_title">Error logs</string>
