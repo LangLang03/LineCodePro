@@ -13,19 +13,38 @@ import cn.lineai.core.model.Conversation;
 public interface ConversationStore {
 
     /**
-     * Lists the conversation headers, most recently updated first.
+     * Lists the user conversation headers (agent conversations excluded), most recently
+     * updated first.
      *
-     * @return every stored conversation header
+     * @return every stored user conversation header
      */
     List<Conversation> list();
 
     /**
-     * Creates a conversation with the given title and current timestamps.
+     * Lists the conversation headers of one kind, most recently updated first.
+     *
+     * @param kind the conversation kind to match; see the {@link Conversation} kind constants
+     * @return every stored conversation header of that kind
+     */
+    List<Conversation> listByKind(String kind);
+
+    /**
+     * Creates a user conversation with the given title and current timestamps.
      *
      * @param title initial display title
      * @return the created conversation, not yet holding any messages
      */
     Conversation create(String title);
+
+    /**
+     * Creates a conversation of the given kind with the given title and current timestamps.
+     *
+     * @param title initial display title
+     * @param kind conversation kind; see the {@link Conversation} kind constants
+     * @param parentId conversation the agent was spawned from; empty for user conversations
+     * @return the created conversation, not yet holding any messages
+     */
+    Conversation create(String title, String kind, String parentId);
 
     /**
      * Renames a conversation and refreshes its update timestamp so it sorts to the top.

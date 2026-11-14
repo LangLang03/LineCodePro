@@ -20,7 +20,7 @@ import cn.lineai.core.kernel.error.ErrorCode;
 public final class LineCodeDatabase {
 
     /** Current schema version; bumping it triggers {@link #migrate} on the next open. */
-    public static final int VERSION = 13;
+    public static final int VERSION = 14;
 
     private final File file;
     private SQLiteDatabase database;
@@ -102,6 +102,8 @@ public final class LineCodeDatabase {
         List<String> statements = new ArrayList<>(schemaStatements());
         // Idempotent: replayed on every upgrade so newly added model columns land on old rows.
         statements.addAll(modelColumnStatements());
+        // Same replay pattern for the conversation columns introduced with schema v14.
+        statements.addAll(conversationColumnStatements());
         db.beginTransaction();
         try {
             for (String statement : statements) {
@@ -153,7 +155,9 @@ public final class LineCodeDatabase {
                 + "project_id TEXT NOT NULL DEFAULT '',"
                 + "created_at INTEGER NOT NULL DEFAULT 0,"
                 + "updated_at INTEGER NOT NULL DEFAULT 0,"
-                + "message_count INTEGER NOT NULL DEFAULT 0)");
+                + "message_count INTEGER NOT NULL DEFAULT 0,"
+                + "kind TEXT NOT NULL DEFAULT '',"
+                + "parent_id TEXT NOT NULL DEFAULT '')");
         statements.add("CREATE INDEX IF NOT EXISTS idx_conversations_updated "
                 + "ON conversations(updated_at DESC)");
         statements.add("CREATE TABLE IF NOT EXISTS messages ("
@@ -326,6 +330,14 @@ public final class LineCodeDatabase {
         statements.add("ALTER TABLE models ADD COLUMN local_acceleration TEXT NOT NULL DEFAULT 'automatic'");
         statements.add("ALTER TABLE models ADD COLUMN supports_reasoning INTEGER NOT NULL DEFAULT 1");
         statements.add("ALTER TABLE models ADD COLUMN supports_video INTEGER NOT NULL DEFAULT 0");
+        return statements;
+    }
+
+    /** Adds the conversation columns introduced with schema v14 (agent conversation kinds). */
+    private static List<String> conversationColumnStatements() {
+        List<String> statements = new ArrayList<>();
+        statements.add("ALTER TABLE conversations ADD COLUMN kind TEXT NOT NULL DEFAULT ''");
+        statements.add("ALTER TABLE conversations ADD COLUMN parent_id TEXT NOT NULL DEFAULT ''");
         return statements;
     }
 }
