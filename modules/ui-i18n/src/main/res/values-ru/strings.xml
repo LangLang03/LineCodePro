@@ -52,6 +52,9 @@
 
     <string name="composer_hint_default">Введите сообщение…</string>
     <string name="composer_hint_no_model">Сначала настройте модель в Настройки → Управление моделями</string>
+    <string name="composer_hint_transient">Одноразовый агент — этот чат недоступен для сообщений</string>
+    <string name="drawer_agent_chip">%d субагентов</string>
+    <string name="drawer_agent_root">Root (текущий чат)</string>
     <string name="composer_attachment_remove_desc">Удалить вложение</string>
     <string name="composer_image_button_desc">Выбрать изображение для отправки</string>
     <string name="composer_image_remove_desc">Удалить выбранное изображение</string>

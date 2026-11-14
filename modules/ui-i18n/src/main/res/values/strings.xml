@@ -52,6 +52,9 @@
 
     <string name="composer_hint_default">Type a message…</string>
     <string name="composer_hint_no_model">Please configure a model first in Settings → Model management</string>
+    <string name="composer_hint_transient">One-shot agent — this session is not messageable</string>
+    <string name="drawer_agent_chip">%d sub agents</string>
+    <string name="drawer_agent_root">Root (this conversation)</string>
     <string name="composer_attachment_remove_desc">Remove attachment</string>
     <string name="composer_image_button_desc">Pick an image to send</string>
     <string name="composer_image_remove_desc">Remove selected image</string>

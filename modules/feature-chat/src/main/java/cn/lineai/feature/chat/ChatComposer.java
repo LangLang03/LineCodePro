@@ -81,6 +81,7 @@ public final class ChatComposer extends LinearLayout {
     private Tokens tokens;
     private boolean streaming;
     private String modelLabel = "";
+    private boolean modelSwitchable = true;
     private boolean enterSends = true;
     /** Builds attachment strip, input panel, model pill and the attach/send controls. */
     public ChatComposer(Context context, Tokens tokens) {
@@ -102,6 +103,7 @@ public final class ChatComposer extends LinearLayout {
         attachmentScroll.setVisibility(GONE);
         addView(attachmentScroll, chipsParams);
         panel = new LinearLayout(context);
+        // Agent views grey the whole input card; model switching is root-only.
         panel.setOrientation(VERTICAL);
         Ui.padding(panel, 10, 10, 10, 8);
         addView(panel, new LinearLayout.LayoutParams(
@@ -183,7 +185,7 @@ public final class ChatComposer extends LinearLayout {
         modelGlyphParams.leftMargin = dpx(5);
         modelPill.addView(modelChevron, modelGlyphParams);
         modelPill.setOnClickListener(v -> {
-            if (listener != null) {
+            if (listener != null && modelSwitchable) {
                 listener.onModel();
             }
         });
@@ -377,8 +379,18 @@ public final class ChatComposer extends LinearLayout {
         modelText.setText(modelLabel);
         modelPill.setContentDescription(state.modelLabel.isEmpty()
                 ? modelLabel : state.modelLabel);
-        input.setHint(state.hasModel
-                ? R.string.composer_hint_default : R.string.composer_hint_no_model);
+        boolean agentView = !state.agentId.isEmpty();
+        boolean transientAgent = state.transientAgent;
+        boolean locked = agentView && transientAgent;
+        modelSwitchable = !agentView;
+        input.setEnabled(!locked);
+        input.setHint(locked ? R.string.composer_hint_transient
+                : state.hasModel ? R.string.composer_hint_default
+                : R.string.composer_hint_no_model);
+        input.setAlpha(locked ? 0.45f : 1f);
+        modelPill.setEnabled(!agentView);
+        modelPill.setAlpha(agentView ? 0.45f : 1f);
+        panel.setAlpha(locked ? 0.62f : 1f);
         updateSend();
     }
 

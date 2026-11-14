@@ -78,10 +78,10 @@ import cn.lineai.ui.tokens.Tokens;
 
 /**
  * Application shell activity: owns the chat surface, the overlay screen host and the
- * navigation back stack, and implements the {@code ChatScreenView.Host} and
+ * navigation back stack, and implements the {@code cn.lineai.feature.chat.ChatScreenHost} and
  * {@code PageHost} contracts by delegating to the app graph and {@link HostActions}.
  */
-public final class MainActivity extends Activity implements ChatScreenView.Host, cn.lineai.runtime.PageHost {
+public final class MainActivity extends Activity implements cn.lineai.feature.chat.ChatScreenHost, cn.lineai.runtime.PageHost {
     /** Root chat screen; the only entry that renders underneath the overlay host. */
     private static final ScreenId<UiState, Params.Empty> CHAT = new ScreenId<>("chat", null, true, Params.Empty::fromArgs);
     private AppGraph graph;
@@ -101,6 +101,7 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
         graph.setAgentRuntime(graph.subAgents());
         graph.chat().setSubApprovalSource(graph.subAgents()::pendingSubApprovals,
                 allowed -> graph.subAgents().resolveAllPending(allowed));
+        graph.subAgents().entries().observe(list -> chat.setAgents(list));
         showCrashIfNeeded();
         importCrashLog();
         tokens = graph.theme().current();
@@ -526,6 +527,12 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
     /** Scheduler from the graph. */
     @Override public cn.lineai.core.kernel.time.Scheduler scheduler() { return graph.graph().get(cn.lineai.core.kernel.time.Scheduler.class); }
     /** Pushes the tutorial page. */
+    @Override public void onSelectAgent(String agentId) {
+        cn.lineai.feature.chat.ChatController target = agentId.isEmpty()
+                ? graph.chat() : graph.subAgents().controllerFor(agentId);
+        if (target != null) chat.bindController(target);
+    }
+
     @Override public void openTutorial() { navigation.push(cn.lineai.feature.settings.SettingsScreens.TUTORIAL.key(cn.lineai.core.mvi.nav.Params.Empty.INSTANCE)); }
     /** Pushes the settings home page. */
     @Override public void openSettings() { navigation.push(cn.lineai.feature.settings.SettingsScreens.HOME.key(cn.lineai.core.mvi.nav.Params.Empty.INSTANCE)); }

@@ -27,99 +27,7 @@ import cn.lineai.ui.tokens.Tokens;
  */
 public final class ChatScreenView extends FrameLayout implements Observable.Observer<ChatState> {
 
-    /** Application-owned commands the screen forwards; the view never navigates itself. */
-    public interface Host {
-        /** Opens the model configuration page. */
-        void onOpenModelSettings();
-
-        /** Opens the settings home. */
-        void onOpenSettings();
-
-        /** Opens the reasoning picker. */
-        void onReasoning();
-
-        /** Opens the more-options sheet. */
-        void onMore();
-
-        /** Opens the project picker. */
-        void onProject();
-
-        /** Opens the permission-mode sheet. */
-        void onPermission();
-
-        /** Legacy attach entry (system image picker). */
-        void onAttach();
-
-        /** Legacy file attach entry (workspace picker). */
-        void onAttachFile();
-
-        /** Opens the model-picker sheet; falls back to the models page when no model is set. */
-        void onModelPicker();
-
-        /** Argument-aware tool presentation so cards show the real path/command/query. */
-        default cn.lineai.tool.api.ToolPresentation toolPresentation(String name,
-                                                                     String argumentsJson) {
-            return null;
-        }
-
-        /** Opens the context-usage sheet. */
-        void onContextUsage();
-
-        /** Opens the chat-mode picker. */
-        void onChatMode();
-
-        /** Applies a chat mode typed as a slash command. */
-        void setChatMode(String mode);
-
-        /** Opens a workspace file selected in the drawer tree. */
-        void openFile(String relativePath);
-
-        /** Label shown in the drawer's files tab. */
-        String projectLabel();
-
-        /** Path shown under the project label. */
-        String projectPath();
-
-        /** Loads the whole workspace tree for the drawer and the attachment picker. */
-        default void loadWorkspaceTree(java.util.function.Consumer<DrawerPanel.FileNode> callback) {
-            callback.accept(null);
-        }
-
-        /** Opens the workspace attachment tree (composer plus menu row). */
-        default void onAttachmentPicker() {
-            onAttachFile();
-        }
-
-        /** Model capability switches for the composer menu and reasoning lock. */
-        default ChatCapabilities capabilities() {
-            return ChatCapabilities.of(null);
-        }
-
-        /** Opens the system video picker (only when the model supports video input). */
-        default void onVideoPicker() {
-            onAttach();
-        }
-
-        /** Long press on the plus button: opens the system image picker. */
-        default void onImagePicker() {
-            onAttach();
-        }
-
-        default boolean projectRemovable() {
-            return false;
-        }
-
-        default void onProjectRemoveRequested() {
-            onProject();
-        }
-
-        /** Optional persisted file-diff lookup for write cards; {@code null} falls back. */
-        default cn.lineai.feature.chat.toolcall.ToolDiffLookup.Snapshot toolDiff(String diffId) {
-            return null;
-        }
-    }
-
-    private final ChatController controller;
+    private ChatController controller;
     private Scope scope;
     private final LinearLayout content;
     private final ChatHeaderView header;
@@ -129,7 +37,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
     private final TextView notice;
     private final ChatComposer composer;
     private final DrawerPanel drawer;
-    private Host host;
+    private ChatScreenHost host;
     private Tokens tokens;
     private java.util.List<cn.lineai.core.model.Conversation> conversations =
             java.util.Collections.emptyList();
@@ -380,18 +288,27 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         drawer.setListener(new DrawerPanel.Listener() {
             @Override
             public void onNewConversation() {
+                if (host != null) host.onSelectAgent("");
                 controller.newConversation();
                 composer.setDraft("");
             }
 
             @Override
             public void onSelect(String conversationId) {
+                // Picking a user conversation always returns to the root view first.
+                if (host != null) host.onSelectAgent("");
                 controller.open(conversationId);
             }
 
             @Override
             public void onDelete(String conversationId) {
+                if (host != null) host.onSelectAgent("");
                 controller.deleteConversation(conversationId);
+            }
+
+            @Override
+            public void onSelectAgent(String agentId) {
+                if (host != null) host.onSelectAgent(agentId);
             }
 
             @Override
@@ -437,7 +354,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
     }
 
     /** Installs the host hooks; most commands no-op until this is called. */
-    public void setHost(Host value) {
+    public void setHost(ChatScreenHost value) {
         host = value;
     }
 
@@ -473,17 +390,43 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
     /** Restores composer state saved by {@link #saveComposer}. */
     public void restoreComposer(android.os.Bundle saved) { composer.restore(saved); }
 
-    /** Starts observing the controller; call once the view is attached. */
-    public void start() {
-        if (scope != null) {
+    /**
+     * Re-binds the view to another controller (root conversation vs a sub agent session).
+     * The previous observation is dropped; the new controller's current snapshot renders
+     * immediately. Sub agent controllers are never told to start() — their session is
+     * already bound and started by the registry.
+     *
+     * @param target the controller to display
+     */
+    public void bindController(ChatController target) {
+        if (target == null || target == controller) {
             return;
         }
+        if (scope != null) {
+            scope.close();
+            scope = null;
+        }
+        controller = target;
+        observeController();
+        onChanged(controller.state());
+    }
+
+    /** Attaches the state and conversation-list observations to the current controller. */
+    private void observeController() {
         scope = new Scope();
         scope.track(controller.observe(this));
         scope.track(controller.observeConversations(list -> {
             conversations = list;
             drawer.setConversations(list, controller.conversationId());
         }));
+    }
+
+    /** Starts observing the controller; call once the view is attached. */
+    public void start() {
+        if (scope != null) {
+            return;
+        }
+        observeController();
         controller.start();
     }
 
@@ -493,6 +436,16 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
             scope.close();
             scope = null;
         }
+    }
+
+    /** Updates the drawer's live sub agent list; called by the host from the registry. */
+    public void setAgents(java.util.List<cn.lineai.tool.api.AgentEntry> agents) {
+        drawer.setAgents(agents, currentAgentId());
+    }
+
+    /** The sub agent owning the currently displayed conversation; empty for the root view. */
+    public String currentAgentId() {
+        return controller.state().agentId;
     }
 
     /** Re-renders every child from one snapshot; also syncs the drawer id/project caches. */

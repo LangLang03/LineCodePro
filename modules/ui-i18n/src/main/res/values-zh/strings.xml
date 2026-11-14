@@ -52,6 +52,9 @@
 
     <string name="composer_hint_default">输入消息…</string>
     <string name="composer_hint_no_model">请先到设置 → 模型管理配置模型</string>
+    <string name="composer_hint_transient">一次性Agent——本会话不可交流</string>
+    <string name="drawer_agent_chip">%d 个子代理</string>
+    <string name="drawer_agent_root">Root（当前会话）</string>
     <string name="composer_attachment_remove_desc">移除附件</string>
     <string name="composer_image_button_desc">选择图片发送</string>
     <string name="composer_image_remove_desc">移除已选图片</string>

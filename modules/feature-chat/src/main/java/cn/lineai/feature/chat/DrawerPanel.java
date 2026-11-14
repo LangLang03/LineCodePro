@@ -88,6 +88,9 @@ public final class DrawerPanel extends FrameLayout {
 
         /** Loads the whole tree once; {@code null} keeps the "preparing" empty state. */
         default void loadFileTree(Consumer<FileNode> callback) { callback.accept(null); }
+
+        /** Switches the chat view to a sub agent session; empty id selects the root. */
+        default void onSelectAgent(String agentId) { }
     }
 
     private static final float MAX_WIDTH_DP = 360f;
@@ -110,6 +113,7 @@ public final class DrawerPanel extends FrameLayout {
     private final TextView projectLabel;
     private final TextView projectPath;
     private final DrawerFileTree fileTree;
+    private final DrawerAgentsView agentView;
 
     private Listener listener;
     private Tokens tokens;
@@ -201,6 +205,12 @@ public final class DrawerPanel extends FrameLayout {
         LinearLayout projectWrapper = row(context);
         Ui.padding(projectWrapper, 16, 0, 16, 8);
         projectWrapper.addView(projectStrip, lp(0, -2, 1f));
+        agentView = new DrawerAgentsView(context, tokens, agentId -> {
+            if (listener != null) {
+                listener.onSelectAgent(agentId);
+            }
+        });
+        projectWrapper.addView(agentView);
         filesGroup.addView(projectWrapper, lp(-1, -2));
         fileTree = new DrawerFileTree(context, tokens);
         fileTree.setCallback(new DrawerFileTree.Callback() {
@@ -346,6 +356,12 @@ public final class DrawerPanel extends FrameLayout {
     // ---------------------------------------------------------- conversations
 
     /** Re-renders the conversation list keeping the current selection. */
+    /** Updates the live sub agent rows and the chip count. */
+    public void setAgents(java.util.List<cn.lineai.tool.api.AgentEntry> agents,
+                          String selectedAgentId) {
+        agentView.setAgents(agents, selectedAgentId);
+    }
+
     public void setConversations(List<Conversation> conversations) {
         setConversations(conversations, currentId);
     }
@@ -507,6 +523,7 @@ public final class DrawerPanel extends FrameLayout {
     public void applyTokens(Tokens current) {
         tokens = current;
         restyleStatic();
+        agentView.applyTokens(current);
     }
 
     /** Offsets the sidebar below the status bar; the scrim still covers the full window. */
