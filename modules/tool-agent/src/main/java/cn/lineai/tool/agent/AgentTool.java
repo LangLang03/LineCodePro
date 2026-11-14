@@ -3,6 +3,7 @@ package cn.lineai.tool.agent;
 import org.json.JSONObject;
 
 import cn.lineai.core.model.AgentExtension;
+import cn.lineai.tool.api.AgentEntry;
 import cn.lineai.tool.api.Tool;
 import cn.lineai.tool.api.ToolContext;
 import cn.lineai.tool.api.ToolIcon;
@@ -12,26 +13,30 @@ import cn.lineai.tool.api.ToolResult;
 /**
  * One enabled custom agent exposed as a tool.
  *
- * <p>The tool description embeds the agent's trigger, tool names and a clipped prompt so the
- * outer model can decide when delegation is appropriate without reading the full prompt.</p>
+ * <p>Every invocation starts an asynchronous sub agent session: the tool returns a handle
+ * immediately and the sub agent's final output reaches the parent loop through the runtime
+ * event inbox. A {@code persistent=true} invocation creates a messageable, revivable
+ * session; the default is a one-shot transient run. The tool description embeds the agent's
+ * trigger, tool names and a clipped prompt so the outer model can decide when delegation is
+ * appropriate without reading the full prompt.</p>
  */
 final class AgentTool implements Tool {
 
     private final AgentExtension agent;
     private final String name;
-    private final AgentRunner runner;
+    private final AgentRuntime runtime;
 
     /**
      * Creates the tool.
      *
      * @param agent extension describing the custom agent
      * @param name local, collision-free tool name assigned by {@link AgentTools}
-     * @param runner runner executing the agent task in a nested loop
+     * @param runtime runtime launching and tracking the sub agent session
      */
-    AgentTool(AgentExtension agent, String name, AgentRunner runner) {
+    AgentTool(AgentExtension agent, String name, AgentRuntime runtime) {
         this.agent = agent;
         this.name = name;
-        this.runner = runner;
+        this.runtime = runtime;
     }
 
     /** {@inheritDoc} */
@@ -45,7 +50,8 @@ final class AgentTool implements Tool {
      */
     @Override public String description() {
         StringBuilder text = new StringBuilder();
-        text.append("Invoke the custom Agent \"").append(agent.name).append("\".");
+        text.append("Invoke the custom Agent \"").append(agent.name).append("\". The agent runs")
+                .append(" asynchronously and its final output is delivered back to you.");
         if (!agent.trigger.isEmpty()) text.append("\nTrigger: ").append(agent.trigger);
         if (!agent.toolNames.isEmpty()) text.append("\nTools: ").append(agent.toolNames);
         String prompt = agent.prompt.length() > 900
@@ -59,6 +65,8 @@ final class AgentTool implements Tool {
         return cn.lineai.tool.api.ToolSchemaBuilder.object()
                 .string("task", "Task handed to the agent")
                 .string("context", "Optional context")
+                .bool("persistent", "Create a messageable session that survives this turn and"
+                        + " accepts follow-up messages; default false (one-shot run)")
                 .required("task").build();
     }
 
@@ -79,22 +87,23 @@ final class AgentTool implements Tool {
      * {@inheritDoc}
      *
      * <p>An empty task is rejected locally; optional context is appended to the task text
-     * before the nested loop runs. Empty agent output becomes a failure result so the outer
-     * loop can retry instead of treating silence as success.</p>
+     * before the session starts. The returned result is the launch confirmation with the
+     * agent identifier, not the agent's answer.</p>
      */
     @Override public ToolResult execute(ToolContext context, JSONObject arguments) {
+        if (runtime == null) return ToolResult.failure("", "Sub agent runtime is unavailable");
         String task = arguments == null ? "" : arguments.optString("task", "").trim();
         if (task.isEmpty()) return ToolResult.failure("", "task must not be empty");
         String extra = arguments.optString("context", "").trim();
         if (!extra.isEmpty()) task = task + "\n\nContext:\n" + extra;
-        try {
-            String result = runner.run(agent, task);
-            return result == null || result.isEmpty()
-                    ? ToolResult.failure("", "Agent returned no text")
-                    : ToolResult.success("", result);
-        } catch (Exception error) {
-            return ToolResult.failure("", error.getMessage() == null
-                    ? error.getClass().getSimpleName() : error.getMessage());
-        }
+        boolean persistent = arguments != null && arguments.optBoolean("persistent", false);
+        AgentEntry started = runtime.start(agent, task, persistent);
+        if (started == null) return ToolResult.failure("", "Sub agent runtime refused the task");
+        return ToolResult.success("", "Started sub agent \"" + started.name + "\" id=\""
+                + started.id + "\" (" + (persistent ? "persistent" : "transient")
+                + ", status " + started.status.name().toLowerCase(java.util.Locale.ROOT)
+                + "). Its final output will be delivered to you when it finishes"
+                + (persistent ? "; send it messages with agent_send and check status with"
+                + " agent_list or agent_wait." : "."));
     }
 }

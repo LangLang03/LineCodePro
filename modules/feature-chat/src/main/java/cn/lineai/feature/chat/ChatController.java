@@ -54,16 +54,16 @@ public final class ChatController {
     // Package-private for ChatTurnPipeline, which owns the streaming draft on the event queue.
     final ConversationStore conversations;
     final MessageStore messages;
-    private final ModelStore models;
+    final ModelStore models;
     final SettingsStore settings;
     private final ModelClient client;
-    private final Scheduler scheduler;
+    final Scheduler scheduler;
     final Clock clock;
-    private final SystemPromptAssembler prompts;
+    final SystemPromptAssembler prompts;
     private final ToolCatalog toolCatalog;
-    private final ToolContext toolContext;
+    final ToolContext toolContext;
     private ToolRegistry activeTools;
-    private final PromptExtensions extensions;
+    final PromptExtensions extensions;
 
     final Observable<ChatState> state = new Observable<>(ChatState.empty());
     private final Observable<List<Conversation>> conversationList =
@@ -74,12 +74,22 @@ public final class ChatController {
 
     String conversationId = "";
     ToolLoopEngine engine;
+    /** Agent view marker: non-empty when this controller drives a sub agent conversation. */
+    private String agentId = "";
+    /** True when this controller drives a transient (not messageable) sub agent. */
+    private boolean transientAgent;
+    /** System prompt override for sub agent views; null assembles the standard prompt. */
+    private String agentSystemPrompt;
+    /** Source of sub-agent approval items merged into the approval panel. */
+    private java.util.function.Supplier<List<ToolApprovalItem>> subApprovals;
+    /** Routes an approval decision to the owning sub agents. */
+    private java.util.function.Consumer<Boolean> subApprovalDecision;
     private Runnable modelMissingHandler;
     ChatTurnPipeline pipeline;
     int seq;
-    private volatile int generationSeq;
-    private volatile boolean starting;
-    private boolean started;
+    volatile int generationSeq;
+    volatile boolean starting;
+    boolean started;
     ErrorLogStore errorLogs;
 
     /** Wires stores and schedulers; approval decisions delegate to {@link ApprovalPolicy}. */
@@ -130,79 +140,22 @@ public final class ChatController {
     }
     /** Loads the most recent conversation, or starts empty when there is none. */
     public void start() {
-        if (started) return;
-        started = true;
-        scheduler.io(() -> {
-            List<Conversation> loaded = conversations.list();
-            publishConversations(loaded);
-            if (loaded.isEmpty()) {
-                publish(ChatState.empty().toBuilder().model(modelLabel()).build());
-                return;
-            }
-            open(loaded.get(0).id);
-        });
+        ChatConversations.start(this);
     }
+
     /** Loads a conversation; a running loop is stopped first so it cannot write into the new list. */
     public void open(String id) {
-        if (engine != null) stop();
-        invalidatePendingGeneration();
-        scheduler.io(() -> {
-            List<Message> loaded = messages.load(id);
-            final int nextSeq = loaded.isEmpty() ? 1 : (int) loaded.get(loaded.size() - 1).seq + 1;
-            final ChatState snapshot = ChatState.builder()
-                    .messages(loaded)
-                    .project("")
-                    .contextPercent(ChatTurnConfig.percent(loaded,
-                            ChatContextLimits.of(modelConfig(), settings)))
-                    .model(modelLabel())
-                    .revision(System.nanoTime())
-                    .build();
-            events.post(() -> {
-                conversationId = id;
-                seq = nextSeq;
-                discardPipeline();
-                publish(snapshot);
-            });
-        });
+        ChatConversations.open(this, id, null);
     }
 
     /** Clears the transcript and returns to the unsaved empty conversation. */
     public void newConversation() {
-        if (engine != null) stop();
-        invalidatePendingGeneration();
-        scheduler.io(() -> {
-            final String label = modelLabel();
-            events.post(() -> {
-                conversationId = "";
-                seq = 1;
-                discardPipeline();
-                publish(ChatState.empty().toBuilder().model(label).build());
-            });
-        });
+        ChatConversations.newConversation(this);
     }
 
     /** Deletes a conversation; the active one is stopped and its draft discarded before io deletion. */
     public void deleteConversation(String id) {
-        if (id.equals(conversationId)) {
-            stop();
-            discardPipeline();
-        }
-        scheduler.io(() -> {
-            conversations.delete(id);
-            settings.put(ContextCompactor.key(id), "");
-            final boolean active = id.equals(conversationId);
-            final String label = active ? modelLabel() : "";
-            final List<Conversation> remaining = conversations.list();
-            events.post(() -> {
-                if (active) {
-                    conversationId = "";
-                    seq = 1;
-                    discardPipeline();
-                    publish(ChatState.empty().toBuilder().model(label).build());
-                }
-                publishConversations(remaining);
-            });
-        });
+        ChatConversations.delete(this, id);
     }
 
     /** Outcome of a manual context compaction, mapped to localized copy by the caller. */
@@ -214,45 +167,13 @@ public final class ChatController {
         FAILED
     }
 
-    /** Summarizes older messages now and shows a compact marker; {@code starting} guards the
-     * io-side prepare window against a concurrent {@code send}. */
+    /** Summarizes older messages now and shows a compact marker; the io-side prepare window
+     * is guarded against a concurrent {@code send} by the compaction helper. */
     public void compactContext(java.util.function.Consumer<CompactionResult> callback) {
-        if (engine != null || starting) {
-            events.post(() -> callback.accept(CompactionResult.BUSY));
-            return;
-        }
-        scheduler.io(() -> {
-            final String id = conversationId;
-            final ModelConfig model = modelConfig();
-            if (model == null) {
-                events.post(() -> callback.accept(CompactionResult.NO_MODEL));
-                return;
-            }
-            if (id.isEmpty()) {
-                events.post(() -> callback.accept(CompactionResult.INSUFFICIENT));
-                return;
-            }
-            try {
-                List<Message> loaded = messages.load(id);
-                boolean done = ContextCompactor.compactNow(model, models, settings, id, loaded,
-                        prompts.compactionTemplate(), new ModelProbe()::complete);
-                final int percent = ChatTurnConfig.percent(loaded,
-                        ChatContextLimits.of(model, settings));
-                events.post(() -> {
-                    if (!done) {
-                        callback.accept(CompactionResult.INSUFFICIENT);
-                        return;
-                    }
-                    appendCompactMarker(percent);
-                    callback.accept(CompactionResult.DONE);
-                });
-            } catch (Exception error) {
-                events.post(() -> callback.accept(CompactionResult.FAILED));
-            }
-        });
+        ChatCompaction.compact(this, callback);
     }
 
-    private void appendCompactMarker(int percent) {
+    void appendCompactMarker(int percent) {
         long now = clock.nowMs();
         Message marker = Message.builder()
                 .id(Ids.prefixed("msg"))
@@ -353,7 +274,7 @@ public final class ChatController {
     }
 
     /** Runs on the event queue: publishes the user row and starts the loop in one ordered step. */
-    private void beginGeneration(Message user, List<Message> history, String summarySection,
+    void beginGeneration(Message user, List<Message> history, String summarySection,
                                  ModelConfig model, int generation, String conversation) {
         starting = false;
         if (generation != generationSeq) {
@@ -378,21 +299,23 @@ public final class ChatController {
                 scheduler, model.toolCallLimit);
         loop.listen(new ChatLoopBridge(this, pipeline));
         engine = loop;
-        loop.start(model, history, conversationId,
-                ChatTurnConfig.systemPrompt(prompts, settings, model,
+        String systemPrompt = agentSystemPrompt != null
+                ? agentSystemPrompt
+                : ChatTurnConfig.systemPrompt(prompts, settings, model,
                         extensions == null ? "" : extensions.section(), summarySection,
                         extensions == null ? "" : extensions.learningSection(),
-                        registry, toolCatalog.registry()),
+                        registry, toolCatalog.registry());
+        loop.start(model, history, conversationId, systemPrompt,
                 ChatTurnConfig.reasoningSpec(settings, model));
     }
 
     /** Dropping the reference makes every late callback from the old loop stale and ignored. */
-    private void discardPipeline() {
+    void discardPipeline() {
         pipeline = null;
     }
 
     /** Abandons a send that is still preparing on the IO pool; its setup event becomes a no-op. */
-    private void invalidatePendingGeneration() {
+    void invalidatePendingGeneration() {
         generationSeq++;
         starting = false;
     }
@@ -425,7 +348,13 @@ public final class ChatController {
 
     /** Clears pending approvals and confirms the engine; no-op when nothing is pending. */
     private void approveOnceNow() {
+        if (subApprovalDecision != null) {
+            subApprovalDecision.accept(true);
+        }
         if (engine == null || pipeline == null || pipeline.pendingApprovals().isEmpty()) {
+            publish(state.value().toBuilder()
+                    .revision(System.nanoTime())
+                    .build());
             return;
         }
         pipeline.pendingApprovals().clear();
@@ -457,7 +386,13 @@ public final class ChatController {
 
     /** Clears pending approvals and denies the engine; no-op when nothing is pending. */
     private void denyNow() {
+        if (subApprovalDecision != null) {
+            subApprovalDecision.accept(false);
+        }
         if (engine == null || pipeline == null || pipeline.pendingApprovals().isEmpty()) {
+            publish(state.value().toBuilder()
+                    .revision(System.nanoTime())
+                    .build());
             return;
         }
         pipeline.pendingApprovals().clear();
@@ -483,19 +418,96 @@ public final class ChatController {
         }
     }
 
+    /**
+     * Pre-binds this controller to an existing conversation without loading messages; used
+     * for fresh sub agent sessions whose transcript starts empty. Restarted sessions with
+     * existing rows must use {@link #openThen(String, Runnable)} to restore the seq counter.
+     *
+     * @param id the conversation this controller writes into
+     */
+    public void bindConversation(String id) {
+        conversationId = id;
+    }
+
+    /**
+     * Loads a conversation and then runs the action on the event queue; the ordered chain
+     * guarantees the seq counter is restored before the action sends anything.
+     *
+     * @param id conversation to load
+     * @param action queued after the conversation is bound
+     */
+    public void openThen(String id, Runnable action) {
+        ChatConversations.open(this, id, action);
+    }
+
     /** Halts any turn and drops the draft writer before an archive import wipes the tables. */
     public void haltForDataReset() {
         stop();
         discardPipeline();
     }
 
+    /**
+     * Starts a hidden-notice turn when the runtime inbox holds events after the last turn
+     * ended; queued on the event queue by the turn-finish path. A busy controller skips the
+     * wake — the pending events ride the next turn's own start-of-turn drain.
+     */
+    void wakeFromInbox() {
+        ChatInboxWake.wake(this);
+    }
+
     /** Enriches the snapshot with projection fields and publishes it on the main thread. */
+    /**
+     * Marks this controller as driving a sub agent conversation; the published state then
+     * carries the agent marker so the UI can disable model switching and messaging.
+     *
+     * @param agentId the sub agent id stamped into every published state
+     * @param transientAgent true for a transient (not messageable) agent view
+     */
+    public void setAgentView(String agentId, boolean transientAgent) {
+        this.agentId = agentId == null ? "" : agentId;
+        this.transientAgent = transientAgent;
+    }
+
+    /**
+     * Overrides the assembled system prompt with the sub agent's persona prompt.
+     *
+     * @param prompt the agent prompt; null restores the standard assembly
+     */
+    public void setAgentSystemPrompt(String prompt) {
+        this.agentSystemPrompt = prompt;
+    }
+
+    /**
+     * Registers the sub-agent approval source merged into the approval panel and the
+     * decision router for panel actions on sub-agent items.
+     */
+    public void setSubApprovalSource(java.util.function.Supplier<List<ToolApprovalItem>> source,
+                                     java.util.function.Consumer<Boolean> decision) {
+        this.subApprovals = source;
+        this.subApprovalDecision = decision;
+    }
+
     void publish(ChatState snapshot) {
         boolean hasModel = modelConfig() != null;
+        java.util.List<ToolApprovalItem> merged = mergeSubApprovals(snapshot.pendingApprovals);
         ChatState ready = snapshot.toBuilder().hasModel(hasModel)
+                .pendingApprovals(merged)
                 .project(settings.get(KEY_PROJECT_LABEL, ""))
-                .chatMode(ToolModes.chatMode(settings)).build();
+                .chatMode(ToolModes.chatMode(settings))
+                .agentId(agentId)
+                .transientAgent(transientAgent)
+                .build();
         scheduler.main(() -> state.set(ready));
+    }
+
+    /** Root approvals first, then the sub-agent items supplied by the registry. */
+    private List<ToolApprovalItem> mergeSubApprovals(List<ToolApprovalItem> rootItems) {
+        if (subApprovals == null) return rootItems;
+        List<ToolApprovalItem> sub = subApprovals.get();
+        if (sub == null || sub.isEmpty()) return rootItems;
+        List<ToolApprovalItem> merged = new ArrayList<>(rootItems);
+        merged.addAll(sub);
+        return merged;
     }
 
     void publishConversations(List<Conversation> list) {
@@ -535,13 +547,13 @@ public final class ChatController {
         scheduler.main(() -> publish(state.value().toBuilder().model(modelLabel()).build()));
     }
 
-    private String modelLabel() {
+    String modelLabel() {
         ModelConfig model = modelConfig();
         return model == null ? "" : model.displayName();
     }
 
     /** The selected model only: legacy settings keys are seeded into the store by AppGraph. */
-    private ModelConfig modelConfig() {
+    ModelConfig modelConfig() {
         return models.selected();
     }
 }

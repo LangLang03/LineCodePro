@@ -435,13 +435,6 @@ abstract class VerifyNoRawThreadsTask : DefaultTask() {
      * review as its AGENT.md note; the list must stay minimal.
      */
     private fun sanctionedBlockingFile(project: String, relative: String): Boolean {
-        // The nested Agent tool is synchronous by contract; this bridge waits on a
-        // worker thread while the tool loop streams.
-        if (project == ":app" &&
-            relative == "src/main/java/cn/lineai/app/NestedAgentRunner.java"
-        ) {
-            return true
-        }
         // Local process pipes cannot be drained with a timeout without a dedicated reader
         // thread; poll-based draining would stall tasks once the 64 KB pipe buffer fills.
         if (project == ":platform-shell" &&

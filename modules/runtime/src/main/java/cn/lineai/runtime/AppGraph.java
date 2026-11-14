@@ -57,12 +57,13 @@ import cn.lineai.engine.prompt.PromptStore;
 import cn.lineai.engine.prompt.SystemPromptAssembler;
 import cn.lineai.feature.chat.ChatController;
 import cn.lineai.feature.chat.DefaultPromptExtensions;
+import cn.lineai.feature.chat.PromptExtensions;
 import cn.lineai.feature.settings.McpPreferences;
 import cn.lineai.platform.AndroidScheduler;
 import cn.lineai.tool.api.BackgroundTasks;
 import cn.lineai.tool.api.DiffSink;
 import cn.lineai.tool.api.ToolCatalog;
-import cn.lineai.tool.agent.AgentRunner;
+import cn.lineai.tool.agent.AgentRuntime;
 import cn.lineai.tool.agent.AgentTools;
 import cn.lineai.tool.api.ToolContext;
 import cn.lineai.tool.mcp.McpToolCatalog;
@@ -107,13 +108,17 @@ public final class AppGraph implements AutoCloseable {
     private final McpPreferences mcpPreferences;
     private final TerminalProviderGateway terminalProviderGateway;
     private final BackgroundShellRegistry backgroundShellRegistry;
-    private final cn.lineai.runtime.AgentEventBus agentEventBus = new cn.lineai.runtime.AgentEventBus();
+    final AgentEventBus agentEventBus = new AgentEventBus();
+    private MessageStore messageStore;
+    private SystemPromptAssembler systemPromptAssembler;
+    private PromptExtensions promptExtensions;
+    private Clock appClock;
     private final Context context;
     private final ToolCatalog toolCatalog;
     private final ToolCatalog baseCatalogForAgents;
     private final ModelClient modelClient;
     private final ToolContext toolContextForAgents;
-    private volatile AgentRunner agentRunner;
+    private volatile AgentRuntime agentRuntime;
     private final PromptStore prompts;
     private final ThemeController theme;
     private final ChatController chat;
@@ -211,13 +216,16 @@ public final class AppGraph implements AutoCloseable {
         this.baseCatalogForAgents = () -> applyWorkspacePolicy(baseCatalog.registry());
         this.modelClient = client;
         this.toolContextForAgents = toolContext;
+        this.messageStore = messages;
+        this.appClock = clock;
+        this.systemPromptAssembler = new SystemPromptAssembler(promptStore);
+        this.promptExtensions = new DefaultPromptExtensions(agentExtensionStore::list,
+                skillStore::enabled, todoStore::items,
+                new LearningContextProvider(settingsStore, memoryStore, conversations,
+                        skillStore, projectStore, promptStore, skillsRoot)::build);
         this.chat = new ChatController(conversations, messages, modelStore, settingsStore,
-                client, scheduler, clock, new SystemPromptAssembler(promptStore),
-                toolCatalog, toolContext,
-                new DefaultPromptExtensions(agentExtensionStore::list, skillStore::enabled,
-                        todoStore::items,
-                        new LearningContextProvider(settingsStore, memoryStore, conversations,
-                                skillStore, projectStore, promptStore, skillsRoot)::build));
+                client, scheduler, clock, systemPromptAssembler,
+                toolCatalog, toolContext, promptExtensions);
         this.chat.setErrorLogStore(errorLogStore);
         this.themePreferences = new cn.lineai.feature.settings.ThemePreferences(settingsStore, scheduler);
         this.theme = new ThemeController(themePreferences.initial(isNight(context)));
@@ -264,7 +272,7 @@ public final class AppGraph implements AutoCloseable {
     private ToolCatalog toolCatalog(ToolCatalog baseCatalog, AgentExtensionStore agents,
                                     ProjectStore projects) {
         return () -> applyWorkspacePolicy(AgentTools.augment(baseCatalog.registry(),
-                agents::list, agentRunner));
+                agents::list, agentRuntime));
     }
 
     /**
@@ -436,6 +444,17 @@ public final class AppGraph implements AutoCloseable {
     /** Extension agent store. */
     public AgentExtensionStore agentExtensions() { return agentExtensions; }
 
+    private SubAgentRegistry subAgentRegistry;
+
+    /** Lazily creates the sub-agent registry; requires {@link #chat} to be constructed.
+     *  Called from the main thread only (activity startup and drawer callbacks). */
+    public SubAgentRegistry subAgents() {
+        if (subAgentRegistry == null) {
+            subAgentRegistry = new SubAgentRegistry(this, agentEventBus);
+        }
+        return subAgentRegistry;
+    }
+
     /** MCP server extension store. */
     public McpExtensionStore mcpExtensions() { return mcpExtensions; }
 
@@ -450,6 +469,10 @@ public final class AppGraph implements AutoCloseable {
 
     /** Conversation metadata store. */
     public ConversationStore conversations() { return conversationStore; }
+    public MessageStore messages() { return messageStore; }
+    public Clock clock() { return appClock; }
+    public SystemPromptAssembler assembler() { return systemPromptAssembler; }
+    public PromptExtensions extensions() { return promptExtensions; }
 
     /** Session-scoped TODO store, cleared with the process. */
     public cn.lineai.tool.api.TodoStore todos() { return sessionTodos; }
@@ -477,9 +500,9 @@ public final class AppGraph implements AutoCloseable {
     /** Tool catalog visible to chat, with workspace policy and extension agents applied. */
     public ToolCatalog tools() { return toolCatalog; }
 
-    /** Injects the agent runner once the agent module wires it; tool calls read it lazily. */
-    public void setAgentRunner(AgentRunner runner) {
-        this.agentRunner = runner;
+    /** Injects the sub-agent runtime once the graph is fully built; tool calls read it lazily. */
+    public void setAgentRuntime(AgentRuntime runtime) {
+        this.agentRuntime = runtime;
     }
 
     /** Base tool catalog for extension agents, without nested agent tools. */

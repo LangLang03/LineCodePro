@@ -98,8 +98,9 @@ public final class MainActivity extends Activity implements ChatScreenView.Host,
     @Override protected void onCreate(Bundle saved) {
         super.onCreate(saved);
         graph = ((NextApp) getApplication()).graph();
-        graph.setAgentRunner(new NestedAgentRunner(graph.modelClient(), graph.models(),
-                graph.agentBaseTools(), graph.agentToolContext(), graph.scheduler()));
+        graph.setAgentRuntime(graph.subAgents());
+        graph.chat().setSubApprovalSource(graph.subAgents()::pendingSubApprovals,
+                allowed -> graph.subAgents().resolveAllPending(allowed));
         showCrashIfNeeded();
         importCrashLog();
         tokens = graph.theme().current();

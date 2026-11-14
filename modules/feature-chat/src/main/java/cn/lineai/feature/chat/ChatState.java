@@ -30,6 +30,10 @@ public final class ChatState {
     public final String chatMode;
     /** True when a model is configured; drives the "no model" affordances. */
     public final boolean hasModel;
+    /** Sub agent owning the viewed conversation; empty when the root conversation is shown. */
+    public final String agentId;
+    /** True when the viewed conversation belongs to a transient (not messageable) agent. */
+    public final boolean transientAgent;
     /** Monotonic revision stamp; identical values let views skip a rebind. */
     public final long revision;
 
@@ -48,6 +52,8 @@ public final class ChatState {
         this.statusText = b.statusText;
         this.chatMode = b.chatMode;
         this.hasModel = b.hasModel;
+        this.agentId = b.agentId;
+        this.transientAgent = b.transientAgent;
         this.revision = b.revision;
     }
 
@@ -78,6 +84,8 @@ public final class ChatState {
                 .status(statusText)
                 .chatMode(chatMode)
                 .hasModel(hasModel)
+                .agentId(agentId)
+                .transientAgent(transientAgent)
                 .revision(revision);
     }
 
@@ -97,6 +105,8 @@ public final class ChatState {
         private String statusText = "";
         private String chatMode = cn.lineai.core.model.ChatMode.AGENT;
         private boolean hasModel;
+        private String agentId = "";
+        private boolean transientAgent;
         private long revision;
 
         /** Replaces the transcript; null yields an empty list, otherwise a defensive copy. */
@@ -162,6 +172,18 @@ public final class ChatState {
         /** Sets the status line text; null yields an empty text. */
         public Builder status(String value) {
             statusText = value == null ? "" : value;
+            return this;
+        }
+
+        /** Sets the owning sub agent id; empty marks the root conversation view. */
+        public Builder agentId(String value) {
+            agentId = value == null ? "" : value;
+            return this;
+        }
+
+        /** Sets whether the viewed conversation belongs to a transient agent. */
+        public Builder transientAgent(boolean value) {
+            transientAgent = value;
             return this;
         }
 

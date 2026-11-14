@@ -23,16 +23,17 @@ public final class AgentTools {
     }
 
     /**
-     * Copies the base registry and registers one tool per enabled agent with a non-empty prompt.
+     * Copies the base registry, registers the sub-agent management tools and one tool per
+     * enabled agent with a non-empty prompt.
      *
      * @param base registry to extend; may be {@code null} to start empty
      * @param agents supplier of the current agent extension list; may be {@code null}
-     * @param runner runner executing an agent task
-     * @return a new registry containing the base tools plus one tool per enabled agent
+     * @param runtime runtime launching and tracking sub agent sessions
+     * @return a new registry containing the base tools plus the agent tool family
      */
     public static ToolRegistry augment(ToolRegistry base,
                                        Supplier<List<AgentExtension>> agents,
-                                       AgentRunner runner) {
+                                       AgentRuntime runtime) {
         ToolRegistry registry = new ToolRegistry();
         Set<String> used = new HashSet<>();
         if (base != null) {
@@ -41,13 +42,18 @@ public final class AgentTools {
                 used.add(tool.name());
             }
         }
+        if (runtime != null) {
+            registry.register(new AgentListTool(runtime));
+            registry.register(new AgentSendTool(runtime));
+            registry.register(new AgentWaitTool(runtime));
+        }
         List<AgentExtension> current = agents == null ? null : agents.get();
         if (current == null) return registry;
         for (AgentExtension agent : current) {
             if (!agent.enabled || agent.prompt.isEmpty()) continue;
             String name = unique("agent_" + slug(agent.slug.isEmpty() ? agent.name : agent.slug), used);
             used.add(name);
-            registry.register(new AgentTool(agent, name, runner));
+            registry.register(new AgentTool(agent, name, runtime));
         }
         return registry;
     }

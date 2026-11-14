@@ -76,8 +76,7 @@ public class SourceHygieneTest {
                 // blocking process pipes cannot be drained with a timeout without a
                 // dedicated reader thread. The list must stay minimal.
                 if (file.getName().equals("LocalShellBackend.java")
-                        || file.getName().equals("ShellTool.java")
-                        || file.getName().equals("NestedAgentRunner.java")) {
+                        || file.getName().equals("ShellTool.java")) {
                     continue;
                 }
                 String source = Modules.codeOnly(Modules.read(file));
@@ -187,9 +186,10 @@ public class SourceHygieneTest {
         List<String> sanctioned = List.of(
                 // feature-chat: the hand-rolled ordered queues behind the event loop.
                 "SerialEvents.java", "SerialWrites.java",
-                // runtime shell infrastructure: task state shared with pump/killer threads.
+                // runtime shell infrastructure: task state shared with pump/killer threads;
+                // SubAgentRegistry coordinates parallel agent sessions.
                 "MemoryTodoStore.java", "BackgroundShellRegistry.java", "LocalShellBackend.java",
-                "SshShellBackend.java", "TerminalProviderGateway.java");
+                "SshShellBackend.java", "TerminalProviderGateway.java", "SubAgentRegistry.java");
         StringBuilder violations = new StringBuilder();
         for (String root : Modules.modules()) {
             if (!root.startsWith("feature-") && !root.equals("runtime")) {

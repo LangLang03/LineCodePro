@@ -240,6 +240,9 @@ final class ChatTurnPipeline {
                     chat.messages.count(conversation));
             chat.publishConversations(chat.conversations.list());
         });
+        // Runtime events may have queued while the model was finishing: a non-empty inbox
+        // starts the next turn immediately instead of idling until the user types.
+        chat.events.post(chat::wakeFromInbox);
     }
 
     /**
@@ -252,6 +255,7 @@ final class ChatTurnPipeline {
         if (stale()) {
             return;
         }
+        chat.events.post(chat::wakeFromInbox);
         chat.engine = null;
         pendingApprovals = new ArrayList<>();
         String detail = ChatFailure.detail(error);

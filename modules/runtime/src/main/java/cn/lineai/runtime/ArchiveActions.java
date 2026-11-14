@@ -103,8 +103,9 @@ public final class ArchiveActions {
 
     /** Halts chat, imports on io, then reloads settings and chat state on main. */
     private static void importArchive(PageHost host, Uri uri) {
-        // Halt the chat before the import wipes conversations/messages; otherwise a running
-        // turn keeps writing into tables the import is deleting underneath it.
+        // Halt the chat and every sub agent before the import wipes conversations/messages;
+        // otherwise running loops keep writing into tables the import is deleting.
+        host.graph().subAgents().shutdown();
         host.graph().chat().haltForDataReset();
         Scheduler scheduler = host.graph().graph().get(Scheduler.class);
         scheduler.io(() -> {
