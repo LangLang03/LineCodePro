@@ -1,5 +1,105 @@
 # Changelog / 更新日志
 
+## v2.1.1
+
+### English
+
+#### Sub agents
+
+- **Parallel asynchronous sub-agent runtime** - `SubAgentRegistry` replaces the synchronous `NestedAgentRunner` bridge: every dispatch owns a real conversation row and a full `ChatController`, so transcripts persist, compaction works and sessions run concurrently (one single-threaded loop per agent, no shared locks); the `agent` tool returns a handle immediately and delivers the final output through the runtime event inbox.
+- **Persistent, messageable sessions** - `persistent=true` creates a revivable session that accepts follow-up messages and whose mutating tools route their approvals to the root approval panel; the default one-shot run stays read-only, auto-confirmed and greyed out in the UI.
+- **Session management tools** - new `agent_list`, `agent_send` and `agent_wait` tools track and drive sessions: `agent_send` revives a finished agent in its existing conversation or queues the message in a running agent's inbox (never silently dropped), `agent_wait` blocks until any session changes status (default 30 s, max 300 s), and completion notices are announced exactly once.
+- **Required workspace binding** - the spawn tool now requires `workspace`, resolved relative to the caller's root through the same containment as the file tools; empty, absolute, escaping and non-directory paths are rejected before a session is created, `.` and relative paths inside the sub agent resolve to the bound directory, the binding is persisted and reused on revive, and remote (SSH / terminal-provider) workspaces accept only `.` and keep inheriting the parent root.
+- **Conversation-scoped sessions** - every session records its spawning conversation; the header chip, drawer list, session picker and the agent tools only show the current chat's sessions, a brand-new chat shows none, and `agent_send` / `restore` refuse sessions that belong to another conversation.
+- **Restart-safe session identity** - `restore()` reattaches to the session's original conversation and restores the seq counter instead of opening a fresh one; records still marked RUNNING/WAITING_INPUT when the process died become INTERRUPTED and revive on the next message, and pre-v15 agent conversations are migrated into records on first load.
+- **Root message channel** - `agent_message_root` lets a sub agent post a progress note or question to the parent inbox without ending its turn; the parent reads it as a hidden user message at its next input point.
+- **Real tools inside sub agents** - transient sessions may mutate when the permission mode is `auto` (they cannot ask for approval otherwise), so shell and file tools are present in the default mode; persistent sessions keep approval-routed writes, and file tools stay local-only by workspace policy, so remote sessions use shell for file work.
+
+#### Conversations and interface
+
+- **Agent session switcher** - the chat header and the workspace drawer header gain a bot chip with the live sub-agent count, hidden when the viewed conversation has no sessions; it opens a picker with the root conversation plus one row per sub agent and its status, and the drawer keeps its own agent list.
+- **Non-interrupting conversation switching** - switching chats while a turn runs renders the target conversation immediately (the view snapshot is published before the controller goes detached), the running turn keeps writing to its own conversation, the composer shows a busy-elsewhere hint while sending is blocked, the write target is handed back when the background turn ends, and the drawer shows a progress spinner instead of the delete action for the running conversation.
+- **Compact agent cards** - agent tool cards follow the file/shell pattern: one status row with the bot glyph and a human summary, no ring and no id pills; four semantic icons (spawn / send / wait / list) plus the notify icon select the renderer, expanded bodies show the task, message, wait window or a readable "name · status" list, while the model still receives the raw id/status lines.
+- **Composer constraints** - transient agents lock the composer with a one-shot hint, the model pill is disabled in every agent view because model switching stays root-only, and the interrupted session state has its own label.
+
+#### Fixes
+
+- **Agent tools in remote workspaces** - enabling Agents in SSH or terminal-provider mode used to filter `agent_<slug>` / `agent_list` / `agent_send` / `agent_wait` out of the tool list because the family still declared `needsLocalWorkspace() == true` from the retired synchronous bridge; the family is workspace-agnostic now and `AgentToolsRemoteTest` pins the contract.
+- **Tool copy corrections** - the remote shell group is labelled "Shell" instead of "SSH Shell" (it serves both SSH and the terminal provider), local and remote shell descriptions share the same concise wording in en/zh/ru, and the terminal-provider card now points at associated launch (autostart) as the usual cause of a failed connection test.
+
+#### Architecture
+
+- **Timeline events** - `ToolLoopEngine.Listener`'s eleven callbacks collapse into one `Consumer<TimelineEvent>` over an immutable hierarchy (TurnStarted, TextDelta, ReasoningDelta, AssistantCompleted, ToolCompleted, NoticeInjected, ConfirmationRequired, TurnFinished, TurnFailed, BudgetExceeded, Retry); `ChatLoopBridge` posts every event onto `SerialEvents`, so the feature layer still mutates state only inside the drain.
+- **Unified runtime inbox** - every asynchronous input now arrives as a `RuntimeEvent` (ShellNotice, AgentTurnCompleted, AgentMessage, AgentNeedsInput, AgentFailed, WorkspaceChanged, UserMessage) through the owner-scoped `RuntimeInbox`; `AgentEventBus` owns root and per-agent queues, the engine drains at the same three injection points (turn start, after a tool batch, after a final answer), background-shell notices join the same stream, only the final agent output is announced (truncated at 32 K), and an idle root is woken by a non-empty inbox after each finished turn.
+
+#### Data and persistence
+
+- **Conversation kinds and session storage** - schema v14 adds `conversations.kind` (`user` / `agent` / `agent_transient`) and `parent_id`, schema v15 adds the `agent_sessions` table, and both migrate through the idempotent DDL replay; `ConversationStore.list()` returns user conversations only, and archive format v3 carries `agent_sessions` while v1/v2 archives still import.
+
+#### Documentation and engineering
+
+- **Formal English Javadoc** - every type, constructor, method and non-obvious constant across all modules, `:app` and the legacy `:ipc`/`:terminal-provider` sources carries a formal English Javadoc comment; the change is comment-only (stripped-token comparison against the previous tree shows no code edits), and the documented `:app` shell budget moves from 1,500 to 1,800 lines to pay for the mandatory per-method Javadoc.
+- **Dead pipeline remnants retired** - the unused PIPELINE icon, glyph mapping, renderer, approval icon, preview sample and test assertion plus the seven `message_agent_pipeline_*` strings are gone.
+- **Gradle wrapper** - the distribution URL moves from the Tencent mirror to `services.gradle.org`; the pinned SHA-256 checksum is unchanged.
+- **AGENT.md and thread guard** - AGENT.md documents the timeline event stream, the runtime event inbox, the lock-free parallel sub-agent runtime, approval routing and the schema/archive versions; the retired `NestedAgentRunner` exemption is removed from the sanctioned blocking-thread list.
+
+#### Tests
+
+- New coverage: `AgentToolsTest` (required workspace, subdirectory binding, absolute/escaping/missing-path rejection, persistent sessions, remote parity), `AgentToolsRemoteTest`, `RuntimeEventTest` (hidden-notice rendering with the 32 K truncation), `SqliteAgentSessionStoreTest`, `SqliteConversationStoreTest` (kind separation and a v13-shaped database reopening as user conversations), `SubAgentRecoveryTest` (stale RUNNING/WAITING_INPUT becomes INTERRUPTED); `ToolLoopEngineTest` gains inbox aggregation and keep-alive coverage, and `ToolRenderersTest`, `LearningContextProviderTest` and `SourceHygieneTest` are updated.
+
+#### Release
+
+- Version `2.1.1` (versionCode 50); the release workflow builds and publishes both the slim and local variants.
+
+### 中文
+
+#### 子代理
+
+- **并行异步子代理运行时** - `SubAgentRegistry` 取代同步的 `NestedAgentRunner` 桥：每次派发都拥有真实的会话行与完整的 `ChatController`，因此 transcript 持久化、上下文压缩可用、多个会话并行（每个 agent 一个单线程循环，无共享锁）；`agent` 工具立即返回句柄，最终输出经运行时事件收件箱回传父循环。
+- **可交流的持久会话** - `persistent=true` 创建可恢复的会话，支持后续消息，其写操作审批汇总到根会话的审批面板；默认的一次性运行保持只读、自动确认，并在界面上以灰态呈现。
+- **会话管理工具** - 新增 `agent_list`、`agent_send`、`agent_wait`：`agent_send` 在已有会话中恢复已结束的 agent，或把消息排入运行中 agent 的收件箱（绝不静默丢弃）；`agent_wait` 阻塞到任一会话状态变化（默认 30 秒，最长 300 秒）；完成通知只通告一次。
+- **工作区绑定必填** - 派发工具强制要求 `workspace`，按文件工具同样的包含规则相对调用方根目录解析；空值、绝对路径、越界路径与非目录路径在创建会话前即被拒绝；子代理内的 `.` 与相对路径解析到绑定目录，绑定随会话持久化并在恢复时复用；SSH 与终端提供者工作区只接受 `.` 并继续继承父根目录。
+- **按会话隔离** - 每个会话记录其创建它的对话；头部胶囊、抽屉列表、会话选择器与 agent 工具只展示当前对话的会话，新建对话不再列出历史子代理；`agent_send` / `restore` 拒绝属于其他对话的会话。
+- **可跨重启的会话身份** - `restore()` 重新挂接会话的原对话并恢复 seq 计数，而不是新建对话；进程崩溃时仍标记 RUNNING/WAITING_INPUT 的记录转为 INTERRUPTED，在下一条消息时复活；v15 之前的 agent 对话在首次加载时迁移为会话记录。
+- **父级消息通道** - `agent_message_root` 让子代理在不结束当前轮次的情况下向父收件箱投递进度或提问，父循环在下一个注入点以隐藏用户消息读取。
+- **子代理拿到真实工具** - 权限模式为 `auto` 时一次性会话允许写操作（否则无法申请审批），因此默认模式下 shell 与文件工具可用；持久会话保留审批路由的写操作，文件工具按工作区策略仅限本地，远程会话通过 shell 完成文件操作。
+
+#### 对话与界面
+
+- **代理会话切换器** - 聊天头部与工作区抽屉头部新增 bot 胶囊，显示实时子代理数量（当前对话没有会话时隐藏）；点开列出根会话与每个子代理及其状态，抽屉同时保留自己的 agent 列表。
+- **切换对话不再中断生成** - 生成中切换对话会立即渲染目标会话（视图快照在控制器进入 detached 前发布），运行中的轮次继续写入自己的对话；发送被阻止时输入框显示「另一个对话仍在生成」的提示；后台轮次结束后写目标交还当前查看的对话；抽屉对运行中的对话显示进度圈而不是删除按钮。
+- **紧凑的 agent 卡片** - agent 工具卡片沿用文件/Shell 卡片范式：单行状态 + bot 图标 + 人类可读摘要，无描边环、无 id 胶囊；四个语义图标（spawn / send / wait / list）加通知图标选择渲染器；展开后展示任务、消息、等待窗口或可读的「名称 · 状态」列表，模型仍收到原始 id/status 行。
+- **输入框约束** - 一次性 agent 锁定输入框并显示一次性提示；所有 agent 视图禁用模型胶囊（切换模型仅限根会话）；中断的会话状态拥有独立文案。
+
+#### 修复
+
+- **远程工作区可见 agent 工具** - 在 SSH 或终端提供者模式下启用 Agents 时，`agent_<slug>` / `agent_list` / `agent_send` / `agent_wait` 曾被过滤掉，因为工具族仍从已退役的同步桥继承 `needsLocalWorkspace() == true`；现在该工具族与工作区无关，`AgentToolsRemoteTest` 固定该契约。
+- **工具文案修正** - 远程 shell 工具组从「SSH Shell」改为「Shell」（它同时服务 SSH 与终端提供者）；本地与远程 shell 描述在 en/zh/ru 统一为同样的简洁措辞；终端提供者卡片补充「关联启动（自启动）」是连接测试失败最常见原因的提示。
+
+#### 架构
+
+- **时间线事件** - `ToolLoopEngine.Listener` 的 11 个回调收敛为不可变事件层级上的单个 `Consumer<TimelineEvent>`（TurnStarted、TextDelta、ReasoningDelta、AssistantCompleted、ToolCompleted、NoticeInjected、ConfirmationRequired、TurnFinished、TurnFailed、BudgetExceeded、Retry）；`ChatLoopBridge` 把每个事件投递到 `SerialEvents`，feature 层仍只在 drain 内修改状态。
+- **统一运行时事件收件箱** - 所有异步输入统一为 `RuntimeEvent`（ShellNotice、AgentTurnCompleted、AgentMessage、AgentNeedsInput、AgentFailed、WorkspaceChanged、UserMessage），经 owner 作用域的 `RuntimeInbox` 送达；`AgentEventBus` 维护根会话与每个 agent 的队列；引擎在原有三个注入点 drain；后台 shell 通知并入同一事件流；agent 只通告最终输出（32 K 截断）；空闲的根会话在每轮结束后被非空收件箱唤醒。
+
+#### 数据与持久化
+
+- **会话类型与会话存储** - schema v14 为 `conversations` 增加 `kind`（user / agent / agent_transient）与 `parent_id`，v15 增加 `agent_sessions` 表，两者都通过幂等 DDL 重放完成迁移；`ConversationStore.list()` 只返回用户会话；归档格式 v3 携带 `agent_sessions`，v1/v2 归档仍可导入。
+
+#### 文档与工程
+
+- **正式英文 Javadoc** - 所有模块、`:app` 以及遗留 `:ipc`/`:terminal-provider` 源码的每个类型、构造器、方法与不易察觉的常量都带正式英文 Javadoc；这是纯注释改动（剥离 token 与上一版树比对确认无代码改动），`:app` 壳层预算从 1500 行提高到 1800 行以容纳强制的逐方法 Javadoc。
+- **PIPELINE 残留清理** - 删除未使用的 PIPELINE 图标、字形映射、渲染器、审批图标、预览样例与测试断言，以及 7 个 `message_agent_pipeline_*` 字符串。
+- **Gradle wrapper** - 分发地址从腾讯镜像改回 `services.gradle.org`；固定的 SHA-256 校验值不变。
+- **AGENT.md 与线程守卫** - AGENT.md 记录时间线事件流、运行时事件收件箱、无锁并行子代理运行时、审批路由与 schema/归档版本；已退役的 `NestedAgentRunner` 豁免从阻塞线程白名单中移除。
+
+#### 测试
+
+- 新增：`AgentToolsTest`（必填 workspace、子目录绑定、绝对/越界/不存在路径拒绝、持久会话、远程一致性）、`AgentToolsRemoteTest`、`RuntimeEventTest`（隐藏消息渲染与 32 K 截断）、`SqliteAgentSessionStoreTest`、`SqliteConversationStoreTest`（kind 隔离与 v13 库重开迁移）、`SubAgentRecoveryTest`（过期的 RUNNING/WAITING_INPUT 转为 INTERRUPTED）；`ToolLoopEngineTest` 补充收件箱聚合与 keep-alive 覆盖，`ToolRenderersTest`、`LearningContextProviderTest` 与 `SourceHygieneTest` 同步更新。
+
+#### 版本
+
+- 版本号 `2.1.1`（versionCode 50）；Release 工作流继续同时构建并发布 slim 与本地版。
+
 ## v2.1.0
 
 ### English
