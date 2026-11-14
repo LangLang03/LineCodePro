@@ -69,8 +69,10 @@ public final class ToolLoopEngine implements Cancellable {
     }
 
     /**
-     * Registers the single consumer of this loop's {@link TimelineEvent} stream; events are
-     * delivered on the scheduler's main thread, in production order.
+     * Registers the single consumer of this loop's {@link TimelineEvent} stream; events arrive
+     * on the producing thread (the io pool for stream deltas and retries, the caller for
+     * cancellation), so a consumer that touches views must marshal onto main while preserving
+     * production order.
      *
      * @param value the consumer; null disables delivery
      */

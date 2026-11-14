@@ -135,11 +135,11 @@ public final class TermuxClient {
         try {
             ensureInstalled();
         } catch (RuntimeException error) {
-            callback.onError(error.getMessage());
+            scheduler.main(() -> callback.onError(error.getMessage()));
             return;
         }
         if (!hasRunCommandPermission()) {
-            callback.onError("Termux RUN_COMMAND permission is not granted");
+            scheduler.main(() -> callback.onError("Termux RUN_COMMAND permission is not granted"));
             return;
         }
         String action = context.getPackageName() + ".TERMUX_SETUP_RESULT." + System.currentTimeMillis();

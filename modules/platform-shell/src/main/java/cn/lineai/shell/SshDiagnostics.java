@@ -1,5 +1,8 @@
 package cn.lineai.shell;
 
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
 import cn.lineai.core.kernel.error.DomainException;
 import cn.lineai.core.kernel.time.Scheduler;
 import cn.lineai.core.model.SshConfig;
@@ -34,11 +37,31 @@ public final class SshDiagnostics {
      * @param service the SSH service used for the test connection
      * @param config the credentials to test
      * @param scheduler scheduler providing the io and main dispatchers
-     * @param onReport consumer invoked exactly once with the outcome
+     * @param onReport consumer invoked exactly once with the outcome on the main thread
      */
     public static void test(SshService service, SshConfig config, Scheduler scheduler,
-                            java.util.function.Consumer<Report> onReport) {
-        scheduler.io(() -> onReport.accept(report(service, config, scheduler)));
+                            Consumer<Report> onReport) {
+        runOnIoDeliverOnMain(scheduler, () -> report(service, config, scheduler), onReport);
+    }
+
+    /**
+     * Runs a probe on the io scheduler and delivers its result on the main lane.
+     *
+     * <p>The probe blocks on network and file work, while the consumer mutates views, so the
+     * hand-off must marshal: invoking the consumer inside the io task is what makes Android
+     * reject the view update with a {@code CalledFromWrongThreadException}.</p>
+     *
+     * @param scheduler scheduler providing the io and main dispatchers
+     * @param probe value supplier executed on the io lane
+     * @param onResult consumer invoked with the probe result on the main lane
+     * @param <T> probe result type
+     */
+    static <T> void runOnIoDeliverOnMain(Scheduler scheduler, Supplier<T> probe,
+                                         Consumer<T> onResult) {
+        scheduler.io(() -> {
+            T result = probe.get();
+            scheduler.main(() -> onResult.accept(result));
+        });
     }
 
     /**
