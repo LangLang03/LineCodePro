@@ -39,10 +39,11 @@ the original repository. All code now lives under `modules/` (plus the thin `:ap
 
 ## Data
 
-`modules/data/.../LineCodeDatabase` owns schema **VERSION = 13**: conversations, messages,
+`modules/data/.../LineCodeDatabase` owns schema **VERSION = 14**: conversations, messages,
 message_blocks, message_tool_calls, settings, models, error_logs, memories, extension_agents,
-extension_mcps, ipc_providers, projects, file_diffs. Stores are synchronous; callers use
-`Scheduler.io`. `SettingsStore` is write-through with `invalidate()` after archive restore.
+extension_mcps, ipc_providers, projects, file_diffs. Conversations carry `kind` (`''` user,
+`agent`, `agent_transient`) and `parent_id`; `ConversationStore.list()` returns user
+conversations only. Stores are synchronous; callers use `Scheduler.io`. `SettingsStore` is write-through with `invalidate()` after archive restore.
 
 ## Chat and tools
 
@@ -50,20 +51,40 @@ extension_mcps, ipc_providers, projects, file_diffs. Stores are synchronous; cal
 are persisted in `message_tool_calls`, TOOL results as messages (optionally with image blocks).
 `ChatState` exposes pending approvals; `ChatScreenView` renders the approval panel. The composer attaches images and arbitrary files; FILE blocks persist their text and `Message.wireText()` injects them into model requests while user rows show file chips. Permission
 modes (`auto`/`confirm`/`readonly`) and session modes (`chat`/`plan`/`agent`/`control`) both filter
-the tool catalog. Enabled Agent/Skill extensions are injected into the prompt; enabled Agents are
-also exposed as `agent_<slug>` tools (read-only nested loop). MCP tools come from `tools/list` and
-always require approval; approval decisions live in feature-chat's `ApprovalPolicy`. Context
-compaction summarizes older messages at 80% of the model context, or 50% when soft compaction is
-enabled; the tail boundary never opens on a TOOL row. Minimal mode uses a one-sentence role prompt
-and skips extension, skill and learning sections; learning mode injects memories, recent
-conversation titles, enabled skills and skill paths through feature-chat's
-`LearningContextProvider`. Thinking scroll/auto-expand and process auto-expand preferences are
-applied by `MessageRow`/`toolcall/ToolCallCardView` without recreating views.
+the tool catalog. MCP tools come from `tools/list` and always require approval; approval decisions
+live in feature-chat's `ApprovalPolicy`. Context compaction summarizes older messages at 80% of the
+model context, or 50% when soft compaction is enabled; the tail boundary never opens on a TOOL row.
+Minimal mode uses a one-sentence role prompt and skips extension, skill and learning sections;
+learning mode injects memories, recent conversation titles, enabled skills and skill paths through
+feature-chat's `LearningContextProvider`. Thinking scroll/auto-expand and process auto-expand
+preferences are applied by `MessageRow`/`toolcall/ToolCallCardView` without recreating views.
 
-Seq authority: `ToolLoopEngine` keeps its in-memory history in list order and never assigns
-persisted seq; `ChatTurnPipeline` is the only writer of `Message.seq` (it stamps rows when they
-are delivered on the event queue). Chat sheets/attachment picker/export live in feature-chat and
-speak to the app shell through `ChatHost`.
+Timeline events: `ToolLoopEngine` emits one immutable `TimelineEvent` per occurrence
+(TurnStarted, TextDelta, ReasoningDelta, AssistantCompleted, ToolCompleted, NoticeInjected,
+ConfirmationRequired, TurnFinished, TurnFailed, BudgetExceeded, Retry); `ChatLoopBridge` posts
+them onto `SerialEvents` and `ChatTurnPipeline` is the only writer of `Message.seq` (stamped when
+rows are delivered on the event queue). The engine's in-memory history is ordered by list
+position and never assigns persisted seq.
+
+Runtime inbox: every asynchronous input reaches a loop as a `RuntimeEvent` (`ShellNotice`,
+`AgentTurnCompleted` — final output only, 32 K truncated, `AgentMessage`, `AgentNeedsInput`,
+`AgentFailed`, `WorkspaceChanged`, `UserMessage`) through the owner-scoped `RuntimeInbox`
+(`ToolContext.inbox()`), drained at the three injection points: turn start, after a tool batch,
+and after a final answer (keep-alive). `AgentEventBus` (runtime) owns the per-owner queues; the
+root view folds background-shell completions into the same stream. An idle root is woken by a
+non-empty inbox after each finished turn (`ChatInboxWake`), which starts a hidden-notice turn.
+
+Sub agents: `SubAgentRegistry` (runtime) implements the `AgentRuntime` tool contract. Every
+sub agent owns a conversation row (kind `agent` or `agent_transient`) and a full
+`ChatController`, so transcripts persist, compaction works and sessions run in parallel (one
+single-threaded loop per agent; no shared locks). Agent tools (`agent_<slug>`) always return a
+handle immediately and deliver their final output through the inbox. `persistent=true` creates
+a messageable, revivable session with mutating tools allowed; its approvals surface in the root
+approval panel (`ChatState.pendingApprovals` merge, routed back by agentId). The default
+transient run is one-shot, read-only and auto-confirmed; the UI greys its composer.
+`agent_list` / `agent_send` / `agent_wait` track and drive sessions; `agent_send` revives a
+finished agent with a new turn. The agent drawer (workspace header chip) switches the chat
+view between root and session conversations; model switching is root-only.
 
 ## Comment policy
 
@@ -106,8 +127,8 @@ state (statuses only inside enums), en/zh/ru string key parity, prompt-catalog c
 (≤1,800 Java lines total), settings-key parity between `LegacyMigration` and `ToolModes`, and no
 hand-written JSON object literals in main sources (`noHandWrittenJsonObjects`).
 
-Sanctioned blocking-thread files (each documented here, list must stay minimal): `app/NestedAgentRunner`
-(synchronous agent bridge), `platform-shell/LocalShellBackend` + `tool-builtin/ShellTool` (process
+Sanctioned blocking-thread files (each documented here, list must stay minimal):
+`platform-shell/LocalShellBackend` + `tool-builtin/ShellTool` (process
 pipes cannot be drained with a timeout without a reader thread), `platform-android/AndroidScheduler`
 + `LineCodeAccessibilityService` (the scheduler/accessibility owners), and the legacy
 `:ipc`/`:terminal-provider` provider processes (their own pump threads).
@@ -142,7 +163,11 @@ pipes cannot be drained with a timeout without a reader thread), `platform-andro
   `RemoteSkillInstall`.
 - Do not add `new Thread`, `Executors`, `Handler`, locks/latches, `Thread.sleep` or `while(true)` in
   feature/core/engine code. `platform-android` owns the scheduler; exceptions are only the files
-  listed under "Sanctioned blocking-thread files" above.
+  listed under "Sanctioned blocking-thread files" above. Sub agent sessions must stay
+  lock-free: one `ToolLoopEngine` per session, no shared mutable state beyond the registry's
+  concurrent maps and its single wait/notify monitor.
+- Do not reintroduce a synchronous agent bridge (`NestedAgentRunner` is retired): every agent
+  invocation starts an asynchronous session and reports through the runtime event inbox.
 - Do not add static mutable fields, `rawJson`/`raw_json`, stringly-typed state, empty catches,
   `getMessage()` in user-visible text, CJK literals or UI text concatenation.
 - Do not build views with XML layouts, Kotlin, Compose or a new UI framework. Views are written in

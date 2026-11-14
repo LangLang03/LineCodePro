@@ -252,8 +252,6 @@ public final class ToolPreviewSamples {
                 "linecode", ""));
         values.put("agent_explore", new ToolPresentation("Explore agent", ToolIcon.AGENT,
                 "Explore the codebase structure", ""));
-        values.put("agent_pipeline", new ToolPresentation("Agent Pipeline", ToolIcon.PIPELINE,
-                "3 stages", ""));
         values.put("unknown_tool", new ToolPresentation("Unknown tool", ToolIcon.GENERIC,
                 "linecode", ""));
         values.put("phone_click", new ToolPresentation("Phone click", ToolIcon.PHONE,

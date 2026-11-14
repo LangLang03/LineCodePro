@@ -30,8 +30,6 @@ final class ToolRenderers {
                 return TodoToolRenderer.INSTANCE;
             case AGENT:
                 return AgentToolRenderer.INSTANCE;
-            case PIPELINE:
-                return PipelineToolRenderer.INSTANCE;
             case MEMORY:
                 return MemoryToolRenderer.INSTANCE;
             case IMAGE:

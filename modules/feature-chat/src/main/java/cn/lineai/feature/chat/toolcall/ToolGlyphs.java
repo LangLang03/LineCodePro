@@ -42,8 +42,6 @@ final class ToolGlyphs {
                 return Icons.SCROLL_TEXT;
             case AGENT:
                 return Icons.BOT;
-            case PIPELINE:
-                return Icons.GIT_BRANCH;
             case MEMORY:
                 return Icons.BOOK_OPEN;
             case PHONE:
