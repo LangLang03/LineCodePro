@@ -183,6 +183,44 @@ public class ToolLoopEngineTest {
         assertEquals(LoopPhase.COMPLETED, engine.state().value().phase);
     }
 
+    @Test public void inboxEventsAreAggregatedIntoOneHiddenNotice() {
+        TextModel model = new TextModel();
+        // One queued event on the first drain, empty afterwards.
+        final List<List<cn.lineai.tool.api.RuntimeEvent>> drains = new ArrayList<>();
+        drains.add(java.util.Collections.singletonList(
+                (cn.lineai.tool.api.RuntimeEvent) new cn.lineai.tool.api.RuntimeEvent.AgentMessage(
+                        "agent-1", "halfway done")));
+        drains.add(java.util.Collections.<cn.lineai.tool.api.RuntimeEvent>emptyList());
+        ToolContext inboxContext = new ToolContext() {
+            public File workspaceRoot() { return new File("."); }
+            public String modelId() { return "m"; }
+            public boolean mutationAllowed() { return true; }
+            public cn.lineai.tool.api.RuntimeInbox inbox() {
+                return new cn.lineai.tool.api.RuntimeInbox() {
+                    public List<cn.lineai.tool.api.RuntimeEvent> drain() {
+                        return drains.isEmpty()
+                                ? java.util.Collections.<cn.lineai.tool.api.RuntimeEvent>emptyList()
+                                : drains.remove(0);
+                    }
+                    public void post(cn.lineai.tool.api.RuntimeEvent event) { }
+                };
+            }
+        };
+        final List<Message> injected = new ArrayList<>();
+        final ToolLoopEngine engine = new ToolLoopEngine(model, new ToolRegistry(),
+                inboxContext, Scheduler.immediate(), 5);
+        engine.listen(new Events() {
+            public void notice(Message message) { injected.add(message); }
+        });
+        engine.start(config(), new ArrayList<Message>(), "c", "sys", null);
+        // The keep-alive path consumes the queued event and then finishes normally.
+        assertEquals(2, model.calls);
+        assertEquals(1, injected.size());
+        assertTrue(injected.get(0).plainText().contains("halfway done"));
+        assertTrue(injected.get(0).plainText().contains("Message from sub agent [agent-1]"));
+        assertEquals(LoopPhase.COMPLETED, engine.state().value().phase);
+    }
+
     @Test public void toolsFieldIsOmittedForModelsWithoutNativeSupport() {
         ToolCallRecordingModel model = new ToolCallRecordingModel();
         final ToolLoopEngine engine = new ToolLoopEngine(model,

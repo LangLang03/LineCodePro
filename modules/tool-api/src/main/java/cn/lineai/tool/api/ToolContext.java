@@ -83,6 +83,18 @@ public interface ToolContext {
         return null;
     }
 
+    /**
+     * Owner-scoped runtime event mailbox; may be null in tests and headless contexts.
+     * When present, the loop drains it at its injection points instead of polling
+     * {@link #backgrounds()} directly; shell completions then arrive as
+     * {@link RuntimeEvent.ShellNotice} entries inside the drained stream.
+     *
+     * @return the runtime event inbox, or {@code null} when no bus is wired
+     */
+    default RuntimeInbox inbox() {
+        return null;
+    }
+
     /** True when the selected workspace lives on a remote SSH host.
      *
      * @return {@code true} when shell commands must be routed to the remote host

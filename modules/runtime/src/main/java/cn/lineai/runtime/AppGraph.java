@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.res.Configuration;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
 import cn.lineai.core.kernel.di.Graph;
 import cn.lineai.core.kernel.error.DomainException;
@@ -105,6 +107,7 @@ public final class AppGraph implements AutoCloseable {
     private final McpPreferences mcpPreferences;
     private final TerminalProviderGateway terminalProviderGateway;
     private final BackgroundShellRegistry backgroundShellRegistry;
+    private final cn.lineai.runtime.AgentEventBus agentEventBus = new cn.lineai.runtime.AgentEventBus();
     private final Context context;
     private final ToolCatalog toolCatalog;
     private final ToolCatalog baseCatalogForAgents;
@@ -337,6 +340,26 @@ public final class AppGraph implements AutoCloseable {
             }
             @Override public BackgroundTasks backgrounds() {
                 return backgroundShellRegistry;
+            }
+            @Override public cn.lineai.tool.api.RuntimeInbox inbox() {
+                // The root view folds shell-completion notices into the queued runtime
+                // events, so the loop drains one stream instead of polling the registry.
+                return new cn.lineai.tool.api.RuntimeInbox() {
+                    @Override
+                    public List<cn.lineai.tool.api.RuntimeEvent> drain() {
+                        List<cn.lineai.tool.api.RuntimeEvent> events =
+                                new ArrayList<>(agentEventBus.drain(AgentEventBus.ROOT_OWNER));
+                        for (String notice : backgroundShellRegistry.drainCompleted()) {
+                            events.add(new cn.lineai.tool.api.RuntimeEvent.ShellNotice(notice));
+                        }
+                        return events;
+                    }
+
+                    @Override
+                    public void post(cn.lineai.tool.api.RuntimeEvent event) {
+                        agentEventBus.post(AgentEventBus.ROOT_OWNER, event);
+                    }
+                };
             }
         };
     }

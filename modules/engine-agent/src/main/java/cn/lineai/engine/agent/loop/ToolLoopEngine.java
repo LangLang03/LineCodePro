@@ -26,6 +26,8 @@ import cn.lineai.tool.api.Tool;
 import cn.lineai.tool.api.ToolCall;
 import cn.lineai.tool.api.ToolContext;
 import cn.lineai.tool.api.ToolJson;
+import cn.lineai.tool.api.RuntimeEvent;
+import cn.lineai.tool.api.RuntimeInbox;
 import cn.lineai.tool.api.ToolRegistry;
 import cn.lineai.tool.api.ToolResult;
 
@@ -261,21 +263,15 @@ public final class ToolLoopEngine implements Cancellable {
     }
 
     /**
-     * Appends one hidden USER message for background tasks that completed without the model
-     * observing their terminal state. Runs on the IO scheduler; returns true when injected.
+     * Appends one hidden USER message aggregating every runtime event that reached the loop
+     * without the model observing it (shell completions, sub-agent results, routed replies).
+     * Runs on the IO scheduler; returns true when injected.
      */
     private boolean injectNotices() {
-        BackgroundTasks backgrounds = toolContext.backgrounds();
-        if (backgrounds == null) return false;
-        List<String> notices;
-        try {
-            notices = backgrounds.drainCompleted();
-        } catch (Exception error) {
-            return false;
-        }
+        List<String> notices = collectInboxNotices();
         if (notices.isEmpty()) return false;
         StringBuilder body = new StringBuilder(
-                "(background task notice - not from the user)\n");
+                "(runtime event notice - not from the user)\n");
         for (String notice : notices) {
             body.append("- ").append(notice).append('\n');
         }
@@ -290,6 +286,34 @@ public final class ToolLoopEngine implements Cancellable {
         final Message delivered = notice;
         scheduler.main(() -> emit(new TimelineEvent.NoticeInjected(delivered)));
         return true;
+    }
+
+    /**
+     * Collects the notice texts of one destructive inbox drain. When a {@link RuntimeInbox}
+     * is wired it is the only source; otherwise the legacy background-registry drain keeps
+     * working unchanged.
+     */
+    private List<String> collectInboxNotices() {
+        List<String> notices = new ArrayList<>();
+        RuntimeInbox inbox = toolContext.inbox();
+        if (inbox != null) {
+            try {
+                for (RuntimeEvent event : inbox.drain()) {
+                    notices.add(event.noticeText());
+                }
+            } catch (Exception error) {
+                // A failed poll keeps the loop running; the next injection point retries.
+            }
+            return notices;
+        }
+        BackgroundTasks backgrounds = toolContext.backgrounds();
+        if (backgrounds == null) return notices;
+        try {
+            notices.addAll(backgrounds.drainCompleted());
+        } catch (Exception error) {
+            // Same policy as the inbox path: a failed poll retries later.
+        }
+        return notices;
     }
 
     private ToolResult execute(ToolCall call) {
