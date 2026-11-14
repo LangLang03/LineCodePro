@@ -387,6 +387,7 @@ public final class ChatComposer extends LinearLayout {
         modelSwitchable = !agentView;
         input.setEnabled(!locked);
         input.setHint(locked ? R.string.composer_hint_transient
+                : busyElsewhere ? R.string.composer_hint_busy_elsewhere
                 : state.hasModel ? R.string.composer_hint_default
                 : R.string.composer_hint_no_model);
         input.setAlpha(locked ? 0.45f : 1f);

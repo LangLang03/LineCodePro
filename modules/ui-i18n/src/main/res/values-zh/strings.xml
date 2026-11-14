@@ -51,6 +51,7 @@
     <string name="drawer_project_remove_cancel">取消</string>
 
     <string name="composer_hint_default">输入消息…</string>
+    <string name="composer_hint_busy_elsewhere">另一个对话仍在生成——切回该对话查看或停止</string>
     <string name="composer_hint_no_model">请先到设置 → 模型管理配置模型</string>
     <string name="composer_hint_transient">一次性Agent——本会话不可交流</string>
     <string name="drawer_agent_chip">%d 个子代理</string>

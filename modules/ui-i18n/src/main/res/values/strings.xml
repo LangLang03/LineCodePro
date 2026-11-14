@@ -51,6 +51,7 @@
     <string name="drawer_project_remove_cancel">Cancel</string>
 
     <string name="composer_hint_default">Type a message…</string>
+    <string name="composer_hint_busy_elsewhere">Another conversation is still generating — switch back to watch or stop it</string>
     <string name="composer_hint_no_model">Please configure a model first in Settings → Model management</string>
     <string name="composer_hint_transient">One-shot agent — this session is not messageable</string>
     <string name="drawer_agent_chip">%d sub agents</string>

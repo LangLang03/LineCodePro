@@ -51,6 +51,7 @@
     <string name="drawer_project_remove_cancel">Отмена</string>
 
     <string name="composer_hint_default">Введите сообщение…</string>
+    <string name="composer_hint_busy_elsewhere">Другой чат всё ещё генерирует ответ — вернитесь к нему, чтобы посмотреть или остановить</string>
     <string name="composer_hint_no_model">Сначала настройте модель в Настройки → Управление моделями</string>
     <string name="composer_hint_transient">Одноразовый агент — этот чат недоступен для сообщений</string>
     <string name="drawer_agent_chip">%d субагентов</string>
