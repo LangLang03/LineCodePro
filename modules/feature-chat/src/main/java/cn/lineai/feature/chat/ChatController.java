@@ -376,7 +376,7 @@ public final class ChatController {
         activeTools = registry;
         final ToolLoopEngine loop = new ToolLoopEngine(client, registry, toolContext,
                 scheduler, model.toolCallLimit);
-        loop.listener(new LoopListener(pipeline));
+        loop.listen(new ChatLoopBridge(this, pipeline));
         engine = loop;
         loop.start(model, history, conversationId,
                 ChatTurnConfig.systemPrompt(prompts, settings, model,
@@ -395,59 +395,6 @@ public final class ChatController {
     private void invalidatePendingGeneration() {
         generationSeq++;
         starting = false;
-    }
-
-    /** Forwards every engine callback onto {@link SerialEvents}; state mutates only in the drain. */
-    private final class LoopListener implements ToolLoopEngine.Listener {
-        private final ChatTurnPipeline draft;
-
-        LoopListener(ChatTurnPipeline draft) {
-            this.draft = draft;
-        }
-
-        @Override public void onTurnStarted() {
-            events.post(draft::beginTurn);
-        }
-
-        @Override public void onText(String delta) {
-            events.post(() -> draft.appendText(delta));
-        }
-
-        @Override public void onReasoning(String delta) {
-            events.post(() -> draft.appendReasoning(delta));
-        }
-
-        @Override public void onAssistantMessage(Message message) {
-            events.post(() -> draft.finishAssistant(message));
-        }
-
-        @Override public void onToolFinished(Message toolRow, ToolCall call, ToolResult result) {
-            events.post(() -> draft.appendTool(toolRow, call, result));
-        }
-
-        @Override public void onNoticeInjected(Message message) {
-            events.post(() -> draft.appendNotice(message));
-        }
-
-        @Override public void onConfirmationRequired(List<ToolCall> calls) {
-            events.post(() -> draft.requestConfirmation(calls));
-        }
-
-        @Override public void onFinished(FinishReason reason) {
-            events.post(draft::finishTurn);
-        }
-
-        @Override public void onFailed(DomainException error) {
-            events.post(() -> draft.failTurn(error));
-        }
-
-        @Override public void onRetry(int attempt, int max, DomainException error) {
-            events.post(() -> draft.retry(attempt, max, error));
-        }
-
-        @Override public void onBudgetExceeded(int requested, int used, int max) {
-            events.post(draft::budgetExceeded);
-        }
     }
 
     void engineConfirm(boolean allowed) {

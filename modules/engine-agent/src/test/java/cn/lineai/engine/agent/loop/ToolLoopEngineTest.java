@@ -26,22 +26,61 @@ import static org.junit.Assert.*;
 
 public class ToolLoopEngineTest {
 
+    /** Adapter with no-op defaults so each test overrides only the events it cares about. */
+    private abstract static class Events implements java.util.function.Consumer<TimelineEvent> {
+        public void accept(TimelineEvent event) {
+            if (event instanceof TimelineEvent.TurnStarted) {
+                turnStarted();
+            } else if (event instanceof TimelineEvent.TextDelta) {
+                text(((TimelineEvent.TextDelta) event).delta);
+            } else if (event instanceof TimelineEvent.ReasoningDelta) {
+                reasoning(((TimelineEvent.ReasoningDelta) event).delta);
+            } else if (event instanceof TimelineEvent.AssistantCompleted) {
+                assistant(((TimelineEvent.AssistantCompleted) event).message);
+            } else if (event instanceof TimelineEvent.ToolCompleted) {
+                tool(((TimelineEvent.ToolCompleted) event).result);
+            } else if (event instanceof TimelineEvent.NoticeInjected) {
+                notice(((TimelineEvent.NoticeInjected) event).message);
+            } else if (event instanceof TimelineEvent.ConfirmationRequired) {
+                confirm(((TimelineEvent.ConfirmationRequired) event).calls);
+            } else if (event instanceof TimelineEvent.TurnFinished) {
+                finished(((TimelineEvent.TurnFinished) event).reason);
+            } else if (event instanceof TimelineEvent.TurnFailed) {
+                failed(((TimelineEvent.TurnFailed) event).error);
+            } else if (event instanceof TimelineEvent.BudgetExceeded) {
+                TimelineEvent.BudgetExceeded budget = (TimelineEvent.BudgetExceeded) event;
+                overBudget(budget.requested, budget.used, budget.max);
+            } else if (event instanceof TimelineEvent.Retry) {
+                TimelineEvent.Retry retry = (TimelineEvent.Retry) event;
+                retrying(retry.attempt, retry.max, retry.error);
+            }
+        }
+
+        void turnStarted() { }
+        void text(String delta) { }
+        void reasoning(String delta) { }
+        void assistant(Message message) { }
+        void tool(ToolResult result) { }
+        void notice(Message message) { }
+        void confirm(List<ToolCall> calls) { }
+        void finished(FinishReason reason) { }
+        void failed(DomainException error) { }
+        void overBudget(int requested, int used, int max) { }
+        void retrying(int attempt, int max, DomainException error) { }
+    }
+
     @Test public void runsToolThenFinalAnswer() {
         FakeModel model = new FakeModel();
         ToolRegistry registry = new ToolRegistry().register(new EchoTool());
         List<String> texts = new ArrayList<>();
         List<String> results = new ArrayList<>();
         final ToolLoopEngine engine = new ToolLoopEngine(model, registry, context(), Scheduler.immediate(), 5);
-        engine.listener(new ToolLoopEngine.Listener() {
-            public void onTurnStarted() { }
-            public void onAssistantMessage(Message message) { }
-            public void onText(String delta) { texts.add(delta); }
-            public void onReasoning(String delta) { }
-            public void onToolFinished(Message row, ToolCall call, ToolResult result) { results.add(result.content); }
-            public void onConfirmationRequired(List<ToolCall> calls) { engine.confirm(true); }
-            public void onFinished(FinishReason reason) { }
-            public void onFailed(DomainException error) { fail(error.getMessage()); }
-            public void onBudgetExceeded(int requested, int used, int max) { fail("budget"); }
+        engine.listen(new Events() {
+            public void text(String delta) { texts.add(delta); }
+            public void tool(ToolResult result) { results.add(result.content); }
+            public void confirm(List<ToolCall> calls) { engine.confirm(true); }
+            public void failed(DomainException error) { fail(error.getMessage()); }
+            public void overBudget(int requested, int used, int max) { fail("budget"); }
         });
         engine.start(config(), new ArrayList<Message>(), "c", "sys", null);
         assertEquals(2, model.calls);
@@ -58,16 +97,9 @@ public class ToolLoopEngineTest {
         final List<String> budget = new ArrayList<>();
         final ToolLoopEngine engine = new ToolLoopEngine(model,
                 new ToolRegistry().register(new EchoTool()), context(), Scheduler.immediate(), 0);
-        engine.listener(new ToolLoopEngine.Listener() {
-            public void onTurnStarted() { }
-            public void onAssistantMessage(Message message) { }
-            public void onText(String delta) { }
-            public void onReasoning(String delta) { }
-            public void onToolFinished(Message row, ToolCall call, ToolResult result) { }
-            public void onConfirmationRequired(List<ToolCall> calls) { engine.confirm(true); }
-            public void onFinished(FinishReason reason) { }
-            public void onFailed(DomainException error) { }
-            public void onBudgetExceeded(int requested, int used, int max) { budget.add(requested + "/" + max); }
+        engine.listen(new Events() {
+            public void confirm(List<ToolCall> calls) { engine.confirm(true); }
+            public void overBudget(int requested, int used, int max) { budget.add(requested + "/" + max); }
         });
         engine.start(config(), new ArrayList<Message>(), "c", "sys", null);
         assertEquals(Collections.singletonList("1/0"), budget);
@@ -79,16 +111,9 @@ public class ToolLoopEngineTest {
         final List<String> results = new ArrayList<>();
         final ToolLoopEngine engine = new ToolLoopEngine(model,
                 new ToolRegistry().register(new EchoTool()), context(), Scheduler.immediate(), 5);
-        engine.listener(new ToolLoopEngine.Listener() {
-            public void onTurnStarted() { }
-            public void onAssistantMessage(Message message) { }
-            public void onText(String delta) { }
-            public void onReasoning(String delta) { }
-            public void onToolFinished(Message row, ToolCall call, ToolResult result) { results.add(result.content); }
-            public void onConfirmationRequired(List<ToolCall> calls) { engine.confirm(false); }
-            public void onFinished(FinishReason reason) { }
-            public void onFailed(DomainException error) { }
-            public void onBudgetExceeded(int requested, int used, int max) { }
+        engine.listen(new Events() {
+            public void tool(ToolResult result) { results.add(result.content); }
+            public void confirm(List<ToolCall> calls) { engine.confirm(false); }
         });
         engine.start(config(), new ArrayList<Message>(), "c", "sys", null);
         assertTrue(results.isEmpty());
@@ -104,17 +129,10 @@ public class ToolLoopEngineTest {
         final List<Message> injected = new ArrayList<>();
         final ToolLoopEngine engine = new ToolLoopEngine(model,
                 new ToolRegistry(), context(backgrounds), Scheduler.immediate(), 5);
-        engine.listener(new ToolLoopEngine.Listener() {
-            public void onTurnStarted() { }
-            public void onAssistantMessage(Message message) { }
-            public void onText(String delta) { }
-            public void onReasoning(String delta) { }
-            public void onToolFinished(Message row, ToolCall call, ToolResult result) { }
-            public void onConfirmationRequired(List<ToolCall> calls) { }
-            public void onNoticeInjected(Message message) { injected.add(message); }
-            public void onFinished(FinishReason reason) { }
-            public void onFailed(DomainException error) { fail(error.getMessage()); }
-            public void onBudgetExceeded(int requested, int used, int max) { fail("budget"); }
+        engine.listen(new Events() {
+            public void notice(Message message) { injected.add(message); }
+            public void failed(DomainException error) { fail(error.getMessage()); }
+            public void overBudget(int requested, int used, int max) { fail("budget"); }
         });
         engine.start(config(), new ArrayList<Message>(), "c", "sys", null);
         // The first response had no tool calls; the pending notice keeps the loop alive and the
@@ -137,16 +155,10 @@ public class ToolLoopEngineTest {
         final ToolLoopEngine engine = new ToolLoopEngine(model,
                 new ToolRegistry().register(new EchoTool()), context(backgrounds),
                 Scheduler.immediate(), 5);
-        engine.listener(new ToolLoopEngine.Listener() {
-            public void onTurnStarted() { }
-            public void onAssistantMessage(Message message) { }
-            public void onText(String delta) { }
-            public void onReasoning(String delta) { }
-            public void onToolFinished(Message row, ToolCall call, ToolResult result) { }
-            public void onConfirmationRequired(List<ToolCall> calls) { engine.confirm(true); }
-            public void onFinished(FinishReason reason) { }
-            public void onFailed(DomainException error) { fail(error.getMessage()); }
-            public void onBudgetExceeded(int requested, int used, int max) { fail("budget"); }
+        engine.listen(new Events() {
+            public void confirm(List<ToolCall> calls) { engine.confirm(true); }
+            public void failed(DomainException error) { fail(error.getMessage()); }
+            public void overBudget(int requested, int used, int max) { fail("budget"); }
         });
         engine.start(config(), new ArrayList<Message>(), "c", "sys", null);
         assertEquals(2, model.calls);
@@ -164,17 +176,7 @@ public class ToolLoopEngineTest {
         NoticeBackgrounds backgrounds = new NoticeBackgrounds();
         final ToolLoopEngine engine = new ToolLoopEngine(model,
                 new ToolRegistry(), context(backgrounds), Scheduler.immediate(), 5);
-        engine.listener(new ToolLoopEngine.Listener() {
-            public void onTurnStarted() { }
-            public void onAssistantMessage(Message message) { }
-            public void onText(String delta) { }
-            public void onReasoning(String delta) { }
-            public void onToolFinished(Message row, ToolCall call, ToolResult result) { }
-            public void onConfirmationRequired(List<ToolCall> calls) { }
-            public void onFinished(FinishReason reason) { }
-            public void onFailed(DomainException error) { }
-            public void onBudgetExceeded(int requested, int used, int max) { }
-        });
+        engine.listen(new Events() { });
         engine.start(config(), new ArrayList<Message>(), "c", "sys", null);
         assertEquals(1, model.calls);
         assertTrue(engine.history().isEmpty());
@@ -186,16 +188,8 @@ public class ToolLoopEngineTest {
         final ToolLoopEngine engine = new ToolLoopEngine(model,
                 new ToolRegistry().register(new EchoTool()), context(),
                 Scheduler.immediate(), 5);
-        engine.listener(new ToolLoopEngine.Listener() {
-            public void onTurnStarted() { }
-            public void onAssistantMessage(Message message) { }
-            public void onText(String delta) { }
-            public void onReasoning(String delta) { }
-            public void onToolFinished(Message row, ToolCall call, ToolResult result) { }
-            public void onConfirmationRequired(List<ToolCall> calls) { engine.confirm(false); }
-            public void onFinished(FinishReason reason) { }
-            public void onFailed(DomainException error) { }
-            public void onBudgetExceeded(int requested, int used, int max) { }
+        engine.listen(new Events() {
+            public void confirm(List<ToolCall> calls) { engine.confirm(false); }
         });
         engine.start(noToolsConfig(), new ArrayList<Message>(), "c", "sys", null);
         assertEquals(0, model.lastToolCount);

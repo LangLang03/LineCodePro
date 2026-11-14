@@ -15,6 +15,7 @@ import cn.lineai.core.model.ModelConfig;
 import cn.lineai.core.model.Role;
 import cn.lineai.data.api.ModelStore;
 import cn.lineai.engine.agent.loop.FinishReason;
+import cn.lineai.engine.agent.loop.TimelineEvent;
 import cn.lineai.engine.agent.loop.ToolLoopEngine;
 import cn.lineai.engine.ai.ModelClient;
 import cn.lineai.tool.agent.AgentRunner;
@@ -84,21 +85,19 @@ public final class NestedAgentRunner implements AgentRunner {
             }
         };
         final ToolLoopEngine loop = new ToolLoopEngine(client, registry, readOnly, scheduler, 200);
-        loop.listener(new ToolLoopEngine.Listener() {
-            @Override public void onTurnStarted() { }
-            @Override public void onAssistantMessage(Message message) { }
-            @Override public void onText(String delta) {
+        loop.listen(event -> {
+            if (event instanceof TimelineEvent.TextDelta) {
+                String delta = ((TimelineEvent.TextDelta) event).delta;
                 synchronized (text) { text.append(delta); }
-            }
-            @Override public void onReasoning(String delta) { }
-            @Override public void onToolFinished(cn.lineai.core.model.Message row, ToolCall call, ToolResult result) { }
-            @Override public void onConfirmationRequired(List<ToolCall> calls) { loop.confirm(true); }
-            @Override public void onFinished(FinishReason reason) { latch.countDown(); }
-            @Override public void onFailed(DomainException error) {
+            } else if (event instanceof TimelineEvent.ConfirmationRequired) {
+                loop.confirm(true);
+            } else if (event instanceof TimelineEvent.TurnFinished) {
+                latch.countDown();
+            } else if (event instanceof TimelineEvent.TurnFailed) {
+                DomainException error = ((TimelineEvent.TurnFailed) event).error;
                 failure.set(error.getMessage() == null ? "Agent failed" : error.getMessage());
                 latch.countDown();
-            }
-            @Override public void onBudgetExceeded(int requested, int used, int max) {
+            } else if (event instanceof TimelineEvent.BudgetExceeded) {
                 failure.set("Agent exceeded its tool-call budget");
                 latch.countDown();
             }
