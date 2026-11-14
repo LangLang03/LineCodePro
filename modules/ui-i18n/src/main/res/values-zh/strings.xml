@@ -1242,7 +1242,7 @@
     <string name="tool_group_image_understanding_desc">读取本地或 SSH 工作区图片并调用已选择的视觉模型理解内容</string>
     <string name="tool_group_image_generation_name">图片生成</string>
     <string name="tool_group_image_generation_desc">调用已选择的生图模型生成图片，并以内联 Markdown 图片返回</string>
-    <string name="tool_group_shell_desc">通过 SSH 或终端提供者在远程主机执行 shell 命令，支持后台任务（用 shell_output 查看输出、shell_kill 终止）</string>
+    <string name="tool_group_shell_desc">在远程主机执行 Shell 命令（SSH 或终端提供者），支持后台任务</string>
     <string name="tool_group_web_search_name">网页搜索</string>
     <string name="tool_group_web_search_desc">搜索互联网并查看网页内容</string>
     <string name="tool_group_memory_name">记忆</string>
