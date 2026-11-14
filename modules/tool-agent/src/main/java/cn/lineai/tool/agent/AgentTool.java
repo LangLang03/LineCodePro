@@ -70,8 +70,12 @@ final class AgentTool implements Tool {
                 .required("task").build();
     }
 
-    /** {@inheritDoc} */
-    @Override public boolean needsLocalWorkspace() { return true; }
+    /**
+     * Agent invocations are workspace-agnostic: the session inherits the same
+     * remote-aware {@code ToolContext} (local, SSH or terminal-provider guest), so the
+     * tool must stay visible in every workspace mode.
+     */
+    @Override public boolean needsLocalWorkspace() { return false; }
 
     /** {@inheritDoc} */
     @Override public boolean mutating() { return false; }

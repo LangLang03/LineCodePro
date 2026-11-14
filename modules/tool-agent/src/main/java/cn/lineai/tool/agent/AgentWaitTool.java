@@ -49,8 +49,8 @@ final class AgentWaitTool implements Tool {
                 .build();
     }
 
-    /** {@inheritDoc} */
-    @Override public boolean needsLocalWorkspace() { return true; }
+    /** The registry is process-local; available in every workspace mode. */
+    @Override public boolean needsLocalWorkspace() { return false; }
 
     /** {@inheritDoc} */
     @Override public boolean mutating() { return false; }

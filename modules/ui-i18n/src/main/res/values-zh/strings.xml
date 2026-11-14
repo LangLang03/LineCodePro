@@ -330,7 +330,7 @@
     <string name="screen_security_section_http">HTTP 限制</string>
     <string name="screen_security_section_browser">内置浏览器</string>
     <string name="tool_group_local_shell_name">Shell</string>
-    <string name="tool_group_local_shell_desc">在本地工作区执行 Shell 命令，支持后台任务（用 shell_output 查看输出、shell_kill 终止）；关闭后本地模式不再提供 Shell 工具</string>
+    <string name="tool_group_local_shell_desc">在本地工作区执行 Shell 命令，支持后台任务</string>
     <string name="screen_security_section_extensions">扩展</string>
     <string name="settings_row_security_trust_extensions_title">信任签名不一致的扩展包</string>
     <string name="settings_row_security_trust_extensions_desc">允许自动加载使用不同证书签名的扩展与终端提供者包</string>

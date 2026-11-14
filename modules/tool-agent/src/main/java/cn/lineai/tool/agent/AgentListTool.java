@@ -41,8 +41,8 @@ final class AgentListTool implements Tool {
         return cn.lineai.tool.api.ToolSchemaBuilder.object().build();
     }
 
-    /** {@inheritDoc} */
-    @Override public boolean needsLocalWorkspace() { return true; }
+    /** The registry is process-local; available in every workspace mode. */
+    @Override public boolean needsLocalWorkspace() { return false; }
 
     /** {@inheritDoc} */
     @Override public boolean mutating() { return false; }

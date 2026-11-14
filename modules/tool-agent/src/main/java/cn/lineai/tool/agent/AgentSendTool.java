@@ -42,8 +42,8 @@ final class AgentSendTool implements Tool {
                 .required("agent_id").required("message").build();
     }
 
-    /** {@inheritDoc} */
-    @Override public boolean needsLocalWorkspace() { return true; }
+    /** The registry is process-local; available in every workspace mode. */
+    @Override public boolean needsLocalWorkspace() { return false; }
 
     /** {@inheritDoc} */
     @Override public boolean mutating() { return false; }
