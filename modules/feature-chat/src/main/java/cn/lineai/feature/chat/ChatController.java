@@ -194,6 +194,17 @@ public final class ChatController {
         writes.submit(() -> messages.append(marker));
     }
 
+    /**
+     * True while a turn is running or being prepared on the IO pool. Callers that must not
+     * lose a message (sub-agent delivery) have to queue it through the runtime inbox instead
+     * of calling {@link #send}, which is a silent no-op in this window.
+     *
+     * @return true when {@link #send} would currently be ignored
+     */
+    public boolean busy() {
+        return engine != null || starting;
+    }
+
     public void send(String text) {
         send(text, Collections.<String>emptyList(), Collections.<String>emptyList());
     }

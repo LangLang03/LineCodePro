@@ -83,7 +83,10 @@ a messageable, revivable session with mutating tools allowed; its approvals surf
 approval panel (`ChatState.pendingApprovals` merge, routed back by agentId). The default
 transient run is one-shot, read-only and auto-confirmed; the UI greys its composer.
 `agent_list` / `agent_send` / `agent_wait` track and drive sessions; `agent_send` revives a
-finished agent with a new turn. The agent drawer (workspace header chip) switches the chat
+finished agent with a new turn (in its existing conversation, restoring the seq counter via
+`openThen`) and delivers to a running agent through its runtime inbox — never through
+`ChatController.send`, which is a silent no-op while a turn is running or being prepared
+(`ChatController.busy()`). The agent drawer (workspace header chip) switches the chat
 view between root and session conversations; model switching is root-only.
 
 ## Comment policy

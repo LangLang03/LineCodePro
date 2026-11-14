@@ -38,15 +38,18 @@ public final class SubAgentRegistry implements AgentRuntime {
         final boolean persistent;
         final AgentExtension agent;
         final ChatController controller;
+        /** Owner-scoped inbox of this session; receives the root's messages while running. */
+        final RuntimeInbox inbox;
         volatile boolean hadPendingApprovals;
 
         Session(String agentId, String name, boolean persistent, AgentExtension agent,
-                ChatController controller) {
+                ChatController controller, RuntimeInbox inbox) {
             this.agentId = agentId;
             this.name = name;
             this.persistent = persistent;
             this.agent = agent;
             this.controller = controller;
+            this.inbox = inbox;
         }
     }
 
@@ -124,15 +127,32 @@ public final class SubAgentRegistry implements AgentRuntime {
         if (persistent) {
             graph.settings().put("context.agent." + agentId, agent.slug);
         }
-        ChatController controller = buildController(agent, persistent, agentId);
-        Session session = new Session(agentId,
-                agent.name.isEmpty() ? agent.slug : agent.name, persistent, agent, controller);
-        sessions.put(agentId, session);
-        controller.observe(state -> onSessionState(session, state));
-        controller.bindConversation(agentId);
-        controller.send(task);
+        Session session = attach(agent, persistent, agentId);
+        session.controller.bindConversation(agentId);
+        session.controller.send(task);
+        if (!session.controller.busy()) {
+            // send() is a no-op without a model; report the failure instead of advertising
+            // a session that will never run.
+            sessions.remove(agentId);
+            graph.conversations().delete(agentId);
+            if (persistent) graph.settings().remove("context.agent." + agentId);
+            publishEntries();
+            return null;
+        }
         publishEntries();
         return new AgentEntry(agentId, session.name, kind, agentId, AgentStatus.RUNNING);
+    }
+
+    /** Builds, registers and observes a session bound to an agent id. */
+    private Session attach(AgentExtension agent, boolean persistent, String agentId) {
+        RuntimeInbox inbox = bus.view("agent:" + agentId);
+        ChatController controller = buildController(agent, persistent, agentId, inbox);
+        Session session = new Session(agentId,
+                agent.name.isEmpty() ? agent.slug : agent.name, persistent, agent,
+                controller, inbox);
+        sessions.put(agentId, session);
+        controller.observe(state -> onSessionState(session, state));
+        return session;
     }
 
     @Override
@@ -171,9 +191,21 @@ public final class SubAgentRegistry implements AgentRuntime {
             return "Sub agent \"" + session.name + "\" is transient and cannot receive"
                     + " messages.";
         }
+        if (session.controller.busy()) {
+            // A running turn ignores ChatController.send() silently; deliver through the
+            // session inbox instead — the loop drains it at its next input point, and the
+            // idle-wake path delivers it if the turn finishes first.
+            session.inbox.post(new RuntimeEvent.UserMessage("parent", message));
+            return "Queued for sub agent \"" + session.name + "\" [" + session.agentId
+                    + "]: it is running and will see the message at its next input point.";
+        }
         session.controller.send(message);
-        return "Message delivered to sub agent \"" + session.name + "\" ["
-                + session.agentId + "].";
+        if (!session.controller.busy()) {
+            return "Could not deliver to sub agent \"" + session.name + "\" ["
+                    + session.agentId + "]: no model is configured.";
+        }
+        return "Delivered to sub agent \"" + session.name + "\" [" + session.agentId
+                + "] as a new turn.";
     }
 
     @Override
@@ -221,13 +253,17 @@ public final class SubAgentRegistry implements AgentRuntime {
             return "Sub agent [" + agentId + "] cannot be revived: its agent definition ("
                     + slug + ") is missing or disabled.";
         }
-        AgentEntry started = start(agent, message, true);
-        return "Revived sub agent \"" + started.name + "\" [" + started.id
-                + "] with your message; its answer arrives when the turn finishes.";
+        Session session = attach(agent, true, agentId);
+        // openThen restores the seq counter from the persisted transcript before the new
+        // turn appends rows; appending to a fresh conversation would lose the context.
+        session.controller.openThen(agentId, () -> session.controller.send(message));
+        publishEntries();
+        return "Revived sub agent \"" + session.name + "\" [" + agentId
+                + "] in its existing conversation; its answer arrives when the turn finishes.";
     }
 
     private ChatController buildController(AgentExtension agent, boolean persistent,
-                                           String agentId) {
+                                           String agentId, RuntimeInbox sessionInbox) {
         List<cn.lineai.tool.api.Tool> allowed = new ArrayList<>();
         for (cn.lineai.tool.api.Tool tool : graph.agentBaseTools().registry().all()) {
             if (!persistent && tool.mutating()) continue;
@@ -239,7 +275,6 @@ public final class SubAgentRegistry implements AgentRuntime {
         for (cn.lineai.tool.api.Tool tool : allowed) registry.register(tool);
         ToolCatalog fixedCatalog = () -> registry;
         cn.lineai.tool.api.ToolContext shared = graph.agentToolContext();
-        RuntimeInbox sessionInbox = bus.view("agent:" + agentId);
         cn.lineai.tool.api.ToolContext context = new cn.lineai.tool.api.ToolContext() {
             @Override public File workspaceRoot() { return shared.workspaceRoot(); }
             @Override public String modelId() { return shared.modelId(); }
