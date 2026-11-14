@@ -26,6 +26,8 @@ import cn.lineai.engine.protocol.ChatRequest;
 import cn.lineai.engine.protocol.StreamEvent;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class HttpModelClientProtocolTest {
@@ -132,10 +134,38 @@ public class HttpModelClientProtocolTest {
         assertTrue(result.failures.isEmpty());
     }
 
+    @Test public void cleartextEndpointIsLimitedToExactLoopbackHosts() {
+        assertTrue(HttpModelClient.isAllowed("http://localhost:8080/v1"));
+        assertTrue(HttpModelClient.isAllowed("http://127.0.0.1/v1"));
+        assertTrue(HttpModelClient.isAllowed("http://[::1]:8080/v1"));
+        assertTrue(HttpModelClient.isAllowed("http://10.0.2.2:11434/v1"));
+        assertTrue(HttpModelClient.isAllowed("https://api.example.com/v1"));
+        assertFalse(HttpModelClient.isAllowed("http://localhost.example.com/v1"));
+        assertFalse(HttpModelClient.isAllowed("http://127.0.0.1.example.com/v1"));
+        assertFalse(HttpModelClient.isAllowed("http://10.0.2.2.example.com/v1"));
+        assertFalse(HttpModelClient.isAllowed("http://192.168.1.10/v1"));
+        assertFalse(HttpModelClient.isAllowed("ftp://localhost/v1"));
+        assertFalse(HttpModelClient.isAllowed(""));
+        assertFalse(HttpModelClient.isAllowed(null));
+    }
+
+    @Test public void cleartextLookalikeEndpointFailsBeforeConnecting() {
+        Result result = stream(ModelConfig.Protocol.OPENAI_COMPATIBLE, "k",
+                "http://localhost.example.com/v1");
+        assertEquals(1, result.failures.size());
+        assertEquals("INVALID_INPUT", result.failures.get(0));
+        assertNull(path.get());
+    }
+
     private Result stream(ModelConfig.Protocol protocol, String apiKey) {
+        return stream(protocol, apiKey,
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/v1");
+    }
+
+    private Result stream(ModelConfig.Protocol protocol, String apiKey, String baseUrl) {
         ModelConfig model = ModelConfig.builder()
                 .identity("m", "M")
-                .endpoint("p", "model", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")
+                .endpoint("p", "model", baseUrl)
                 .secret(apiKey)
                 .protocol(protocol)
                 .build();

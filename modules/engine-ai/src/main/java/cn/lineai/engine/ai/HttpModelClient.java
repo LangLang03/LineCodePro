@@ -9,10 +9,13 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import cn.lineai.core.kernel.error.DomainException;
@@ -222,22 +225,56 @@ public final class HttpModelClient implements ModelClient {
         }
     }
 
-    /** Allows HTTPS everywhere and plain HTTP only for loopback and emulator hosts. */
-    private static boolean isAllowed(String baseUrl) {
+    /**
+     * Allows HTTPS everywhere and plain HTTP only for exact loopback and emulator hosts.
+     *
+     * <p>The host is parsed as a URI and compared exactly, so look-alike hosts such as
+     * {@code localhost.example.com} or {@code 127.0.0.1.example.com} cannot pass the cleartext
+     * gate. IPv6 literals are compared without their brackets.</p>
+     *
+     * @param baseUrl candidate endpoint base URL, may be null
+     * @return true for an absolute HTTPS URL, or an HTTP URL whose host is an exact loopback or
+     *         emulator address
+     */
+    static boolean isAllowed(String baseUrl) {
         String value = baseUrl == null ? "" : baseUrl.trim();
-        if (value.startsWith("https://")) {
-            return true;
-        }
-        if (!value.startsWith("http://")) {
+        if (value.isEmpty()) {
             return false;
         }
-        String host = value.substring(7);
-        int slash = host.indexOf('/');
-        if (slash >= 0) {
-            host = host.substring(0, slash);
+        URI uri;
+        try {
+            uri = new URI(value);
+        } catch (URISyntaxException error) {
+            return false;
         }
-        return host.startsWith("localhost") || host.startsWith("127.0.0.1")
-                || host.startsWith("10.0.2.2");
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        String host = uri.getHost();
+        if (host == null || host.isEmpty()) {
+            return false;
+        }
+        if ("https".equals(scheme)) {
+            return true;
+        }
+        if (!"http".equals(scheme)) {
+            return false;
+        }
+        return isCleartextHostAllowed(host);
+    }
+
+    /**
+     * Tests whether a parsed URI host is an exact loopback or emulator address.
+     *
+     * @param host host returned by {@link URI#getHost()}, bracketed for IPv6 literals
+     * @return true only for {@code localhost}, {@code 127.0.0.1}, {@code ::1} and
+     *         {@code 10.0.2.2}
+     */
+    private static boolean isCleartextHostAllowed(String host) {
+        String normalized = host.toLowerCase(Locale.ROOT);
+        if (normalized.startsWith("[") && normalized.endsWith("]")) {
+            normalized = normalized.substring(1, normalized.length() - 1);
+        }
+        return "localhost".equals(normalized) || "127.0.0.1".equals(normalized)
+                || "::1".equals(normalized) || "10.0.2.2".equals(normalized);
     }
 
     /**
