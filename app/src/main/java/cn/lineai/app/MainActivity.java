@@ -109,8 +109,7 @@ public final class MainActivity extends Activity implements cn.lineai.feature.ch
         root.setBackgroundColor(tokens.bg);
         chat = new ChatScreenView(this, graph.chat(), tokens);
         chat.setHost(this);
-        // Observing the registry publishes the current list immediately, so it must only be
-        // wired after the chat view exists; the scope unsubscribes on activity teardown.
+        // The registry publishes on observe, so wire it after the view exists; scope-tracked.
         scope.track(graph.subAgents().entries().observe(list -> chat.setAgents(list)));
         root.addView(chat, new FrameLayout.LayoutParams(-1, -1));
         FrameLayout overlay = new FrameLayout(this);
