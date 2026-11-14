@@ -213,6 +213,7 @@ public final class ChatApprovalView extends LinearLayout {
             case AGENT_SEND:
             case AGENT_WAIT:
             case AGENT_LIST:
+            case AGENT_NOTIFY:
                 return Icons.BOT;
             case MEMORY:
                 return Icons.BOOK_OPEN;

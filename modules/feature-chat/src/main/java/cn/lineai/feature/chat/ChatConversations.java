@@ -70,8 +70,11 @@ final class ChatConversations {
                                 .revision(System.nanoTime())
                                 .build());
                     } else {
-                        chat.detachView(id, nextSeq);
+                        // Render the viewed conversation first, then go detached: publish()
+                        // suppresses updates while detached, so the reverse order would leave
+                        // the UI stuck on the old conversation until the turn ends.
                         chat.publish(snapshot);
+                        chat.detachView(id, nextSeq);
                     }
                     return;
                 }
@@ -96,8 +99,8 @@ final class ChatConversations {
             final String label = chat.modelLabel();
             chat.events.post(() -> {
                 if (background) {
-                    chat.detachView("", 1);
                     chat.publish(ChatState.empty().toBuilder().model(label).build());
+                    chat.detachView("", 1);
                     return;
                 }
                 chat.conversationId = "";

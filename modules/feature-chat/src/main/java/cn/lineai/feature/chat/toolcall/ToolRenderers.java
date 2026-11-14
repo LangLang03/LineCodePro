@@ -33,6 +33,7 @@ final class ToolRenderers {
             case AGENT_SPAWN:
                 return AgentToolRenderers.SPAWN;
             case AGENT_SEND:
+            case AGENT_NOTIFY:
                 return AgentToolRenderers.SEND;
             case AGENT_WAIT:
                 return AgentToolRenderers.WAIT;

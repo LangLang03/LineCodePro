@@ -26,5 +26,7 @@ public enum ToolIcon {
     /** Waits for sub agent activity. */
     AGENT_WAIT,
     /** Lists sub agent sessions. */
-    AGENT_LIST
+    AGENT_LIST,
+    /** Sub agent → parent message. */
+    AGENT_NOTIFY
 }

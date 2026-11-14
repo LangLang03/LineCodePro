@@ -351,15 +351,24 @@ public final class SubAgentRegistry implements AgentRuntime {
     private ChatController buildController(AgentExtension agent, boolean persistent,
                                            String agentId, RuntimeInbox sessionInbox,
                                            String binding) {
+        // Transient agents cannot ask for approval, so they may mutate only when the session
+        // permission mode is "auto" (the user already waived confirmations). Persistent
+        // agents may mutate and route their approvals to the root panel.
+        boolean mayMutate = persistent
+                || cn.lineai.feature.chat.ToolModes.AUTO.equals(
+                        cn.lineai.feature.chat.ToolModes.mode(graph.settings()));
         List<cn.lineai.tool.api.Tool> allowed = new ArrayList<>();
         for (cn.lineai.tool.api.Tool tool : graph.agentBaseTools().registry().all()) {
-            if (!persistent && tool.mutating()) continue;
+            if (!mayMutate && tool.mutating()) continue;
             if (tool.kind() == cn.lineai.tool.api.ToolKind.PHONE) continue;
             if (!agent.toolNames.isEmpty() && !agent.toolNames.contains(tool.name())) continue;
             allowed.add(tool);
         }
         cn.lineai.tool.api.ToolRegistry registry = new cn.lineai.tool.api.ToolRegistry();
         for (cn.lineai.tool.api.Tool tool : allowed) registry.register(tool);
+        // Every sub agent can write to the parent while it keeps working.
+        registry.register(new cn.lineai.tool.agent.AgentNotifyRootTool(agentId,
+                SubAgentSupport.displayName(agent), bus.view(AgentEventBus.ROOT_OWNER)));
         ToolCatalog fixedCatalog = () -> registry;
         cn.lineai.tool.api.ToolContext shared = graph.agentToolContext();
         cn.lineai.tool.api.ToolContext context = new cn.lineai.tool.api.ToolContext() {
@@ -374,7 +383,7 @@ public final class SubAgentRegistry implements AgentRuntime {
                 return shared.workspaceRoot();
             }
             @Override public String modelId() { return shared.modelId(); }
-            @Override public boolean mutationAllowed() { return persistent; }
+            @Override public boolean mutationAllowed() { return mayMutate; }
             @Override public boolean pathProtectionBypassed() {
                 return shared.pathProtectionBypassed();
             }
