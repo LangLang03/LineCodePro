@@ -11,6 +11,7 @@ import java.util.List;
  */
 public final class TerminalProviderDiscovery {
 
+    /** Utility class; instantiation is not permitted. */
     private TerminalProviderDiscovery() {
     }
 

@@ -20,11 +20,22 @@ public final class SqliteTerminalProviderStore implements TerminalProviderStore 
     private final LineCodeDatabase database;
     private final Clock clock;
 
+    /**
+     * Creates the store.
+     *
+     * @param database shared database connection holder
+     * @param clock clock used to timestamp inserted and updated providers
+     */
     public SqliteTerminalProviderStore(LineCodeDatabase database, Clock clock) {
         this.database = database;
         this.clock = clock;
     }
 
+    /**
+     * Reads every provider, newest update first.
+     *
+     * @return all stored provider configurations
+     */
     @Override public List<TerminalProviderConfig> list() {
         List<TerminalProviderConfig> result = new ArrayList<>();
         try (Cursor cursor = database.open().query("ipc_providers", null, null, null,
@@ -44,6 +55,14 @@ public final class SqliteTerminalProviderStore implements TerminalProviderStore 
         return result;
     }
 
+    /**
+     * Installs a provider, or returns the existing row when the package and service class pair
+     * is already registered, so repeated discovery passes never duplicate a provider.
+     *
+     * @param input provider configuration to install
+     * @return the stored configuration, either newly inserted or the pre-existing match
+     * @throws DomainException with {@code ErrorCode.STORAGE} when the insert fails
+     */
     @Override public TerminalProviderConfig add(TerminalProviderConfig input) {
         for (TerminalProviderConfig existing : list()) {
             if (existing.packageName.equals(input.packageName)
@@ -74,6 +93,12 @@ public final class SqliteTerminalProviderStore implements TerminalProviderStore 
         return saved;
     }
 
+    /**
+     * Toggles the enabled flag and refreshes the update timestamp.
+     *
+     * @param id provider identifier; unknown identifiers are ignored
+     * @param enabled whether the provider may be offered to the user
+     */
     @Override public void setEnabled(String id, boolean enabled) {
         ContentValues values = new ContentValues();
         values.put("enabled", enabled ? 1 : 0);
@@ -81,10 +106,16 @@ public final class SqliteTerminalProviderStore implements TerminalProviderStore 
         database.open().update("ipc_providers", values, "id=?", new String[] {id});
     }
 
+    /**
+     * Removes the provider with the given identifier.
+     *
+     * @param id provider identifier; unknown identifiers are ignored
+     */
     @Override public void delete(String id) {
         database.open().delete("ipc_providers", "id=?", new String[] {id});
     }
 
+    /** Reads one required text column. */
     private static String text(Cursor cursor, String column) {
         return cursor.getString(cursor.getColumnIndexOrThrow(column));
     }

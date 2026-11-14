@@ -17,11 +17,21 @@ public final class BackStack implements Navigator {
     private final MainMailbox<List<ScreenKey<?, ?>>> mailbox;
     private boolean lastPushAnimated = true;
 
+    /**
+     * Creates a stack bound to a screen registry.
+     * @param registry source of truth for screen identities, never null
+     * @param scheduler main-thread scheduler backing the mailbox, never null
+     */
     public BackStack(ScreenRegistry registry, Scheduler scheduler) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.mailbox = new MainMailbox<>(Collections.emptyList(), scheduler);
     }
 
+    /**
+     * Appends {@code key} to the stack, collapsing singleTop pushes onto the current top.
+     * @param key registered screen identity to push, never null
+     * @param animate whether the page transition runs
+     */
     @Override
     public <S extends UiState, P extends Params> void push(ScreenKey<S, P> key, boolean animate) {
         Objects.requireNonNull(key, "key");
@@ -50,6 +60,7 @@ public final class BackStack implements Navigator {
         return lastPushAnimated;
     }
 
+    /** Removes the top entry; the root is never popped. */
     @Override
     public void pop() {
         mailbox.post(() -> {
@@ -60,11 +71,16 @@ public final class BackStack implements Navigator {
         });
     }
 
+    /** Synonym for {@link #pop()}. */
     @Override
     public void back() {
         pop();
     }
 
+    /**
+     * Truncates the stack to the nearest entry with {@code id}; absent ids leave it unchanged.
+     * @param id registered identity to unwind to, never null
+     */
     @Override
     public void popTo(ScreenId<?, ?> id) {
         Objects.requireNonNull(id, "id");
@@ -83,6 +99,7 @@ public final class BackStack implements Navigator {
         });
     }
 
+    /** Keeps only the root entry. */
     @Override
     public void popToRoot() {
         mailbox.post(() -> {
@@ -93,17 +110,20 @@ public final class BackStack implements Navigator {
         });
     }
 
+    /** Returns the top entry, or null when the stack is empty. */
     @Override
     public ScreenKey<?, ?> current() {
         List<ScreenKey<?, ?>> current = entries();
         return current.isEmpty() ? null : current.get(current.size() - 1);
     }
 
+    /** Returns the current immutable snapshot, ordered root to top. */
     @Override
     public List<ScreenKey<?, ?>> entries() {
         return mailbox.value();
     }
 
+    /** Serialises every entry for process recreation, ordered root to top. */
     @Override
     public List<Params.Args> save() {
         List<Params.Args> saved = new ArrayList<>();
@@ -113,6 +133,11 @@ public final class BackStack implements Navigator {
         return immutableCopy(saved);
     }
 
+    /**
+     * Validates and decodes {@code saved} before posting one atomic replacement.
+     * @param saved entries previously produced by {@link #save()}, never null
+     * @throws IllegalArgumentException when any entry fails registration or round-trip checks
+     */
     @Override
     public void restore(List<Params.Args> saved) {
         Objects.requireNonNull(saved, "saved");
@@ -127,6 +152,7 @@ public final class BackStack implements Navigator {
         mailbox.post(() -> publish(snapshot));
     }
 
+    /** Publishes {@code entries} unless the snapshot is unchanged. */
     private void publish(List<ScreenKey<?, ?>> entries) {
         List<ScreenKey<?, ?>> snapshot = immutableCopy(entries);
         if (!snapshot.equals(mailbox.value())) {
@@ -134,6 +160,7 @@ public final class BackStack implements Navigator {
         }
     }
 
+    /** Returns an unmodifiable copy, rejecting null entries. */
     private static <T> List<T> immutableCopy(List<T> source) {
         List<T> snapshot = new ArrayList<>(source);
         for (T entry : snapshot) {
@@ -142,6 +169,11 @@ public final class BackStack implements Navigator {
         return Collections.unmodifiableList(snapshot);
     }
 
+    /**
+     * Observes stack snapshots; delivery starts with the current value on the main thread.
+     * @param observer notified of every published snapshot
+     * @return handle cancelling the observation
+     */
     @Override
     public Cancellable observe(Observable.Observer<List<ScreenKey<?, ?>>> observer) {
         return mailbox.observe(observer);

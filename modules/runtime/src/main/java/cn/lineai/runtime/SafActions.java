@@ -19,16 +19,33 @@ import cn.lineai.ui.i18n.R;
  */
 public final class SafActions {
 
+    /** Chat image attachment picker request code. */
     public static final int REQUEST_ATTACH = 7403;
+    /** Skill archive import picker request code. */
     public static final int REQUEST_SKILL_IMPORT = 7404;
+    /** External workspace directory tree picker request code. */
     public static final int REQUEST_TREE = 7405;
+    /** Local GGUF model file picker request code. */
     public static final int REQUEST_MODEL_FILE = 7406;
+    /** Chat file attachment picker request code. */
     public static final int REQUEST_ATTACH_FILE = 7407;
+    /** Chat video attachment picker request code. */
     public static final int REQUEST_VIDEO = 7408;
 
+    /** Utility class; instantiation is not permitted. */
     private SafActions() {
     }
 
+    /**
+     * Dispatches one SAF result to its flow; chat attachments delegate to feature-chat,
+     * the remaining flows drive reloads owned by the page factories.
+     *
+     * @param host host providing graph, scheduler and activity
+     * @param pages page factory whose late reload hooks the flows trigger
+     * @param requestCode request code of the finished picker
+     * @param uri selected document, {@code null} when the user cancelled
+     * @return {@code true} when this class consumed the request code
+     */
     public static boolean handle(PageHost host, PageFactory pages, int requestCode, Uri uri) {
         if (requestCode == REQUEST_ATTACH) {
             cn.lineai.feature.chat.ChatAttachments.importImage(host, uri);
@@ -53,6 +70,7 @@ public final class SafActions {
         return false;
     }
 
+    /** Imports the picked archive or markdown as a skill and refreshes the skills page. */
     private static void importSkill(PageHost host, PageFactory pages, Uri uri) {
         String name = "skill.zip";
         String last = uri.getLastPathSegment();
@@ -83,6 +101,7 @@ public final class SafActions {
         });
     }
 
+    /** Copies the picked GGUF file into the models directory and applies its path. */
     private static void importLocalModel(PageHost host, PageFactory pages, Uri uri) {
         Scheduler scheduler = scheduler(host);
         String name = "model.gguf";
@@ -114,6 +133,7 @@ public final class SafActions {
         });
     }
 
+    /** Resolves the picked tree to a local path and registers it as a workspace project. */
     private static void useExternalWorkspace(PageHost host, PageFactory pages, Uri uri) {
         try {
             String path = cn.lineai.feature.workspace.SafPaths.toFileSystemPath(uri.toString());
@@ -143,10 +163,12 @@ public final class SafActions {
         }
     }
 
+    /** Scheduler resolved from the application graph. */
     private static Scheduler scheduler(PageHost host) {
         return host.graph().graph().get(Scheduler.class);
     }
 
+    /** Buffered stream copy used by the model import. */
     private static void copy(InputStream input, OutputStream output) throws IOException {
         byte[] buffer = new byte[8192];
         int count;

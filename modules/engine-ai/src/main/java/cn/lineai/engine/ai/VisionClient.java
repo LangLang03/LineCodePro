@@ -19,6 +19,18 @@ import cn.lineai.engine.protocol.OpenAiChatCodec;
 /** One-shot non-streaming vision completion for the image understanding tool. */
 public final class VisionClient {
 
+    /**
+     * Answers one vision question about one image.
+     *
+     * <p>The request is non-streaming and carries a single user message holding a text block and
+     * an image block; the wire format, headers and endpoint follow the model protocol.</p>
+     *
+     * @param model model configuration selecting protocol, endpoint and credentials
+     * @param prompt question or instruction about the image
+     * @param imagePath local path of the image file
+     * @return the model's textual answer
+     * @throws IOException when the request fails or the response cannot be parsed
+     */
     public String describe(ModelConfig model, String prompt, String imagePath) throws IOException {
         ChatRequest request = ChatRequest.builder()
                 .model(model.modelId)
@@ -61,6 +73,14 @@ public final class VisionClient {
         return parse(model, raw);
     }
 
+    /**
+     * Extracts the answer text from a non-streaming vision response.
+     *
+     * @param model model configuration selecting the response shape
+     * @param raw response body
+     * @return extracted answer text, falling back to the raw body when no known shape matches
+     * @throws IOException when the body is not parseable at all
+     */
     static String parse(ModelConfig model, String raw) throws IOException {
         try {
             if (model.protocol == ModelConfig.Protocol.ANTHROPIC_MESSAGES) {

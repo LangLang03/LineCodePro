@@ -37,6 +37,7 @@ public class ToolCallCardView extends LinearLayout {
     private boolean expandable;
     private Consumer<Boolean> expandedListener;
 
+    /** Builds the vertical content container; the frame supplies header and body rows. */
     public ToolCallCardView(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -48,24 +49,32 @@ public class ToolCallCardView extends LinearLayout {
         setBackgroundColor(android.graphics.Color.TRANSPARENT);
     }
 
+    /** Replaces the presentation source and rebinds; the icon picks the renderer. */
     public void setProvider(ToolPresentationProvider value) {
         provider = value;
         if (entry != null) bind(entry, tokens);
     }
 
+    /** Replaces the diff bridge and rebinds so write cards refresh their diff. */
     public void setDiffLookup(ToolDiffLookup value) {
         diffLookup = value;
         if (entry != null) bind(entry, tokens);
     }
 
+    /** Presentation source handed to nested cards and renderers. */
     ToolPresentationProvider provider() {
         return provider;
     }
 
+    /** Diff bridge handed to write-style renderers. */
     ToolDiffLookup diffLookup() {
         return diffLookup;
     }
 
+    /**
+     * Rebinds the card: resolves presentation and renderer, resets the expansion only when the
+     * call id changes, and skips the rebuild when the signature is unchanged.
+     */
     public void bind(ToolCallEntry value, Tokens current) {
         tokens = current;
         if (value == null) {
@@ -96,6 +105,7 @@ public class ToolCallCardView extends LinearLayout {
         render();
     }
 
+    /** Applies tokens through the live frame; no rebuild, so rows are preserved. */
     public void applyTokens(Tokens current) {
         tokens = current;
         if (frame != null) {
@@ -105,16 +115,19 @@ public class ToolCallCardView extends LinearLayout {
         }
     }
 
+    /** Programmatic expansion used by restores; does not notify the listener. */
     public void setExpanded(boolean value) {
         if (!expandable || entry == null) return;
         expanded = value;
         render();
     }
 
+    /** Current expansion state. */
     public boolean isExpanded() {
         return expanded;
     }
 
+    /** Whether this card exposes a chevron and body at all. */
     boolean isExpandable() {
         return expandable;
     }
@@ -124,6 +137,7 @@ public class ToolCallCardView extends LinearLayout {
         expandedListener = listener;
     }
 
+    /** Chevron tap: flips the expansion and notifies the owning group. */
     void toggleExpanded() {
         if (!expandable) return;
         expanded = !expanded;
@@ -131,6 +145,7 @@ public class ToolCallCardView extends LinearLayout {
         if (expandedListener != null) expandedListener.accept(expanded);
     }
 
+    /** Everything the card renders; identical signatures skip the rebuild. */
     private static String signature(ToolCallEntry value, ToolPresentation presentation) {
         StringBuilder builder = new StringBuilder();
         builder.append(value.callId).append('|').append(value.name)
@@ -146,6 +161,7 @@ public class ToolCallCardView extends LinearLayout {
         return builder.toString();
     }
 
+    /** Rebuilds header and body through the renderer, hiding an empty header. */
     private void render() {
         content.removeAllViews();
         appliers.clear();

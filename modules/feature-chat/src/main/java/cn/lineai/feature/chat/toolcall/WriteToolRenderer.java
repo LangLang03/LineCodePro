@@ -25,11 +25,13 @@ import cn.lineai.ui.tokens.Tokens;
  */
 final class WriteToolRenderer implements ToolCardRenderer {
 
+    /** Shared stateless instance. */
     static final WriteToolRenderer INSTANCE = new WriteToolRenderer();
 
     private WriteToolRenderer() {
     }
 
+    /** Renders the status row with the diff counters and the copyable diff card when expanded. */
     @Override
     public void render(ToolCardFrame frame, ToolCallEntry entry, ToolPresentation presentation) {
         ToolJson arguments = ToolCardSupport.arguments(entry);
@@ -71,6 +73,7 @@ final class WriteToolRenderer implements ToolCardRenderer {
         frame.body.addView(box, frame.fill());
     }
 
+    /** Status word distinguishing created/reverted/pending/done writes. */
     private String statusText(ToolCardFrame frame, ToolCallEntry entry, DiffLines diff,
                               ToolIcon icon) {
         int statusRes;
@@ -89,6 +92,7 @@ final class WriteToolRenderer implements ToolCardRenderer {
         return frame.context().getString(statusRes);
     }
 
+    /** Path line plus the copy action of the diff card. */
     private LinearLayout detailHeader(final ToolCardFrame frame, String path,
                                       final String copyText) {
         LinearLayout row = frame.row();
@@ -110,6 +114,7 @@ final class WriteToolRenderer implements ToolCardRenderer {
         return row;
     }
 
+    /** Copies the file content (or diff) labeled by the path. */
     private void copyToClipboard(Context context, String path, String content) {
         if (content == null || content.isEmpty()) return;
         ClipboardManager clipboard = (ClipboardManager) context.getSystemService(
@@ -119,12 +124,14 @@ final class WriteToolRenderer implements ToolCardRenderer {
                 path.isEmpty() ? "diff" : path, content));
     }
 
+    /** Persisted snapshot for the entry's diff id, or null without a bridge/id. */
     private ToolDiffLookup.Snapshot snapshot(ToolCardFrame frame, ToolCallEntry entry) {
         ToolDiffLookup lookup = frame.diffLookup();
         if (lookup == null || entry.diffId.isEmpty()) return null;
         return lookup.find(entry.diffId);
     }
 
+    /** Best-effort diff: persisted snapshot, old/new strings, or full new content. */
     private DiffLines diff(ToolJson arguments, ToolDiffLookup.Snapshot snapshot) {
         if (snapshot != null) return DiffLines.calculate(snapshot.before, snapshot.after);
         String oldText = arguments.text("old_string");
@@ -137,6 +144,7 @@ final class WriteToolRenderer implements ToolCardRenderer {
         return null;
     }
 
+    /** Content the copy button writes: snapshot after, new_string, or full content. */
     private String copyText(ToolJson arguments, ToolDiffLookup.Snapshot snapshot) {
         if (snapshot != null) return snapshot.after;
         String newText = arguments.text("new_string");
@@ -144,6 +152,7 @@ final class WriteToolRenderer implements ToolCardRenderer {
         return arguments.text("content");
     }
 
+    /** Target path from the first non-empty path argument. */
     private static String path(ToolJson arguments) {
         for (String key : new String[] {"path", "file_path", "filePath"}) {
             String value = arguments.text(key).trim();

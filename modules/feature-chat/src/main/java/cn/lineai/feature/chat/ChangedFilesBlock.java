@@ -46,6 +46,7 @@ final class ChangedFilesBlock extends LinearLayout {
     private boolean expanded;
     private List<ToolCallEntry> edits = new ArrayList<>();
 
+    /** Builds the hairline, the clickable header and the collapsible card list. */
     ChangedFilesBlock(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -120,6 +121,7 @@ final class ChangedFilesBlock extends LinearLayout {
         applyTokens(current);
     }
 
+    /** Applies the current design tokens to the header and every bound card. */
     void applyTokens(Tokens current) {
         tokens = current;
         if (rule != null) {
@@ -139,6 +141,7 @@ final class ChangedFilesBlock extends LinearLayout {
         }
     }
 
+    /** Header tap: flips the disclosure state for this row. */
     private void toggle() {
         if (env == null) {
             return;
@@ -148,6 +151,7 @@ final class ChangedFilesBlock extends LinearLayout {
         applyExpanded();
     }
 
+    /** Review tap: opens the list and expands every card for direct review. */
     private void expand() {
         if (env == null) {
             return;
@@ -160,11 +164,13 @@ final class ChangedFilesBlock extends LinearLayout {
         }
     }
 
+    /** Shows or hides the card list and points the chevron accordingly. */
     private void applyExpanded() {
         chevron.setIconType(expanded ? Icons.CHEVRON_DOWN : Icons.CHEVRON_RIGHT);
         files.setVisibility(expanded ? VISIBLE : GONE);
     }
 
+    /** Reuses bound cards across rebinds, adding or removing views to match the edit count. */
     private void renderCards() {
         while (cards.size() > edits.size()) {
             ToolCallCardView card = cards.remove(cards.size() - 1);
@@ -188,6 +194,7 @@ final class ChangedFilesBlock extends LinearLayout {
         }
     }
 
+    /** Filters the turn's tool entries down to the mutating ones. */
     private List<ToolCallEntry> edits(List<ToolCallEntry> tools) {
         List<ToolCallEntry> values = new ArrayList<>();
         for (ToolCallEntry entry : tools) {

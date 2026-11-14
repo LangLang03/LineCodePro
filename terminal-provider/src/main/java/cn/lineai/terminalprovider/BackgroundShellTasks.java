@@ -31,17 +31,28 @@ final class BackgroundShellTasks {
     private final AtomicLong handleSeq = new AtomicLong();
     private final File defaultDir;
 
+    /**
+     * Creates the registry.
+     *
+     * @param defaultDir working directory used when the caller passes no existing cwd
+     */
     BackgroundShellTasks(File defaultDir) {
         this.defaultDir = defaultDir;
     }
 
-/** One background task: process handle, output buffer and callback; freed by kill/forget. */
+    /** One background task: process handle, output buffer and callback; freed by kill/forget. */
     private static final class Task {
+        /** Provider-side handle identifying this task to the host. */
         final long handleId;
+        /** Guest shell process; destroyed by kill/shutdown. */
         final Process process;
+        /** AIDL sink for output and completion events; may be null. */
         final ITerminalProviderCallback callback;
+        /** Accumulated output, capped at {@code MAX_BACKGROUND_CHARS} to keep offsets stable. */
         final StringBuilder buffer = new StringBuilder();
+        /** Written by the runner and pump threads, read by polled AIDL calls. */
         volatile boolean running = true;
+        /** Valid only once {@code running} is false; -1 while unknown. */
         volatile int exitCode = -1;
 
         Task(long handleId, Process process, ITerminalProviderCallback callback) {
@@ -50,6 +61,7 @@ final class BackgroundShellTasks {
             this.callback = callback;
         }
 
+        /** Appends output under the buffer cap, dropping anything beyond the cap. */
         synchronized void append(String text) {
             if (buffer.length() >= MAX_BACKGROUND_CHARS) {
                 return;
@@ -60,6 +72,7 @@ final class BackgroundShellTasks {
             }
         }
 
+        /** Returns the output recorded after the offset, or the empty string when out of range. */
         synchronized String chunkFrom(long offset) {
             if (offset < 0 || offset >= buffer.length()) {
                 return "";
@@ -92,6 +105,13 @@ final class BackgroundShellTasks {
         }
     }
 
+    /**
+     * Polls the state and incremental output of a task.
+     *
+     * @param handleId the handle returned by {@link #start}
+     * @param offset byte offset into the recorded output; pass the previous read length
+     * @return the snapshot; unknown handles report not running with an unknown exit code
+     */
     TerminalShellBackgroundState read(long handleId, long offset) {
         Task task = tasks.get(handleId);
         if (task == null) {
@@ -101,6 +121,13 @@ final class BackgroundShellTasks {
                 task.chunkFrom(offset));
     }
 
+    /**
+     * Removes the task and tears down its whole process tree, so orphaned descendants of
+     * the shell cannot outlive the handle.
+     *
+     * @param handleId the handle returned by {@link #start}
+     * @return true when a live task existed and was killed
+     */
     boolean kill(long handleId) {
         Task task = tasks.remove(handleId);
         if (task == null) {
@@ -111,6 +138,12 @@ final class BackgroundShellTasks {
         return true;
     }
 
+    /**
+     * Removes the task without killing the process, for shells that intentionally
+     * detached their own children.
+     *
+     * @param handleId the handle returned by {@link #start}
+     */
     void forget(long handleId) {
         tasks.remove(handleId);
     }
@@ -127,7 +160,11 @@ final class BackgroundShellTasks {
         Log.i(TAG, "background shell tasks shut down");
     }
 
-/** Streams both output pipes, records the exit code after the process exits and completes the callback. */
+    /**
+     * Runs one task to completion on the shared executor. Output is drained by the
+     * sanctioned daemon pump threads of {@link #pump} so the process never blocks on full
+     * pipes; the exit code is recorded and the callback completed once both pumps finish.
+     */
     private void run(Task task) {
         final Process process = task.process;
         Thread stdoutThread = pump(process.getInputStream(), task, "bg-stdout-" + task.handleId);
@@ -174,6 +211,7 @@ final class BackgroundShellTasks {
         }, name);
     }
 
+    /** Delivers an error to the callback, tolerating a null callback or a dead binder. */
     private static void notifyError(ITerminalProviderCallback callback, String message) {
         if (callback == null) {
             return;

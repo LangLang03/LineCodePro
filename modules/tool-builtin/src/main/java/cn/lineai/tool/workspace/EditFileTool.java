@@ -13,13 +13,22 @@ import cn.lineai.tool.api.ToolPresentation;
 import cn.lineai.tool.api.ToolContext;
 import cn.lineai.tool.api.ToolResult;
 
-/** Replaces the first exact occurrence of a snippet. */
+/**
+ * Replaces the first exact occurrence of a snippet.
+ *
+ * <p>Matching is literal and single-shot: no regex, no repeated replacement. A model that
+ * intends a global change must issue one call per occurrence, which keeps every edit visible
+ * on its own card.</p>
+ */
 public final class EditFileTool implements Tool {
 
+    /** {@inheritDoc} */
     @Override public String name() { return "edit_file"; }
 
+    /** {@inheritDoc} */
     @Override public String description() { return "Replace the first exact match of old_string."; }
 
+    /** {@inheritDoc} */
     @Override public String parametersJson() {
         return cn.lineai.tool.api.ToolSchemaBuilder.object()
                 .string("path", "Workspace-relative path")
@@ -28,15 +37,25 @@ public final class EditFileTool implements Tool {
                 .required("path").required("old_string").required("new_string").build();
     }
 
+    /** {@inheritDoc} */
     @Override public ToolPresentation presentation(JSONObject arguments) {
         return new ToolPresentation("Edit file", ToolIcon.EDIT,
                 arguments.optString("path", ""), ToolPresentation.reason(arguments));
     }
 
+    /** {@inheritDoc} */
     @Override public boolean needsLocalWorkspace() { return true; }
 
+    /** {@inheritDoc} */
     @Override public boolean mutating() { return true; }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Fails without writing when the file is missing, {@code old_string} is empty, or the
+     * snippet does not occur in the current content, so a stale edit can never corrupt the
+     * file silently.</p>
+     */
     @Override public ToolResult execute(ToolContext context, JSONObject arguments) {
         try {
             if (!context.mutationAllowed()) return ToolResult.failure("", "Mutation not allowed");

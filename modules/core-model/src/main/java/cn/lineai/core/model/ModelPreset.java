@@ -11,6 +11,12 @@ public final class ModelPreset {
     public final ModelConfig.Protocol protocol;
     public final String baseUrl;
 
+    /**
+     * Creates a preset entry.
+     * @param id stable preset identifier used for lookup
+     * @param protocol wire protocol the endpoint speaks
+     * @param baseUrl endpoint base URL, null becomes empty
+     */
     public ModelPreset(String id, ModelConfig.Protocol protocol, String baseUrl) {
         this.id = id;
         this.protocol = protocol;
@@ -41,10 +47,16 @@ public final class ModelPreset {
         ALL = Collections.unmodifiableList(presets);
     }
 
+    /** Returns the unmodifiable preset catalogue in display order. */
     public static List<ModelPreset> all() {
         return ALL;
     }
 
+    /**
+     * Looks up a preset by identifier.
+     * @param id preset identifier
+     * @return the preset, or null when the identifier is unknown
+     */
     public static ModelPreset find(String id) {
         for (ModelPreset preset : ALL) {
             if (preset.id.equals(id)) return preset;

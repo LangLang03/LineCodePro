@@ -11,11 +11,30 @@ public final class SkillHubEntry {
     public final long downloads;
     public final SkillHubMeta meta;
 
+    /**
+     * Convenience overload that supplies an empty {@link SkillHubMeta}.
+     * @param slug unique hub slug
+     * @param name display name
+     * @param description short description
+     * @param author publisher name
+     * @param version published version string
+     * @param downloads download count
+     */
     public SkillHubEntry(String slug, String name, String description, String author,
                          String version, long downloads) {
         this(slug, name, description, author, version, downloads, SkillHubMeta.empty());
     }
 
+    /**
+     * Creates a search result, normalising null strings to empty.
+     * @param slug unique hub slug
+     * @param name display name
+     * @param description short description
+     * @param author publisher name
+     * @param version published version string
+     * @param downloads download count
+     * @param meta presentation metadata, null becomes {@link SkillHubMeta#empty()}
+     */
     public SkillHubEntry(String slug, String name, String description, String author,
                          String version, long downloads, SkillHubMeta meta) {
         this.slug = slug == null ? "" : slug;

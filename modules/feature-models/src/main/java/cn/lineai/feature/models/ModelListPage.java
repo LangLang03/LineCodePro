@@ -26,18 +26,48 @@ import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.ThemeBinder;
 import cn.lineai.ui.tokens.Tokens;
 
-/** Model management list with selection, long-press actions and batch deletion. */
+/**
+ * Model management list with selection, long-press actions and batch deletion.
+ *
+ * <p>This page owns the module's loading idiom: the store is read on the io scheduler and the list
+ * is re-rendered on the main scheduler (see {@link #onShown}). Re-rendering is wholesale — the list
+ * container is emptied and rebuilt on every data change — which is acceptable here because the set
+ * of models is small and changes rarely, and every render derives its styling from the current
+ * palette so theme changes ride along for free. Selection and multi-select state live in the page,
+ * not in the cards, so rebuilds cannot lose them.</p>
+ */
 public final class ModelListPage extends LinearLayout implements cn.lineai.ui.kit.Refreshable {
 
+    /**
+     * Outcome sink for navigation, selection and deletion; the page never navigates or persists on
+     * its own.
+     */
     public interface Listener {
+        /** Reports that the header back button was pressed. */
         void onBack();
 
+        /** Reports that the add-model action was requested. */
         void onAddModel();
 
+        /**
+         * Reports a tapped card outside multi-select mode.
+         *
+         * @param id id of the tapped model
+         */
         void onSelectModel(String id);
 
+        /**
+         * Reports the modify action for a model.
+         *
+         * @param id id of the model to edit
+         */
         void onEditModel(String id);
 
+        /**
+         * Reports the confirmed deletion of one or more models.
+         *
+         * @param ids ids selected for deletion, never empty
+         */
         void onDeleteModels(List<String> ids);
     }
 
@@ -54,12 +84,35 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
     private java.util.function.Supplier<String> selection;
     private final cn.lineai.core.kernel.time.Scheduler scheduler;
 
+    /**
+     * Creates a management-mode list page with the default title.
+     *
+     * @param context hosting context
+     * @param tokens initial palette snapshot
+     * @param models initial model set; null renders as empty
+     * @param selectedId id highlighted as the active model; may be null
+     * @param listener outcome sink; never null in management use
+     * @param scheduler scheduler for the io/main refresh hop; may be null, in which case loading
+     *     falls back to synchronous calls
+     */
     public ModelListPage(Context context, Tokens tokens, List<ModelConfig> models, String selectedId,
                          Listener listener, cn.lineai.core.kernel.time.Scheduler scheduler) {
         this(context, tokens, models, selectedId, context.getString(R.string.screen_models_title),
                 true, listener, scheduler);
     }
 
+    /**
+     * Creates a list page with full control over title and mode.
+     *
+     * @param context hosting context
+     * @param tokens initial palette snapshot
+     * @param models initial model set; null renders as empty
+     * @param selectedId id highlighted as the active model; may be null
+     * @param title header title; null or empty falls back to the default resource
+     * @param management true enables the add action and long-press model actions
+     * @param listener outcome sink; may be null in read-only mode
+     * @param scheduler scheduler for the io/main refresh hop; may be null for synchronous loading
+     */
     public ModelListPage(Context context, Tokens tokens, List<ModelConfig> models, String selectedId,
                          String title, boolean management, Listener listener,
                          cn.lineai.core.kernel.time.Scheduler scheduler) {
@@ -88,13 +141,24 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
         renderList();
     }
 
-    /** Reloads the list whenever the screen becomes visible again (e.g. after adding a model). */
+    /**
+     * Installs the refresh suppliers used by {@link #onShown}. Both suppliers run on the io
+     * scheduler; neither may touch views.
+     *
+     * @param loader store reader producing the current model list
+     * @param selection store reader producing the currently active model id
+     */
     public void loader(java.util.function.Supplier<List<ModelConfig>> loader,
                        java.util.function.Supplier<String> selection) {
         this.loader = loader;
         this.selection = selection;
     }
 
+    /**
+     * Refreshes the list on every visibility change. With a scheduler installed, the suppliers run
+     * on io and {@link #apply} runs on main; without one (legacy harnesses) both run inline on the
+     * calling thread.
+     */
     @Override public void onShown() {
         if (loader == null) return;
         if (scheduler == null) {
@@ -110,6 +174,10 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
         });
     }
 
+    /**
+     * Replaces page state when the loaded data actually differs; identical data skips the rebuild
+     * so scroll position survives a no-op refresh. Must run on the main thread.
+     */
     private void apply(List<ModelConfig> latest, String current) {
         boolean changed = !latest.equals(models) || !current.equals(selectedId);
         if (!changed) return;
@@ -120,6 +188,7 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
         renderList();
     }
 
+    /** Rebuilds the header, switching to the multi-select bar when a selection is active. */
     private void renderHeader() {
         Context context = getContext();
         headerHost.removeAllViews();
@@ -147,6 +216,7 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
                 LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
     }
 
+    /** Rebuilds the card list from the current model set, or shows the empty-state caption. */
     private void renderList() {
         Context context = getContext();
         list.removeAllViews();
@@ -164,6 +234,8 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
         }
     }
 
+    /** Builds one model card: provider badge, name and id, plus the selection affordance current
+     * mode requires. Cards are disposable; page state, not card state, encodes selection. */
     private void addCard(ModelConfig model) {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -243,6 +315,7 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
         }
     }
 
+    /** Shows the per-model action sheet (modify, enter multi-select) for a long-pressed card. */
     private void showActions(ModelConfig model) {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -269,6 +342,11 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
         holder[0] = Sheets.showBottom(context, tokens, panel);
     }
 
+    /**
+     * Shows the delete confirmation sheet for the current multi-selection. The optimistic local
+     * removal after the listener callback keeps the list responsive; the next {@link #onShown}
+     * refresh reconciles with the store.
+     */
     private void confirmDelete() {
         if (multiSelected.isEmpty()) return;
         Context context = getContext();
@@ -301,12 +379,14 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
         holder[0] = Sheets.showBottom(context, tokens, panel);
     }
 
+    /** Toggles one id in the multi-selection and rebuilds header and list. */
     private void toggleSelected(String id) {
         if (!multiSelected.remove(id)) multiSelected.add(id);
         renderHeader();
         renderList();
     }
 
+    /** Builds the rounded-top panel shared by every sheet this page shows. */
     private LinearLayout sheetPanel(Tokens tokens) {
         LinearLayout panel = new LinearLayout(getContext());
         panel.setOrientation(VERTICAL);
@@ -314,6 +394,7 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
         return panel;
     }
 
+    /** Adds the drag handle pill at the top of a sheet panel. */
     private void handle(LinearLayout panel, Tokens tokens) {
         View handle = new View(getContext());
         handle.setBackground(Ui.rounded(getContext(), tokens.textTertiary, 2));
@@ -324,22 +405,35 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
         panel.addView(handle, params);
     }
 
+    /** Adds the bold sheet heading. */
     private void sheetTitle(LinearLayout panel, Tokens tokens, String value) {
         TextView title = Ui.bold(getContext(), value, 17, tokens.text);
         Ui.padding(title, 16, 0, 16, 12);
         panel.addView(title, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
     }
 
+    /** Adds the hairline divider under a sheet heading. */
     private void divider(LinearLayout panel, Tokens tokens) {
         View divider = new View(getContext());
         divider.setBackgroundColor(tokens.borderLight);
         panel.addView(divider, new LayoutParams(LayoutParams.MATCH_PARENT, 1));
     }
 
+    /** Adds a tappable action row with default text color; see the full overload for details. */
     private void sheetAction(LinearLayout panel, Tokens tokens, String label, String desc, Runnable action) {
         sheetAction(panel, tokens, label, desc, action, tokens.text);
     }
 
+    /**
+     * Adds a tappable action row with an optional secondary description line.
+     *
+     * @param panel sheet panel receiving the row
+     * @param tokens palette snapshot
+     * @param label primary action text
+     * @param desc secondary text; empty hides the line
+     * @param action run on tap; the caller dismisses the sheet itself
+     * @param labelColor color of the primary text, allowing danger-tinted rows
+     */
     private void sheetAction(LinearLayout panel, Tokens tokens, String label, String desc,
                              Runnable action, int labelColor) {
         Context context = getContext();
@@ -364,10 +458,15 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
         panel.addView(row, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
     }
 
+    /** Applies the bottom inset that keeps sheet content above the navigation gesture area. */
     private void bottomInset(LinearLayout panel) {
         panel.setPadding(0, 0, 0, Ui.dp(getContext(), 12));
     }
 
+    /**
+     * Resolves the badge caption for a model: provider label when present and non-custom, otherwise
+     * the protocol name.
+     */
     private String provider(ModelConfig model) {
         String custom = getContext().getString(R.string.model_provider_custom);
         String label = model.providerLabel == null || model.providerLabel.isEmpty()
@@ -376,6 +475,7 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
         return label;
     }
 
+    /** Maps a protocol to its short badge caption; unknown values fall back to OpenAI. */
     private static String protocolLabel(ModelConfig.Protocol protocol) {
         switch (protocol) {
             case CODEX_RESPONSES: return "Codex";
@@ -386,6 +486,7 @@ public final class ModelListPage extends LinearLayout implements cn.lineai.ui.ki
         }
     }
 
+    /** Maps a protocol to its badge fill color; unknown values fall back to the OpenAI tone. */
     private static int badgeColor(ModelConfig.Protocol protocol) {
         switch (protocol) {
             case CODEX_RESPONSES: return Color.parseColor("#4B8BFF");

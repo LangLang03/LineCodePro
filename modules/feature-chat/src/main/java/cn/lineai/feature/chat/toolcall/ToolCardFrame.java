@@ -42,6 +42,14 @@ final class ToolCardFrame {
     private Tokens tokens;
     private boolean bodyForced;
 
+    /**
+     * @param context   hosting context
+     * @param tokens    design tokens at bind time
+     * @param card      owning card view for expansion state and shared services
+     * @param header    header container the renderer fills
+     * @param body      expandable body container
+     * @param appliers  token appliers registered by the renderer, run on every theme change
+     */
     ToolCardFrame(Context context, Tokens tokens, ToolCallCardView card, LinearLayout header,
                   LinearLayout body, List<Runnable> appliers) {
         this.context = context;
@@ -52,46 +60,56 @@ final class ToolCardFrame {
         this.appliers = appliers;
     }
 
+    /** Hosting context. */
     Context context() {
         return context;
     }
 
+    /** Current design tokens. */
     Tokens tokens() {
         return tokens;
     }
 
+    /** Presentation source of the owning card. */
     ToolPresentationProvider provider() {
         return card.provider();
     }
 
+    /** Diff bridge of the owning card. */
     ToolDiffLookup diffLookup() {
         return card.diffLookup();
     }
 
+    /** Whether the owning card is expanded. */
     boolean expanded() {
         return card.isExpanded();
     }
 
+    /** Asks the card to flip its expansion (chevron/header taps). */
     void requestToggle() {
         card.toggleExpanded();
     }
 
+    /** Registers an applier, running it once immediately so the view starts styled. */
     void addTokenApplier(Runnable applier) {
         if (applier == null) return;
         applier.run();
         appliers.add(applier);
     }
 
+    /** Runs every registered applier against the new tokens. */
     void applyTokens(Tokens next) {
         tokens = next;
         card.setBackgroundColor(android.graphics.Color.TRANSPARENT);
         for (Runnable applier : appliers) applier.run();
     }
 
+    /** Marks the body visible regardless of expansion (always-shown cards). */
     void showBodyAlways() {
         bodyForced = true;
     }
 
+    /** Finalizes body visibility after the renderer finished building. */
     void finish() {
         body.setVisibility(bodyForced || (card.isExpanded() && body.getChildCount() > 0)
                 ? View.VISIBLE : View.GONE);
@@ -99,6 +117,7 @@ final class ToolCardFrame {
 
     // ---------------------------------------------------------------- builders
 
+    /** Centered horizontal container. */
     LinearLayout row() {
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -106,18 +125,21 @@ final class ToolCardFrame {
         return row;
     }
 
+    /** Vertical container. */
     LinearLayout column() {
         LinearLayout column = new LinearLayout(context);
         column.setOrientation(LinearLayout.VERTICAL);
         return column;
     }
 
+    /** Token-tinted label that restyles itself on theme changes. */
     TextView text(CharSequence value, int sizeSp, final Tint tint, int style) {
         final TextView view = Ui.text(context, value, sizeSp, tint.color(tokens), style);
         addTokenApplier(() -> view.setTextColor(tint.color(tokens)));
         return view;
     }
 
+    /** Monospace variant of {@link #text}. */
     TextView mono(CharSequence value, int sizeSp, final Tint tint, boolean singleLine) {
         final TextView view = text(value, sizeSp, tint, Typeface.NORMAL);
         view.setTypeface(Typeface.MONOSPACE);
@@ -179,12 +201,14 @@ final class ToolCardFrame {
         return well;
     }
 
+    /** Weighted spacer pushing trailing views to the end. */
     View spacer() {
         View view = new View(context);
         view.setLayoutParams(new LinearLayout.LayoutParams(0, 1, 1f));
         return view;
     }
 
+    /** 1dp code-border hairline. */
     View divider() {
         final View line = new View(context);
         line.setLayoutParams(new LinearLayout.LayoutParams(-1, 1));
@@ -243,6 +267,7 @@ final class ToolCardFrame {
         return box;
     }
 
+    /** Adds selectable monospace text in a bounded scroll view. */
     void addCodeText(LinearLayout box, CharSequence text, int maxHeightDp, final Tint tint) {
         BoundedScrollView scroll = new BoundedScrollView(context,
                 maxHeightDp <= 0 ? 240 : maxHeightDp);
@@ -257,6 +282,7 @@ final class ToolCardFrame {
         box.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
     }
 
+    /** Adds an arbitrary child in a bounded scroll view. */
     void addScrollable(LinearLayout box, View child, int maxHeightDp) {
         BoundedScrollView scroll = new BoundedScrollView(context,
                 maxHeightDp <= 0 ? 240 : maxHeightDp);
@@ -272,6 +298,7 @@ final class ToolCardFrame {
         return scroll;
     }
 
+    /** Pre-rendered markdown view that re-renders on theme changes. */
     MarkdownLite markdown(CharSequence text) {
         final MarkdownLite view = new MarkdownLite(context, tokens);
         final String value = text == null ? "" : text.toString();
@@ -293,28 +320,34 @@ final class ToolCardFrame {
         return view;
     }
 
+    /** 11sp bold tertiary section label (INPUT/OUTPUT). */
     TextView inputLabel(CharSequence text) {
         return text(text, 11, t -> t.textTertiary, Typeface.BOLD);
     }
 
+    /** Wrap-content layout parameters. */
     LinearLayout.LayoutParams wrap() {
         return new LinearLayout.LayoutParams(-2, -2);
     }
 
+    /** Match-width layout parameters. */
     LinearLayout.LayoutParams fill() {
         return new LinearLayout.LayoutParams(-1, -2);
     }
 
+    /** Weighted layout parameters. */
     LinearLayout.LayoutParams grow() {
         return new LinearLayout.LayoutParams(0, -2, 1f);
     }
 
+    /** Layout parameters with a top margin in dp. */
     LinearLayout.LayoutParams withTop(int topDp) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.topMargin = Ui.dp(context, topDp);
         return params;
     }
 
+    /** Layout parameters with margins on all four sides in dp. */
     LinearLayout.LayoutParams withPadding(int leftDp, int topDp, int rightDp, int bottomDp) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.leftMargin = Ui.dp(context, leftDp);

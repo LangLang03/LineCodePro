@@ -33,6 +33,7 @@ import cn.lineai.ui.tokens.Tokens;
  */
 public final class TutorialPage extends SettingsPage {
 
+    /** Tutorial variants offered by the selector. */
     private enum Mode { SIMPLE, PRO }
 
     private static final String ASSET_SIMPLE = "tutorials/simple.md";
@@ -54,6 +55,13 @@ public final class TutorialPage extends SettingsPage {
     private ViewTreeObserver.OnPreDrawListener restoreScrollListener;
     private boolean renderComplete;
 
+    /**
+     * Builds the tutorial page and renders the simple document eagerly.
+     *
+     * @param context Android context used to read assets and inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     */
     public TutorialPage(Context context, Tokens tokens, Runnable back) {
         super(context, R.string.screen_tutorial_title, tokens, back);
         Ui.padding(content, 16, 12, 16, 100);
@@ -95,12 +103,14 @@ public final class TutorialPage extends SettingsPage {
         render();
     }
 
+    /** Switches the displayed variant, lazily reading the pro document on first selection. */
     private void switchTo(Mode next) {
         if (next == mode) return;
         mode = next;
         render();
     }
 
+    /** Re-renders the current document incrementally and rebuilds the section chips. */
     private void render() {
         pendingSection = null;
         renderComplete = false;
@@ -111,6 +121,7 @@ public final class TutorialPage extends SettingsPage {
         rebuildChips();
     }
 
+    /** Returns the markdown of the active variant, loading the pro asset on first use. */
     private String currentMarkdown() {
         if (mode == Mode.PRO) {
             if (proMarkdown == null) {
@@ -121,6 +132,7 @@ public final class TutorialPage extends SettingsPage {
         return simpleMarkdown;
     }
 
+    /** Returns the section titles of the active variant, parsed lazily and cached. */
     private List<String> currentSections() {
         if (mode == Mode.PRO) {
             if (proSections == null) {
@@ -131,11 +143,13 @@ public final class TutorialPage extends SettingsPage {
         return simpleSections;
     }
 
+    /** Restyles the selector rows to reflect the active variant. */
     private void refreshSelector() {
         style(simpleRow, mode == Mode.SIMPLE);
         style(proRow, mode == Mode.PRO);
     }
 
+    /** Applies the active or inactive visual treatment to a selector row. */
     private void style(LinearLayout row, boolean active) {
         row.setBackgroundColor(active ? theme.current().accentMuted : android.graphics.Color.TRANSPARENT);
         View check = row.getChildAt(row.getChildCount() - 1);
@@ -144,6 +158,7 @@ public final class TutorialPage extends SettingsPage {
         title.setTextColor(active ? theme.current().accent : theme.current().text);
     }
 
+    /** Builds one selectable variant row with a check indicator. */
     private LinearLayout variant(LinearLayout selector, int title, int description, Runnable onClick) {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -172,6 +187,7 @@ public final class TutorialPage extends SettingsPage {
         return row;
     }
 
+    /** Rebuilds the horizontally scrollable jump chips from the active section titles. */
     private void rebuildChips() {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -191,11 +207,13 @@ public final class TutorialPage extends SettingsPage {
         }
     }
 
+    /** Scrolls to a section immediately, or defers the request until rendering completes. */
     private void requestSection(String title) {
         if (scrollTo(title)) return;
         pendingSection = title;
     }
 
+    /** Handles incremental render completion by applying deferred scroll requests. */
     private void onRenderComplete() {
         renderComplete = true;
         applyPendingRestoreScroll();
@@ -215,6 +233,7 @@ public final class TutorialPage extends SettingsPage {
         markdown.getViewTreeObserver().addOnPreDrawListener(pendingScroll);
     }
 
+    /** Detaches the deferred section-scroll pre-draw listener, if present. */
     private void cancelPendingScroll() {
         if (pendingScroll == null) return;
         ViewTreeObserver observer = markdown.getViewTreeObserver();
@@ -233,6 +252,7 @@ public final class TutorialPage extends SettingsPage {
         if (renderComplete) applyPendingRestoreScroll();
     }
 
+    /** Applies a deferred scroll restore once the document has been fully measured. */
     private void applyPendingRestoreScroll() {
         int offset = pendingRestoreScroll;
         pendingRestoreScroll = -1;
@@ -249,6 +269,7 @@ public final class TutorialPage extends SettingsPage {
         markdown.getViewTreeObserver().addOnPreDrawListener(restoreScrollListener);
     }
 
+    /** Detaches the scroll-restore pre-draw listener, if present. */
     private void cancelRestoreScroll() {
         if (restoreScrollListener == null) return;
         ViewTreeObserver observer = markdown.getViewTreeObserver();
@@ -256,6 +277,7 @@ public final class TutorialPage extends SettingsPage {
         restoreScrollListener = null;
     }
 
+    /** Releases pending scroll state and listeners before the page is discarded. */
     @Override
     public void dispose() {
         pendingSection = null;
@@ -265,6 +287,7 @@ public final class TutorialPage extends SettingsPage {
         cancelRestoreScroll();
     }
 
+    /** Scrolls to the first view whose text matches the title; false when not yet laid out. */
     private boolean scrollTo(String title) {
         List<View> candidates = new ArrayList<>();
         collect(markdown, candidates);
@@ -281,6 +304,7 @@ public final class TutorialPage extends SettingsPage {
         return false;
     }
 
+    /** Depth-first collection of all descendants of a view into the output list. */
     private void collect(View parent, List<View> out) {
         if (!(parent instanceof ViewGroup)) return;
         ViewGroup group = (ViewGroup) parent;
@@ -291,6 +315,7 @@ public final class TutorialPage extends SettingsPage {
         }
     }
 
+    /** Computes the vertical offset of a view relative to the page scroll container. */
     private int topWithinScroll(View view) {
         int y = 0;
         View current = view;
@@ -301,6 +326,7 @@ public final class TutorialPage extends SettingsPage {
         return y;
     }
 
+    /** Reads a bundled tutorial asset as UTF-8 text, showing a toast on failure. */
     private static String read(Context context, String asset) {
         try (InputStream input = context.getAssets().open(asset)) {
             ByteArrayOutputStream output = new ByteArrayOutputStream();

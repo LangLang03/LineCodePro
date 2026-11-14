@@ -22,7 +22,9 @@ import cn.lineai.ui.tokens.Tokens;
 /** Publish one local SKILL.md to SkillHub. */
 public final class SkillHubPublishPage extends SettingsPage {
 
+    /** Completion callback invoked after a successful publish. */
     public interface Listener {
+        /** Invoked on the main thread after the skill was published successfully. */
         void onPublished();
     }
 
@@ -37,6 +39,16 @@ public final class SkillHubPublishPage extends SettingsPage {
     private final TextView publishLabel;
     private int index;
 
+    /**
+     * Builds the publish page and preselects the first local skill.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param scheduler scheduler enforcing the I/O-to-main threading contract
+     * @param store skill store listing the publishable local skills
+     * @param listener completion callback for successful publish
+     */
     public SkillHubPublishPage(Context context, Tokens tokens, Runnable back, Scheduler scheduler,
                                SkillStore store, Listener listener) {
         super(context, R.string.skillhub_publish_title, tokens, back);
@@ -91,21 +103,25 @@ public final class SkillHubPublishPage extends SettingsPage {
         select(0);
     }
 
+    /** Creates an empty form field with a label and hint resource. */
     private FormField field(int label, int hint) {
         return ExtensionKit.field(getContext(), theme, label, "", hint, false);
     }
 
+    /** Builds the layout parameters spacing one form field below the previous. */
     private LinearLayout.LayoutParams formParams() {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.topMargin = Ui.dp(getContext(), 12);
         return params;
     }
 
+    /** Advances the skill selection cyclically and refreshes the form defaults. */
     private void selectNext() {
         if (skills.isEmpty()) return;
         select((index + 1) % skills.size());
     }
 
+    /** Applies the selection, seeding slug, display name, and version when still empty. */
     private void select(int value) {
         index = value;
         if (skills.isEmpty()) {
@@ -121,6 +137,7 @@ public final class SkillHubPublishPage extends SettingsPage {
         if (version.value().isEmpty()) version.input().setText("1.0.0");
     }
 
+    /** Derives a lowercase dash-separated slug from the skill name. */
     private static String defaultSlug(Skill skill) {
         String source = skill.name.toLowerCase(java.util.Locale.ROOT);
         StringBuilder out = new StringBuilder();
@@ -136,6 +153,7 @@ public final class SkillHubPublishPage extends SettingsPage {
         return out.length() == 0 ? "skill" : out.toString();
     }
 
+    /** Validates the form, publishes on I/O while signed in, and reports the outcome on main. */
     private void publish() {
         if (skills.isEmpty()) return;
         String slugValue = slug.value();

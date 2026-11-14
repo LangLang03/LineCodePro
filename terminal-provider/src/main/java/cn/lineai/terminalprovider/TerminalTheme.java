@@ -12,14 +12,25 @@ import android.widget.TextView;
  */
 final class TerminalTheme {
 
+    /**
+     * Immutable set of color tokens for one night-mode variant. Instances are created
+     * only through {@link #of(boolean)} so a palette can never be mutated after use.
+     */
     static final class Palette {
+        /** Window background. */
         final int bg;
+        /** Background of input fields and secondary surfaces. */
         final int inputBg;
+        /** Primary text color. */
         final int text;
+        /** Secondary (muted) text color. */
         final int textSecondary;
+        /** Accent used for primary buttons and highlights. */
         final int accent;
+        /** Text color drawn on top of {@code accent} surfaces. */
         final int textOnColor;
 
+        /** Private constructor; use {@link #of(boolean)}. */
         private Palette(int bg, int inputBg, int text, int textSecondary,
                         int accent, int textOnColor) {
             this.bg = bg;
@@ -30,6 +41,7 @@ final class TerminalTheme {
             this.textOnColor = textOnColor;
         }
 
+        /** Returns the palette matching the current UI mode. */
         static Palette of(boolean dark) {
             if (dark) {
                 return new Palette(
@@ -50,15 +62,18 @@ final class TerminalTheme {
         }
     }
 
+    /** Converts a design-space size to device pixels using the current display density. */
     static int dp(Context context, int size) {
         return Math.round(context.getResources().getDisplayMetrics().density * size);
     }
 
+    /** Sets the view padding in dp on all four sides (left, top, right, bottom). */
     static void padding(View view, int l, int t, int r, int b) {
         Context c = view.getContext();
         view.setPadding(dp(c, l), dp(c, t), dp(c, r), dp(c, b));
     }
 
+    /** Returns a solid, rounded-corner drawable for buttons and cards. */
     static GradientDrawable rounded(Context context, int color, int radius) {
         GradientDrawable d = new GradientDrawable();
         d.setColor(color);
@@ -66,6 +81,7 @@ final class TerminalTheme {
         return d;
     }
 
+    /** Builds a plain TextView with the given text, size in sp, color and typeface style. */
     static TextView text(Context context, String value, int size, int color, int style) {
         TextView v = new TextView(context);
         v.setText(value);
@@ -76,6 +92,7 @@ final class TerminalTheme {
         return v;
     }
 
+    /** Builds a TextView with the medium-weight sans-serif face for titles and buttons. */
     static TextView textMedium(Context context, String value, int size, int color) {
         TextView v = text(context, value, size, color, Typeface.NORMAL);
         v.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));

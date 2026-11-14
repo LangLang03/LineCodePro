@@ -21,6 +21,13 @@ final class DisclosureState {
     private final Set<String> toggled = new LinkedHashSet<>();
     private final Map<String, Boolean> choices = new LinkedHashMap<>();
 
+    /**
+     * Resolves the open state: an explicit choice wins, otherwise a toggled key inverts its
+     * default.
+     *
+     * @param key       disclosure identity
+     * @param byDefault open state before any user override
+     */
     boolean isOpen(String key, boolean byDefault) {
         Boolean choice = choices.get(key);
         if (choice != null) {
@@ -29,12 +36,14 @@ final class DisclosureState {
         return toggled.contains(key) != byDefault;
     }
 
+    /** Inverts the user override for the key. */
     void toggle(String key) {
         if (!toggled.remove(key)) {
             toggled.add(key);
         }
     }
 
+    /** Records the user's choice relative to the current default. */
     void setOpen(String key, boolean byDefault, boolean open) {
         if (isOpen(key, byDefault) != open) {
             toggle(key);
@@ -46,10 +55,12 @@ final class DisclosureState {
         return choices.get(key);
     }
 
+    /** Records an absolute open choice that survives a later default flip. */
     void setExplicit(String key, boolean open) {
         choices.put(key, open);
     }
 
+    /** Forgets every override, used when the conversation changes. */
     void clear() {
         toggled.clear();
         choices.clear();

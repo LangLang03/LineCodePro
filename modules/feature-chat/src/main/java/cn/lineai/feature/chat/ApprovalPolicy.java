@@ -19,12 +19,21 @@ final class ApprovalPolicy {
     private final Supplier<String> mode;
     private final Set<String> alwaysAllowed = new HashSet<>();
 
+    /**
+     * @param registry supplies the tool registry used to look up the mutating/read-only flag
+     * @param mode     supplies the current permission mode ("auto" runs everything without asking)
+     */
     ApprovalPolicy(Supplier<ToolRegistry> registry, Supplier<String> mode) {
         this.registry = registry;
         this.mode = mode;
     }
 
-    /** True when the whole batch can run without asking the user. */
+    /**
+     * True when the whole batch can run without asking the user: the mode is auto, or every
+     * call is either read-only or on the "always allow" list.
+     *
+     * @param calls tool calls the engine wants to execute
+     */
     boolean autoApprove(List<ToolCall> calls) {
         if (calls.isEmpty() || ToolModes.AUTO.equals(mode.get())) {
             return true;
@@ -39,7 +48,11 @@ final class ApprovalPolicy {
         return true;
     }
 
-    /** "Always allow" for the pending batch; lives for the process lifetime. */
+    /**
+     * Adds the pending tool names to the "always allow" list, bypassing later prompts.
+     *
+     * @param approvals batch currently pending user confirmation
+     */
     void allowAll(List<ToolApprovalItem> approvals) {
         for (ToolApprovalItem item : approvals) {
             alwaysAllowed.add(item.call.name);

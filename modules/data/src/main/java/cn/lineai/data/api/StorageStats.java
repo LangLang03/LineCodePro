@@ -12,6 +12,18 @@ public final class StorageStats {
     public final long homeBytes;
     public final int homeCount;
 
+    /**
+     * Creates a usage snapshot.
+     *
+     * @param diffBytes bytes occupied by stored file diffs
+     * @param diffCount number of stored file diff rows
+     * @param chatBytes bytes occupied by conversation text
+     * @param chatCount number of message rows
+     * @param configBytes bytes occupied by settings and model rows
+     * @param configCount number of settings and model rows
+     * @param homeBytes bytes occupied by files under the app home directory
+     * @param homeCount number of files under the app home directory
+     */
     public StorageStats(long diffBytes, int diffCount, long chatBytes, int chatCount,
                         long configBytes, int configCount, long homeBytes, int homeCount) {
         this.diffBytes = diffBytes;
@@ -24,6 +36,11 @@ public final class StorageStats {
         this.homeCount = homeCount;
     }
 
+    /**
+     * Sums the byte counts of all categories.
+     *
+     * @return total bytes reported by this snapshot
+     */
     public long totalBytes() {
         return chatBytes + configBytes + homeBytes + diffBytes;
     }

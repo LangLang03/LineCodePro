@@ -23,18 +23,54 @@ import cn.lineai.ui.kit.Icons;
 import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
 
-/** Optional dedicated compression model for protocols that support it. */
+/**
+ * Optional dedicated compression model for protocols that support it.
+ *
+ * <p>The section collapses to {@link #GONE} when the active protocol has no dedicated compression
+ * support, so callers never need to guard its inputs. Model-id queries hit the provider catalog on
+ * the io scheduler and every UI mutation (state, toast, picker) is applied on the main scheduler —
+ * the module-wide idiom. The three switches cascade: disabled hides everything, auto hides the
+ * id row, and manual mode switches between a picker selector and a free-form input. State changes
+ * are reported through {@link Destination} so the owning page can re-run validation.</p>
+ */
 final class CompressionSection extends LinearLayout {
 
+    /**
+     * Provider catalog access used to list compression-capable model ids; implemented by the host
+     * so this view stays free of networking code.
+     */
     interface Catalog {
+        /**
+         * Fetches the model id list.
+         *
+         * @param protocol protocol that constrains the catalog query
+         * @param baseUrl endpoint to query, taken live from the form
+         * @param apiKey credential taken live from the form
+         * @return catalog ids; may be empty
+         * @throws Exception on any network or parsing failure; the section converts this to a toast
+         */
         List<String> fetch(ModelConfig.Protocol protocol, String baseUrl, String apiKey) throws Exception;
     }
 
+    /**
+     * Change sink for state transitions affecting the form's validity.
+     */
     interface Destination {
+        /** Invoked on the main thread whenever a switch, selection or input changes the state. */
         void onStateChanged();
     }
 
+    /**
+     * Picker bridge hosting {@link ModelPickerSheet} on behalf of this section.
+     */
     interface Picker {
+        /**
+         * Shows the model picker.
+         *
+         * @param ids candidate ids from the last successful fetch
+         * @param selected currently selected id, or empty
+         * @param listener outcome consumer, always this section's {@code selected} handler
+         */
         void pick(List<String> ids, String selected, ModelPickerSheet.Listener listener);
     }
 
@@ -60,6 +96,23 @@ final class CompressionSection extends LinearLayout {
     private String selectedId;
     private boolean fetching;
 
+    /**
+     * Builds the full section, wires the switch cascade and applies the initial visibility.
+     *
+     * @param context hosting context
+     * @param tokens palette snapshot used at build time
+     * @param protocol single-element array holding the active protocol; read live so protocol
+     *     changes are visible without rebuilding the section
+     * @param enabled initial state of the master switch
+     * @param auto initial state of the auto switch
+     * @param modelId initial compression model id; null deselects custom mode
+     * @param catalog catalog accessor used by the query button
+     * @param picker host for the model picker sheet
+     * @param scheduler scheduler performing io and main-thread hops for catalog queries
+     * @param baseUrl supplier of the current endpoint, read at query time
+     * @param apiKey supplier of the current credential, read at query time
+     * @param destination change sink; may be null
+     */
     CompressionSection(Context context, Tokens tokens, ModelConfig.Protocol[] protocol,
                        boolean enabled, boolean auto, String modelId, Catalog catalog,
                        Picker picker, Scheduler scheduler, Supplier<String> baseUrl,
@@ -147,12 +200,14 @@ final class CompressionSection extends LinearLayout {
         updateVisibility();
     }
 
+    /** Builds a centred horizontal row container. */
     private LinearLayout row() {
         LinearLayout row = new LinearLayout(getContext());
         row.setGravity(Gravity.CENTER_VERTICAL);
         return row;
     }
 
+    /** Creates a tinted switch with the requested initial state. */
     private Switch toggle(boolean checked) {
         Switch toggle = new Switch(getContext());
         FormFields.tintSwitch(toggle, tokens);
@@ -160,6 +215,7 @@ final class CompressionSection extends LinearLayout {
         return toggle;
     }
 
+    /** Builds the query button shell; its text and icon children are filled by the caller. */
     private LinearLayout queryButton(Context context) {
         LinearLayout button = new LinearLayout(context);
         button.setGravity(Gravity.CENTER);
@@ -172,32 +228,64 @@ final class CompressionSection extends LinearLayout {
         return button;
     }
 
+    /**
+     * Reports whether compression is actively configured, which requires both the master switch and
+     * protocol support.
+     *
+     * @return true when a dedicated compression model applies
+     */
     boolean compressionEnabled() {
         return enabledSwitch.isChecked() && protocol[0].supportsDedicatedCompression();
     }
 
+    /**
+     * Reports the auto mode switch.
+     *
+     * @return true when compression should pick models automatically
+     */
     boolean isAuto() {
         return autoSwitch.isChecked();
     }
 
+    /**
+     * Resolves the effective compression model id: the typed value in custom mode, the picked
+     * catalog id otherwise.
+     *
+     * @return current model id, possibly empty
+     */
     String modelId() {
         return customSwitch.isChecked() ? FormFields.value(modelInput) : selectedId;
     }
 
+    /**
+     * Save gate for the owning form: compression that is enabled, non-auto and model-less blocks
+     * the save.
+     *
+     * @return true when the section is consistent
+     */
     boolean isReady() {
         return !compressionEnabled() || isAuto() || !modelId().isEmpty();
     }
 
+    /**
+     * Drops fetched catalog results and the current selection, used when the endpoint or key
+     * changes and cached ids may no longer exist.
+     */
     void clearFetched() {
         fetched.clear();
         selectedId = "";
         if (!customSwitch.isChecked()) renderInput(false);
     }
 
+    /**
+     * Re-evaluates visibility after the protocol changed, disabling and hiding the section when the
+     * new protocol has no dedicated compression support.
+     */
     void updateForProtocolChange() {
         updateVisibility();
     }
 
+    /** Applies the switch cascade to visibility, dimming and the query button state. */
     private void updateVisibility() {
         boolean supported = protocol[0].supportsDedicatedCompression();
         setVisibility(supported ? VISIBLE : GONE);
@@ -213,6 +301,12 @@ final class CompressionSection extends LinearLayout {
         updateQueryState();
     }
 
+    /**
+     * Rebuilds the id-row host between the free-form input and the picker selector. This is one of
+     * the two legitimate {@code removeAllViews} uses in the kit: the host swaps between children
+     * that cannot coexist, and both children are retained fields rather than theme-dependent state,
+     * so theme changes never reach this path.
+     */
     private void renderInput(boolean custom) {
         inputHost.removeAllViews();
         if (!compressionEnabled() || isAuto()) {
@@ -248,10 +342,12 @@ final class CompressionSection extends LinearLayout {
         inputHost.addView(row, new LayoutParams(-1, -2));
     }
 
+    /** Reports whether a catalog query may start: enabled, manual mode and a complete endpoint. */
     private boolean canQuery() {
         return compressionEnabled() && !isAuto() && !baseUrl.get().isEmpty() && !apiKey.get().isEmpty();
     }
 
+    /** Repaints the query button for the current enabled/fetching state, in place. */
     private void updateQueryState() {
         boolean can = canQuery() && !fetching;
         queryText.setText(fetching ? R.string.screen_model_add_query_button_loading
@@ -263,6 +359,11 @@ final class CompressionSection extends LinearLayout {
         queryButton.setEnabled(can);
     }
 
+    /**
+     * Opens the picker, fetching the catalog on the io scheduler when nothing is cached. The fetch
+     * guards against double submission, reports failure as a toast and hops back to the main
+     * scheduler before touching any view.
+     */
     private void query() {
         if (!canQuery() || fetching) return;
         if (!fetched.isEmpty()) {
@@ -300,6 +401,7 @@ final class CompressionSection extends LinearLayout {
         });
     }
 
+    /** Picker outcome handler: switches between custom input and the picked catalog id. */
     private void selected(String id, boolean custom) {
         if (custom) {
             selectedId = "";
@@ -314,6 +416,7 @@ final class CompressionSection extends LinearLayout {
         notifyChanged();
     }
 
+    /** Forwards a state change to the destination sink, tolerating a null destination. */
     private void notifyChanged() {
         if (destination != null) destination.onStateChanged();
     }

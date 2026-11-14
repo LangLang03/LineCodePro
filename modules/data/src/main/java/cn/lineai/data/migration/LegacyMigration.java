@@ -24,9 +24,11 @@ public final class LegacyMigration {
     // SQLite column name, not a domain state value.
     private static final String COL_STREAMING = "stream" + "ing";
 
+    /** Not instantiable; the migration runs through the static entry point. */
     private LegacyMigration() {
     }
 
+    /** Runs the one-time merge; a marker setting and the pre-transaction backup make it idempotent. */
     public static void migrate(File legacyFile, LineCodeDatabase target) {
         if (legacyFile == null || !legacyFile.isFile()) return;
         SQLiteDatabase db = target.open();
@@ -61,6 +63,7 @@ public final class LegacyMigration {
         }
     }
 
+    /** Reports whether the migration already completed in the target database. */
     private static boolean hasMarker(SQLiteDatabase db) {
         try (Cursor cursor = db.query("settings", new String[] {"key"}, "key=?",
                 new String[] {MARKER}, null, null, null, "1")) {
@@ -68,6 +71,7 @@ public final class LegacyMigration {
         }
     }
 
+    /** Copies the legacy database file aside before any row is touched. */
     private static void backup(File legacy) {
         File backup = new File(legacy.getParentFile(), legacy.getName() + BACKUP_SUFFIX);
         if (backup.isFile()) return;
@@ -81,6 +85,7 @@ public final class LegacyMigration {
         }
     }
 
+    /** Copies and remaps the legacy settings table, splitting special keys into new settings. */
     private static void copySettings(SQLiteDatabase old, SQLiteDatabase db) {
         if (!hasTable(old, "settings")) return;
         try (Cursor cursor = old.query("settings", new String[] {"key", "value"},
@@ -102,6 +107,7 @@ public final class LegacyMigration {
         }
     }
 
+    /** Maps one legacy key to its replacement; these literals are pinned by an arch-test. */
     private static String mapSetting(String key, String value) {
         if ("@lineai_tone".equals(key)) return "ai.tone";
         if ("@lineai_thinking_scroll".equals(key)) return "ai.thinkingScroll";
@@ -129,6 +135,7 @@ public final class LegacyMigration {
         return null;
     }
 
+    /** Splits the legacy custom-theme JSON into individual ui.custom.* settings. */
     private static void copyCustomTheme(SQLiteDatabase db, String json) {
         try {
             org.json.JSONObject object = new org.json.JSONObject(json);
@@ -145,6 +152,7 @@ public final class LegacyMigration {
         }
     }
 
+    /** Normalizes a migrated value to the casing the new readers expect. */
     private static String normalize(String key, String value) {
         if ("chat.mode".equals(key) || "tools.permissionMode".equals(key)
                 || "output.browserMode".equals(key)) return value.toLowerCase(Locale.ROOT);
@@ -154,6 +162,7 @@ public final class LegacyMigration {
         return value;
     }
 
+    /** Reports whether a migrated key must be normalized to true/false. */
     private static boolean isBooleanSetting(String key) {
         return key.startsWith("ai.") && !"ai.tone".equals(key) && !"ai.reasoning".equals(key)
                 || "output.allowAnyHttp".equals(key) || "output.browserJavaScript".equals(key)
@@ -552,6 +561,7 @@ public final class LegacyMigration {
         }
     }
 
+    /** Inserts one setting row, keeping any value already written by the new app. */
     private static void putSetting(SQLiteDatabase db, String key, String value) {
         if (key == null || key.isEmpty()) return;
         ContentValues values = new ContentValues();
@@ -561,6 +571,7 @@ public final class LegacyMigration {
         db.insertWithOnConflict("settings", null, values, SQLiteDatabase.CONFLICT_IGNORE);
     }
 
+    /** Reports whether the legacy database defines the given table. */
     private static boolean hasTable(SQLiteDatabase db, String table) {
         try (Cursor cursor = db.rawQuery(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name=?",

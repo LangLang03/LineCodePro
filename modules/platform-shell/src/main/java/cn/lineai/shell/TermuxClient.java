@@ -20,25 +20,40 @@ import cn.lineai.core.kernel.time.Cancellable;
 import cn.lineai.core.kernel.time.Scheduler;
 import cn.lineai.core.model.SshConfig;
 
-/** Termux RunCommand bridge: opens Termux and runs the bundled OpenSSH setup script. */
+/**
+ * Termux RunCommand bridge: launches the Termux app and drives the bundled OpenSSH setup
+ * script through the {@code RUN_COMMAND} service, collecting the generated SSH credentials
+ * from the script output.
+ */
 public final class TermuxClient {
 
+    /** Termux permission guarding the {@code RUN_COMMAND} service; requested by settings. */
     public static final String TERMUX_RUN_COMMAND_PERMISSION = "com.termux.permission.RUN_COMMAND";
+    /** Command that flips Termux's {@code allow-external-apps} property. */
     public static final String TERMUX_ALLOW_EXTERNAL_APPS_COMMAND =
             cn.lineai.core.model.TermuxCommands.ALLOW_EXTERNAL_APPS;
 
+    /** Outcome callbacks; both are invoked on the scheduler's main thread. */
     public interface Callback {
+        /** Invoked after the setup script succeeded and its output parsed cleanly. */
         void onSuccess(SetupResult result);
 
+        /** Invoked with a user-presentable message when any setup step fails. */
         void onError(String message);
     }
 
+    /** Parsed result of one successful setup run. */
     public static final class SetupResult {
+        /** SSH configuration built from the parsed username, host, port and private key. */
         public final SshConfig config;
+        /** Full (already redacted) script output, kept for the settings detail view. */
         public final String output;
+        /** Default shell reported by the script; informational only. */
         public final String shell;
+        /** Path of the rc file the script wrote, feeding the tips screen. */
         public final String rcPath;
 
+        /** Built by {@link #parse}; not part of the public surface. */
         SetupResult(SshConfig config, String output, String shell, String rcPath) {
             this.config = config;
             this.output = output;
@@ -74,10 +89,20 @@ public final class TermuxClient {
 
     private final Context context;
 
+    /**
+     * Creates a bridge holding the application context.
+     *
+     * @param context any context; only the application context is retained
+     */
     public TermuxClient(Context context) {
         this.context = context.getApplicationContext();
     }
 
+    /**
+     * Brings the Termux main activity to the foreground.
+     *
+     * @throws IllegalStateException when Termux is not installed
+     */
     public void openTermux() {
         ensureInstalled();
         Intent launch = context.getPackageManager().getLaunchIntentForPackage(TERMUX_PACKAGE);
@@ -88,11 +113,24 @@ public final class TermuxClient {
         context.startActivity(launch);
     }
 
+    /**
+     * Checks whether the Termux {@code RUN_COMMAND} permission is granted.
+     *
+     * @return {@code true} when the setup flow may invoke the Termux service directly
+     */
     public boolean hasRunCommandPermission() {
         return context.checkSelfPermission(TERMUX_RUN_COMMAND_PERMISSION)
                 == PackageManager.PERMISSION_GRANTED;
     }
 
+    /**
+     * Runs the bundled OpenSSH setup script inside Termux and reports the parsed result.
+     * The method verifies installation and permission synchronously and then registers a
+     * one-shot result receiver plus a timeout guard; exactly one callback fires on main.
+     *
+     * @param scheduler scheduler used for the timeout and for main-thread delivery
+     * @param callback consumer of the single success or failure outcome
+     */
     public void setupOpenSsh(Scheduler scheduler, Callback callback) {
         try {
             ensureInstalled();
@@ -170,6 +208,14 @@ public final class TermuxClient {
         context.startService(intent);
     }
 
+    /**
+     * Extracts the SSH credentials from the setup script output using the
+     * {@code LINEAI_*} key/value markers.
+     *
+     * @param output combined script output; may be {@code null}
+     * @return the parsed setup result
+     * @throws IllegalStateException when the username or the private key marker is missing
+     */
     public static SetupResult parse(String output) {
         String text = output == null ? "" : output;
         String username = value(text, "LINEAI_TERMUX_USERNAME");
@@ -187,11 +233,19 @@ public final class TermuxClient {
         return new SetupResult(config, text, shell, rcPath);
     }
 
+    /**
+     * Replaces the embedded private key block with a placeholder, making the output safe
+     * for logs and error messages.
+     *
+     * @param output raw script output; may be {@code null}
+     * @return the output with any private key block redacted
+     */
     public static String redact(String output) {
         return output == null ? "" : PRIVATE_KEY.matcher(output)
                 .replaceAll("LINEAI_PRIVATE_KEY_BEGIN\n[redacted]\nLINEAI_PRIVATE_KEY_END");
     }
 
+    /** Verifies the Termux package is installed; throws otherwise. */
     private void ensureInstalled() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -205,6 +259,7 @@ public final class TermuxClient {
         }
     }
 
+    /** Registers the result receiver, not exported on API 33 and later. */
     private void register(BroadcastReceiver receiver, String action) {
         IntentFilter filter = new IntentFilter(action);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -214,6 +269,7 @@ public final class TermuxClient {
         }
     }
 
+    /** Unregisters a receiver, tolerating a concurrent unregister race. */
     private void unregister(BroadcastReceiver receiver) {
         if (receiver == null) return;
         try {
@@ -223,6 +279,7 @@ public final class TermuxClient {
         }
     }
 
+    /** Loads the setup script from application assets. */
     private String script() {
         try (InputStream input = context.getAssets().open(SETUP_SCRIPT)) {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -235,6 +292,7 @@ public final class TermuxClient {
         }
     }
 
+    /** Merges trimmed stdout and stderr into one report text. */
     private static String combine(String stdout, String stderr) {
         StringBuilder builder = new StringBuilder();
         if (stdout != null && !stdout.trim().isEmpty()) builder.append(stdout.trim());
@@ -245,6 +303,7 @@ public final class TermuxClient {
         return builder.toString();
     }
 
+    /** Reads one {@code KEY=value} line; empty when the marker is absent. */
     private static String value(String output, String key) {
         String prefix = key + "=";
         for (String line : output.split("\\r?\\n")) {
@@ -253,6 +312,7 @@ public final class TermuxClient {
         return "";
     }
 
+    /** Parses the port marker, falling back to the default port for invalid values. */
     private static int parsePort(String value) {
         try {
             int port = Integer.parseInt(value);

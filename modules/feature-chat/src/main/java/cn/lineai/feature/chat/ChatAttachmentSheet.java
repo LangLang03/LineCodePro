@@ -26,15 +26,25 @@ import cn.lineai.ui.tokens.Tokens;
  */
 final class ChatAttachmentSheet {
 
+    /** Fixed sheet metrics in dp. */
     private static final int PANEL_HEIGHT_DP = 640;
     private static final int ROW_MIN_DP = 52;
     private static final int INDENT_DP = 18;
     private static final int MAX_DEPTH = 24;
     private static final int CHECKER_DP = 26;
 
+    /** Static utility; not instantiable. */
     private ChatAttachmentSheet() {
     }
 
+    /**
+     * Shows the workspace tree picker; toggling a file row reports the path to the caller.
+     *
+     * @param host          chat host supplying context, tokens and close handling
+     * @param tree          workspace file tree; null shows an empty state
+     * @param selectedPaths currently selected file paths
+     * @param onToggle      invoked with a path whenever its selection flips
+     */
     static void show(ChatHost host, DrawerPanel.FileNode tree, List<String> selectedPaths,
                      Consumer<String> onToggle) {
         new Sheet(host, tree, selectedPaths, onToggle).present();
@@ -51,6 +61,7 @@ final class ChatAttachmentSheet {
         private final LinearLayout body;
         private final TextView count;
 
+        /** Copies the selection, expands the root, and prepares the header count. */
         Sheet(ChatHost host, DrawerPanel.FileNode tree, List<String> selectedPaths,
               Consumer<String> onToggle) {
             this.host = host;
@@ -69,6 +80,7 @@ final class ChatAttachmentSheet {
             count = ChatSheets.text(context, "", Tokens.FONT_XS, tokens.textTertiary);
         }
 
+        /** Assembles header, scrollable tree body and the fixed 640dp frame. */
         void present() {
             LinearLayout panel = ChatSheets.column(context);
             panel.addView(header(), new LinearLayout.LayoutParams(-1, -2));
@@ -84,6 +96,7 @@ final class ChatAttachmentSheet {
             Sheets.showBottom(context, tokens, panel, PANEL_HEIGHT_DP, PANEL_HEIGHT_DP);
         }
 
+        /** Title, selected-count subtitle and the 48dp close button. */
         private LinearLayout header() {
             LinearLayout header = ChatSheets.row(context);
             Ui.padding(header, 20, 20, 20, 16);
@@ -103,6 +116,7 @@ final class ChatAttachmentSheet {
             return header;
         }
 
+        /** Rebuilds the body: selected count, empty state, or the expanded tree rows. */
         private void render() {
             body.removeAllViews();
             count.setText(context.getString(R.string.sheet_attachment_selected_count,
@@ -119,6 +133,7 @@ final class ChatAttachmentSheet {
             append(tree, 0, true);
         }
 
+        /** Depth-first append of expanded directories, capped indentation per level. */
         private void append(DrawerPanel.FileNode node, int depth, boolean root) {
             body.addView(row(node, depth, root), new LinearLayout.LayoutParams(-1, -2));
             boolean open = node.directory && expanded.contains(node.path);
@@ -138,6 +153,7 @@ final class ChatAttachmentSheet {
             }
         }
 
+        /** One 52dp row: chevron/folder/file icon, labels and a selection circle for files. */
         private LinearLayout row(DrawerPanel.FileNode node, int depth, boolean root) {
             LinearLayout row = ChatSheets.row(context);
             row.setMinimumHeight(ChatSheets.dp(context, ROW_MIN_DP));
@@ -185,6 +201,7 @@ final class ChatAttachmentSheet {
             return row;
         }
 
+        /** File name, plus the workspace path under the root entry. */
         private LinearLayout labels(DrawerPanel.FileNode node, boolean root) {
             LinearLayout labels = ChatSheets.column(context);
             TextView name = root
@@ -208,6 +225,7 @@ final class ChatAttachmentSheet {
             return labels;
         }
 
+        /** 26dp check/plus circle reflecting the node's selection state. */
         private View checker(DrawerPanel.FileNode node) {
             boolean checked = selected.contains(node.path);
             ImageView circle = new ImageView(context);
@@ -223,6 +241,7 @@ final class ChatAttachmentSheet {
             return circle;
         }
 
+        /** Tinted glyph. */
         private ImageView icon(int res, int tint) {
             ImageView view = new ImageView(context);
             view.setImageResource(Icons.drawable(res));
@@ -231,11 +250,13 @@ final class ChatAttachmentSheet {
             return view;
         }
 
+        /** Square icon parameters. */
         private LinearLayout.LayoutParams iconParams(int sizeDp) {
             return new LinearLayout.LayoutParams(ChatSheets.dp(context, sizeDp),
                     ChatSheets.dp(context, sizeDp));
         }
 
+        /** Fixed-width spacer view. */
         private View spacer(int widthDp) {
             View view = new View(context);
             view.setLayoutParams(new LinearLayout.LayoutParams(

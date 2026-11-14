@@ -21,6 +21,12 @@ public final class LocalModelClient implements ModelClient {
     private final ModelClient fallback;
     private final Scheduler scheduler;
 
+    /**
+     * Creates the client over the network fallback.
+     *
+     * @param fallback client used for non-local models and unconfigured local models
+     * @param scheduler scheduler that moves blocking native inference to an io thread
+     */
     public LocalModelClient(ModelClient fallback, Scheduler scheduler) {
         this.fallback = fallback;
         this.scheduler = scheduler;
@@ -39,6 +45,11 @@ public final class LocalModelClient implements ModelClient {
         };
     }
 
+    /**
+     * Runs one blocking native generation on an io thread: flattens the request into
+     * role/content arrays (tool calls inlined as text), streams pieces to the listener,
+     * and reports errors unless the stream was cancelled first.
+     */
     private void run(ModelConfig model, ChatRequest request, Listener listener,
                      AtomicBoolean cancelled) {
         try {

@@ -32,6 +32,7 @@ final class CompactBlockView extends LinearLayout {
     private boolean running;
     private boolean failed;
 
+    /** Builds the fixed row: archive icon, label, spacer, spinner and status icon. */
     CompactBlockView(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -66,6 +67,12 @@ final class CompactBlockView extends LinearLayout {
         applyTokens(tokens);
     }
 
+    /**
+     * Binds a compact-status wire value; identical states skip the rebind. An empty value means
+     * "running", matching the persisted marker semantics.
+     *
+     * @param value wire status from the COMPACT content block
+     */
     void bind(String value) {
         State next = State.of(value);
         if (next == state) {
@@ -85,6 +92,7 @@ final class CompactBlockView extends LinearLayout {
         applyTokens(tokens);
     }
 
+    /** Applies tokens; failures tint the row with the danger color. */
     void applyTokens(Tokens current) {
         tokens = current;
         int tint = failed ? current.danger : current.textTertiary;
@@ -96,9 +104,13 @@ final class CompactBlockView extends LinearLayout {
 
     /** Compact-status wire values; the raw strings live only inside this enum body. */
     private enum State {
+        /** Spinner shown; also the meaning of an empty wire value. */
         RUNNING("running"),
+        /** Failed compaction; danger tint and close glyph. */
         FAILED("error"),
+        /** Finished compaction; check glyph. */
         COMPLETE("complete"),
+        /** Unrecognized wire value, treated as complete. */
         UNKNOWN("");
 
         private final String wire;
@@ -107,6 +119,7 @@ final class CompactBlockView extends LinearLayout {
             this.wire = wire;
         }
 
+        /** Maps a wire value; null or empty means running, unknown values mean complete. */
         static State of(String value) {
             if (value == null || value.isEmpty()) {
                 return RUNNING;

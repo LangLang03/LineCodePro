@@ -13,6 +13,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
+/**
+ * LLM behavior settings: reasoning effort, learning toggles, tone, and thinking display.
+ *
+ * <p>Every control dispatches a {@link SettingsAction.Change}; the page is stateless between
+ * renders and reflects whatever the latest {@link SettingsState} says.</p>
+ */
 public final class BehaviorSettingsPage extends SettingsPage {
     private final Consumer<SettingsAction> dispatch;
     private final List<Choice> reasoning = new ArrayList<>();
@@ -24,6 +30,15 @@ public final class BehaviorSettingsPage extends SettingsPage {
     private final PreferenceRow autoExpand;
     private final PreferenceRow preserve;
 
+    /**
+     * Builds the behavior page and registers all sections.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param dispatch consumer receiving settings actions for every control
+     * @param promptTemplates action opening the prompt templates screen
+     */
     public BehaviorSettingsPage(Context context, Tokens tokens, Runnable back,
                                 Consumer<SettingsAction> dispatch, Runnable promptTemplates) {
         super(context, R.string.screen_llm_title, tokens, back);
@@ -70,11 +85,13 @@ public final class BehaviorSettingsPage extends SettingsPage {
                 R.string.screen_llm_keep_reasoning_desc, Field.PRESERVE_REASONING, false);
     }
 
+    /** Adds an option choice row using the default icon. */
     private void choice(SettingsSection section, List<Choice> group, Field field, String value,
                         int label, int description, boolean divider) {
         choice(section, group, field, value, label, description, divider, Icons.SPARKLES);
     }
 
+    /** Adds an option choice row that dispatches a change and marks itself active. */
     private void choice(SettingsSection section, List<Choice> group, Field field, String value,
                         int label, int description, boolean divider, int icon) {
         PreferenceRow row = row(PreferenceRow.Style.OPTION, icon, label, description);
@@ -86,6 +103,7 @@ public final class BehaviorSettingsPage extends SettingsPage {
         section.row(row, divider, 0);
     }
 
+    /** Adds a switch row bound to a single preferences field. */
     private PreferenceRow toggle(SettingsSection section, int icon, int label, int description,
                                  Field field, boolean divider) {
         PreferenceRow row = row(PreferenceRow.Style.SWITCH, icon, label, description);
@@ -94,10 +112,16 @@ public final class BehaviorSettingsPage extends SettingsPage {
         return row;
     }
 
+    /** Creates a preference row in the given style. */
     private PreferenceRow row(PreferenceRow.Style style, int icon, int label, int description) {
         return new PreferenceRow(getContext(), theme, style, icon, label, description);
     }
 
+    /**
+     * Syncs all controls to the given state; controls stay disabled until preferences load.
+     *
+     * @param state current settings state from the presenter
+     */
     public void render(SettingsState state) {
         for (Choice item : reasoning) {
             item.row.active(item.value.equals(state.values.get(Field.REASONING)));
@@ -116,6 +140,7 @@ public final class BehaviorSettingsPage extends SettingsPage {
         }
     }
 
+    /** Pairing of an option value with its selectable row. */
     private static final class Choice {
         final String value;
         final PreferenceRow row;

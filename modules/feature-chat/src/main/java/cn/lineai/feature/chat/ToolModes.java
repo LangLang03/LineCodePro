@@ -9,19 +9,27 @@ import cn.lineai.tool.api.ToolRegistry;
 /** Tool permission modes shared by the controller and the header sheet. */
 public final class ToolModes {
 
+    /** Settings key of the permission mode (auto/confirm/readonly). */
     public static final String KEY = "tools.permissionMode";
+    /** Permission mode: run every tool without asking. */
     public static final String AUTO = "auto";
+    /** Permission mode: ask before mutating tools (the default). */
     public static final String CONFIRM = "confirm";
+    /** Permission mode: mutating tools are filtered out entirely. */
     public static final String READONLY = "readonly";
+    /** Settings key of the chat mode (agent/plan/control). */
     public static final String CHAT_MODE_KEY = "chat.mode";
 
+    /** Static utility; not instantiable. */
     private ToolModes() {
     }
 
+    /** Current normalized chat mode; agent mode is the default. */
     public static String chatMode(SettingsStore settings) {
         return ChatMode.normalize(settings.get(CHAT_MODE_KEY, ChatMode.AGENT));
     }
 
+    /** Persists a normalized chat mode. */
     public static void setChatMode(SettingsStore settings, String mode) {
         settings.put(CHAT_MODE_KEY, ChatMode.normalize(mode));
     }
@@ -48,14 +56,17 @@ public final class ToolModes {
         return result;
     }
 
+    /** Current normalized permission mode; confirm is the default. */
     public static String mode(SettingsStore settings) {
         return normalize(settings.get(KEY, CONFIRM));
     }
 
+    /** Persists a normalized permission mode. */
     public static void setMode(SettingsStore settings, String mode) {
         settings.put(KEY, normalize(mode));
     }
 
+    /** Maps unknown values to {@link #CONFIRM}; only auto/confirm/readonly are recognized. */
     public static String normalize(String mode) {
         if (AUTO.equals(mode) || READONLY.equals(mode)) return mode;
         return CONFIRM;

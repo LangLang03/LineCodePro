@@ -83,6 +83,7 @@ public final class ThemePalette {
     public final int diffAddText;
     public final int diffDelText;
 
+    /** Creates a palette from the given builder state. */
     private ThemePalette(Builder b) {
         this.mode = b.mode;
         this.bg = b.bg;
@@ -118,6 +119,7 @@ public final class ThemePalette {
         this.diffDelText = b.diffDelText;
     }
 
+    /** Returns the built-in palette for {@code mode}; unknown or null modes fall back to dark. */
     public static ThemePalette forMode(String mode) {
         String normalized = normalizeMode(mode);
         switch (normalized) {
@@ -142,6 +144,7 @@ public final class ThemePalette {
         }
     }
 
+    /** Maps {@code mode} to a supported mode identifier, defaulting to {@link #MODE_SYSTEM}. */
     public static String normalizeMode(String mode) {
         String value = mode == null ? "" : mode.trim();
         switch (value) {
@@ -160,6 +163,7 @@ public final class ThemePalette {
         }
     }
 
+    /** Returns whether the background luminance classifies this palette as dark. */
     public boolean isDark() {
         double luminance = (0.2126 * ((bg >> 16) & 0xFF)
                 + 0.7152 * ((bg >> 8) & 0xFF)
@@ -167,6 +171,7 @@ public final class ThemePalette {
         return luminance < 0.5;
     }
 
+    /** Returns the colour stored for {@code key}; unknown or null keys return {@link #accent}. */
     public int colorForKey(String key) {
         if (key == null) {
             return accent;
@@ -251,10 +256,12 @@ public final class ThemePalette {
         return values;
     }
 
+    /** Returns whether {@code value} is a {@code #RRGGBB} or {@code #AARRGGBB} literal. */
     public static boolean isHexColor(String value) {
         return value != null && value.matches("#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})");
     }
 
+    /** Parses a hex literal to packed ARGB, forcing full alpha; invalid input yields {@code fallback}. */
     public static int parseHex(String value, int fallback) {
         if (!isHexColor(value)) {
             return fallback;
@@ -264,10 +271,12 @@ public final class ThemePalette {
         return hex.length() == 6 ? (int) parsed | 0xFF000000 : (int) parsed;
     }
 
+    /** Formats the opaque RGB portion of {@code color} as {@code #RRGGBB}. */
     public static String toHex(int color) {
         return String.format(java.util.Locale.ROOT, "#%06X", color & 0xFFFFFF);
     }
 
+    /** Packs an RGB triple and an alpha fraction into a packed ARGB int. */
     private static int rgba(int red, int green, int blue, float alpha) {
         return (Math.round(alpha * 255f) << 24) | (red << 16) | (green << 8) | blue;
     }
@@ -414,15 +423,18 @@ public final class ThemePalette {
         private int diffAddText;
         private int diffDelText;
 
+        /** Creates an empty builder labelled with {@code mode}. */
         public Builder(String mode) {
             this.mode = mode;
         }
 
+        /** Creates a builder initialised from every colour of {@code base}. */
         public Builder(ThemePalette base) {
             this.mode = base.mode;
             copyFrom(base);
         }
 
+        /** Copies every colour channel from {@code p}. */
         private void copyFrom(ThemePalette p) {
             bg = p.bg; surface = p.surface; surfaceElevated = p.surfaceElevated; surfaceLight = p.surfaceLight;
             accent = p.accent; accentDim = p.accentDim; accentMuted = p.accentMuted; accentMuted2 = p.accentMuted2;
@@ -435,6 +447,7 @@ public final class ThemePalette {
             diffAddBg = p.diffAddBg; diffDelBg = p.diffDelBg; diffAddText = p.diffAddText; diffDelText = p.diffDelText;
         }
 
+        /** Overrides the mode label of the resulting palette. */
         public Builder named(String value) {
             mode = value;
             return this;
@@ -469,6 +482,7 @@ public final class ThemePalette {
             return this;
         }
 
+        /** Sets the four base surface colours from hex literals. */
         public Builder colors(String bg, String surface, String elevated, String light) {
             this.bg = parseHex(bg, this.bg);
             this.surface = parseHex(surface, this.surface);
@@ -477,6 +491,7 @@ public final class ThemePalette {
             return this;
         }
 
+        /** Sets the surface group plus input background from hex literals. */
         public Builder surface(String surface, String elevated, String light, String input) {
             this.surface = parseHex(surface, this.surface);
             this.surfaceElevated = parseHex(elevated, this.surfaceElevated);
@@ -485,6 +500,7 @@ public final class ThemePalette {
             return this;
         }
 
+        /** Sets the accent pair from hex literals and the muted variants as packed ARGB. */
         public Builder accent(String accent, String dim, int muted, int muted2) {
             this.accent = parseHex(accent, this.accent);
             this.accentDim = parseHex(dim, this.accentDim);
@@ -493,6 +509,7 @@ public final class ThemePalette {
             return this;
         }
 
+        /** Sets the four text colours from hex literals. */
         public Builder text(String text, String secondary, String tertiary, String onColor) {
             this.text = parseHex(text, this.text);
             this.textSecondary = parseHex(secondary, this.textSecondary);
@@ -501,6 +518,7 @@ public final class ThemePalette {
             return this;
         }
 
+        /** Sets border and input background colours from hex literals. */
         public Builder lines(String border, String borderLight, String inputBg) {
             this.border = parseHex(border, this.border);
             this.borderLight = parseHex(borderLight, this.borderLight);
@@ -508,12 +526,14 @@ public final class ThemePalette {
             return this;
         }
 
+        /** Sets the user and assistant bubble colours from hex literals. */
         public Builder bubbles(String user, String assistant) {
             this.userBubble = parseHex(user, this.userBubble);
             this.aiBubble = parseHex(assistant, this.aiBubble);
             return this;
         }
 
+        /** Sets the danger, warning, success and processing colours from hex literals. */
         public Builder state(String danger, String warning, String success, String processing) {
             this.danger = parseHex(danger, this.danger);
             this.warning = parseHex(warning, this.warning);
@@ -522,6 +542,7 @@ public final class ThemePalette {
             return this;
         }
 
+        /** Sets the overlay as packed ARGB plus code surfaces from hex literals. */
         public Builder surfaces(int overlay, String codeBg, String codeBorder) {
             this.overlay = overlay;
             this.codeBg = parseHex(codeBg, this.codeBg);
@@ -529,6 +550,7 @@ public final class ThemePalette {
             return this;
         }
 
+        /** Sets overlay and code surfaces as packed ARGB values. */
         public Builder surfaces(int overlay, int codeBg, int codeBorder) {
             this.overlay = overlay;
             this.codeBg = codeBg;
@@ -536,6 +558,7 @@ public final class ThemePalette {
             return this;
         }
 
+        /** Sets the pre-blended muted state colours as packed ARGB values. */
         public Builder derived(int dangerMuted, int dangerMuted2, int processingMuted) {
             this.dangerMuted = dangerMuted;
             this.dangerMuted2 = dangerMuted2;
@@ -543,12 +566,14 @@ public final class ThemePalette {
             return this;
         }
 
+        /** Sets the code background and border from hex literals. */
         public Builder code(String codeBg, String codeBorder) {
             this.codeBg = parseHex(codeBg, this.codeBg);
             this.codeBorder = parseHex(codeBorder, this.codeBorder);
             return this;
         }
 
+        /** Sets the diff background and text colours from hex literals. */
         public Builder diff(String addBg, String delBg, String addText, String delText) {
             this.diffAddBg = parseHex(addBg, this.diffAddBg);
             this.diffDelBg = parseHex(delBg, this.diffDelBg);
@@ -557,6 +582,7 @@ public final class ThemePalette {
             return this;
         }
 
+        /** Sets diff backgrounds as packed ARGB and diff text colours from hex literals. */
         public Builder diff(int addBg, int delBg, String addText, String delText) {
             this.diffAddBg = addBg;
             this.diffDelBg = delBg;
@@ -565,6 +591,7 @@ public final class ThemePalette {
             return this;
         }
 
+        /** Returns the immutable palette accumulated by this builder. */
         public ThemePalette build() {
             return new ThemePalette(this);
         }

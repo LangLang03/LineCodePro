@@ -28,12 +28,29 @@ import cn.lineai.ui.tokens.Tokens;
 /** Create or edit one Agent extension. */
 public final class AgentExtensionEditPage extends ExtensionPage {
 
+    /** Persistence and draft-generation callbacks for the editor. */
     public interface Listener {
+        /**
+         * Persists the edited extension.
+         *
+         * @param extension assembled extension with name, slug, prompt, and selected tools
+         */
         void onSave(AgentExtension extension);
 
+        /**
+         * Deletes the extension being edited.
+         *
+         * @param id identifier of the extension to delete
+         */
         void onDelete(String id);
 
-        /** Blocking draft generation; the page calls it on the IO scheduler. */
+        /**
+         * Blocking draft generation; the page calls it on the IO scheduler.
+         *
+         * @param description user-provided description of the desired agent
+         * @return generated draft, or null when generation produced no result
+         * @throws Exception on generation failure; the message is shown to the user
+         */
         AgentExtension generateDraft(String description) throws Exception;
     }
 
@@ -48,6 +65,17 @@ public final class AgentExtensionEditPage extends ExtensionPage {
     private final FormField trigger;
     private final LinearLayout toolsHost;
 
+    /**
+     * Builds the editor, seeding the form from the extension being edited when present.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param scheduler scheduler enforcing the I/O-to-main threading contract
+     * @param editing extension to edit, or null to create a new one
+     * @param tools catalog of tools available for selection
+     * @param listener persistence and draft-generation callbacks
+     */
     public AgentExtensionEditPage(Context context, Tokens tokens, Runnable back,
                                   Scheduler scheduler, AgentExtension editing, List<Tool> tools,
                                   Listener listener) {
@@ -74,6 +102,7 @@ public final class AgentExtensionEditPage extends ExtensionPage {
         if (!this.editing.id.isEmpty()) renderDelete();
     }
 
+    /** Adds the quick-create, basic, and behavior sections and hosts the tools section. */
     private void build() {
         SettingsSection quick = section(R.string.screen_agent_quick_create);
         quick.row(ExtensionKit.action(getContext(), theme, Icons.SPARKLES,
@@ -91,6 +120,7 @@ public final class AgentExtensionEditPage extends ExtensionPage {
         content.addView(toolsHost, new LinearLayout.LayoutParams(-1, -2));
     }
 
+    /** Wraps a form field with vertical spacing and an optional helper hint resource. */
     private LinearLayout form(FormField field, int helper, int topDp, int bottomDp) {
         LinearLayout wrapper = new LinearLayout(getContext());
         wrapper.setOrientation(LinearLayout.VERTICAL);
@@ -101,6 +131,7 @@ public final class AgentExtensionEditPage extends ExtensionPage {
         return wrapper;
     }
 
+    /** Rebuilds the tool selection section; toggling updates the selected name set. */
     private void renderTools() {
         toolsHost.removeAllViews();
         String title = getContext().getString(R.string.screen_agent_tools_count,
@@ -129,6 +160,7 @@ public final class AgentExtensionEditPage extends ExtensionPage {
         }
     }
 
+    /** Adds the delete section with confirmation, shown only when editing an existing extension. */
     private void renderDelete() {
         SettingsSection section = section(R.string.screen_extension_detail_delete_title);
         section.row(ExtensionKit.dangerAction(getContext(), theme, R.string.common_delete,
@@ -139,6 +171,7 @@ public final class AgentExtensionEditPage extends ExtensionPage {
                         () -> listener.onDelete(editing.id))), false, 0);
     }
 
+    /** Shows the bottom sheet collecting a description for AI draft generation. */
     private void showAiWriter() {
         Context context = getContext();
         Tokens current = theme.current();
@@ -188,6 +221,7 @@ public final class AgentExtensionEditPage extends ExtensionPage {
         generate.setOnClickListener(v -> generateDraft(dialog, input, generate));
     }
 
+    /** Generates the draft on I/O, applying it on main or reporting the failure. */
     private void generateDraft(Dialog dialog, EditText input, TextView generate) {
         String description = input.getText() == null ? "" : input.getText().toString().trim();
         if (description.isEmpty()) {
@@ -225,11 +259,13 @@ public final class AgentExtensionEditPage extends ExtensionPage {
         });
     }
 
+    /** Restores the generate button after a failed or empty generation. */
     private void resetGenerate(TextView generate) {
         generate.setEnabled(true);
         generate.setText(R.string.screen_agent_let_ai_button);
     }
 
+    /** Copies draft values into the form fields and tool selection. */
     private void applyDraft(AgentExtension draft) {
         name.input().setText(draft.name);
         slug.input().setText(draft.slug);
@@ -240,6 +276,7 @@ public final class AgentExtensionEditPage extends ExtensionPage {
         renderTools();
     }
 
+    /** Validates name, slug, and prompt, then hands the assembled extension to the host. */
     private void save() {
         String nameValue = name.value();
         String slugValue = normalizeSlug(slug.value().isEmpty() ? nameValue : slug.value());

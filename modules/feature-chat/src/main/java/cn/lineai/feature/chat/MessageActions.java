@@ -16,23 +16,29 @@ public interface MessageActions {
         return true;
     }
 
+    /** False hides the multi-select entry in the action bar. */
     default boolean canMultiSelect() {
         return true;
     }
 
+    /** False hides the retry entry in the action bar. */
     default boolean canRetry() {
         return true;
     }
 
+    /** Quotes the message body into the composer. */
     default void onQuote(Message message) {
     }
 
+    /** Restarts the generation from the given user message. */
     default void onRetry(Message message) {
     }
 
+    /** Recalls (removes) the message and everything after it. */
     default void onRecall(Message message) {
     }
 
+    /** Enters multi-select mode anchored on the given message. */
     default void onMultiSelect(Message message) {
     }
 

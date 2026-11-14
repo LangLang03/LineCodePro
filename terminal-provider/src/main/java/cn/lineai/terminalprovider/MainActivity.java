@@ -21,13 +21,22 @@ import cn.lineai.ipc.terminal.ITerminalProviderCallback;
 import cn.lineai.ipc.terminal.ITerminalProviderService;
 import java.io.File;
 
+/**
+ * Manual test harness for the terminal provider: binds the in-app
+ * {@link TerminalProviderService} and exercises shell execution and provider metadata
+ * from a themed log screen. Not part of the IPC contract; results are shown on screen
+ * only.
+ */
 public final class MainActivity extends Activity {
+    /** AIDL proxy once bound; null while disconnected. */
     private ITerminalProviderService service;
+    /** Mirror of the ServiceConnection callbacks, main-thread only. */
     private boolean bound = false;
     private TextView logView;
     private TextView statusView;
     private final StringBuilder logBuilder = new StringBuilder();
 
+    /** Tracks the local binding and mirrors its state into the status line and log. */
     private final ServiceConnection connection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder binder) {
@@ -46,6 +55,7 @@ public final class MainActivity extends Activity {
         }
     };
 
+    /** Builds the whole UI programmatically from the current night-mode palette. */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -82,6 +92,7 @@ public final class MainActivity extends Activity {
         appendLog("package: " + getPackageName());
     }
 
+    /** Appends one themed button row running the given action when tapped. */
     private void addAction(TerminalTheme.Palette theme, LinearLayout parent,int label,boolean primary,Runnable onClick) {
         TextView button=TerminalTheme.textMedium(this,getString(label),16,primary?theme.textOnColor:theme.text);
         button.setGravity(android.view.Gravity.CENTER_VERTICAL);button.setMinimumHeight(TerminalTheme.dp(this,52));
@@ -90,6 +101,7 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=TerminalTheme.dp(this,12);parent.addView(button,p);
     }
 
+    /** Binds the in-app provider service; repeated taps are ignored while already bound. */
     private void bindLocalService() {
         if (bound) {
             appendLog("service already bound");
@@ -100,6 +112,10 @@ public final class MainActivity extends Activity {
         appendLog("binding local service...");
     }
 
+    /**
+     * Runs one blocking shell command through the AIDL {@code executeShell} call with a
+     * ten-second timeout, logging output, errors and the exit code as they arrive.
+     */
     private void testShell(String command) {
         if (!bound || service == null) {
             appendLog("error: bind the service first");
@@ -131,6 +147,7 @@ public final class MainActivity extends Activity {
         }
     }
 
+    /** Queries and logs the provider type, info JSON and availability flag. */
     private void testProviderInfo() {
         if (!bound || service == null) {
             appendLog("error: bind the service first");
@@ -148,6 +165,7 @@ public final class MainActivity extends Activity {
         }
     }
 
+    /** Refreshes the status line with the binding state and this app's version. */
     private void updateStatus() {
         String status = bound ? "service: bound" : "service: not bound";
         try {
@@ -159,6 +177,7 @@ public final class MainActivity extends Activity {
         statusView.setText(status);
     }
 
+    /** Appends one line to the log view and scrolls it to the bottom; empty input is dropped. */
     private void appendLog(String message) {
         if (message == null || message.length() == 0) {
             return;
@@ -168,6 +187,7 @@ public final class MainActivity extends Activity {
         logView.post(() -> logView.scrollTo(0, logView.getHeight()));
     }
 
+    /** Releases the binding so the provider service is not kept alive by a dead activity. */
     @Override
     protected void onDestroy() {
         super.onDestroy();

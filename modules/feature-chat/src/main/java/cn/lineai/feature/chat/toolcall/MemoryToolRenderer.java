@@ -8,11 +8,13 @@ import cn.lineai.tool.api.ToolPresentation;
 /** Memory saves (legacy memory header): status row with the memory title and a bounded code card. */
 final class MemoryToolRenderer implements ToolCardRenderer {
 
+    /** Shared stateless instance. */
     static final MemoryToolRenderer INSTANCE = new MemoryToolRenderer();
 
     private MemoryToolRenderer() {
     }
 
+    /** Renders the memory-title header plus scope/content code card when expanded. */
     @Override
     public void render(ToolCardFrame frame, ToolCallEntry entry, ToolPresentation presentation) {
         ToolJson arguments = ToolCardSupport.arguments(entry);

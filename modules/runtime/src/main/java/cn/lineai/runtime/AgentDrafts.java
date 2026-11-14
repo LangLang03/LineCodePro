@@ -20,10 +20,22 @@ import cn.lineai.tool.api.ToolKind;
  */
 public final class AgentDrafts {
 
+    /** Utility class; instantiation is not permitted. */
     private AgentDrafts() {
     }
 
-    /** Renders the draft prompt over {@code tools} (phone tools excluded) and calls the model. */
+    /**
+     * Renders the AGENT_DRAFT prompt over the tool catalog (phone tools are excluded
+     * because extension agents run without device control) and asks the model for a draft.
+     *
+     * @param model the model used for generation
+     * @param template the AGENT_DRAFT template text, possibly user-overridden
+     * @param tools the full tool catalog
+     * @param description the user's description of the agent to draft
+     * @param probe blocking completion probe used as the generation backend
+     * @return the drafted extension, not yet persisted
+     * @throws Exception on prompt rendering or model failures; callers map it to page copy
+     */
     public static AgentExtension generate(ModelConfig model, String template,
                                           java.util.Collection<Tool> tools, String description,
                                           ModelProbe probe) throws Exception {

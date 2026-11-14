@@ -7,9 +7,17 @@ import java.util.Locale;
 /** URL gate used by the browser and by links in answers. */
 public final class LinkPolicy {
 
+    /** Non-instantiable policy holder. */
     private LinkPolicy() {
     }
 
+    /**
+     * Returns whether {@code value} is a well-formed absolute URL this policy permits.
+     * @param value candidate URL, may be null
+     * @param allowAnyHttp when true, plain HTTP to any host is accepted
+     * @return true only for https URLs, and for http URLs restricted to loopback hosts
+     *         unless {@code allowAnyHttp} is set
+     */
     public static boolean allows(String value, boolean allowAnyHttp) {
         if (value == null) return false;
         for (int i = 0; i < value.length(); i++) {

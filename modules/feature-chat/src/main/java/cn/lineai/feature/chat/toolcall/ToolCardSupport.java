@@ -9,6 +9,7 @@ import cn.lineai.ui.tokens.Tokens;
 /** Shared, presentation-agnostic helpers for the tool card renderers. */
 final class ToolCardSupport {
 
+    /** Static utility; not instantiable. */
     private ToolCardSupport() {
     }
 
@@ -38,6 +39,7 @@ final class ToolCardSupport {
         return "";
     }
 
+    /** First line of a multi-line value, trimmed. */
     static String firstLine(String value) {
         if (value == null || value.isEmpty()) return "";
         int index = value.indexOf('\n');
@@ -69,6 +71,7 @@ final class ToolCardSupport {
         return "";
     }
 
+    /** Parsed request arguments; an empty object when absent or unparseable. */
     static ToolJson arguments(ToolCallEntry entry) {
         if (entry == null || entry.arguments.trim().isEmpty()) return ToolJson.empty();
         ToolJson parsed = ToolJson.tryParse(entry.arguments);
@@ -81,14 +84,17 @@ final class ToolCardSupport {
         return ToolJson.tryParse(content);
     }
 
+    /** Null-safe array lookup. */
     static ToolJsonArray array(ToolJson object, String key) {
         return object == null ? null : object.array(key);
     }
 
+    /** Null-safe trimmed string lookup. */
     static String string(ToolJson object, String key) {
         return object == null ? "" : object.text(key, "").trim();
     }
 
+    /** Pretty-printed arguments, "{}" for null. */
     static String prettyJson(ToolJson object) {
         return object == null ? "{}" : object.pretty();
     }

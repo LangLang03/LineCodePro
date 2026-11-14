@@ -10,9 +10,16 @@ import cn.lineai.core.kernel.error.ErrorCode;
  */
 public final class ErrorTextMapper {
 
+    /** Not instantiable; the mapping is a static registry lookup. */
     private ErrorTextMapper() {
     }
 
+    /**
+     * Maps one error code to the message the UI shows.
+     *
+     * @param code stable error code carried by the failure; null maps to the generic message
+     * @return deferred lookup of the matching string resource
+     */
     public static TextRef text(ErrorCode code) {
         if (code == null) {
             return TextRef.of(R.string.toast_ai_generate_failed);

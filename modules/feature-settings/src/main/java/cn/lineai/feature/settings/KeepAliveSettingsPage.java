@@ -17,11 +17,19 @@ import cn.lineai.ui.tokens.Tokens;
 /** Wake lock, foreground service, silent audio and battery whitelist switches. */
 public final class KeepAliveSettingsPage extends SettingsPage implements Refreshable {
 
+    /** Host callbacks reflecting the real system state behind the switches. */
     public interface Listener {
+        /**
+         * Returns whether the app is currently exempt from battery optimizations.
+         *
+         * @return true when the exemption is granted
+         */
         boolean ignoringBatteryOptimizations();
 
+        /** Requests the battery optimization exemption via the system dialog. */
         void onRequestBatteryOptimizationExemption();
 
+        /** Notifies the host that a keep-alive service toggle changed so services can reapply. */
         void onServiceChanged();
     }
 
@@ -31,6 +39,15 @@ public final class KeepAliveSettingsPage extends SettingsPage implements Refresh
     private final PreferenceRow battery;
     private final Listener listener;
 
+    /**
+     * Builds the keep-alive page with its service and battery sections.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param dispatch consumer receiving settings actions for the service switches
+     * @param listener host callbacks for battery state and service changes
+     */
     public KeepAliveSettingsPage(Context context, Tokens tokens, Runnable back,
                                  Consumer<SettingsAction> dispatch, Listener listener) {
         super(context, R.string.screen_keep_alive_title, tokens, back);
@@ -55,6 +72,7 @@ public final class KeepAliveSettingsPage extends SettingsPage implements Refresh
         section(R.string.screen_keep_alive_section_system).row(battery, false, 0);
     }
 
+    /** Adds a service switch row that dispatches the change and notifies the host. */
     private PreferenceRow toggle(SettingsSection section, int icon, int label, int description,
                                  Field field, Consumer<SettingsAction> dispatch, boolean divider) {
         PreferenceRow row = new PreferenceRow(getContext(), theme, PreferenceRow.Style.SWITCH,
@@ -67,6 +85,12 @@ public final class KeepAliveSettingsPage extends SettingsPage implements Refresh
         return row;
     }
 
+    /**
+     * Syncs all switches to the given state and the real battery exemption; rows stay disabled
+     * until preferences load.
+     *
+     * @param state current settings state from the presenter
+     */
     public void render(SettingsState state) {
         wakeLock.checked(state.values.keepAliveWakeLock());
         foreground.checked(state.values.keepAliveForeground());
@@ -78,6 +102,7 @@ public final class KeepAliveSettingsPage extends SettingsPage implements Refresh
         battery.setEnabled(state.loaded);
     }
 
+    /** Re-reads the battery exemption state on every show, since the system dialog may change it. */
     @Override public void onShown() {
         battery.checked(listener.ignoringBatteryOptimizations());
     }

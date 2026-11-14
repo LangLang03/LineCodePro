@@ -16,6 +16,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
+/**
+ * Hosts the pushed settings and feature pages inside one container view: it observes the
+ * back stack, creates and caches page views, and replays the legacy push/pop slide
+ * animations. Only overlay entries (stack size greater than one) are shown here; the root
+ * chat surface stays owned by the activity.
+ */
 public final class ScreenHost implements AutoCloseable {
     /** Legacy push motion: slide, 280 ms EaseOut. */
     private static final long ENTER_MS = 280L;
@@ -33,6 +39,13 @@ public final class ScreenHost implements AutoCloseable {
     private boolean suppressAnimation;
     private boolean skipNextAnimation;
 
+    /**
+     * Creates the host and subscribes to back stack changes.
+     *
+     * @param container the container receiving and removing page views
+     * @param navigation the observed back stack
+     * @param factory view factory invoked for keys without a cached view
+     */
     public ScreenHost(FrameLayout container, BackStack navigation, Function<ScreenKey<?, ?>, View> factory) {
         this.container = container;
         this.navigation = navigation;
@@ -40,6 +53,11 @@ public final class ScreenHost implements AutoCloseable {
         observation = navigation.observe(this::render);
     }
 
+    /**
+     * Reconciles the visible page set with the back stack entries: disposes removed views
+     * (animating the popped page when appropriate), builds the new top page, and runs the
+     * push or pop slide between the previous and the new top view.
+     */
     private void render(List<ScreenKey<?, ?>> entries) {
         releaseInterruptedExits();
         ScreenKey<?, ?> previousTop = lastTop;
@@ -126,6 +144,7 @@ public final class ScreenHost implements AutoCloseable {
         }
     }
 
+    /** Slides a view to rest position; interpolator follows the legacy motion curves. */
     private void animateIn(View view, long duration) {
         view.animate().translationX(0f).setDuration(duration)
                 .setInterpolator(duration == EXIT_MS
@@ -134,6 +153,7 @@ public final class ScreenHost implements AutoCloseable {
                 .start();
     }
 
+    /** Slides a still-cached view off screen and hides it; the view stays in the map. */
     private void animateOut(View view, float target, long duration) {
         view.animate().translationX(target).setDuration(duration)
                 .setInterpolator(new android.view.animation.AccelerateInterpolator())
@@ -143,6 +163,7 @@ public final class ScreenHost implements AutoCloseable {
                 }).start();
     }
 
+    /** Slides a removed view off screen and disposes it when the animation ends. */
     private void animateExit(View view, int width) {
         exiting.add(view);
         view.animate().cancel();
@@ -165,6 +186,7 @@ public final class ScreenHost implements AutoCloseable {
         exiting.clear();
     }
 
+    /** Repaints the container background and forwards new tokens to settings pages. */
     public void applyTokens(Tokens tokens) {
         container.setBackgroundColor(tokens.bg);
         for (View view : views.values()) {
@@ -172,10 +194,17 @@ public final class ScreenHost implements AutoCloseable {
         }
     }
 
+    /** Invokes the consumer for every cached page view, in insertion order. */
     public void visit(java.util.function.Consumer<View> consumer) {
         for (View view : views.values()) consumer.accept(view);
     }
 
+    /**
+     * Serializes the back stack routes, string arguments and settings page scroll
+     * positions for configuration changes.
+     *
+     * @return the saved state bundle consumed by {@link #restore}
+     */
     public Bundle save() {
         ArrayList<Bundle> entries = new ArrayList<>();
         for (ScreenKey<?, ?> key : navigation.entries()) {
@@ -195,6 +224,13 @@ public final class ScreenHost implements AutoCloseable {
         return saved;
     }
 
+    /**
+     * Rebuilds the back stack from saved state, recreating the non-root page views and
+     * their scroll positions without animations.
+     *
+     * @param saved state produced by {@link #save}; ignored when {@code null} or empty
+     * @param registry screen registry resolving routes back to screen ids
+     */
     public void restore(Bundle saved, ScreenRegistry registry) {
         if (saved == null) return;
         ArrayList<Bundle> entries = saved.getParcelableArrayList("screens");
@@ -228,11 +264,13 @@ public final class ScreenHost implements AutoCloseable {
         }
     }
 
+    /** Removes the view from the container and releases settings page listeners. */
     private void dispose(View view) {
         container.removeView(view);
         if (view instanceof SettingsPage) ((SettingsPage) view).dispose();
     }
 
+    /** Cancels the observation and disposes every page view and the back stack. */
     @Override public void close() {
         observation.cancel();
         releaseInterruptedExits();

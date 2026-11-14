@@ -24,11 +24,27 @@ public final class SqliteDiffStore implements DiffStore {
     private final LineCodeDatabase database;
     private final Clock clock;
 
+    /**
+     * Creates the store.
+     *
+     * @param database shared database connection holder
+     * @param clock clock used to timestamp recorded diffs
+     */
     public SqliteDiffStore(LineCodeDatabase database, Clock clock) {
         this.database = database;
         this.clock = clock;
     }
 
+    /**
+     * Stores the full before and after text of one change with a fresh identifier; existing rows
+     * are replaced wholesale.
+     *
+     * @param rootPath workspace root the path is relative to; null is stored as empty
+     * @param path workspace-relative file path; null is stored as empty
+     * @param before content before the change; null is stored as empty
+     * @param after content after the change; null is stored as empty
+     * @param existedBefore whether the file existed before the change
+     */
     @Override public void record(String rootPath, String path, String before, String after,
                                  boolean existedBefore) {
         ContentValues values = new ContentValues();
@@ -44,6 +60,11 @@ public final class SqliteDiffStore implements DiffStore {
                 SQLiteDatabase.CONFLICT_REPLACE);
     }
 
+    /**
+     * Reads every recorded diff, newest first.
+     *
+     * @return all diffs including entries that were already reverted
+     */
     @Override public List<FileDiff> list() {
         List<FileDiff> result = new ArrayList<>();
         try (Cursor cursor = database.open().query("file_diffs", null, null, null,
@@ -60,6 +81,15 @@ public final class SqliteDiffStore implements DiffStore {
         return result;
     }
 
+    /**
+     * Restores the recorded before-content. The target path is canonicalized and must stay inside
+     * the recorded root, so a hostile root/path pair cannot write outside the workspace.
+     *
+     * @param id diff identifier
+     * @return true when the file was restored, false when the diff is unknown, already reverted,
+     *         or its resolved path escapes the recorded root
+     * @throws DomainException with {@code ErrorCode.STORAGE} when writing the file fails
+     */
     @Override public boolean revert(String id) {
         FileDiff diff = find(id);
         if (diff == null || diff.reverted) return false;
@@ -83,10 +113,12 @@ public final class SqliteDiffStore implements DiffStore {
         }
     }
 
+    /** Deletes every recorded diff without touching workspace files. */
     @Override public void clear() {
         database.open().delete("file_diffs", null, null);
     }
 
+    /** Loads one diff row or null when the identifier is unknown. */
     private FileDiff find(String id) {
         try (Cursor cursor = database.open().query("file_diffs", null, "id=?",
                 new String[] {id}, null, null, null, "1")) {
@@ -100,6 +132,7 @@ public final class SqliteDiffStore implements DiffStore {
         }
     }
 
+    /** Reads one required text column. */
     private static String text(Cursor cursor, String column) {
         return cursor.getString(cursor.getColumnIndexOrThrow(column));
     }

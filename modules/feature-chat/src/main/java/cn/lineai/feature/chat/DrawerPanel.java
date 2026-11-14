@@ -23,6 +23,7 @@ import java.util.function.Consumer;
 import cn.lineai.core.model.Conversation;
 import cn.lineai.ui.i18n.R;
 import cn.lineai.ui.kit.IconButton;
+import cn.lineai.ui.kit.DotMatrixSpinner;
 import cn.lineai.ui.kit.Icons;
 import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
@@ -37,11 +38,19 @@ public final class DrawerPanel extends FrameLayout {
 
     /** One workspace tree node; children render only while expanded. */
     public static final class FileNode {
+        /** Display name of the node. */
         public final String name;
+        /** Slash-separated path relative to the workspace root. */
         public final String path;
+        /** True for directories. */
         public final boolean directory;
+        /** Child nodes; unmodifiable copy. */
         public final List<FileNode> children;
 
+        /** @param name      display name
+         * @param path      workspace-relative path
+         * @param directory true for directories
+         * @param children  child nodes, defensively copied */
         public FileNode(String name, String path, boolean directory, List<FileNode> children) {
             this.name = name == null ? "" : name;
             this.path = path == null ? "" : path;
@@ -53,24 +62,36 @@ public final class DrawerPanel extends FrameLayout {
 
     /** Application-owned commands; the drawer never navigates or touches storage itself. */
     public interface Listener {
+        /** Starts an empty conversation and closes the drawer. */
         void onNewConversation();
+        /** Opens the selected conversation and closes the drawer. */
         void onSelect(String conversationId);
+        /** Deletes the conversation without closing the drawer. */
         void onDelete(String conversationId);
 
+        /** Opens or attaches the tapped file. */
         default void onFileSelected(String path, String name) { }
 
+        /** Attachment entry point for the long-pressed tree node. */
         default void onFileLongPressed(String path, String name, boolean directory, boolean root) { }
 
+        /** Long-press on a removable project strip. */
         default void onProjectRemoveRequested() { }
 
+        /** Label shown in the files tab; empty falls back to the default label. */
         default String projectLabel() { return ""; }
 
+        /** Path shown under the project label. */
         default String projectPath() { return ""; }
 
+        /** True when the project strip supports long-press removal. */
         default boolean projectRemovable() { return false; }
 
         /** Loads the whole tree once; {@code null} keeps the "preparing" empty state. */
         default void loadFileTree(Consumer<FileNode> callback) { callback.accept(null); }
+
+        /** Switches the chat view to a sub agent session; empty id selects the root. */
+        default void onSelectAgent(String agentId) { }
     }
 
     private static final float MAX_WIDTH_DP = 360f;
@@ -93,12 +114,16 @@ public final class DrawerPanel extends FrameLayout {
     private final TextView projectLabel;
     private final TextView projectPath;
     private final DrawerFileTree fileTree;
+    private final DrawerAgentsView agentView;
 
     private Listener listener;
     private Tokens tokens;
     private String currentId = "";
+    /** Conversation currently streaming; empty when idle. */
+    private String runningId = "";
     private boolean filesMode;
 
+    /** Builds scrim, sidebar, header, tabs, conversation list and the files group. */
     public DrawerPanel(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -183,6 +208,12 @@ public final class DrawerPanel extends FrameLayout {
         LinearLayout projectWrapper = row(context);
         Ui.padding(projectWrapper, 16, 0, 16, 8);
         projectWrapper.addView(projectStrip, lp(0, -2, 1f));
+        agentView = new DrawerAgentsView(context, tokens, agentId -> {
+            if (listener != null) {
+                listener.onSelectAgent(agentId);
+            }
+        });
+        projectWrapper.addView(agentView);
         filesGroup.addView(projectWrapper, lp(-1, -2));
         fileTree = new DrawerFileTree(context, tokens);
         fileTree.setCallback(new DrawerFileTree.Callback() {
@@ -208,24 +239,29 @@ public final class DrawerPanel extends FrameLayout {
 
     // --------------------------------------------------------------- helpers
 
+    /** Localized string shorthand. */
     private String string(int res) {
         return getContext().getString(res);
     }
 
+    /** Instance dp conversion. */
     private int dp(float value) {
         return Ui.dp(getContext(), value);
     }
 
+    /** Static dp conversion. */
     private static int dp(Context context, float value) {
         return Ui.dp(context, value);
     }
 
+    /** Vertical container. */
     private static LinearLayout column(Context context) {
         LinearLayout layout = new LinearLayout(context);
         layout.setOrientation(LinearLayout.VERTICAL);
         return layout;
     }
 
+    /** Centered horizontal container. */
     private static LinearLayout row(Context context) {
         LinearLayout layout = new LinearLayout(context);
         layout.setOrientation(LinearLayout.HORIZONTAL);
@@ -233,14 +269,17 @@ public final class DrawerPanel extends FrameLayout {
         return layout;
     }
 
+    /** Bare layout parameters. */
     private static LinearLayout.LayoutParams lp(int width, int height) {
         return new LinearLayout.LayoutParams(width, height);
     }
 
+    /** Weighted layout parameters. */
     private static LinearLayout.LayoutParams lp(int width, int height, float weight) {
         return new LinearLayout.LayoutParams(width, height, weight);
     }
 
+    /** Layout parameters in dp with all four margins. */
     private LinearLayout.LayoutParams margins(int width, int height, int left, int top,
             int right, int bottom) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
@@ -252,12 +291,14 @@ public final class DrawerPanel extends FrameLayout {
         return params;
     }
 
+    /** Single-line ellipsized label with a height cap. */
     private static void oneLine(TextView view, int maxHeightDp) {
         view.setSingleLine(true);
         view.setEllipsize(TextUtils.TruncateAt.END);
         view.setMaxHeight(Ui.dp(view.getContext(), maxHeightDp));
     }
 
+    /** Non-clickable square glyph. */
     private static IconButton inlineIcon(Context context, int icon, int sizeDp) {
         IconButton button = new IconButton(context, icon);
         button.setIconSizeDp(sizeDp, sizeDp);
@@ -267,6 +308,7 @@ public final class DrawerPanel extends FrameLayout {
         return button;
     }
 
+    /** Centered tertiary empty-state label. */
     private TextView emptyState(Context context, int text) {
         TextView view = Ui.text(context, context.getString(text), Tokens.FONT_SM,
                 tokens.textTertiary, Typeface.NORMAL);
@@ -277,6 +319,7 @@ public final class DrawerPanel extends FrameLayout {
 
     // ------------------------------------------------------------------ chrome
 
+    /** Switches between conversations and files; entering files binds the project and tree. */
     private void selectTab(boolean files) {
         if (filesMode == files) {
             return;
@@ -294,6 +337,7 @@ public final class DrawerPanel extends FrameLayout {
         }
     }
 
+    /** Refreshes the project strip from the listener, wiring removal when supported. */
     private void bindProject() {
         String label = listener == null ? "" : listener.projectLabel();
         projectLabel.setText(label.isEmpty() ? string(R.string.header_project_default) : label);
@@ -314,80 +358,59 @@ public final class DrawerPanel extends FrameLayout {
 
     // ---------------------------------------------------------- conversations
 
-    public void setConversations(List<Conversation> conversations) {
-        setConversations(conversations, currentId);
+    /** Re-renders the conversation list keeping the current selection. */
+    /** Updates the live sub agent rows and the chip count. */
+    public void setAgents(java.util.List<cn.lineai.tool.api.AgentEntry> agents,
+                          String selectedAgentId) {
+        agentView.setAgents(agents, selectedAgentId);
     }
 
+    public void setConversations(List<Conversation> conversations) {
+        setConversations(conversations, currentId, runningId);
+    }
+
+    /** Re-renders the conversation list with the given selection; null input means empty. */
     public void setConversations(List<Conversation> conversations, String currentId) {
+        setConversations(conversations, currentId, runningId);
+    }
+
+    /**
+     * Re-renders the conversation list with the selection and the conversation whose turn is
+     * currently running (its delete action is replaced by a progress spinner).
+     */
+    public void setConversations(List<Conversation> conversations, String currentId,
+                                 String runningId) {
         this.currentId = currentId == null ? "" : currentId;
+        this.runningId = runningId == null ? "" : runningId;
         conversationList.removeAllViews();
         List<Conversation> items = conversations == null
                 ? Collections.<Conversation>emptyList() : conversations;
         emptyConversations.setVisibility(items.isEmpty() ? VISIBLE : GONE);
         for (Conversation conversation : items) {
-            conversationList.addView(new ConversationRow(conversation,
-                    conversation.id.equals(this.currentId)), margins(-1, -2, 0, 0, 0, 8));
-        }
-    }
-
-    private final class ConversationRow extends LinearLayout {
-        private final TextView title;
-        private final TextView time;
-        private final IconButton trash;
-        private final boolean selected;
-
-        ConversationRow(Conversation conversation, boolean selected) {
-            super(DrawerPanel.this.getContext());
-            this.selected = selected;
-            setOrientation(HORIZONTAL);
-            setGravity(Gravity.CENTER_VERTICAL);
-            setClickable(true);
-            setFocusable(true);
-            Ui.padding(this, 8, 16, 4, 16);
-            setOnClickListener(v -> {
-                if (listener != null) {
-                    listener.onSelect(conversation.id);
+            DrawerConversationRow row = new DrawerConversationRow(getContext(), tokens,
+                    conversation, conversation.id.equals(this.currentId),
+                    conversation.id.equals(this.runningId));
+            row.callback(new DrawerConversationRow.Callback() {
+                @Override public void onSelect(String id) {
+                    if (listener != null) {
+                        listener.onSelect(id);
+                    }
+                    close();
                 }
-                close();
-            });
-            LinearLayout labels = column(getContext());
-            Ui.padding(labels, 8, 0, 8, 0);
-            title = selected
-                    ? Ui.medium(getContext(), conversation.title, Tokens.FONT_MD, tokens.text)
-                    : Ui.text(getContext(), conversation.title, Tokens.FONT_MD, tokens.text,
-                            Typeface.NORMAL);
-            title.setMaxHeight(dp(21));
-            title.setSingleLine(true);
-            title.setEllipsize(TextUtils.TruncateAt.END);
-            labels.addView(title, lp(-1, -2));
-            time = Ui.text(getContext(), formatTime(conversation.updatedAt), Tokens.FONT_XS,
-                    tokens.textTertiary, Typeface.NORMAL);
-            labels.addView(time, margins(-1, -2, 0, 6, 0, 0));
-            addView(labels, lp(0, -2, 1f));
-            trash = new IconButton(getContext(), Icons.TRASH_2);
-            trash.setIconSizeDp(48, 16);
-            trash.setContentDescription(string(R.string.common_delete));
-            trash.setOnClickListener(v -> {
-                if (listener != null) {
-                    listener.onDelete(conversation.id);
+
+                @Override public void onDelete(String id) {
+                    if (listener != null) {
+                        listener.onDelete(id);
+                    }
                 }
             });
-            addView(trash, lp(48, 48));
-            restyle();
-        }
-
-        void restyle() {
-            setBackground(Ui.roundedStroke(getContext(),
-                    selected ? tokens.inputBg : tokens.surfaceElevated, 12,
-                    selected ? tokens.accent : tokens.borderLight));
-            title.setTextColor(tokens.text);
-            time.setTextColor(tokens.textTertiary);
-            trash.setIconColor(tokens.textTertiary);
+            conversationList.addView(row, margins(-1, -2, 0, 0, 0, 8));
         }
     }
 
     // ------------------------------------------------------------------ files
 
+    /** Triggers a tree reload through the listener; no listener means the empty state. */
     private void loadTree() {
         if (listener == null) {
             fileTree.setTree(null);
@@ -399,11 +422,13 @@ public final class DrawerPanel extends FrameLayout {
 
     // ------------------------------------------------------------------- tabs
 
+    /** One 14dp-height tab with an active pill background. */
     private final class TabView extends LinearLayout {
         private final IconButton glyph;
         private final TextView label;
         private final boolean conversations;
 
+        /** Builds the tab; styling depends on which tab is active. */
         TabView(Context context, int icon, int labelRes, boolean conversations) {
             super(context);
             this.conversations = conversations;
@@ -422,6 +447,7 @@ public final class DrawerPanel extends FrameLayout {
             restyle();
         }
 
+        /** Applies the active or inactive tab styling. */
         void restyle() {
             boolean active = conversations != filesMode;
             setBackground(active ? Ui.rounded(getContext(), tokens.surfaceElevated, 6) : null);
@@ -433,6 +459,7 @@ public final class DrawerPanel extends FrameLayout {
         }
     }
 
+    /** Restyles every chrome element and delegates to rows, tabs and the tree. */
     private void restyleStatic() {
         scrim.setBackgroundColor(tokens.overlay);
         sidebar.setBackgroundColor(tokens.bg);
@@ -449,14 +476,15 @@ public final class DrawerPanel extends FrameLayout {
         filesTab.restyle();
         for (int i = 0; i < conversationList.getChildCount(); i++) {
             View child = conversationList.getChildAt(i);
-            if (child instanceof ConversationRow) {
-                ((ConversationRow) child).restyle();
+            if (child instanceof DrawerConversationRow) {
+                ((DrawerConversationRow) child).restyle();
             }
         }
     }
 
     // -------------------------------------------------------------------- API
 
+    /** Installs the application-owned commands. */
     public void setListener(Listener value) {
         listener = value;
     }
@@ -465,6 +493,7 @@ public final class DrawerPanel extends FrameLayout {
     public void applyTokens(Tokens current) {
         tokens = current;
         restyleStatic();
+        agentView.applyTokens(current);
     }
 
     /** Offsets the sidebar below the status bar; the scrim still covers the full window. */
@@ -473,6 +502,7 @@ public final class DrawerPanel extends FrameLayout {
                 sidebar.getPaddingRight(), sidebar.getPaddingBottom());
     }
 
+    /** Shows the drawer and slides the sidebar in with the C++ easing. */
     public void open() {
         refreshProject();
         setVisibility(VISIBLE);
@@ -487,12 +517,14 @@ public final class DrawerPanel extends FrameLayout {
         }
     }
 
+    /** Slides the drawer out and hides it when the animation ends. */
     public void close() {
         if (getVisibility() == VISIBLE) {
             animateSidebar(0f, -width(), 150L, false);
         }
     }
 
+    /** Runs the paired sidebar translation and scrim fade. */
     private void animateSidebar(float from, float to, long duration, boolean opening) {
         sidebar.animate().cancel();
         scrim.animate().cancel();
@@ -512,17 +544,20 @@ public final class DrawerPanel extends FrameLayout {
                 .setInterpolator(easing).start();
     }
 
+    /** Current sidebar width, falling back to the computed default. */
     private int width() {
         ViewGroup.LayoutParams params = sidebar.getLayoutParams();
         return params != null && params.width > 0 ? params.width : sidebarWidth(getContext());
     }
 
+    /** Sidebar width clamped to 240..360dp with a 48dp reveal floor. */
     private static int sidebarWidth(Context context) {
         int available = context.getResources().getDisplayMetrics().widthPixels - dp(context, 48);
         return Math.max(dp(context, MIN_WIDTH_DP),
                 Math.min(dp(context, MAX_WIDTH_DP), available));
     }
 
+    /** Compact "M/d HH:mm" timestamp; non-positive values render empty. */
     private static String formatTime(long timestamp) {
         return timestamp <= 0 ? "" : new SimpleDateFormat("M/d HH:mm", Locale.getDefault())
                 .format(new Date(timestamp));

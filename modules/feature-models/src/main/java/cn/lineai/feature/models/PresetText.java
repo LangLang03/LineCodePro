@@ -9,7 +9,14 @@ import cn.lineai.core.model.ModelConfig;
 import cn.lineai.core.model.ModelPreset;
 import cn.lineai.ui.i18n.R;
 
-/** Localised preset labels and descriptions. */
+/**
+ * Localised preset labels and descriptions.
+ *
+ * <p>Static registry mapping provider preset ids to string resources. Unknown ids degrade to the
+ * raw id for the label and an empty description so a preset added before its strings land still
+ * renders sanely. All lookups run on the caller's thread; the maps are read-only after class
+ * initialisation.</p>
+ */
 final class PresetText {
 
     private static final Map<String, int[]> REGISTRY = new HashMap<>();
@@ -34,13 +41,22 @@ final class PresetText {
         register("codex", R.string.model_provider_preset_codex_label, R.string.model_provider_preset_codex_desc);
     }
 
+    /** Not instantiable; lookups are static. */
     private PresetText() {
     }
 
+    /** Puts one label/description pair into the registry during class initialisation. */
     private static void register(String id, int label, int description) {
         REGISTRY.put(id, new int[] {label, description});
     }
 
+    /**
+     * Returns the provider-specific endpoint hint for a preset.
+     *
+     * @param context context resolving the string resource
+     * @param id preset identifier
+     * @return localised hint, or an empty string for unknown ids
+     */
     static String hint(Context context, String id) {
         Integer hint = HINTS.get(id);
         return hint == null ? "" : context.getString(hint);
@@ -68,16 +84,37 @@ final class PresetText {
         HINTS.put("codex", R.string.model_provider_preset_codex_hint);
     }
 
+    /**
+     * Returns the display label for a preset.
+     *
+     * @param context context resolving the string resource
+     * @param id preset identifier
+     * @return localised label, or the raw id when the preset is unknown
+     */
     static String label(Context context, String id) {
         int[] entry = REGISTRY.get(id);
         return entry == null ? id : context.getString(entry[0]);
     }
 
+    /**
+     * Returns the description line for a preset.
+     *
+     * @param context context resolving the string resource
+     * @param id preset identifier
+     * @return localised description, or an empty string for unknown ids
+     */
     static String description(Context context, String id) {
         int[] entry = REGISTRY.get(id);
         return entry == null ? "" : context.getString(entry[1]);
     }
 
+    /**
+     * Maps a protocol enum to its user-facing protocol name.
+     *
+     * @param context context resolving the localised protocol strings
+     * @param protocol protocol of the model config; never null
+     * @return protocol display name; unknown values fall back to the OpenAI-compatible label
+     */
     static String protocol(Context context, ModelConfig.Protocol protocol) {
         switch (protocol) {
             case CODEX_RESPONSES: return "Codex";

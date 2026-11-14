@@ -14,16 +14,25 @@ import cn.lineai.tool.api.ToolIcon;
 import cn.lineai.tool.api.ToolPresentation;
 import cn.lineai.tool.api.ToolResult;
 
-/** Replaces the session TODO list; the state is injected into the next system prompt. */
+/**
+ * Replaces the session TODO list; the state is injected into the next system prompt.
+ *
+ * <p>Every call carries the complete list, which keeps the plan consistent without merge
+ * logic. The invariant of at most one {@code in_progress} item is enforced here so the prompt
+ * always shows a single current task.</p>
+ */
 public final class TodoUpdateTool implements Tool {
 
+    /** {@inheritDoc} */
     @Override public String name() { return "todo_update"; }
 
+    /** {@inheritDoc} */
     @Override public String description() {
         return "Replace the session TODO list. Each call sends the complete list. "
                 + "Status values: pending, in_progress (at most one), completed.";
     }
 
+    /** {@inheritDoc} */
     @Override public String parametersJson() {
         return cn.lineai.tool.api.ToolSchemaBuilder.object()
                 .objectArray("items", "Complete TODO list", cn.lineai.tool.api.ToolSchemaBuilder.object()
@@ -36,8 +45,10 @@ public final class TodoUpdateTool implements Tool {
                 .required("items").build();
     }
 
+    /** {@inheritDoc} */
     @Override public boolean mutating() { return false; }
 
+    /** {@inheritDoc} */
     @Override public ToolPresentation presentation(JSONObject arguments) {
         int count = arguments == null || arguments.optJSONArray("items") == null
                 ? 0 : arguments.optJSONArray("items").length();
@@ -45,6 +56,12 @@ public final class TodoUpdateTool implements Tool {
                 count + " items", ToolPresentation.reason(arguments));
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Blank entries are dropped, unknown statuses fall back to {@code pending}, and a call
+     * carrying more than one {@code in_progress} item is rejected without touching the store.</p>
+     */
     @Override public ToolResult execute(ToolContext context, JSONObject arguments) {
         TodoStore store = context == null ? null : context.todos();
         if (store == null) return ToolResult.failure("", "TODO store is not available");

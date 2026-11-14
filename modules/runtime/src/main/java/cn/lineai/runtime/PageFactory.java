@@ -16,17 +16,30 @@ import cn.lineai.core.mvi.present.UiState;
  */
 public final class PageFactory {
 
+    /** In-app browser route; owned here because it renders before the settings family. */
     public static final ScreenId<UiState, Params.Args> BROWSER =
             new ScreenId<>("browser", args -> args);
 
     private final SettingsPageFactory settings;
     private final FeaturePageFactory features;
 
+    /**
+     * Creates the router over the two family factories.
+     *
+     * @param host activity callbacks handed through to every page
+     */
     public PageFactory(PageHost host) {
         this.settings = new SettingsPageFactory(host);
         this.features = new FeaturePageFactory(host);
     }
 
+    /**
+     * Routes a screen key to its family factory by route prefix.
+     *
+     * @param key the pushed screen key
+     * @return the constructed, not yet attached, page view
+     * @throws IllegalArgumentException when no family owns the route
+     */
     public View create(ScreenKey<?, ?> key) {
         String route = key.id().route();
         if (featureRoute(route)) {
@@ -38,19 +51,23 @@ public final class PageFactory {
         throw new IllegalArgumentException("Unregistered view factory: " + route);
     }
 
+    /** Feature ownership: the models, extensions and workspace route prefixes. */
     private static boolean featureRoute(String route) {
         return route.equals("models") || route.startsWith("models.")
                 || route.startsWith("extensions.") || route.startsWith("workspace.");
     }
 
+    /** Settings ownership: the browser, settings and settings.* route prefixes. */
     private static boolean settingsRoute(String route) {
         return route.equals("browser") || route.equals("settings") || route.startsWith("settings.");
     }
 
+    /** Settings-family sub-factory, exposed for token application. */
     public SettingsPageFactory settings() {
         return settings;
     }
 
+    /** Feature-family sub-factory, exposed for late page updates from SAF results. */
     public FeaturePageFactory features() {
         return features;
     }

@@ -8,11 +8,13 @@ import cn.lineai.tool.api.ToolPresentation;
 /** Image generation/understanding: legacy status row, saved path and result in the code card. */
 final class ImageToolRenderer implements ToolCardRenderer {
 
+    /** Shared stateless instance. */
     static final ImageToolRenderer INSTANCE = new ImageToolRenderer();
 
     private ImageToolRenderer() {
     }
 
+    /** Renders the prompt/status header plus the saved-path and result code card. */
     @Override
     public void render(ToolCardFrame frame, ToolCallEntry entry, ToolPresentation presentation) {
         ToolJson arguments = ToolCardSupport.arguments(entry);

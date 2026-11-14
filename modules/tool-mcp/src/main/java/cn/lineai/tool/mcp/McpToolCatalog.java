@@ -24,12 +24,27 @@ public final class McpToolCatalog implements ToolCatalog {
     private final Supplier<List<McpExtension>> servers;
     private final McpCaller caller;
 
+    /**
+     * Creates the composite catalog.
+     *
+     * @param base catalog supplying the built-in tools; may be {@code null} to register only
+     *             MCP tools
+     * @param servers source of the current extension list; may be {@code null}
+     * @param caller transport shared by every generated tool
+     */
     public McpToolCatalog(ToolCatalog base, Supplier<List<McpExtension>> servers, McpCaller caller) {
         this.base = base;
         this.servers = servers;
         this.caller = caller;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Built-in names are claimed first; MCP tools get sanitized aliases derived from
+     * {@code mcp_<server>_<tool>} and disambiguated with numeric suffixes, so a registry never
+     * ends up with two tools under one name.</p>
+     */
     @Override public ToolRegistry registry() {
         ToolRegistry registry = new ToolRegistry();
         Set<String> used = new HashSet<>();
@@ -53,6 +68,14 @@ public final class McpToolCatalog implements ToolCatalog {
         return registry;
     }
 
+    /**
+     * Produces a unique registry name: sanitized, length-capped to 60 characters and given a
+     * numeric suffix when a collision remains.
+     *
+     * @param candidate preferred name
+     * @param used names already claimed in this registry build
+     * @return a name not present in {@code used}
+     */
     private static String uniqueName(String candidate, Set<String> used) {
         String base = sanitize(candidate);
         if (base.length() > 60) base = base.substring(0, 60);
@@ -62,10 +85,22 @@ public final class McpToolCatalog implements ToolCatalog {
         return base + "_" + index;
     }
 
+    /**
+     * Lowercases a server or tool name for inclusion in a registry alias.
+     *
+     * @param value server or tool name; may be {@code null}
+     * @return sanitized slug, never empty
+     */
     private static String slug(String value) {
         return sanitize(value == null ? "" : value);
     }
 
+    /**
+     * Reduces a name to lowercase letters, digits and single underscore separators.
+     *
+     * @param value raw name text
+     * @return the slug, or {@code "tool"} when nothing usable remains
+     */
     private static String sanitize(String value) {
         StringBuilder out = new StringBuilder();
         String lower = value.toLowerCase(Locale.ROOT);

@@ -23,6 +23,15 @@ public final class GitHubSkillPage extends SettingsPage {
     private final FormField url;
     private final TextView status;
 
+    /**
+     * Builds the GitHub import page.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param scheduler scheduler enforcing the I/O-to-main threading contract
+     * @param store skill store receiving the imported archive via the shared install path
+     */
     public GitHubSkillPage(Context context, Tokens tokens, Runnable back, Scheduler scheduler,
                            SkillStore store) {
         super(context, R.string.skill_github_title, tokens, back);
@@ -52,6 +61,7 @@ public final class GitHubSkillPage extends SettingsPage {
         theme.bind(t -> status.setTextColor(t.textTertiary));
     }
 
+    /** Validates the URL, then downloads and installs through the shared remote install path. */
     private void install() {
         String value = url.value();
         if (!value.startsWith("https://")) {

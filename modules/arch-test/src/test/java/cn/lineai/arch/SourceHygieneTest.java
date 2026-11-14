@@ -76,8 +76,7 @@ public class SourceHygieneTest {
                 // blocking process pipes cannot be drained with a timeout without a
                 // dedicated reader thread. The list must stay minimal.
                 if (file.getName().equals("LocalShellBackend.java")
-                        || file.getName().equals("ShellTool.java")
-                        || file.getName().equals("NestedAgentRunner.java")) {
+                        || file.getName().equals("ShellTool.java")) {
                     continue;
                 }
                 String source = Modules.codeOnly(Modules.read(file));
@@ -187,9 +186,10 @@ public class SourceHygieneTest {
         List<String> sanctioned = List.of(
                 // feature-chat: the hand-rolled ordered queues behind the event loop.
                 "SerialEvents.java", "SerialWrites.java",
-                // runtime shell infrastructure: task state shared with pump/killer threads.
+                // runtime shell infrastructure: task state shared with pump/killer threads;
+                // SubAgentRegistry coordinates parallel agent sessions.
                 "MemoryTodoStore.java", "BackgroundShellRegistry.java", "LocalShellBackend.java",
-                "SshShellBackend.java", "TerminalProviderGateway.java");
+                "SshShellBackend.java", "TerminalProviderGateway.java", "SubAgentRegistry.java");
         StringBuilder violations = new StringBuilder();
         for (String root : Modules.modules()) {
             if (!root.startsWith("feature-") && !root.equals("runtime")) {
@@ -210,14 +210,17 @@ public class SourceHygieneTest {
         assertEquals("Locks outside sanctioned files:\n" + violations, 0, violations.length());
     }
 
-    /** AGENT.md budgets the :app shell at 1500 Java lines total (no page construction). */
+    /**
+     * AGENT.md budgets the :app shell at 1800 Java lines total (no page construction). The
+     * budget was raised from 1500 when the comment policy made per-method Javadoc mandatory.
+     */
     @Test
     public void appShellStaysWithinTotalBudget() {
         int total = 0;
         for (File file : Modules.sourcesOf("app")) {
             total += Modules.read(file).split("\n").length;
         }
-        assertTrue("app shell over budget: " + total + " lines (max 1500)", total <= 1500);
+        assertTrue("app shell over budget: " + total + " lines (max 1800)", total <= 1800);
     }
 
     static List<Integer> statusLiteralOffsets(String source) {

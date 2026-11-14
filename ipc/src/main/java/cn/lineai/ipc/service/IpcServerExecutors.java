@@ -29,6 +29,7 @@ public final class IpcServerExecutors {
         SHARED = Executors.newCachedThreadPool(factory);
     }
 
+    /** Utility holder; the executor is created in the static initializer. */
     private IpcServerExecutors() {
     }
 

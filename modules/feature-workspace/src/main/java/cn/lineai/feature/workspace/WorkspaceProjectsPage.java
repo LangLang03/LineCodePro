@@ -20,24 +20,58 @@ import cn.lineai.ui.kit.SettingsPage;
 import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
 
-/** Workspace project list with selection and creation. */
+/**
+ * Workspace project list with selection and creation.
+ *
+ * <p>The page rebuilds all cards on every reload; the name field instance is deliberately reused
+ * across rebuilds so in-progress typing survives a refresh. Switching or creating while a
+ * conversation is active is blocked with a confirmation-style notice, keeping the workspace and the
+ * active conversation consistent. Loading and mutation go through the synchronous {@link Listener}
+ * on the main thread; the contract expects cheap local access, not network I/O.</p>
+ */
 public final class WorkspaceProjectsPage extends SettingsPage {
 
+    /**
+     * Store and navigation access for the project list; implemented by the host.
+     */
     public interface Listener {
+        /**
+         * Loads the current project list.
+         *
+         * @return projects in display order; never null
+         */
         List<Project> list();
 
+        /**
+         * Selects a project as the active workspace.
+         *
+         * @param id id of the project to select
+         */
         void select(String id);
 
+        /**
+         * Deletes a project.
+         *
+         * @param id id of the project to delete
+         */
         void delete(String id);
 
+        /**
+         * Creates a managed workspace project from a display name.
+         *
+         * @param name display name; normalised into a folder name by the host
+         * @return the created project, or null when creation failed
+         */
         Project create(String name);
 
+        /** Reports that the open-in-files-app action was requested. */
         void openExternal();
 
         /** Opens the system picker so another app can read/write this workspace. */
         default void shareWorkspace() {
         }
 
+        /** Reports that the changes view was requested. */
         void onChanges();
 
         /** Address {@code user@host:port} shown for SSH projects instead of their path. */
@@ -54,6 +88,14 @@ public final class WorkspaceProjectsPage extends SettingsPage {
     private final Listener listener;
     private final FormField nameField;
 
+    /**
+     * Builds the page, the shared name field and the initial card list.
+     *
+     * @param context hosting context
+     * @param tokens initial palette snapshot
+     * @param back action run by the header back button
+     * @param listener store and navigation access; never null
+     */
     public WorkspaceProjectsPage(Context context, Tokens tokens, Runnable back, Listener listener) {
         super(context, R.string.sheet_title_workspace, tokens, back);
         this.listener = listener;
@@ -63,6 +105,10 @@ public final class WorkspaceProjectsPage extends SettingsPage {
         reload();
     }
 
+    /**
+     * Rebuilds the content column: project rows (or the empty-state caption) followed by the
+     * changes, external-access and creation cards. Must run on the main thread.
+     */
     public void reload() {
         content.removeAllViews();
         List<Project> projects = listener.list();
@@ -83,6 +129,11 @@ public final class WorkspaceProjectsPage extends SettingsPage {
         content.addView(createCard(), cardParams());
     }
 
+    /**
+     * Builds one project row: folder icon, name and subtitle (SSH address when applicable), the
+     * selected badge, plus tap-to-select and long-press-to-delete handlers. Long press on the
+     * default project is intentionally inert.
+     */
     private LinearLayout row(Project project) {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -162,6 +213,7 @@ public final class WorkspaceProjectsPage extends SettingsPage {
         return row;
     }
 
+    /** Builds the changes-entry card that opens the changes view. */
     private LinearLayout changesCard() {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -183,6 +235,7 @@ public final class WorkspaceProjectsPage extends SettingsPage {
         return card;
     }
 
+    /** Builds the external-access card with the open-in-files-app and share buttons. */
     private LinearLayout externalCard() {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -224,6 +277,7 @@ public final class WorkspaceProjectsPage extends SettingsPage {
         return card;
     }
 
+    /** Builds the creation card hosting the shared name field and the create button. */
     private LinearLayout createCard() {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -255,6 +309,10 @@ public final class WorkspaceProjectsPage extends SettingsPage {
         return card;
     }
 
+    /**
+     * Creates a project from the name field: blocked while a conversation is active, rejected with
+     * a toast when the name is empty, and only reloaded when the host actually created something.
+     */
     private void create() {
         if (listener.conversationActive()) {
             showSwitchBlocked();
@@ -274,12 +332,15 @@ public final class WorkspaceProjectsPage extends SettingsPage {
         }
     }
 
+    /** Reports whether a project is SSH-backed, from either its id prefix or its path scheme. */
     private static boolean isSsh(Project project) {
         String id = project.id == null ? "" : project.id;
         String path = project.path == null ? "" : project.path;
         return id.startsWith("ssh:") || path.startsWith("ssh://");
     }
 
+    /** Shows the informational dialog explaining that switching is blocked during an active
+     * conversation; confirming does nothing by design. */
     private void showSwitchBlocked() {
         Dialogs.confirm(getContext(), theme.current(),
                 getContext().getString(R.string.workspace_switch_blocked_title),
@@ -289,12 +350,14 @@ public final class WorkspaceProjectsPage extends SettingsPage {
                 confirmed -> { });
     }
 
+    /** Builds the project-row layout params carrying the uniform bottom margin. */
     private LinearLayout.LayoutParams rowParams() {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.bottomMargin = Ui.dp(getContext(), 8);
         return params;
     }
 
+    /** Builds the card layout params carrying the uniform top margin. */
     private LinearLayout.LayoutParams cardParams() {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.topMargin = Ui.dp(getContext(), 12);

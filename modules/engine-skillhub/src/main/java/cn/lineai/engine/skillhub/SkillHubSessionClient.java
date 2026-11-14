@@ -13,11 +13,23 @@ import java.util.UUID;
 
 import cn.lineai.core.model.Skill;
 
-/** SkillHub account and publish endpoints; the caller supplies the session cookie. */
+/**
+ * SkillHub account and publish endpoints; the caller supplies the session cookie.
+ *
+ * <p>All calls are synchronous and unauthenticated beyond the provided cookie, which is attached
+ * verbatim after a header-injection check.</p>
+ */
 public final class SkillHubSessionClient {
 
     private static final String API_ROOT = "https://api.skillhub.cn";
 
+    /**
+     * Checks whether a session cookie is still valid.
+     *
+     * @param cookie session cookie value supplied by the caller
+     * @return true when the account endpoint accepts the cookie with HTTP 200
+     * @throws IOException on network failure
+     */
     public boolean signedIn(String cookie) throws IOException {
         HttpURLConnection connection = null;
         try {
@@ -32,6 +44,17 @@ public final class SkillHubSessionClient {
         }
     }
 
+    /**
+     * Publishes a skill as a multipart request: one JSON metadata part plus the SKILL.md content.
+     * Skills without content get a generated stub markdown carrying name and description.
+     *
+     * @param skill skill whose content is uploaded
+     * @param slug slug to publish under
+     * @param displayName display name shown in the registry
+     * @param version version label of this publication
+     * @param cookie session cookie authorizing the publication
+     * @throws IOException when the payload cannot be built or the service rejects the request
+     */
     public void publish(Skill skill, String slug, String displayName, String version,
                         String cookie) throws IOException {
         String boundary = "LineCode-" + UUID.randomUUID();
@@ -83,6 +106,14 @@ public final class SkillHubSessionClient {
         }
     }
 
+    /**
+     * Posts one comment to a skill thread.
+     *
+     * @param slug skill slug to comment on
+     * @param content comment text
+     * @param cookie session cookie authorizing the post
+     * @throws IOException when the payload cannot be built or the service rejects the request
+     */
     public void postComment(String slug, String content, String cookie) throws IOException {
         JSONObject body = new JSONObject();
         try {
@@ -116,6 +147,7 @@ public final class SkillHubSessionClient {
         }
     }
 
+    /** Attaches the cookie only when it is non-blank and free of header-breaking CR/LF. */
     private static void applyCookie(HttpURLConnection connection, String cookie) {
         if (cookie != null && !cookie.trim().isEmpty()
                 && cookie.indexOf('\r') < 0 && cookie.indexOf('\n') < 0) {

@@ -9,6 +9,16 @@ public final class ErrorLog {
     public final String detail;
     public final long createdAt;
 
+    /**
+     * Creates one log entry. Null text fields are normalized to the empty string so the screen
+     * never renders a null placeholder.
+     *
+     * @param id stable entry identifier
+     * @param title short headline shown in the log list
+     * @param subtitle optional secondary line
+     * @param detail full technical description
+     * @param createdAt time of the failure in epoch milliseconds
+     */
     public ErrorLog(String id, String title, String subtitle, String detail, long createdAt) {
         this.id = id == null ? "" : id;
         this.title = title == null ? "" : title;

@@ -24,20 +24,27 @@ import cn.lineai.feature.chat.toolcall.ToolCallEntry;
  */
 public final class TurnAssembler {
 
+    /** Item kinds. */
     public static final int ITEM_REASONING = 0;
     public static final int ITEM_MARKDOWN = 1;
     public static final int ITEM_TOOLS = 2;
     public static final int ITEM_COMPACT = 3;
 
+    /** Static utility; not instantiable. */
     private TurnAssembler() {
     }
 
     /** One process entry: a reasoning disclosure, interstitial prose or a collapsed tool group. */
     public static final class Item {
+        /** One of the {@code ITEM_*} kinds. */
         public final int kind;
+        /** Stable identity for diffing and view recycling. */
         public final String key;
+        /** Reasoning or prose text; empty for tool and compact items. */
         public final String text;
+        /** Compaction marker status; empty for other kinds. */
         public final String status;
+        /** Tool entries when {@code kind} is {@link #ITEM_TOOLS}; empty otherwise. */
         public final List<ToolCallEntry> tools;
 
         private Item(int kind, String key, String text, String status,
@@ -54,25 +61,38 @@ public final class TurnAssembler {
 
     /** One render row: either a user bubble or a folded assistant turn. */
     public static final class Row {
+        /** Stable identity ("u:" + user id or "t:" + first assistant id). */
         public final String key;
+        /** True for a user bubble; false for a folded assistant turn. */
         public final boolean user;
+        /** Message the row renders: the user message or the turn's final answer. */
         public final Message subject;
+        /** User message; null for assistant rows. */
         public final Message userMessage;
+        /** Final assistant answer of the turn; null when none yet. */
         public final Message answer;
         /** Visible failure reason from an ERROR block on a failed turn. */
         public final String error;
+        /** Folded process items in render order: reasoning, prose, tool groups, compact markers. */
         public final List<Item> process;
+        /** Every tool entry of the turn in order, independent of grouping. */
         public final List<ToolCallEntry> tools;
+        /** True when this is the last turn and the stream is still open. */
         public final boolean live;
+        /** True while a tool call of the live turn has no result yet. */
         public final boolean running;
+        /** True while a tool call awaits user approval. */
         public final boolean pending;
         /** True when any message of the turn failed, so the process panel opens on the error. */
         public final boolean failed;
+        /** Timestamp of the first turn message; 0 while the row is live. */
         public final long processingStartedAt;
+        /** Latest updatedAt across the turn; 0 while the row is live. */
         public final long processingFinishedAt;
         /** Everything the row draws; identical signatures skip a rebind. */
         public final String signature;
 
+        /** Freezes the draft into an immutable row and computes the diff signature. */
         private Row(Draft draft) {
             this.key = draft.key;
             this.user = draft.user;
@@ -109,6 +129,7 @@ public final class TurnAssembler {
             long finishedAt;
         }
 
+        /** Serializes every rendered aspect of the row into a comparable signature string. */
         private String buildSignature() {
             StringBuilder value = new StringBuilder(key).append('\u0001').append(user)
                     .append('\u0001').append(live).append(running).append(pending).append(failed)
@@ -141,6 +162,7 @@ public final class TurnAssembler {
             return value.toString();
         }
 
+        /** True when the turn has folded process items to disclose. */
         public boolean hasProcess() {
             return !process.isEmpty();
         }
@@ -151,6 +173,16 @@ public final class TurnAssembler {
         }
     }
 
+    /**
+     * Groups a flat message list into render rows: one row per user message and one folded
+     * assistant row per turn between them. Hidden, TOOL and SYSTEM messages are consumed as
+     * tool results or skipped rather than emitted as rows.
+     *
+     * @param messages       transcript ordered by seq
+     * @param pendingCallIds tool call ids awaiting approval, used to mark rows pending
+     * @param streaming      true while the current turn is still being streamed
+     * @return render rows in transcript order; empty when the input is null
+     */
     public static List<Row> assemble(List<Message> messages, Set<String> pendingCallIds,
                                      boolean streaming) {
         List<Row> rows = new ArrayList<>();
@@ -189,6 +221,7 @@ public final class TurnAssembler {
         return rows;
     }
 
+    /** Emits one assistant row for the accumulated turn and clears it. */
     private static void flush(List<Row> rows, List<Message> turn,
                               Map<String, Message> results, Set<String> pending,
                               boolean streaming, boolean lastTurn) {
@@ -290,6 +323,7 @@ public final class TurnAssembler {
         turn.clear();
     }
 
+    /** Closes the open tool group into one {@code ITEM_TOOLS} process item. */
     private static void flushGroup(List<Item> process, List<ToolCallEntry> group) {
         if (group.isEmpty()) {
             return;
@@ -333,6 +367,7 @@ public final class TurnAssembler {
         return !plainText(message).isEmpty();
     }
 
+    /** Concatenated TEXT blocks only; unlike {@code Message.plainText} it ignores other types. */
     private static String plainText(Message message) {
         StringBuilder text = new StringBuilder();
         for (ContentBlock block : message.blocks) {

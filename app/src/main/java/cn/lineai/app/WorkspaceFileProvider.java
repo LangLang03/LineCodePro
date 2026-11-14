@@ -17,6 +17,13 @@ public final class WorkspaceFileProvider extends ContentProvider {
 
     private static final String AUTHORITY_SUFFIX = ".workspace.files";
 
+    /**
+     * Builds the content URI addressing one workspace file.
+     *
+     * @param context context providing the authority package name
+     * @param file absolute file path to expose
+     * @return the content URI carrying the encoded absolute path
+     */
     public static Uri uriFor(Context context, File file) {
         return new Uri.Builder().scheme("content")
                 .authority(context.getPackageName() + AUTHORITY_SUFFIX)
@@ -24,10 +31,12 @@ public final class WorkspaceFileProvider extends ContentProvider {
                 .build();
     }
 
+    /** No initialization required; the provider resolves files per request. */
     @Override public boolean onCreate() {
         return true;
     }
 
+    /** Reports display name and size of the addressed file. */
     @Override public Cursor query(Uri uri, String[] projection, String selection,
                                   String[] selectionArgs, String sortOrder) {
         File file = file(uri);
@@ -37,6 +46,7 @@ public final class WorkspaceFileProvider extends ContentProvider {
         return cursor;
     }
 
+    /** Mime type guessed from the file extension; octet-stream when unknown. */
     @Override public String getType(Uri uri) {
         File file = file(uri);
         String extension = android.webkit.MimeTypeMap.getFileExtensionFromUrl(file.getName());
@@ -46,19 +56,23 @@ public final class WorkspaceFileProvider extends ContentProvider {
         return type == null ? "application/octet-stream" : type;
     }
 
+    /** Unsupported: the provider is read-only. */
     @Override public Uri insert(Uri uri, ContentValues values) {
         throw new UnsupportedOperationException("read-only provider");
     }
 
+    /** Unsupported: the provider is read-only. */
     @Override public int delete(Uri uri, String selection, String[] selectionArgs) {
         throw new UnsupportedOperationException("read-only provider");
     }
 
+    /** Unsupported: the provider is read-only. */
     @Override public int update(Uri uri, ContentValues values, String selection,
                                 String[] selectionArgs) {
         throw new UnsupportedOperationException("read-only provider");
     }
 
+    /** Opens the addressed file read-only; write modes and invalid paths are rejected. */
     @Override public ParcelFileDescriptor openFile(Uri uri, String mode)
             throws FileNotFoundException {
         if (!"r".equals(mode)) throw new FileNotFoundException("read-only provider");
@@ -69,6 +83,7 @@ public final class WorkspaceFileProvider extends ContentProvider {
         }
     }
 
+    /** Decodes the addressed path and verifies it names an existing file. */
     private static File file(Uri uri) {
         String encoded = uri.getLastPathSegment();
         if (encoded == null) throw new IllegalArgumentException("missing path");

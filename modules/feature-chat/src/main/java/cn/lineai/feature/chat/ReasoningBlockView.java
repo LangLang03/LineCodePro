@@ -35,6 +35,7 @@ final class ReasoningBlockView extends LinearLayout {
     private boolean live;
     private boolean scrollable = true;
 
+    /** Builds the 48dp disclosure header and the capped, scrollable body. */
     ReasoningBlockView(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -74,6 +75,17 @@ final class ReasoningBlockView extends LinearLayout {
         applyTokens(tokens);
     }
 
+    /**
+     * Rebinds the block: text and scroll preference are applied only when changed, the open
+     * state is resolved through the shared disclosure memory.
+     *
+     * @param key        disclosure identity of this block
+     * @param text       reasoning text
+     * @param live       true while the owning turn is still streaming
+     * @param scrollable true to cap the body at 180dp with its own scroll
+     * @param byDefault  open state before any user override
+     * @param disclosure shared disclosure memory
+     */
     void bind(String key, String text, boolean live, boolean scrollable, boolean byDefault,
               DisclosureState disclosure) {
         this.key = key;
@@ -103,12 +115,14 @@ final class ReasoningBlockView extends LinearLayout {
         updateLabel();
     }
 
+    /** Chooses the "thinking" or "done" header label from the live flag. */
     private void updateLabel() {
         label.setText(getContext().getString(live
                 ? R.string.message_assistant_thinking
                 : R.string.thinking_done_label));
     }
 
+    /** Applies the current design tokens to header and body. */
     void applyTokens(Tokens current) {
         tokens = current;
         label.setTextColor(current.textSecondary);
@@ -118,6 +132,7 @@ final class ReasoningBlockView extends LinearLayout {
         body.setLinkTextColor(current.accent);
     }
 
+    /** Header tap: flips the disclosure state. */
     private void toggle() {
         if (disclosure == null) {
             return;
@@ -127,6 +142,7 @@ final class ReasoningBlockView extends LinearLayout {
         applyState();
     }
 
+    /** Points the chevron and shows or hides the body. */
     private void applyState() {
         chevron.setIconType(open ? Icons.CHEVRON_DOWN : Icons.CHEVRON_RIGHT);
         scroller.setVisibility(open ? VISIBLE : GONE);
@@ -142,6 +158,7 @@ final class ReasoningBlockView extends LinearLayout {
             this.maxHeight = maxHeight;
         }
 
+        /** Updates the cap and re-measures. */
         void setMaxHeight(int value) {
             maxHeight = value;
             requestLayout();

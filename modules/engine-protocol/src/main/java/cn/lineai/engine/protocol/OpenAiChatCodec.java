@@ -20,6 +20,18 @@ public final class OpenAiChatCodec {
     private OpenAiChatCodec() {
     }
 
+    /**
+     * Builds the JSON body of an OpenAI-compatible chat completion request.
+     *
+     * <p>The system prompt becomes a leading {@code system} message; assistant tool calls use the
+     * {@code tool_calls} shape and tool results the {@code tool} role; image blocks become
+     * {@code image_url} content parts. Vendor reasoning fields are applied last via
+     * {@link ReasoningPolicy}.</p>
+     *
+     * @param request normalized completion request
+     * @return the request body as JSON text
+     * @throws IllegalStateException when the body cannot be serialized
+     */
     public static String requestBody(ChatRequest request) {
         try {
             JSONObject body = new JSONObject();
@@ -56,6 +68,7 @@ public final class OpenAiChatCodec {
         }
     }
 
+    /** Encodes one message, choosing plain, multipart, tool-result or tool-call wire shape. */
     private static JSONObject wireMessage(Message source) throws JSONException {
         if (source.role == Role.TOOL) {
             return new JSONObject().put("role", "tool")
@@ -94,6 +107,7 @@ public final class OpenAiChatCodec {
         return new JSONObject().put("role", role).put("content", content).put("tool_calls", calls);
     }
 
+    /** Creates a simple role/content message object. */
     private static JSONObject message(String role, String content) throws JSONException {
         JSONObject item = new JSONObject();
         item.put("role", role);
@@ -101,6 +115,7 @@ public final class OpenAiChatCodec {
         return item;
     }
 
+    /** Maps a role to the OpenAI wire name; TOOL and unknown roles yield null. */
     private static String roleName(Role role) {
         switch (role) {
             case USER:
@@ -114,11 +129,18 @@ public final class OpenAiChatCodec {
         }
     }
 
+    /** Returns a stateless decoder over {@link #parse(String)}. */
     public static StreamDecoder decoder() {
         return OpenAiChatCodec::parse;
     }
 
-    /** Parses one SSE payload; returns {@code null} for keep-alives and the terminal marker. */
+    /**
+     * Parses one SSE payload.
+     *
+     * @param payload data field of one SSE event, or the terminal {@code [DONE]} marker
+     * @return decoded event, or {@code null} for keep-alives, the terminal marker and payloads
+     *         that are not valid JSON
+     */
     public static StreamEvent parse(String payload) {
         if (payload == null || payload.isEmpty() || "[DONE]".equals(payload.trim())) {
             return null;
@@ -160,6 +182,7 @@ public final class OpenAiChatCodec {
         }
     }
 
+    /** Decodes the tool_calls array into drafts; returns null when absent or empty. */
     private static List<ToolCallDraft> parseToolCalls(JSONArray items) {
         if (items == null || items.length() == 0) return null;
         List<ToolCallDraft> calls = new java.util.ArrayList<>();
@@ -174,7 +197,12 @@ public final class OpenAiChatCodec {
         return calls;
     }
 
-    /** Appends the chat path to a base URL unless it already points at an endpoint. */
+    /**
+     * Appends the chat path to a base URL unless it already points at an endpoint.
+     *
+     * @param baseUrl provider base URL, with or without trailing slash
+     * @return URL whose path ends with {@code /chat/completions} or {@code /completions}
+     */
     public static String endpoint(String baseUrl) {
         String base = baseUrl == null ? "" : baseUrl.trim();
         while (base.endsWith("/")) {
@@ -186,7 +214,13 @@ public final class OpenAiChatCodec {
         return base + "/chat/completions";
     }
 
-    /** Appends {@code suffix} unless the trimmed base already ends with it. */
+    /**
+     * Appends {@code suffix} unless the trimmed base already ends with it.
+     *
+     * @param baseUrl provider base URL, with or without trailing slash
+     * @param suffix path suffix such as {@code /models}
+     * @return URL whose path ends with {@code suffix}
+     */
     public static String endpoint(String baseUrl, String suffix) {
         String base = baseUrl == null ? "" : baseUrl.trim();
         while (base.endsWith("/")) {
@@ -196,6 +230,12 @@ public final class OpenAiChatCodec {
         return base + suffix;
     }
 
+    /**
+     * Wraps the given messages in a fixed-size list.
+     *
+     * @param messages messages to wrap
+     * @return list view over the arguments, for single-turn callers
+     */
     public static List<Message> asList(Message... messages) {
         return java.util.Arrays.asList(messages);
     }

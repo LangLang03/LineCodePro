@@ -22,21 +22,40 @@ import cn.lineai.core.model.Skill;
 import cn.lineai.data.api.SettingsStore;
 import cn.lineai.data.api.SkillStore;
 
-/** File-based SKILL.md repository; the enable flag lives in settings. */
+/**
+ * File-based SKILL.md repository; the enable flag lives in settings.
+ *
+ * <p>Each skill is a directory holding one SKILL.md (or a single top-level SKILL.md file), so the
+ * files stay plain and user-editable. Only the disabled set is persisted, keeping uninstalled
+ * skills enabled by default. Operations are synchronous; callers own the scheduler.</p>
+ */
 public final class FileSkillStore implements SkillStore {
 
+    /** Settings key holding the newline-separated identifiers of disabled skills. */
     static final String KEY_DISABLED = "skills.disabled";
 
     private final File root;
     private final SettingsStore settings;
     private final Clock clock;
 
+    /**
+     * Creates the store.
+     *
+     * @param root directory containing the skill folders
+     * @param settings settings store backing the disabled set
+     * @param clock clock used when file timestamps are unavailable
+     */
     public FileSkillStore(File root, SettingsStore settings, Clock clock) {
         this.root = root;
         this.settings = settings;
         this.clock = clock;
     }
 
+    /**
+     * Scans the skill root, parses every SKILL.md and applies the disabled set.
+     *
+     * @return all installed skills sorted alphabetically by name
+     */
     @Override public List<Skill> list() {
         List<Skill> skills = new ArrayList<>();
         ensureRoot();
@@ -54,6 +73,11 @@ public final class FileSkillStore implements SkillStore {
         return skills;
     }
 
+    /**
+     * Filters {@link #list()} down to the enabled skills.
+     *
+     * @return skills offered to the model
+     */
     @Override public List<Skill> enabled() {
         List<Skill> result = new ArrayList<>();
         for (Skill skill : list()) {
@@ -62,6 +86,15 @@ public final class FileSkillStore implements SkillStore {
         return result;
     }
 
+    /**
+     * Serializes the skill to a SKILL.md file in a unique directory and re-parses it, so callers
+     * see the stored form rather than the input.
+     *
+     * @param input skill to persist; a blank name is rejected
+     * @return the stored skill with the requested enabled flag
+     * @throws DomainException with {@code ErrorCode.INVALID_INPUT} when the name is blank, or
+     *         {@code ErrorCode.STORAGE} when the directory or file cannot be written
+     */
     @Override public Skill save(Skill input) {
         if (input == null || input.name.trim().isEmpty()) {
             throw new DomainException(ErrorCode.INVALID_INPUT, "skill name is required");
@@ -83,6 +116,17 @@ public final class FileSkillStore implements SkillStore {
         return saved.toBuilder().enabled(input.enabled).build();
     }
 
+    /**
+     * Imports a ZIP archive or a single SKILL.md into a fresh skill directory. The payload is
+     * unpacked into a temporary directory and installed only after a SKILL.md was found and
+     * parsed, so a failed import leaves no partial skill behind.
+     *
+     * @param input stream holding a ZIP archive or a SKILL.md document
+     * @param displayName original file name; the extension selects the import format
+     * @return the imported skill, installed and enabled
+     * @throws IOException when the format is unsupported, no SKILL.md can be located or parsed,
+     *         or the extraction fails
+     */
     @Override public synchronized Skill importSkill(InputStream input, String displayName)
             throws IOException {
         ensureRoot();
@@ -119,6 +163,12 @@ public final class FileSkillStore implements SkillStore {
         }
     }
 
+    /**
+     * Updates the disabled set in settings; enabling removes the identifier, disabling adds it.
+     *
+     * @param id skill identifier
+     * @param enabled whether the skill is offered to the model
+     */
     @Override public void setEnabled(String id, boolean enabled) {
         Set<String> disabled = disabledIds();
         if (enabled) {
@@ -135,12 +185,19 @@ public final class FileSkillStore implements SkillStore {
         settings.put(KEY_DISABLED, value.toString());
     }
 
+    /**
+     * Removes the skill directory and re-enables the identifier so a future re-import starts
+     * enabled.
+     *
+     * @param id skill identifier; unknown identifiers are ignored
+     */
     @Override public void delete(String id) {
         File dir = new File(root, id);
         if (dir.isDirectory()) deleteRecursive(dir);
         setEnabled(id, true);
     }
 
+    /** Reads and parses one SKILL.md into a skill; returns null when the file is unreadable. */
     private Skill parse(File dir, File skillMd) {
         String content;
         try {
@@ -162,6 +219,7 @@ public final class FileSkillStore implements SkillStore {
                 .build();
     }
 
+    /** Serializes a skill into the front-matter markdown format written to disk. */
     private String markdown(Skill input) {
         StringBuilder out = new StringBuilder();
         out.append("---\n");
@@ -174,6 +232,7 @@ public final class FileSkillStore implements SkillStore {
         return out.toString();
     }
 
+    /** Extracts a ZIP stream, rejecting entries with absolute or parent-traversing paths. */
     private static void unzip(InputStream input, File target) throws IOException {
         try (ZipInputStream zip = new ZipInputStream(input)) {
             ZipEntry entry;
@@ -206,6 +265,7 @@ public final class FileSkillStore implements SkillStore {
         }
     }
 
+    /** Copies a stream to a file. */
     private static void copy(InputStream input, File target) throws IOException {
         try (FileOutputStream out = new FileOutputStream(target)) {
             byte[] buffer = new byte[8192];
@@ -216,6 +276,7 @@ public final class FileSkillStore implements SkillStore {
         }
     }
 
+    /** Copies a directory tree recursively. */
     private static void copyDirectory(File source, File target) throws IOException {
         if (!target.exists() && !target.mkdirs()) throw new IOException("cannot create " + target);
         File[] children = source.listFiles();
@@ -232,6 +293,7 @@ public final class FileSkillStore implements SkillStore {
         }
     }
 
+    /** Locates a SKILL.md within two directory levels, tolerating nested archive wrappers. */
     private static File findSkillMd(File dir, int depth) {
         if (dir == null || depth > 2) return null;
         File direct = new File(dir, "SKILL.md");
@@ -246,6 +308,7 @@ public final class FileSkillStore implements SkillStore {
         return null;
     }
 
+    /** Picks an unused directory name derived from the skill name. */
     private File uniqueDir(String name) {
         String base = sanitize(name);
         File dir = new File(root, base);
@@ -257,12 +320,14 @@ public final class FileSkillStore implements SkillStore {
         return dir;
     }
 
+    /** Creates the skill root on demand. */
     private void ensureRoot() {
         if (!root.exists() && !root.mkdirs()) {
             throw new DomainException(ErrorCode.STORAGE, "cannot create skills directory");
         }
     }
 
+    /** Parses the settings value back into the disabled identifier set. */
     private Set<String> disabledIds() {
         Set<String> result = new HashSet<>();
         String raw = settings.get(KEY_DISABLED, "");
@@ -273,6 +338,7 @@ public final class FileSkillStore implements SkillStore {
         return result;
     }
 
+    /** Deletes a directory tree recursively; missing paths are ignored. */
     private static void deleteRecursive(File file) {
         File[] children = file.listFiles();
         if (children != null) {
@@ -281,10 +347,12 @@ public final class FileSkillStore implements SkillStore {
         file.delete();
     }
 
+    /** Flattens a value onto one line so it cannot break the front-matter format. */
     private static String singleLine(String value) {
         return value == null ? "" : value.replace('\n', ' ').replace('\r', ' ').trim();
     }
 
+    /** Reduces a name to a filesystem-safe directory name of bounded length. */
     private static String sanitize(String name) {
         StringBuilder out = new StringBuilder();
         for (int i = 0; i < name.length() && out.length() < 64; i++) {
@@ -301,11 +369,13 @@ public final class FileSkillStore implements SkillStore {
         return value.isEmpty() ? "skill-" + System.currentTimeMillis() : value;
     }
 
+    /** Removes a single trailing file extension. */
     private static String stripExtension(String name) {
         int index = name.lastIndexOf('.');
         return index > 0 ? name.substring(0, index) : name;
     }
 
+    /** Reads one key from the leading YAML-style front-matter block, if present. */
     private static String frontmatter(String content, String key) {
         if (!content.startsWith("---")) return "";
         int end = content.indexOf("\n---", 3);
@@ -320,6 +390,7 @@ public final class FileSkillStore implements SkillStore {
         return "";
     }
 
+    /** Extracts the first level-one heading as the fallback display name. */
     private static String markdownTitle(String content) {
         String body = stripFrontmatter(content);
         for (String line : ofLines(body)) {
@@ -330,6 +401,7 @@ public final class FileSkillStore implements SkillStore {
         return "";
     }
 
+    /** Extracts the first non-heading body line as the fallback description. */
     private static String descriptionLine(String content) {
         String body = stripFrontmatter(content);
         boolean afterTitle = false;
@@ -345,18 +417,21 @@ public final class FileSkillStore implements SkillStore {
         return "";
     }
 
+    /** Removes the leading front-matter block, if present. */
     private static String stripFrontmatter(String content) {
         if (!content.startsWith("---")) return content;
         int end = content.indexOf("\n---", 3);
         return end < 0 ? content : content.substring(end + 4);
     }
 
+    /** Splits text into lines without dropping trailing empty ones. */
     private static List<String> ofLines(String text) {
         List<String> lines = new ArrayList<>();
         for (String line : text.split("\n")) lines.add(line);
         return lines;
     }
 
+    /** Returns the first non-empty argument, else the fallback. */
     private static String firstNonEmpty(String first, String second, String fallback) {
         if (first != null && !first.isEmpty()) return first;
         if (second != null && !second.isEmpty()) return second;

@@ -38,6 +38,14 @@ final class ExtensionKit {
         final boolean danger;
         final Runnable action;
 
+        /**
+         * Creates a sheet action descriptor.
+         *
+         * @param title title string resource
+         * @param description description string resource; zero omits the description
+         * @param danger true to render the title in the danger color
+         * @param action action invoked after the sheet dismisses
+         */
         SheetItem(int title, int description, boolean danger, Runnable action) {
             this.title = title;
             this.description = description;
@@ -46,13 +54,16 @@ final class ExtensionKit {
         }
     }
 
+    /** Utility class; not instantiable. */
     private ExtensionKit() {
     }
 
+    /** Creates a section with a localized title. */
     static SettingsSection section(Context context, ThemeBinder theme, int title) {
         return new SettingsSection(context, title, theme);
     }
 
+    /** Creates a section whose title is data-driven text. */
     static SettingsSection section(Context context, ThemeBinder theme, CharSequence title) {
         return new SettingsSection(context, title, theme);
     }
@@ -67,6 +78,7 @@ final class ExtensionKit {
         return row;
     }
 
+    /** Builds an action row whose description is data-driven text and carries no click handler. */
     static PreferenceRow plainAction(Context context, ThemeBinder theme, int glyph, int title,
                                      CharSequence description, int minHeightDp) {
         PreferenceRow row = new PreferenceRow(context, theme, PreferenceRow.Style.ACTION,
@@ -87,6 +99,7 @@ final class ExtensionKit {
         return view;
     }
 
+    /** Empty-state row from a localized message resource. */
     static TextView empty(Context context, ThemeBinder theme, int message) {
         return empty(context, theme, context.getString(message));
     }
@@ -107,6 +120,7 @@ final class ExtensionKit {
         return view;
     }
 
+    /** Tertiary-colored text from a resource, with relaxed line spacing. */
     static TextView muted(Context context, ThemeBinder theme, int text, int sizeSp) {
         TextView view = Ui.text(context, context.getString(text), sizeSp,
                 theme.current().textTertiary, Typeface.NORMAL);
@@ -115,6 +129,7 @@ final class ExtensionKit {
         return view;
     }
 
+    /** Primary-colored medium-weight title for data-driven text. */
     static TextView title(Context context, ThemeBinder theme, CharSequence text, int sizeSp) {
         TextView view = Ui.medium(context, text, sizeSp, theme.current().text);
         theme.bind(t -> view.setTextColor(t.text));
@@ -164,6 +179,7 @@ final class ExtensionKit {
         return button;
     }
 
+    /** Builds a secondary-styled destructive action button. */
     static LinearLayout dangerButton(Context context, ThemeBinder theme, int label,
                                      Runnable click) {
         return button(context, theme, label, false, click);
@@ -213,6 +229,7 @@ final class ExtensionKit {
         return card;
     }
 
+    /** Creates a padded card container, optionally with a visible border. */
     static LinearLayout card(Context context, ThemeBinder theme, boolean bordered) {
         LinearLayout card = new LinearLayout(context);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -247,6 +264,7 @@ final class ExtensionKit {
         return notice;
     }
 
+    /** Shows a bottom sheet with a drag handle, title, and one dismiss-on-tap row per item. */
     static void sheet(Context context, ThemeBinder theme, CharSequence title, List<SheetItem> items) {
         LinearLayout panel = new LinearLayout(context);
         panel.setOrientation(LinearLayout.VERTICAL);
@@ -280,6 +298,7 @@ final class ExtensionKit {
         holder[0] = Sheets.showBottom(context, theme.current(), panel);
     }
 
+    /** Builds one tappable sheet row that dismisses the hosting dialog before acting. */
     private static View sheetRow(Context context, ThemeBinder theme, SheetItem item,
                                  Dialog[] holder) {
         LinearLayout row = new LinearLayout(context);
@@ -306,6 +325,7 @@ final class ExtensionKit {
         return row;
     }
 
+    /** Shows a confirm dialog titled from a resource with a delete-style confirm button. */
     static void confirm(Context context, ThemeBinder theme, int title, CharSequence message,
                         Runnable confirmed) {
         confirmAction(context, theme, context.getString(title), message,
@@ -322,6 +342,7 @@ final class ExtensionKit {
                 });
     }
 
+    /** Creates a form field sized for editor pages, taller when multiline. */
     static FormField field(Context context, ThemeBinder theme, int label, String value, int hint,
                            boolean multiline) {
         FormField field = new FormField(context, theme, label, value, context.getString(hint),
@@ -331,6 +352,7 @@ final class ExtensionKit {
         return field;
     }
 
+    /** Appends a tertiary hint line to the given container. */
     static void hint(Context context, ThemeBinder theme, LinearLayout parent, int text) {
         TextView view = Ui.text(context, context.getString(text), Tokens.FONT_XS,
                 theme.current().textTertiary, Typeface.NORMAL);
@@ -400,6 +422,7 @@ final class ExtensionKit {
         return row;
     }
 
+    /** Applies the extension-family switch color state lists matching the legacy design. */
     static void switchTint(Switch toggle, Tokens tokens) {
         int[][] states = new int[][] {
                 new int[] {android.R.attr.state_checked},
@@ -413,6 +436,7 @@ final class ExtensionKit {
                 new int[] {tokens.accent, tokens.surfaceLight}));
     }
 
+    /** Sets a full-width wrap-content layout with the given top margin on a view. */
     static void topMargin(Context context, View view, int topDp) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.topMargin = Ui.dp(context, topDp);

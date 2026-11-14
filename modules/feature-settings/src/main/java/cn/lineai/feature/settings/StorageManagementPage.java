@@ -20,7 +20,9 @@ import cn.lineai.ui.tokens.Tokens;
 /** Storage usage summary with per-category sizes and a refresh action. */
 public final class StorageManagementPage extends LinearLayout {
 
+    /** Host callback triggered when the page needs fresh statistics. */
     public interface Listener {
+        /** Recomputes storage statistics asynchronously and calls back with {@link #render}. */
         void onRefresh();
     }
 
@@ -36,6 +38,14 @@ public final class StorageManagementPage extends LinearLayout {
     private final TextView homeSize;
     private final TextView homeCount;
 
+    /**
+     * Builds the storage summary page and requests the initial statistics refresh.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param listener host callback for refreshing the statistics
+     */
     public StorageManagementPage(Context context, Tokens tokens, Runnable back, Listener listener) {
         super(context);
         this.theme = new ThemeBinder(tokens);
@@ -97,6 +107,7 @@ public final class StorageManagementPage extends LinearLayout {
         listener.onRefresh();
     }
 
+    /** Builds one category row whose size and count views are updated by {@link #render}. */
     private LinearLayout row(Context context, int icon, int title, int description,
                              TextView size, TextView count) {
         Tokens tokens = theme.current();
@@ -148,12 +159,18 @@ public final class StorageManagementPage extends LinearLayout {
         return row;
     }
 
+    /** Builds the layout parameters spacing one category row below the previous. */
     private LinearLayout.LayoutParams rowParams(Context context) {
         LinearLayout.LayoutParams params = new LayoutParams(-1, -2);
         params.bottomMargin = Ui.dp(context, 8);
         return params;
     }
 
+    /**
+     * Updates the total and per-category values from fresh statistics.
+     *
+     * @param stats latest storage statistics; ignored when null
+     */
     public void render(StorageStats stats) {
         if (stats == null) return;
         Context context = getContext();
@@ -169,6 +186,12 @@ public final class StorageManagementPage extends LinearLayout {
         homeCount.setText(context.getString(R.string.screen_storage_count, stats.homeCount));
     }
 
+    /**
+     * Formats a byte count using binary units (B, KB, MB, GB) with integer precision.
+     *
+     * @param bytes byte count to format
+     * @return human-readable size string
+     */
     static String format(long bytes) {
         if (bytes < 1024) return bytes + " B";
         if (bytes < 1024 * 1024) return (bytes / 1024) + " KB";

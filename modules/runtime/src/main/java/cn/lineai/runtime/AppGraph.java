@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.res.Configuration;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
 import cn.lineai.core.kernel.di.Graph;
 import cn.lineai.core.kernel.error.DomainException;
@@ -30,6 +32,7 @@ import cn.lineai.data.migration.LegacyFiles;
 import cn.lineai.data.migration.LegacyMigration;
 import cn.lineai.data.api.SkillStore;
 import cn.lineai.data.sqlite.LineCodeDatabase;
+import cn.lineai.data.sqlite.SqliteAgentSessionStore;
 import cn.lineai.data.sqlite.SqliteConversationStore;
 import cn.lineai.data.sqlite.SqliteDiffStore;
 import cn.lineai.data.sqlite.SqliteMessageStore;
@@ -55,12 +58,13 @@ import cn.lineai.engine.prompt.PromptStore;
 import cn.lineai.engine.prompt.SystemPromptAssembler;
 import cn.lineai.feature.chat.ChatController;
 import cn.lineai.feature.chat.DefaultPromptExtensions;
+import cn.lineai.feature.chat.PromptExtensions;
 import cn.lineai.feature.settings.McpPreferences;
 import cn.lineai.platform.AndroidScheduler;
 import cn.lineai.tool.api.BackgroundTasks;
 import cn.lineai.tool.api.DiffSink;
 import cn.lineai.tool.api.ToolCatalog;
-import cn.lineai.tool.agent.AgentRunner;
+import cn.lineai.tool.agent.AgentRuntime;
 import cn.lineai.tool.agent.AgentTools;
 import cn.lineai.tool.api.ToolContext;
 import cn.lineai.tool.mcp.McpToolCatalog;
@@ -105,18 +109,31 @@ public final class AppGraph implements AutoCloseable {
     private final McpPreferences mcpPreferences;
     private final TerminalProviderGateway terminalProviderGateway;
     private final BackgroundShellRegistry backgroundShellRegistry;
+    final AgentEventBus agentEventBus = new AgentEventBus();
+    private MessageStore messageStore;
+    private cn.lineai.data.api.AgentSessionStore agentSessionStore;
+    private SystemPromptAssembler systemPromptAssembler;
+    private PromptExtensions promptExtensions;
+    private Clock appClock;
     private final Context context;
     private final ToolCatalog toolCatalog;
     private final ToolCatalog baseCatalogForAgents;
     private final ModelClient modelClient;
     private final ToolContext toolContextForAgents;
-    private volatile AgentRunner agentRunner;
+    private volatile AgentRuntime agentRuntime;
     private final PromptStore prompts;
     private final ThemeController theme;
     private final ChatController chat;
     private final Store<SettingsState, SettingsAction> preferences;
     private final cn.lineai.feature.settings.ThemePreferences themePreferences;
 
+    /**
+     * Builds the whole application scope: database with legacy migration, stores, model
+     * client (HTTP wrapped by the optional local bridge), tool catalogs, chat controller
+     * and the terminal provider gateway. Construction ends with the provider bindings.
+     *
+     * @param context application context; only the application context is retained
+     */
     private AppGraph(Context context) {
         this.context = context.getApplicationContext();
         scheduler = new AndroidScheduler();
@@ -201,13 +218,17 @@ public final class AppGraph implements AutoCloseable {
         this.baseCatalogForAgents = () -> applyWorkspacePolicy(baseCatalog.registry());
         this.modelClient = client;
         this.toolContextForAgents = toolContext;
+        this.messageStore = messages;
+        this.agentSessionStore = new SqliteAgentSessionStore(database, clock);
+        this.appClock = clock;
+        this.systemPromptAssembler = new SystemPromptAssembler(promptStore);
+        this.promptExtensions = new DefaultPromptExtensions(agentExtensionStore::list,
+                skillStore::enabled, todoStore::items,
+                new LearningContextProvider(settingsStore, memoryStore, conversations,
+                        skillStore, projectStore, promptStore, skillsRoot)::build);
         this.chat = new ChatController(conversations, messages, modelStore, settingsStore,
-                client, scheduler, clock, new SystemPromptAssembler(promptStore),
-                toolCatalog, toolContext,
-                new DefaultPromptExtensions(agentExtensionStore::list, skillStore::enabled,
-                        todoStore::items,
-                        new LearningContextProvider(settingsStore, memoryStore, conversations,
-                                skillStore, projectStore, promptStore, skillsRoot)::build));
+                client, scheduler, clock, systemPromptAssembler,
+                toolCatalog, toolContext, promptExtensions);
         this.chat.setErrorLogStore(errorLogStore);
         this.themePreferences = new cn.lineai.feature.settings.ThemePreferences(settingsStore, scheduler);
         this.theme = new ThemeController(themePreferences.initial(isNight(context)));
@@ -218,6 +239,7 @@ public final class AppGraph implements AutoCloseable {
         terminalProviderGateway.start();
     }
 
+    /** Registers the instances pages resolve at runtime into the dependency graph. */
     private Graph buildGraph(Clock clock, MessageStore messages) {
         Graph.Builder builder = new Graph.Builder();
         builder.instance(Scheduler.class, scheduler);
@@ -233,6 +255,7 @@ public final class AppGraph implements AutoCloseable {
         return builder.build();
     }
 
+    /** Ensures the default workspace project exists and mirrors its name into settings. */
     private static Project defaultProject(ProjectStore projects, File workspace,
                                           SettingsStore settingsStore) {
         Project project = projects.ensureDefault(workspace);
@@ -241,16 +264,18 @@ public final class AppGraph implements AutoCloseable {
         return project;
     }
 
+    /** Prompt store over bundled asset templates with settings-backed overrides. */
     private static PromptStore promptStore(Context context, SettingsStore settingsStore) {
         PromptCatalog catalog = new AssetPromptCatalog(
                 path -> context.getAssets().open(path));
         return new PromptStore(catalog, new SettingsPromptOverrides(settingsStore));
     }
 
+    /** Wraps the base catalog with extension agents, then applies workspace policy. */
     private ToolCatalog toolCatalog(ToolCatalog baseCatalog, AgentExtensionStore agents,
                                     ProjectStore projects) {
         return () -> applyWorkspacePolicy(AgentTools.augment(baseCatalog.registry(),
-                agents::list, agentRunner));
+                agents::list, agentRuntime));
     }
 
     /**
@@ -266,10 +291,15 @@ public final class AppGraph implements AutoCloseable {
         return cn.lineai.tool.workspace.LocalToolPolicy.apply(registry, mcpPreferences.localShell());
     }
 
+    /** Whether the selected project is an SSH host or terminal provider mode is on. */
     private boolean remoteWorkspaceActive() {
         return SshWorkspace.isSsh(projects.selected()) || terminalProviderGateway.terminalMode();
     }
 
+    /**
+     * Builds the tool execution context shared by chat and extension agents; its members
+     * are lazy so tool calls always observe the currently selected project and model.
+     */
     private ToolContext toolContext(Context context, Clock clock, SettingsStore settings,
                                     ProjectStore projects, DiffStore diffs,
                                     MemoryStore memories, ModelStore models,
@@ -322,6 +352,26 @@ public final class AppGraph implements AutoCloseable {
             @Override public BackgroundTasks backgrounds() {
                 return backgroundShellRegistry;
             }
+            @Override public cn.lineai.tool.api.RuntimeInbox inbox() {
+                // The root view folds shell-completion notices into the queued runtime
+                // events, so the loop drains one stream instead of polling the registry.
+                return new cn.lineai.tool.api.RuntimeInbox() {
+                    @Override
+                    public List<cn.lineai.tool.api.RuntimeEvent> drain() {
+                        List<cn.lineai.tool.api.RuntimeEvent> events =
+                                new ArrayList<>(agentEventBus.drain(AgentEventBus.ROOT_OWNER));
+                        for (String notice : backgroundShellRegistry.drainCompleted()) {
+                            events.add(new cn.lineai.tool.api.RuntimeEvent.ShellNotice(notice));
+                        }
+                        return events;
+                    }
+
+                    @Override
+                    public void post(cn.lineai.tool.api.RuntimeEvent event) {
+                        agentEventBus.post(AgentEventBus.ROOT_OWNER, event);
+                    }
+                };
+            }
         };
     }
 
@@ -337,89 +387,146 @@ public final class AppGraph implements AutoCloseable {
                 "remote execution is unavailable in the local workspace");
     }
 
+    /**
+     * Creates the application graph.
+     *
+     * @param context any context; the application context is used
+     * @return the fully constructed graph
+     */
     public static AppGraph create(Context context) {
         return new AppGraph(context.getApplicationContext());
     }
 
+    /** Dark configuration check used for the initial theme selection. */
     private static boolean isNight(Context context) {
         return (context.getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
     }
 
+    /** Dependency graph resolved by pages and screens. */
     public Graph graph() {
         return graph;
     }
 
+    /** Chat controller driving conversations, turns and streaming. */
     public ChatController chat() {
         return chat;
     }
 
+    /** Theme controller applying palettes to registered surfaces. */
     public ThemeController theme() {
         return theme;
     }
 
+    /** Settings store backing every preference read and write. */
     public SettingsStore settings() {
         return settings;
     }
 
+    /** Settings presenter store dispatching {@code SettingsAction}s. */
     public Store<SettingsState, SettingsAction> preferences() { return preferences; }
 
+    /** Theme persistence helpers over the settings store. */
     public cn.lineai.feature.settings.ThemePreferences themePreferences() { return themePreferences; }
 
+    /** Model configuration store. */
     public ModelStore models() { return models; }
 
+    /** Storage statistics store for the storage management page. */
     public StorageStatsStore storageStats() { return storageStats; }
 
+    /** Error log store for tool and workspace failures. */
     public ErrorLogStore errorLogs() { return errorLogs; }
 
+    /** Archive service for SAF export and import of user data. */
     public ArchiveService archives() { return archives; }
 
+    /** Long-term memory store. */
     public MemoryStore memories() { return memories; }
 
+    /** Extension agent store. */
     public AgentExtensionStore agentExtensions() { return agentExtensions; }
 
+    private SubAgentRegistry subAgentRegistry;
+
+    /** Lazily creates the sub-agent registry; requires {@link #chat} to be constructed.
+     *  Called from the main thread only (activity startup and drawer callbacks). */
+    public SubAgentRegistry subAgents() {
+        if (subAgentRegistry == null) {
+            subAgentRegistry = new SubAgentRegistry(this, agentEventBus, agentSessionStore);
+        }
+        return subAgentRegistry;
+    }
+
+    /** MCP server extension store. */
     public McpExtensionStore mcpExtensions() { return mcpExtensions; }
 
+    /** Skill store backed by the skills directory. */
     public SkillStore skills() { return skills; }
 
+    /** Workspace project store. */
     public ProjectStore projects() { return projects; }
 
+    /** Diff store recording tool file edits for the changes page. */
     public DiffStore diffs() { return diffs; }
 
+    /** Conversation metadata store. */
     public ConversationStore conversations() { return conversationStore; }
+    public MessageStore messages() { return messageStore; }
+    public Clock clock() { return appClock; }
+    public SystemPromptAssembler assembler() { return systemPromptAssembler; }
+    public PromptExtensions extensions() { return promptExtensions; }
 
+    /** Session-scoped TODO store, cleared with the process. */
     public cn.lineai.tool.api.TodoStore todos() { return sessionTodos; }
 
+    /** Persisted terminal provider configuration store. */
     public TerminalProviderStore terminalProviders() { return terminalProviders; }
 
+    /** Re-runs provider discovery and reconciles bindings; idempotent. */
     public void refreshTerminalProviders() { terminalProviderGateway.refresh(); }
 
+    /** Aggregated provider connection state for settings pages. */
     public int terminalProviderState() { return terminalProviderGateway.state(); }
 
+    /** Display name of the active or first enabled provider. */
     public String terminalProviderName() { return terminalProviderGateway.providerName(); }
 
+    /** Runs the provider probe command; blocking, so callers must use an io thread. */
     public String probeTerminalProvider() { return terminalProviderGateway.probe(); }
 
+    /** Trust decision for a provider package (signature or the user trust switch). */
     public boolean trustsProviderSignature(String packageName) {
         return terminalProviderGateway.trusted(packageName);
     }
 
+    /** Tool catalog visible to chat, with workspace policy and extension agents applied. */
     public ToolCatalog tools() { return toolCatalog; }
 
-    public void setAgentRunner(AgentRunner runner) {
-        this.agentRunner = runner;
+    /** Injects the sub-agent runtime once the graph is fully built; tool calls read it lazily. */
+    public void setAgentRuntime(AgentRuntime runtime) {
+        this.agentRuntime = runtime;
     }
 
+    /** Base tool catalog for extension agents, without nested agent tools. */
     public ToolCatalog agentBaseTools() { return baseCatalogForAgents; }
 
+    /** Model client (HTTP, optionally wrapped by the local llama.cpp bridge). */
     public ModelClient modelClient() { return modelClient; }
 
+    /** Tool execution context shared by chat and extension agents. */
     public ToolContext agentToolContext() { return toolContextForAgents; }
 
+    /** Android scheduler providing main and io dispatchers. */
     public Scheduler scheduler() { return scheduler; }
 
+    /** Prompt store with settings-backed template overrides. */
     public PromptStore prompts() { return prompts; }
 
+    /**
+     * Shuts the graph down in dependency order: background shells, provider bindings,
+     * stores, scheduler and finally the database.
+     */
     @Override
     public void close() {
         backgroundShellRegistry.shutdown();

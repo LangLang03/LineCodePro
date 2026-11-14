@@ -15,6 +15,12 @@ public final class DefaultPromptExtensions implements PromptExtensions {
     private final Supplier<List<TodoItem>> todos;
     private final Supplier<String> learning;
 
+    /**
+     * @param agents   supplies enabled custom agents
+     * @param skills   supplies enabled skills
+     * @param todos    supplies the current TODO list
+     * @param learning supplies the learning-mode section; may be null
+     */
     public DefaultPromptExtensions(Supplier<List<AgentExtension>> agents,
                                    Supplier<List<Skill>> skills,
                                    Supplier<List<TodoItem>> todos,
@@ -25,10 +31,12 @@ public final class DefaultPromptExtensions implements PromptExtensions {
         this.learning = learning;
     }
 
+    /** Learning-mode context from the supplied source; empty when absent. */
     @Override public String learningSection() {
         return learning == null ? "" : learning.get();
     }
 
+    /** Agents, skills and TODO sections concatenated in that order. */
     @Override public String section() {
         String agentSection = ChatTurnConfig.agentSection(
                 agents == null ? null : agents.get());

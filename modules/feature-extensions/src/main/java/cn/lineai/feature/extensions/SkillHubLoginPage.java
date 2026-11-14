@@ -26,7 +26,9 @@ import cn.lineai.ui.tokens.Tokens;
 /** SkillHub official login inside a hardened WebView. */
 public final class SkillHubLoginPage extends SettingsPage {
 
+    /** Completion callback invoked once a signed-in session is detected. */
     public interface Listener {
+        /** Invoked on the main thread after successful sign-in detection. */
         void onLoggedIn();
     }
 
@@ -42,6 +44,15 @@ public final class SkillHubLoginPage extends SettingsPage {
     private boolean checking;
     private boolean finished;
 
+    /**
+     * Builds the login page, hardens and loads the WebView, and starts the session poller.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param scheduler scheduler enforcing the I/O-to-main threading contract
+     * @param listener completion callback for successful sign-in
+     */
     public SkillHubLoginPage(Context context, Tokens tokens, Runnable back,
                              Scheduler scheduler, Listener listener) {
         super(context, R.string.skillhub_official_login, tokens, back);
@@ -84,6 +95,7 @@ public final class SkillHubLoginPage extends SettingsPage {
         poll = scheduler.main(1200, this::check);
     }
 
+    /** Disables file, content, and mixed-content access; only script and DOM storage stay on. */
     @SuppressLint("SetJavaScriptEnabled")
     private static void harden(WebView view) {
         WebSettings settings = view.getSettings();
@@ -97,6 +109,7 @@ public final class SkillHubLoginPage extends SettingsPage {
         }
     }
 
+    /** Returns whether a navigation target is HTTPS on one of the allow-listed hosts. */
     private static boolean allowed(String url) {
         if (url == null) return false;
         try {
@@ -112,6 +125,7 @@ public final class SkillHubLoginPage extends SettingsPage {
         return false;
     }
 
+    /** Probes the session once on I/O, completing or rescheduling the poll on main. */
     private void check() {
         if (finished || checking || !isAttachedToWindow()) return;
         checking = true;
@@ -135,6 +149,7 @@ public final class SkillHubLoginPage extends SettingsPage {
         });
     }
 
+    /** Cancels the poller and stops WebView loading when the page leaves the window. */
     @Override protected void onDetachedFromWindow() {
         if (poll != null) {
             poll.cancel();

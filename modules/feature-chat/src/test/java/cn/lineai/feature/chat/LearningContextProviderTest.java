@@ -62,6 +62,8 @@ public class LearningContextProviderTest {
             return items;
         }
         public Conversation create(String title) { return null; }
+        public Conversation create(String title, String kind, String parentId) { return null; }
+        public List<Conversation> listByKind(String kind) { return Collections.emptyList(); }
         public void rename(String id, String title) { }
         public void delete(String id) { }
         public void touch(String id, long nowMs, int messageCount) { }

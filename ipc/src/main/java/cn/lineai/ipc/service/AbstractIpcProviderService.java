@@ -22,12 +22,20 @@ public abstract class AbstractIpcProviderService extends Service {
 
     private static final String TAG = "AbstractIpcProviderService";
 
+    /**
+     * Delivers the AIDL binder produced by {@link #createBinder()}; made final so
+     * subclasses cannot bypass the stub-creation contract.
+     */
     @Override
     public final IBinder onBind(Intent intent) {
         Log.i(TAG, getClass().getSimpleName() + "#onBind action=" + (intent == null ? "null" : intent.getAction()));
         return createBinder();
     }
 
+    /**
+     * Runs the {@link #onProviderUnbind(Intent)} hook and returns false so the system does
+     * not keep the rebind-on-restart behaviour.
+     */
     @Override
     public final boolean onUnbind(Intent intent) {
         Log.i(TAG, getClass().getSimpleName() + "#onUnbind");
@@ -35,6 +43,7 @@ public abstract class AbstractIpcProviderService extends Service {
         return false;
     }
 
+    /** Runs the {@link #onProviderDestroy()} hook after the platform cleanup. */
     @Override
     public void onDestroy() {
         super.onDestroy();

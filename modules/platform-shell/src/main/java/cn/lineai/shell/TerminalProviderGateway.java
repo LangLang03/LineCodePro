@@ -48,6 +48,7 @@ public final class TerminalProviderGateway {
         }
     };
 
+    /** Connection states surfaced to settings pages. */
     static final int STATE_NONE = 0;
     static final int STATE_DISCONNECTED = 1;
     static final int STATE_CONNECTED = 2;
@@ -72,6 +73,14 @@ public final class TerminalProviderGateway {
     private volatile TerminalIpcProvider active;
     private volatile String activeHome = "";
 
+    /**
+     * Creates the gateway and registers its connection state listener.
+     *
+     * @param context any context; only the application context is retained
+     * @param settings settings store backing the signature trust switch
+     * @param store persisted provider configuration list
+     * @param terminalModeActive whether the terminal provider execution target is selected
+     */
     public TerminalProviderGateway(Context context, SettingsStore settings,
                                    TerminalProviderStore store,
                                    java.util.function.BooleanSupplier terminalModeActive) {
@@ -83,10 +92,12 @@ public final class TerminalProviderGateway {
         this.manager.addStateListener(stateListener);
     }
 
+    /** Entry point after graph construction: discovers and binds trusted providers. */
     public void start() {
         refresh();
     }
 
+    /** Detaches the listener, unbinds every provider and clears the active connection. */
     public void shutdown() {
         manager.removeStateListener(stateListener);
         manager.unregisterAll();
@@ -101,14 +112,28 @@ public final class TerminalProviderGateway {
         reconcileBindings();
     }
 
+    /** Whether the terminal provider execution target is currently selected. */
     public boolean terminalMode() {
         return terminalModeActive.getAsBoolean();
     }
 
+    /**
+     * Trust decision for one provider package: same signing certificate, or the user
+     * enabled the global trust switch.
+     *
+     * @param packageName package under evaluation
+     * @return {@code true} when the provider may be loaded
+     */
     public boolean trusted(String packageName) {
         return trustEnabled() || ProviderSignature.sameSignature(context, packageName);
     }
 
+    /**
+     * Aggregated connection state for the settings UI: none when terminal mode is off,
+     * connected when a provider is bound, disconnected when only enabled configs exist.
+     *
+     * @return one of the {@code STATE_*} constants
+     */
     public int state() {
         if (!terminalMode()) {
             return STATE_NONE;
@@ -125,6 +150,7 @@ public final class TerminalProviderGateway {
         return STATE_NONE;
     }
 
+    /** Display name of the active or first enabled provider; empty when none exists. */
     public String providerName() {
         TerminalIpcProvider provider = active;
         if (provider != null && provider.getConfig() != null) {
@@ -138,10 +164,22 @@ public final class TerminalProviderGateway {
         return "";
     }
 
+    /** Home path reported by the active provider; empty when unknown or unbound. */
     public String home() {
         return activeHome;
     }
 
+    /**
+     * Executes one foreground shell command through the connected provider and blocks the
+     * calling thread until completion; never call from the main thread.
+     *
+     * @param command the command line to execute in the provider shell
+     * @param timeoutMs timeout applied to the AIDL call
+     * @return the captured standard output
+     * @throws cn.lineai.core.kernel.error.DomainException with {@code INVALID_INPUT} when no
+     *         provider is connected, {@code TOOL_FAILED} on a non-zero exit or error output,
+     *         or {@code NETWORK} for transport failures
+     */
     public String execute(String command, int timeoutMs) {
         TerminalIpcProvider provider = active;
         if (provider == null || !provider.isBound()) {
@@ -268,6 +306,7 @@ public final class TerminalProviderGateway {
         };
     }
 
+    /** Connection listener: activates a newly connected provider and fails over on loss. */
     private void onStateChanged(BaseIpcProvider provider, IpcProviderConnectionState newState,
                                Throwable cause) {
         if (!(provider instanceof TerminalIpcProvider)) {
@@ -290,6 +329,7 @@ public final class TerminalProviderGateway {
         }
     }
 
+    /** Adds freshly scanned trusted providers to the persisted config store. */
     private void autoDiscover() {
         boolean trust = trustEnabled();
         List<ScannedProvider> scanned = scanner.scan(context, IpcProviderType.TERMINAL);
@@ -304,6 +344,7 @@ public final class TerminalProviderGateway {
         }
     }
 
+    /** Unbinds providers that disappeared and binds desired ones that are missing. */
     private void reconcileBindings() {
         boolean trust = trustEnabled();
         Map<String, TerminalProviderConfig> desired = new LinkedHashMap<>();
@@ -338,6 +379,7 @@ public final class TerminalProviderGateway {
         pickConnectedProvider();
     }
 
+    /** Promotes the first bound provider to active, or clears the active connection. */
     private void pickConnectedProvider() {
         TerminalIpcProvider current = active;
         if (current != null && current.isBound()) {
@@ -353,16 +395,19 @@ public final class TerminalProviderGateway {
         activeHome = "";
     }
 
+    /** Sets the active provider and caches its home path for shell executions. */
     private void activate(TerminalIpcProvider provider) {
         active = provider;
         activeHome = readHome(provider);
     }
 
+    /** Reads the user's trust-all-extension-signatures security setting. */
     private boolean trustEnabled() {
         return Boolean.parseBoolean(settings.get(
                 UiPreferences.Field.TRUST_EXTENSION_SIGNATURES.key, "false"));
     }
 
+    /** Converts a persisted config into the {@code :ipc} manager binding config. */
     private static IpcProviderConfig ipcConfig(TerminalProviderConfig config) {
         return IpcProviderConfig.builder()
                 .id(config.id)
@@ -374,6 +419,7 @@ public final class TerminalProviderGateway {
                 .build();
     }
 
+    /** Best-effort home path read; empty when the provider call fails. */
     private static String readHome(TerminalIpcProvider provider) {
         try {
             return provider.getHomePath();
@@ -382,6 +428,7 @@ public final class TerminalProviderGateway {
         }
     }
 
+    /** Message or simple class name of a throwable, for user-presentable errors. */
     private static String detail(Throwable error) {
         String message = error.getMessage();
         return message == null || message.isEmpty() ? error.getClass().getSimpleName() : message;

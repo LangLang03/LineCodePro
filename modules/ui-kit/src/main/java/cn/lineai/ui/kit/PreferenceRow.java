@@ -12,7 +12,24 @@ import android.widget.TextView;
 import cn.lineai.ui.tokens.ThemeBinder;
 import java.util.function.Consumer;
 
+/**
+ * Single settings row rendered as icon, title, optional description and one trailing affordance
+ * determined by {@link Style}.
+ *
+ * <p>The row builds its children once at construction; every later appearance change (selection,
+ * theme, checked state) restyles the existing views in place through the shared binder, never by
+ * removing or re-adding children. Switch changes made programmatically through {@link #checked}
+ * are suppressed from the toggle listener so callers can reflect state without re-entering their
+ * own handler.</p>
+ */
 public final class PreferenceRow extends LinearLayout {
+    /**
+     * Trailing affordance and sizing variant of the row.
+     *
+     * <p>{@code NAVIGATION} and {@code ACTION} use the large icon box and a trailing chevron;
+     * {@code SWITCH} embeds a toggle; {@code OPTION} is a compact selectable chip-style row without
+     * chevron.</p>
+     */
     public enum Style { NAVIGATION, ACTION, SWITCH, OPTION }
     private final ThemeBinder theme;
     private final Style style;
@@ -24,6 +41,17 @@ public final class PreferenceRow extends LinearLayout {
     private boolean selected;
     private boolean binding;
 
+    /**
+     * Builds the row for the given style. All strings are resolved eagerly so later theme passes
+     * never need the resources again.
+     *
+     * @param context hosting context
+     * @param theme binder shared with the owning page; restyle callbacks are registered on it
+     * @param style row variant selecting trailing affordance and metrics
+     * @param glyph icon id from {@link Icons} shown in the leading box
+     * @param label resource id of the row title
+     * @param description resource id of the secondary line
+     */
     public PreferenceRow(Context context, ThemeBinder theme, Style style,
                          int glyph, int label, int description) {
         super(context);
@@ -72,6 +100,7 @@ public final class PreferenceRow extends LinearLayout {
         });
     }
 
+    /** Adds the trailing chevron; called at build time for large styles only. */
     private void addChevron(Context context) {
         chevron = new IconButton(context, Icons.CHEVRON_RIGHT);
         chevron.setIconSizeDp(20, style == Style.ACTION ? 17 : 16);
@@ -80,10 +109,16 @@ public final class PreferenceRow extends LinearLayout {
         theme.bind(t -> chevron.setIconColor(t.textTertiary));
     }
 
+    /** Replaces the title text, for rows whose label depends on runtime state. */
     public void titleText(CharSequence value) {
         title.setText(value);
     }
 
+    /**
+     * Replaces the secondary line and collapses the row when the text is empty.
+     *
+     * @param value new description; null or empty hides the line entirely
+     */
     public void descriptionText(CharSequence value) {
         description.setText(value);
         description.setVisibility(value == null || value.length() == 0 ? GONE : VISIBLE);
@@ -94,28 +129,51 @@ public final class PreferenceRow extends LinearLayout {
         if (chevron != null) chevron.setVisibility(visible ? VISIBLE : GONE);
     }
 
+    /**
+     * Wires a switch row to a change listener. Clicking anywhere in the row flips the switch, and
+     * the listener runs only for user-initiated flips, never for programmatic {@link #checked}
+     * updates.
+     *
+     * @param change consumer invoked with the new checked state on user interaction
+     */
     public void onToggle(Consumer<Boolean> change) {
         toggle.setOnCheckedChangeListener((button, value) -> { if (!binding) change.accept(value); });
         setOnClickListener(v -> toggle.setChecked(!toggle.isChecked()));
     }
 
+    /**
+     * Reflects the switch state without firing the listener registered via {@link #onToggle}.
+     *
+     * @param value new checked state
+     */
     public void checked(boolean value) {
         binding = true;
         toggle.setChecked(value);
         binding = false;
     }
 
+    /**
+     * Enables or disables the row together with its embedded switch, keeping the two controls
+     * consistent for both touch and screen-reader use.
+     */
     @Override public void setEnabled(boolean enabled) {
         super.setEnabled(enabled);
         if (toggle != null) toggle.setEnabled(enabled);
     }
 
+    /**
+     * Marks the row as the currently active choice; option rows highlight their background and
+     * medium typeface, other styles tint icon and title with the accent color.
+     *
+     * @param value true to render the selected state
+     */
     public void active(boolean value) {
         selected = value;
         setSelected(value);
         restyle();
     }
 
+    /** Reapplies all palette-dependent styling to the existing children, in place. */
     private void restyle() {
         cn.lineai.ui.tokens.Tokens t = theme.current();
         boolean large = style == Style.ACTION || style == Style.NAVIGATION;

@@ -20,6 +20,13 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
 
     /** One blocking remote command execution, wired to the active workspace by the app graph. */
     public interface RemoteExecutor {
+        /**
+         * Executes one command synchronously on the calling thread.
+         *
+         * @param command the command line to run on the remote host
+         * @param timeoutMs timeout applied to the round trip
+         * @return the captured output; may be {@code null} on transport failure
+         */
         String execute(String command, int timeoutMs);
     }
 
@@ -32,6 +39,12 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
         /** Returns {running(1/0), exitCode(-1 when unknown)} and appends output after offset. */
         int[] read(long handle, long offset, StringBuilder chunkOut);
 
+        /**
+         * Terminates the provider-side process for a handle.
+         *
+         * @param handle handle returned by {@link #start}
+         * @return {@code true} when the provider confirmed the termination
+         */
         boolean kill(long handle);
 
         /** Frees the provider-side buffer for a finished handle. */
@@ -40,8 +53,19 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
 
     /** Output stream of a provider background task. */
     public interface OutputSink {
+        /**
+         * Receives one output chunk from a binder thread; the registry synchronizes on
+         * its lock before touching task state.
+         *
+         * @param chunk decoded output bytes
+         */
         void onChunk(String chunk);
 
+        /**
+         * Signals termination of the provider-side process.
+         *
+         * @param exitCode the remote exit code, or a negative value when unknown
+         */
         void onComplete(int exitCode);
     }
 
@@ -59,6 +83,14 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
     private final java.util.function.BooleanSupplier providerActive;
     private long counter;
 
+    /**
+     * Creates a registry with no provider support; remote tasks always use the SSH backend.
+     *
+     * @param remoteExecutor blocking remote command executor, or {@code null} to disable
+     *                       remote tasks
+     * @param providerBackground provider background bridge, or {@code null} when no
+     *                           provider is available
+     */
     public BackgroundShellRegistry(RemoteExecutor remoteExecutor,
                                    ProviderBackground providerBackground) {
         this(remoteExecutor, providerBackground, () -> false);
@@ -77,6 +109,18 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
         this.providerActive = providerActive;
     }
 
+    /**
+     * Starts a background task on the backend selected by the {@code remote} flag and the
+     * active provider state, then hands execution to that backend. A backend start failure
+     * records the error, marks the task failed and rethrows.
+     *
+     * @param command the command line to execute
+     * @param cwd working directory (local path, remote path or provider home path)
+     * @param remote {@code true} to route through the SSH or provider backend
+     * @return the task id used for {@link #output} and {@link #kill}
+     * @throws IllegalArgumentException when the command is empty
+     * @throws RuntimeException when the selected backend fails to start the task
+     */
     @Override public String start(String command, String cwd, boolean remote) {
         if (command == null || command.trim().isEmpty()) {
             throw new IllegalArgumentException("command must not be empty");
@@ -108,6 +152,7 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
         return task.id;
     }
 
+    /** Registers the streaming sink, asks the provider to start, and records the handle. */
     private void startProvider(BackgroundTask task, String cwd) {
         OutputSink sink = new OutputSink() {
             @Override public void onChunk(String chunk) {
@@ -140,6 +185,16 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
         }
     }
 
+    /**
+     * Returns a status report for one task, optionally blocking until it finishes or the
+     * timeout elapses. Blocking waits refresh the backend aggressively; a single refresh
+     * also precedes a non-blocking read so remote state is current.
+     *
+     * @param id task id returned by {@link #start}
+     * @param block {@code true} to wait for completion within the timeout
+     * @param timeoutMs upper bound on the blocking wait, in milliseconds
+     * @return the status line and the collected output, or an unknown-id message
+     */
     @Override public String output(String id, boolean block, int timeoutMs) {
         BackgroundTask task;
         synchronized (lock) {
@@ -173,6 +228,13 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
         }
     }
 
+    /**
+     * Kills a running task through its backend, or reports the recorded terminal state.
+     * The task is marked reported either way so {@link #drainCompleted} stays silent.
+     *
+     * @param id task id returned by {@link #start}
+     * @return a user-facing result line including the output tail when the task kept running
+     */
     @Override public String kill(String id) {
         BackgroundTask task;
         synchronized (lock) {
@@ -207,6 +269,12 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
         }
     }
 
+    /**
+     * Collects one notice per completed task that has not been reported yet, refreshing
+     * running tasks on the way so remotely finished tasks are not missed.
+     *
+     * @return the unread completion notices, in task creation order
+     */
     @Override public List<String> drainCompleted() {
         List<String> notices = new ArrayList<>();
         synchronized (lock) {
@@ -228,6 +296,10 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
         return notices;
     }
 
+    /**
+     * Kills every still running local task. Remote tasks are left alone: their processes
+     * survive the app and the registry cannot reconnect after a restart.
+     */
     @Override public void shutdown() {
         synchronized (lock) {
             for (BackgroundTask task : tasks.values()) {
@@ -264,6 +336,7 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
         }
     }
 
+    /** Rate-limited refresh that keeps poll failures from breaking the drain loop. */
     private void refreshQuietly(BackgroundTask task) {
         try {
             refresh(task, false);
@@ -273,6 +346,7 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
         }
     }
 
+    /** One AIDL read of new output and liveness; completes the task when not running. */
     private void pollProvider(BackgroundTask task) {
         if (providerBackground == null) return;
         final long requested;
@@ -332,6 +406,7 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
         lock.notifyAll();
     }
 
+    /** Last {@code __BG_EXIT__} marker in the buffered output; MIN_VALUE when absent. */
     int findExitCode(BackgroundTask task) {
         Matcher matcher = SshShellBackend.EXIT_PATTERN.matcher(task.output);
         int exit = Integer.MIN_VALUE;
@@ -341,6 +416,7 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
         return exit;
     }
 
+    /** Builds the user-facing status line followed by the task output. */
     private String describe(BackgroundTask task) {
         StringBuilder out = new StringBuilder("Task ").append(task.id);
         if (task.status == BackgroundTask.Status.RUNNING) {
@@ -355,12 +431,14 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
         return out.toString();
     }
 
+    /** Output tail (at most 2000 chars) appended to kill results; empty when no output. */
     private String describeTail(BackgroundTask task) {
         String text = displayText(task);
         return text.isEmpty() ? "" : "\n" + (text.length() > 2000
                 ? text.substring(text.length() - 2000) : text);
     }
 
+    /** Buffered output with exit markers stripped and a truncation notice appended. */
     private String displayText(BackgroundTask task) {
         String text = task.output.toString();
         if (task.status == BackgroundTask.Status.COMPLETED
@@ -370,12 +448,14 @@ public final class BackgroundShellRegistry implements BackgroundTasks {
         return task.truncated ? text + "\n… truncated" : text;
     }
 
+    /** Human-readable elapsed time in seconds or minutes. */
     private static String elapsed(long since) {
         long seconds = Math.max(0, (System.currentTimeMillis() - since) / 1000);
         if (seconds < 60) return seconds + "s";
         return (seconds / 60) + "m " + (seconds % 60) + "s";
     }
 
+    /** Best available message for an exception, falling back to {@code toString}. */
     private static String message(Exception error) {
         return error.getMessage() == null ? error.toString() : error.getMessage();
     }

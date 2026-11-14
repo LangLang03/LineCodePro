@@ -19,11 +19,15 @@ import cn.lineai.ui.tokens.Tokens;
 /** Termux integration guide and one-tap OpenSSH setup. */
 public final class TermuxIntegrationPage extends SettingsPage {
 
+    /** Host callbacks for Termux interaction and the automated setup. */
     public interface Listener {
+        /** Launches the Termux application. */
         void onOpenTermux();
 
+        /** Requests the permission needed to run commands inside Termux. */
         void onRequestRunCommandPermission();
 
+        /** Starts the one-tap OpenSSH setup flow in Termux. */
         void onSetup();
     }
 
@@ -31,6 +35,14 @@ public final class TermuxIntegrationPage extends SettingsPage {
     private final LinearLayout setupButton;
     private final TextView status;
 
+    /**
+     * Builds the Termux integration page with guide, steps, and actions.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param listener host callbacks for Termux operations
+     */
     public TermuxIntegrationPage(Context context, Tokens tokens, Runnable back, Listener listener) {
         super(context, R.string.screen_termux_title, tokens, back);
         this.listener = listener;
@@ -98,11 +110,23 @@ public final class TermuxIntegrationPage extends SettingsPage {
         addCard(actions);
     }
 
+    /**
+     * Enables or disables the setup button while the setup flow runs.
+     *
+     * @param running true to disable the button during setup
+     */
     public void setSetupRunning(boolean running) {
         setupButton.setEnabled(!running);
         setupButton.setAlpha(running ? 0.65f : 1f);
     }
 
+    /**
+     * Shows the status line with success or error styling.
+     *
+     * @param title status title text
+     * @param message status detail text
+     * @param error true to render the status in error styling
+     */
     public void showStatus(CharSequence title, CharSequence message, boolean error) {
         status.setVisibility(View.VISIBLE);
         status.setText(getContext().getString(R.string.status_title_message, title, message));
@@ -112,6 +136,7 @@ public final class TermuxIntegrationPage extends SettingsPage {
                 8, error ? tokens.danger : tokens.codeBorder));
     }
 
+    /** Copies the allow-external-apps intent command to the clipboard and reports it. */
     private void copyCommand() {
         ClipboardManager clipboard = (ClipboardManager)
                 getContext().getSystemService(Context.CLIPBOARD_SERVICE);
@@ -124,6 +149,7 @@ public final class TermuxIntegrationPage extends SettingsPage {
                 getContext().getString(R.string.screen_termux_status_copied_message), false);
     }
 
+    /** Builds one numbered guide step row. */
     private LinearLayout step(String number, String text) {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -143,24 +169,28 @@ public final class TermuxIntegrationPage extends SettingsPage {
         return row;
     }
 
+    /** Creates a horizontal container holding two action buttons. */
     private LinearLayout actionRow() {
         LinearLayout row = new LinearLayout(getContext());
         row.setGravity(Gravity.CENTER_VERTICAL);
         return row;
     }
 
+    /** Builds equal-width layout parameters for a button inside an action row. */
     private LinearLayout.LayoutParams actionParams(int leftMargin) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, Ui.dp(getContext(), 38), 1f);
         params.leftMargin = Ui.dp(getContext(), leftMargin);
         return params;
     }
 
+    /** Builds layout parameters spacing an action row below its predecessor. */
     private LinearLayout.LayoutParams topMarginRow() {
         LinearLayout.LayoutParams params = new LayoutParams(-1, -2);
         params.topMargin = Ui.dp(getContext(), 8);
         return params;
     }
 
+    /** Builds a compact icon-and-label button in primary or secondary styling. */
     private LinearLayout actionButton(int label, int icon, boolean primary, Runnable action) {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -185,6 +215,7 @@ public final class TermuxIntegrationPage extends SettingsPage {
         return button;
     }
 
+    /** Creates a rounded card container that re-tints on theme changes. */
     private LinearLayout card() {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -196,12 +227,14 @@ public final class TermuxIntegrationPage extends SettingsPage {
         return card;
     }
 
+    /** Appends a card to the page with the standard bottom spacing. */
     private void addCard(View card) {
         LinearLayout.LayoutParams params = new LayoutParams(-1, -2);
         params.bottomMargin = Ui.dp(getContext(), 12);
         content.addView(card, params);
     }
 
+    /** Creates the small secondary description text used inside cards. */
     private TextView desc(String text) {
         TextView view = Ui.text(getContext(), text, Tokens.FONT_XS, theme.current().textTertiary,
                 Typeface.NORMAL);

@@ -34,6 +34,7 @@ final class SelectionBar extends LinearLayout {
     private final List<Message> selected = new ArrayList<>();
     private Tokens tokens;
 
+    /** Builds the count label plus copy, share and close actions. */
     SelectionBar(Context context, Tokens tokens, Runnable onClose) {
         super(context);
         this.tokens = tokens;
@@ -60,6 +61,12 @@ final class SelectionBar extends LinearLayout {
         setActionsEnabled(false);
     }
 
+    /**
+     * Replaces the copied selection and updates the count label; copy and share are enabled
+     * only while the selection is non-empty.
+     *
+     * @param values messages currently selected, in timeline order
+     */
     void setSelection(List<Message> values) {
         selected.clear();
         if (values != null) {
@@ -69,6 +76,7 @@ final class SelectionBar extends LinearLayout {
         setActionsEnabled(!selected.isEmpty());
     }
 
+    /** Applies the current design tokens to the bar. */
     void applyTokens(Tokens current) {
         tokens = current;
         setBackgroundColor(current.bg);
@@ -79,6 +87,7 @@ final class SelectionBar extends LinearLayout {
         share.setBackground(Ui.rounded(getContext(), current.accent, 20));
     }
 
+    /** Builds one 40dp action button; the primary one gets the accent pill background. */
     private IconButton button(int icon, int description, boolean primary) {
         IconButton view = new IconButton(getContext(), icon);
         view.setIconSizeDp(40, 18);
@@ -90,6 +99,7 @@ final class SelectionBar extends LinearLayout {
         return view;
     }
 
+    /** Dims copy and share while nothing is selected. */
     private void setActionsEnabled(boolean enabled) {
         copy.setEnabled(enabled);
         share.setEnabled(enabled);
@@ -97,6 +107,7 @@ final class SelectionBar extends LinearLayout {
         share.setAlpha(enabled ? 1f : 0.4f);
     }
 
+    /** Plain text of the selected messages, blank lines skipped, separated by blank lines. */
     private String transcript() {
         StringBuilder out = new StringBuilder();
         for (Message message : selected) {
@@ -112,6 +123,7 @@ final class SelectionBar extends LinearLayout {
         return out.toString();
     }
 
+    /** Copies the selection transcript to the clipboard. */
     private void copySelection() {
         String text = transcript();
         if (text.isEmpty()) {
@@ -124,6 +136,7 @@ final class SelectionBar extends LinearLayout {
         }
     }
 
+    /** Shares the selection transcript through the system send chooser. */
     private void shareSelection() {
         String text = transcript();
         if (text.isEmpty()) {

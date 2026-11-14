@@ -51,7 +51,12 @@
     <string name="drawer_project_remove_cancel">取消</string>
 
     <string name="composer_hint_default">输入消息…</string>
+    <string name="composer_hint_busy_elsewhere">另一个对话仍在生成——切回该对话查看或停止</string>
     <string name="composer_hint_no_model">请先到设置 → 模型管理配置模型</string>
+    <string name="composer_hint_transient">一次性Agent——本会话不可交流</string>
+    <string name="drawer_agent_chip">%d 个子代理</string>
+    <string name="chat_agents_title">代理会话</string>
+    <string name="drawer_agent_root">Root（当前会话）</string>
     <string name="composer_attachment_remove_desc">移除附件</string>
     <string name="composer_image_button_desc">选择图片发送</string>
     <string name="composer_image_remove_desc">移除已选图片</string>
@@ -327,7 +332,7 @@
     <string name="screen_security_section_http">HTTP 限制</string>
     <string name="screen_security_section_browser">内置浏览器</string>
     <string name="tool_group_local_shell_name">Shell</string>
-    <string name="tool_group_local_shell_desc">在本地工作区执行 Shell 命令，支持后台任务（用 shell_output 查看输出、shell_kill 终止）；关闭后本地模式不再提供 Shell 工具</string>
+    <string name="tool_group_local_shell_desc">在本地工作区执行 Shell 命令，支持后台任务</string>
     <string name="screen_security_section_extensions">扩展</string>
     <string name="settings_row_security_trust_extensions_title">信任签名不一致的扩展包</string>
     <string name="settings_row_security_trust_extensions_desc">允许自动加载使用不同证书签名的扩展与终端提供者包</string>
@@ -488,7 +493,7 @@
     <string name="screen_tools_hint_key_query">api_key，可留空</string>
 
     <string name="screen_mcp_execution_local_desc">本地工作区会在当前工作区路径内执行文件读写、文件搜索、Agent、网页搜索、图片理解和图片生成。搜索 API 与图片模型在工具设置中配置。</string>
-    <string name="screen_mcp_execution_ssh_desc">SSH Shell 模式会禁用本地文件读写和文件搜索；Agent、Agent Pipeline、任务清单、网页搜索、图片理解和图片生成仍可用，文件相关操作请通过 shell 命令在 SSH 环境内完成。</string>
+    <string name="screen_mcp_execution_ssh_desc">SSH Shell 模式会禁用本地文件读写和文件搜索；Agent、任务清单、网页搜索、图片理解和图片生成仍可用，文件相关操作请通过 shell 命令在 SSH 环境内完成。</string>
     <string name="screen_mcp_ssh_overview">SSH Shell 可以连接远程 Linux 服务器、桌面开发机、NAS，也可以连接手机本机 Termux。Termux 是一个单独选项，不等于只能连接手机。</string>
 
     <string name="screen_mcp_hint_name">例如：公司 MCP 服务</string>
@@ -649,7 +654,7 @@
     <string name="screen_mcp_ssh_settings">SSH 连接设置</string>
     <string name="screen_mcp_termux_integration">Termux 对接</string>
     <string name="screen_mcp_section_terminal_provider">终端提供者</string>
-    <string name="screen_mcp_terminal_provider_overview">终端提供者模式通过 IPC 调用外部提供者应用执行 Shell 命令和传输文件。使用前请先在终端提供者页面扫描并添加提供者应用。</string>
+    <string name="screen_mcp_terminal_provider_overview">终端提供者模式通过 IPC 调用外部提供者应用执行 Shell 命令和传输文件。使用前请先在终端提供者页面扫描并添加提供者应用；如果测试连接失败，请检查提供者应用的「关联启动」是否已启用。</string>
 
     <string name="screen_mcp_edit_title">编辑 MCP</string>
     <string name="screen_mcp_list_empty">还没有 MCP 扩展。</string>
@@ -1200,13 +1205,6 @@
     <!-- Agent messages -->
     <string name="message_generation_interrupted">上次生成已中断。</string>
     <string name="message_agent_terminated">Agent 已终止。</string>
-    <string name="message_agent_pipeline_running">Agent 流水线运行中。</string>
-    <string name="message_agent_pipeline_no_model">当前没有可用模型，无法运行 Agent 流水线。</string>
-    <string name="message_agent_pipeline_agents_empty">agent_pipeline.agents 不能为空。</string>
-    <string name="message_agent_pipeline_circular">Agent 流水线存在循环依赖或重复 id，无法执行。</string>
-    <string name="message_agent_pipeline_completed">Agent 流水线完成: %1$d 个任务</string>
-    <string name="message_agent_pipeline_terminated">Agent 流水线已终止。</string>
-    <string name="message_agent_pipeline_self_dependency">Agent 不能依赖自身: %1$s</string>
     <string name="tool_call_limit_not_executed">工具调用次数已达到上限，本轮调用未执行。</string>
 
     <string name="settings_row_error_logs_title">错误日志</string>
@@ -1246,7 +1244,7 @@
     <string name="tool_group_image_understanding_desc">读取本地或 SSH 工作区图片并调用已选择的视觉模型理解内容</string>
     <string name="tool_group_image_generation_name">图片生成</string>
     <string name="tool_group_image_generation_desc">调用已选择的生图模型生成图片，并以内联 Markdown 图片返回</string>
-    <string name="tool_group_shell_desc">通过 SSH 或终端提供者在远程主机执行 shell 命令，支持后台任务（用 shell_output 查看输出、shell_kill 终止）</string>
+    <string name="tool_group_shell_desc">在远程主机执行 Shell 命令（SSH 或终端提供者），支持后台任务</string>
     <string name="tool_group_web_search_name">网页搜索</string>
     <string name="tool_group_web_search_desc">搜索互联网并查看网页内容</string>
     <string name="tool_group_memory_name">记忆</string>
@@ -1649,6 +1647,10 @@
     <string name="tool_call_status_done">完成</string>
     <string name="tool_call_status_running">运行中</string>
     <string name="tool_call_status_failed">失败</string>
+    <string name="tool_call_status_interrupted">已中断</string>
+    <string name="tool_call_agent_context_label">上下文</string>
+    <string name="tool_call_agent_send_to">发给 %1$s</string>
+    <string name="tool_call_agent_list_summary">%1$d 个会话</string>
     <string name="tool_call_status_pending_review">需要确认</string>
     <string name="tool_call_agent_tool_count">%1$d 工具</string>
     <string name="tool_call_agent_type_explore">探索</string>

@@ -19,5 +19,14 @@ public enum ToolIcon {
     MEMORY,
     PHONE,
     DIFF,
-    PIPELINE
+    /** Spawns one sub agent. */
+    AGENT_SPAWN,
+    /** Sends a message to a sub agent. */
+    AGENT_SEND,
+    /** Waits for sub agent activity. */
+    AGENT_WAIT,
+    /** Lists sub agent sessions. */
+    AGENT_LIST,
+    /** Sub agent → parent message. */
+    AGENT_NOTIFY
 }

@@ -23,6 +23,14 @@ final class ProviderSignature {
     private ProviderSignature() {
     }
 
+    /**
+     * Tests whether the given package shares at least one signing certificate digest with
+     * this application.
+     *
+     * @param context context used to reach the package manager
+     * @param packageName package to compare; {@code null} or empty yields {@code false}
+     * @return {@code true} when both packages share a signing certificate
+     */
     static boolean sameSignature(Context context, String packageName) {
         if (packageName == null || packageName.isEmpty()) {
             return false;
@@ -42,6 +50,7 @@ final class ProviderSignature {
         return false;
     }
 
+    /** Collects SHA-256 digests of the package's signing certificates, API-level aware. */
     private static Set<String> digests(Context context, String packageName) throws Exception {
         PackageManager manager = context.getPackageManager();
         Signature[] signatures;
@@ -70,6 +79,7 @@ final class ProviderSignature {
         return result;
     }
 
+    /** Formats the digest bytes as lowercase hexadecimal. */
     private static String hex(byte[] bytes) {
         StringBuilder out = new StringBuilder(bytes.length * 2);
         for (byte value : bytes) {

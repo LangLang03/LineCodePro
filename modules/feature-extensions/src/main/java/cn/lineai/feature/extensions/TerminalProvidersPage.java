@@ -17,15 +17,42 @@ import cn.lineai.ui.tokens.Tokens;
 /** Scan, add and manage external terminal provider apps (IPC). */
 public final class TerminalProvidersPage extends ExtensionPage implements Refreshable {
 
+    /** Host callbacks for provider discovery and management. */
     public interface Listener {
+        /**
+         * Returns the configured terminal providers.
+         *
+         * @return installed provider configs; may be null or empty
+         */
         List<TerminalProviderConfig> installed();
 
+        /**
+         * Scans the device for external terminal provider apps.
+         *
+         * @return discovered providers; may be null or empty
+         */
         List<ScannedTerminalProvider> scan();
 
+        /**
+         * Adds a scanned provider to the configured set.
+         *
+         * @param provider provider confirmed by the user
+         */
         void add(ScannedTerminalProvider provider);
 
+        /**
+         * Enables or disables one configured provider.
+         *
+         * @param id provider identifier
+         * @param enabled true to enable the provider
+         */
         void setEnabled(String id, boolean enabled);
 
+        /**
+         * Deletes one configured provider.
+         *
+         * @param id provider identifier
+         */
         void delete(String id);
     }
 
@@ -33,12 +60,21 @@ public final class TerminalProvidersPage extends ExtensionPage implements Refres
     private List<ScannedTerminalProvider> scanResults = new ArrayList<>();
     private boolean scanned;
 
+    /**
+     * Builds the terminal providers page and runs the initial scan.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param listener host callbacks for provider discovery and management
+     */
     public TerminalProvidersPage(Context context, Tokens tokens, Runnable back, Listener listener) {
         super(context, tokens, back, R.string.screen_terminal_provider_title);
         this.listener = listener;
         refresh();
     }
 
+    /** Rescans on every page entry since installs and uninstalls change the provider set. */
     @Override
     public void onShown() {
         refresh();
@@ -51,6 +87,7 @@ public final class TerminalProvidersPage extends ExtensionPage implements Refres
         reload();
     }
 
+    /** Rebuilds the page: installed section, rescan action, and scan results when present. */
     public void reload() {
         content.removeAllViews();
         installed();
@@ -65,6 +102,7 @@ public final class TerminalProvidersPage extends ExtensionPage implements Refres
         if (scanned) scanResults();
     }
 
+    /** Adds one row per scanned provider, opening the add confirmation when tapped. */
     private void scanResults() {
         SettingsSection results = section(R.string.screen_terminal_provider_scan_results);
         if (scanResults == null || scanResults.isEmpty()) {
@@ -82,6 +120,7 @@ public final class TerminalProvidersPage extends ExtensionPage implements Refres
         }
     }
 
+    /** Rebuilds the installed section with switch rows and long-press delete. */
     private void installed() {
         SettingsSection installed = section(R.string.screen_terminal_provider_installed);
         List<TerminalProviderConfig> providers = listener.installed();
@@ -107,6 +146,7 @@ public final class TerminalProvidersPage extends ExtensionPage implements Refres
         }
     }
 
+    /** Asks for confirmation before adding a scanned provider to the configured set. */
     private void confirmAdd(ScannedTerminalProvider provider) {
         ExtensionKit.confirmAction(getContext(), theme,
                 getContext().getString(R.string.screen_terminal_provider_add_confirm,

@@ -21,16 +21,43 @@ import cn.lineai.core.model.ModelConfig;
  */
 public final class AgentDraftGenerator {
 
+    /** Single-shot completion source, injected so tests can stub the model call. */
     public interface Completion {
+        /**
+         * Completes a prompt with the given model.
+         *
+         * @param model model configuration for the call
+         * @param prompt full prompt text
+         * @return raw completion text
+         * @throws Exception when the underlying call fails
+         */
         String complete(ModelConfig model, String prompt) throws Exception;
     }
 
     private final Completion completion;
 
+    /**
+     * Creates a generator over the given completion source.
+     *
+     * @param completion completion source used to draft agents
+     */
     public AgentDraftGenerator(Completion completion) {
         this.completion = completion;
     }
 
+    /**
+     * Produces an agent draft from a natural-language request.
+     *
+     * <p>The answer must contain a JSON object with {@code name}, {@code slug} and {@code prompt},
+     * optionally {@code trigger} and {@code toolNames}. Tool names outside the allowed catalog are
+     * dropped, and an empty filtered set falls back to the read-only tool set.</p>
+     *
+     * @param model model configuration for the drafting call
+     * @param prompt natural-language description of the agent to create
+     * @param allowedTools tool names the draft may reference
+     * @return complete draft, or {@code null} when the answer contains no usable draft
+     * @throws Exception when the underlying completion call fails
+     */
     public AgentExtension generate(ModelConfig model, String prompt, List<String> allowedTools)
             throws Exception {
         String answer = completion.complete(model, prompt);
@@ -54,6 +81,7 @@ public final class AgentDraftGenerator {
                 .build();
     }
 
+    /** Filters proposed tool names against the catalog, with the read-only set as fallback. */
     private static List<String> tools(JSONArray values, List<String> allowedTools) {
         Set<String> allowed = new HashSet<>();
         if (allowedTools != null) {

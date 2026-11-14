@@ -38,7 +38,15 @@ import cn.lineai.ui.tokens.Tokens;
 import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 
-/** One retained top-level AST subtree and its colour bindings. */
+/**
+ * One retained top-level AST subtree and its colour bindings.
+ *
+ * <p>Package-private by design; {@link MarkdownLite} creates one instance per top-level block and
+ * keeps it across renders that do not change the block's source. The renderer converts a commonmark
+ * node into an Android view tree once, then never rebuilds it: every appearance aspect registers a
+ * consumer in {@code colours} so a theme pass repaints the retained views in place. Wrap-mode
+ * changes propagate only to the code blocks the subtree contains.</p>
+ */
 final class AstBlockRenderer {
     private final Context context;
     private final InlineContent inline;
@@ -48,6 +56,15 @@ final class AstBlockRenderer {
     private Tokens tokens;
     private boolean wrap;
 
+    /**
+     * Builds the view tree for one top-level AST node immediately.
+     *
+     * @param context hosting context
+     * @param inline shared inline binder owned by the containing {@link MarkdownLite}
+     * @param tokens palette snapshot applied at build time
+     * @param node top-level commonmark node to render
+     * @param wrap initial wrap mode for contained code blocks
+     */
     AstBlockRenderer(Context context, InlineContent inline, Tokens tokens, Node node, boolean wrap) {
         this.context = context;
         this.inline = inline;
@@ -56,10 +73,17 @@ final class AstBlockRenderer {
         root = block(node, 0);
     }
 
+    /** Returns the root view to attach; never null, never rebuilt for theme changes. */
     View view() {
         return root;
     }
 
+    /**
+     * Repaints the retained tree by running every registered colour binding against the new
+     * palette; no view is removed or recreated.
+     *
+     * @param tokens new palette snapshot
+     */
     void applyTheme(Tokens tokens) {
         this.tokens = tokens;
         for (Consumer<Tokens> colour : colours) {
@@ -67,6 +91,11 @@ final class AstBlockRenderer {
         }
     }
 
+    /**
+     * Propagates a wrap-mode change to every code block in this subtree.
+     *
+     * @param enabled true to wrap long code lines, false to scroll them horizontally
+     */
     void setCodeWrapEnabled(boolean enabled) {
         wrap = enabled;
         for (CodeBlockView code : codeBlocks) {
@@ -74,6 +103,10 @@ final class AstBlockRenderer {
         }
     }
 
+    /**
+     * Dispatches one AST node to its block builder; unknown node types fall through to a plain
+     * column of their children so future extensions degrade to readable prose.
+     */
     private View block(Node node, int depth) {
         if (node instanceof Heading || node instanceof Paragraph) {
             return prose(node, depth);
@@ -111,6 +144,7 @@ final class AstBlockRenderer {
         return spaced(group, 0, 0);
     }
 
+    /** Builds a heading or paragraph text view; heading level selects the size scale. */
     private View prose(Node node, int depth) {
         boolean heading = node instanceof Heading;
         int level = heading ? ((Heading) node).getLevel() : 0;
@@ -126,6 +160,7 @@ final class AstBlockRenderer {
         return spaced(text, top, bottom);
     }
 
+    /** Appends the renderable children of a node to a parent column, skipping definitions. */
     private void children(LinearLayout parent, Node node, int depth) {
         for (Node child = node.getFirstChild(); child != null; child = child.getNext()) {
             if (!(child instanceof LinkReferenceDefinition)) {
@@ -134,6 +169,10 @@ final class AstBlockRenderer {
         }
     }
 
+    /**
+     * Builds an ordered or bulleted list. Nesting depth selects the bullet glyph cycle and widens
+     * the marker column, mirroring the legacy renderer's indentation rhythm.
+     */
     private View list(ListBlock node, int depth) {
         LinearLayout list = column();
         Integer start = node instanceof OrderedList ? ((OrderedList) node).getMarkerStartNumber() : 1;
@@ -158,6 +197,7 @@ final class AstBlockRenderer {
         return list;
     }
 
+    /** Builds a block quote: a left rail plus an indented content column. */
     private View quote(Node node, int depth) {
         LinearLayout quote = new LinearLayout(context);
         View rail = new View(context);
@@ -171,6 +211,7 @@ final class AstBlockRenderer {
         return quote;
     }
 
+    /** Builds a code block view and registers it for wrap-mode propagation and theme repaints. */
     private View code(String literal, String language) {
         CodeBlockView code = new CodeBlockView(context, tokens, literal, language, wrap);
         codeBlocks.add(code);
@@ -178,6 +219,8 @@ final class AstBlockRenderer {
         return spaced(code, 4, 8);
     }
 
+    /** Builds a GFM table inside a stretching horizontal scroll host, then reports the column
+     * count so the host can size cell widths on the next measure pass. */
     private View table(Node node) {
         TableScrollView scroll = new TableScrollView(context);
         scroll.setFillViewport(true);
@@ -207,6 +250,7 @@ final class AstBlockRenderer {
         return scroll;
     }
 
+    /** Adds one table row to the grid and returns its cell count for the column maximum. */
     private int tableRow(TableScrollView scroll, TableLayout grid, Node rowNode,
                          boolean header, int index) {
         TableRow row = new TableRow(context);
@@ -224,6 +268,8 @@ final class AstBlockRenderer {
         return columns;
     }
 
+    /** Builds one table cell: themed striping, per-alignment gravity, and registration with the
+     * scroll host so its width cap tracks the viewport. */
     private View cell(TableScrollView scroll, TableCell node, boolean header, int row) {
         LinearLayout cell = column();
         cell.setGravity(Gravity.CENTER_VERTICAL);
@@ -259,26 +305,45 @@ final class AstBlockRenderer {
         private int baseMaxWidth;
         private int cellPadding;
 
+        /** Creates the host; cell geometry arrives later via {@link #configure}. */
         TableScrollView(Context context) {
             super(context);
         }
 
+        /**
+         * Supplies the cell geometry used by the adaptive width cap.
+         *
+         * @param minCellWidth minimum per-cell width in pixels
+         * @param baseMaxWidth legacy per-cell width cap in pixels
+         * @param cellPadding horizontal cell padding in pixels, deducted twice per column
+         */
         void configure(int minCellWidth, int baseMaxWidth, int cellPadding) {
             this.minCellWidth = minCellWidth;
             this.baseMaxWidth = baseMaxWidth;
             this.cellPadding = cellPadding;
         }
 
+        /**
+         * Registers a cell text view so its {@code maxWidth} can be updated on measure.
+         *
+         * @param cell text view inside this host; order is irrelevant, updates are uniform
+         */
         void addCell(TextView cell) {
             cells.add(cell);
             cell.setMaxWidth(baseMaxWidth);
         }
 
+        /**
+         * Records the final column count, enabling the adaptive cap and triggering a re-measure.
+         *
+         * @param value column count observed while building the grid
+         */
         void setColumns(int value) {
             columns = Math.max(0, value);
             requestLayout();
         }
 
+        /** Recomputes the per-cell width cap from the incoming viewport width before measuring. */
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             int available = MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.UNSPECIFIED
@@ -298,6 +363,7 @@ final class AstBlockRenderer {
         }
     }
 
+    /** Creates a text view whose color, link color and highlight repaint through a colour binding. */
     private TextView text(int size, ToIntFunction<Tokens> foreground, boolean bold) {
         TextView text = Ui.text(context, "", size, foreground.applyAsInt(tokens),
                 bold ? Typeface.BOLD : Typeface.NORMAL);
@@ -310,6 +376,8 @@ final class AstBlockRenderer {
         return text;
     }
 
+    /** Sets a rounded background on the view and registers a binding so the fill (and optional
+     * border) repaint on theme changes without replacing the drawable. */
     private void background(View view, ToIntFunction<Tokens> fill, int radius, boolean border) {
         GradientDrawable drawable = Ui.rounded(context, fill.applyAsInt(tokens), radius);
         view.setBackground(drawable);
@@ -321,17 +389,20 @@ final class AstBlockRenderer {
         });
     }
 
+    /** Registers a repaint consumer and immediately applies the current palette to it. */
     private void colour(Consumer<Tokens> binding) {
         colours.add(binding);
         binding.accept(tokens);
     }
 
+    /** Builds the vertical container used by every composite block. */
     private LinearLayout column() {
         LinearLayout column = new LinearLayout(context);
         column.setOrientation(LinearLayout.VERTICAL);
         return column;
     }
 
+    /** Wraps a block view in match-parent/wrap-content layout params with dp margins. */
     private View spaced(View view, int top, int bottom) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
         params.topMargin = dp(top);
@@ -340,6 +411,7 @@ final class AstBlockRenderer {
         return view;
     }
 
+    /** Density conversion cached over the hosting context. */
     private int dp(int value) {
         return Ui.dp(context, value);
     }

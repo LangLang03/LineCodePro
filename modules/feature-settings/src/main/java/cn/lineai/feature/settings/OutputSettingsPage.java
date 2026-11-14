@@ -14,6 +14,10 @@ import cn.lineai.ui.markdown.MarkdownLite;
 import cn.lineai.ui.tokens.Tokens;
 import java.util.function.Consumer;
 
+/**
+ * Output settings screen: conversation expansion, code wrapping, browser choice, and a live
+ * markdown preview that reflects the wrap setting.
+ */
 public final class OutputSettingsPage extends SettingsPage {
     private final PreferenceRow process;
     private final PreferenceRow wrap;
@@ -23,6 +27,15 @@ public final class OutputSettingsPage extends SettingsPage {
     private final String sample;
     private final Consumer<SettingsAction> dispatch;
 
+    /**
+     * Builds the output settings screen.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param dispatch consumer receiving settings actions for all controls
+     * @param toolPreview action opening the tool-call preview gallery
+     */
     public OutputSettingsPage(Context context, Tokens tokens, Runnable back,
                               Consumer<SettingsAction> dispatch, Runnable toolPreview) {
         super(context, R.string.screen_output_title, tokens, back);
@@ -55,18 +68,26 @@ public final class OutputSettingsPage extends SettingsPage {
         theme.bind(t -> preview.render(sample, t));
     }
 
+    /** Creates a switch row bound to a single preferences field. */
     private PreferenceRow toggle(int icon, int label, int desc, Field field) {
         PreferenceRow row = new PreferenceRow(getContext(), theme, PreferenceRow.Style.SWITCH, icon, label, desc);
         row.onToggle(value -> dispatch.accept(new SettingsAction.Change(field, value.toString())));
         return row;
     }
 
+    /** Creates an option row dispatching the browser mode selection. */
     private PreferenceRow browser(int icon, int label, int desc, String mode) {
         PreferenceRow row = new PreferenceRow(getContext(), theme, PreferenceRow.Style.OPTION, icon, label, desc);
         row.setOnClickListener(v -> dispatch.accept(new SettingsAction.Change(Field.BROWSER_MODE, mode)));
         return row;
     }
 
+    /**
+     * Syncs all rows and the markdown preview to the given state; rows stay disabled until
+     * preferences load.
+     *
+     * @param state current settings state from the presenter
+     */
     public void render(SettingsState state) {
         process.setEnabled(state.loaded);
         wrap.setEnabled(state.loaded);

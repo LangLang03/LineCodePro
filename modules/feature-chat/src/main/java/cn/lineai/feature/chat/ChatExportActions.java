@@ -18,8 +18,10 @@ import cn.lineai.ui.i18n.R;
 /** SAF export of the current chat conversation as a Markdown file. */
 public final class ChatExportActions {
 
+    /** Request code identifying this module's create-document activity result. */
     public static final int REQUEST_CHAT_EXPORT = 7409;
 
+    /** Static utility; not instantiable. */
     private ChatExportActions() {
     }
 

@@ -51,7 +51,12 @@
     <string name="drawer_project_remove_cancel">Отмена</string>
 
     <string name="composer_hint_default">Введите сообщение…</string>
+    <string name="composer_hint_busy_elsewhere">Другой чат всё ещё генерирует ответ — вернитесь к нему, чтобы посмотреть или остановить</string>
     <string name="composer_hint_no_model">Сначала настройте модель в Настройки → Управление моделями</string>
+    <string name="composer_hint_transient">Одноразовый агент — этот чат недоступен для сообщений</string>
+    <string name="drawer_agent_chip">%d субагентов</string>
+    <string name="chat_agents_title">Агенты</string>
+    <string name="drawer_agent_root">Root (текущий чат)</string>
     <string name="composer_attachment_remove_desc">Удалить вложение</string>
     <string name="composer_image_button_desc">Выбрать изображение для отправки</string>
     <string name="composer_image_remove_desc">Удалить выбранное изображение</string>
@@ -325,7 +330,7 @@
     <string name="screen_security_section_http">HTTP ограничения</string>
     <string name="screen_security_section_browser">Встроенный браузер</string>
     <string name="tool_group_local_shell_name">Shell</string>
-    <string name="tool_group_local_shell_desc">Выполнять shell-команды в локальной рабочей области, включая фоновые задачи (вывод через shell_output, остановка через shell_kill); отключите, чтобы запретить локальный shell</string>
+    <string name="tool_group_local_shell_desc">Выполнять shell-команды в локальной рабочей области, включая фоновые задачи</string>
     <string name="screen_security_section_extensions">Расширения</string>
     <string name="settings_row_security_trust_extensions_title">Доверять расширениям с другой подписью</string>
     <string name="settings_row_security_trust_extensions_desc">Автоматически загружать пакеты расширений и терминальных провайдеров, подписанные другим сертификатом</string>
@@ -469,7 +474,7 @@
     <string name="screen_tools_hint_key_query">api_key, может быть пустым</string>
 
     <string name="screen_mcp_execution_local_desc">Локальная рабочая область выполняет чтение/запись файлов, поиск файлов, Agent, веб-поиск, понимание и генерацию изображений в пределах текущего пути рабочей области. Search API и модели изображений настраиваются в настройках инструментов.</string>
-    <string name="screen_mcp_execution_ssh_desc">Режим SSH Shell отключает локальное чтение/запись файлов и поиск файлов; Agent, Agent pipeline, TODO, веб-поиск, понимание и генерация изображений остаются доступными. Файловые операции следует выполнять через shell-команды в SSH среде.</string>
+    <string name="screen_mcp_execution_ssh_desc">Режим SSH Shell отключает локальное чтение/запись файлов и поиск файлов; агенты, TODO, веб-поиск, понимание и генерация изображений остаются доступными. Файловые операции следует выполнять через shell-команды в SSH среде.</string>
     <string name="screen_mcp_ssh_overview">SSH Shell может подключаться к удалённому Linux серверу, настольной машине разработчика, NAS или Termux на самом телефоне. Termux — отдельная опция и не является единственной целью.</string>
 
     <string name="screen_mcp_hint_name">напр. Корпоративный MCP сервер</string>
@@ -629,7 +634,7 @@
     <string name="screen_mcp_ssh_settings">Настройки SSH подключения</string>
     <string name="screen_mcp_termux_integration">Интеграция с Termux</string>
     <string name="screen_mcp_section_terminal_provider">Терминальный провайдер</string>
-    <string name="screen_mcp_terminal_provider_overview">Режим терминального провайдера выполняет shell-команды и передаёт файлы через внешнее приложение-провайдер по IPC. Перед использованием отсканируйте и добавьте приложение-провайдер на странице терминальных провайдеров.</string>
+    <string name="screen_mcp_terminal_provider_overview">Режим терминального провайдера выполняет shell-команды и передаёт файлы через внешнее приложение-провайдер по IPC. Перед использованием добавьте приложение-провайдер на странице терминальных провайдеров. Если проверка подключения не удалась, проверьте, включён ли «связанный запуск».</string>
 
     <string name="screen_mcp_edit_title">Изменить MCP</string>
     <string name="screen_mcp_list_empty">Расширений MCP пока нет.</string>
@@ -1179,13 +1184,6 @@
     <!-- Agent messages -->
     <string name="message_generation_interrupted">Предыдущая генерация была прервана.</string>
     <string name="message_agent_terminated">Agent завершён.</string>
-    <string name="message_agent_pipeline_running">Agent pipeline выполняется.</string>
-    <string name="message_agent_pipeline_no_model">Нет доступной модели, невозможно запустить Agent pipeline.</string>
-    <string name="message_agent_pipeline_agents_empty">agent_pipeline.agents не может быть пустым.</string>
-    <string name="message_agent_pipeline_circular">Agent pipeline содержит циклическую зависимость или дублирующийся id, невозможно выполнить.</string>
-    <string name="message_agent_pipeline_completed">Agent pipeline завершён: %1$d задач</string>
-    <string name="message_agent_pipeline_terminated">Agent pipeline прерван.</string>
-    <string name="message_agent_pipeline_self_dependency">Agent не может зависеть от самого себя: %1$s</string>
     <string name="tool_call_limit_not_executed">Достигнут лимит вызовов инструментов; вызовы этого раунда не выполнены.</string>
 
     <string name="settings_row_error_logs_title">Журнал ошибок</string>
@@ -1225,7 +1223,7 @@
     <string name="tool_group_image_understanding_desc">Чтение локальных или SSH изображений рабочей области и вызов выбранной модели зрения для понимания содержимого</string>
     <string name="tool_group_image_generation_name">Генерация изображений</string>
     <string name="tool_group_image_generation_desc">Вызов выбранной модели для генерации изображений, возвращаемых как встроенные Markdown изображения</string>
-    <string name="tool_group_shell_desc">Выполнение shell-команд на удалённом узле через SSH или терминальный провайдер, включая фоновые задачи (вывод через shell_output, остановка через shell_kill)</string>
+    <string name="tool_group_shell_desc">Выполнять shell-команды на удалённом узле (SSH или терминальный провайдер), включая фоновые задачи</string>
     <string name="tool_group_web_search_name">Веб-поиск</string>
     <string name="tool_group_web_search_desc">Поиск в интернете и просмотр веб-страниц</string>
     <string name="tool_group_memory_name">Память</string>
@@ -1646,6 +1644,10 @@
     <string name="tool_call_status_done">Готово</string>
     <string name="tool_call_status_running">Выполняется</string>
     <string name="tool_call_status_failed">Сбой</string>
+    <string name="tool_call_status_interrupted">Прервано</string>
+    <string name="tool_call_agent_context_label">Контекст</string>
+    <string name="tool_call_agent_send_to">кому: %1$s</string>
+    <string name="tool_call_agent_list_summary">%1$d сеансов</string>
     <string name="tool_call_status_pending_review">Требует подтверждения</string>
     <string name="tool_call_agent_tool_count">%1$d инструментов</string>
     <string name="tool_call_agent_type_explore">Исследование</string>

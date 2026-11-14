@@ -51,16 +51,30 @@ public final class SkillHubPage extends SettingsPage {
     private int accountState;
     private boolean loading;
 
+    /** Delegates to the full constructor without login or publish entry points. */
     public SkillHubPage(Context context, Tokens tokens, Runnable back, Scheduler scheduler,
                         SkillStore store, Consumer<String> openDetail) {
         this(context, tokens, back, scheduler, store, openDetail, null, null);
     }
 
+    /** Delegates to the full constructor without a publish entry point. */
     public SkillHubPage(Context context, Tokens tokens, Runnable back, Scheduler scheduler,
                         SkillStore store, Consumer<String> openDetail, Runnable openLogin) {
         this(context, tokens, back, scheduler, store, openDetail, openLogin, null);
     }
 
+    /**
+     * Creates the store page; this file sits near the 600-line guard, so members keep one-line docs.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param scheduler scheduler enforcing the I/O-to-main threading contract
+     * @param store local skill store used by the install flow
+     * @param openDetail consumer notified with the slug of the entry to open
+     * @param openLogin action opening the SkillHub login screen, or null to hide the entry
+     * @param openPublish action opening the publish screen, or null to hide the feature center
+     */
     public SkillHubPage(Context context, Tokens tokens, Runnable back, Scheduler scheduler,
                         SkillStore store, Consumer<String> openDetail, Runnable openLogin,
                         Runnable openPublish) {
@@ -94,6 +108,7 @@ public final class SkillHubPage extends SettingsPage {
         loadAccount();
     }
 
+    /** Builds the store intro row with headline, description, and artwork. */
     private View intro() {
         LinearLayout row = new LinearLayout(getContext());
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -122,6 +137,7 @@ public final class SkillHubPage extends SettingsPage {
         return row;
     }
 
+    /** Creates the search input; submitting resets to page one and reloads. */
     private EditText searchField(Context context) {
         EditText input = new EditText(context);
         input.setHint(R.string.skillhub_search_hint);
@@ -143,6 +159,7 @@ public final class SkillHubPage extends SettingsPage {
         return input;
     }
 
+    /** Wraps the search input in the rounded box with a leading search glyph. */
     private View searchBox(Context context, EditText input) {
         LinearLayout box = new LinearLayout(context);
         box.setGravity(Gravity.CENTER_VERTICAL);
@@ -159,6 +176,7 @@ public final class SkillHubPage extends SettingsPage {
         return box;
     }
 
+    /** Builds the tappable account card showing the current session state. */
     private View accountCard(Context context) {
         LinearLayout card = new LinearLayout(context);
         card.setGravity(Gravity.CENTER_VERTICAL);
@@ -186,11 +204,13 @@ public final class SkillHubPage extends SettingsPage {
         return card;
     }
 
+    /** Creates the account card title view, updated by {@link #updateAccount}. */
     private TextView accountTitleView(Context context) {
         TextView view = Ui.medium(context, "", Tokens.FONT_SM, theme.current().text);
         return view;
     }
 
+    /** Creates the account card description view, updated by {@link #updateAccount}. */
     private TextView accountDescriptionView(Context context) {
         TextView view = Ui.text(context, "", Tokens.FONT_XS, theme.current().textTertiary,
                 Typeface.NORMAL);
@@ -198,12 +218,14 @@ public final class SkillHubPage extends SettingsPage {
         return view;
     }
 
+    /** Creates the trailing account card icon, retyped by {@link #updateAccount}. */
     private IconButton accountIconView(Context context) {
         IconButton icon = new IconButton(context, Icons.CHEVRON_RIGHT);
         icon.setClickable(false);
         return icon;
     }
 
+    /** Handles account card taps per state: retry, open login, or toast the session state. */
     private void onAccount() {
         if (accountState == 0) return;
         if (accountState == 2) {
@@ -221,6 +243,7 @@ public final class SkillHubPage extends SettingsPage {
                 Toast.LENGTH_SHORT).show();
     }
 
+    /** Probes the SkillHub session asynchronously and updates the account card on main. */
     private void loadAccount() {
         accountState = 0;
         updateAccount();
@@ -239,6 +262,7 @@ public final class SkillHubPage extends SettingsPage {
         });
     }
 
+    /** Renders the account card content for the current account state. */
     private void updateAccount() {
         Tokens tokens = theme.current();
         String title;
@@ -272,6 +296,7 @@ public final class SkillHubPage extends SettingsPage {
     private static final int[] SORT_LABELS = {R.string.skillhub_filter_hot_downloads,
             R.string.skillhub_filter_most_stars, R.string.skillhub_filter_recent_update};
 
+    /** Rebuilds the sort filter chips, resetting to page one when a chip is selected. */
     private void renderFilters() {
         Context context = getContext();
         filtersHost.removeAllViews();
@@ -302,6 +327,7 @@ public final class SkillHubPage extends SettingsPage {
         }
     }
 
+    /** Shows the publish entry point only when signed in and a publish action exists. */
     private void renderFeatureCenter() {
         featureHost.removeAllViews();
         boolean signedIn = accountState == 3;
@@ -320,6 +346,7 @@ public final class SkillHubPage extends SettingsPage {
         featureHost.addView(action, new LinearLayout.LayoutParams(-1, Ui.dp(context, 40)));
     }
 
+    /** Fetches the current page of results on I/O and renders loading, error, or ready on main. */
     private void reload() {
         loading = true;
         renderList(null, null);
@@ -342,6 +369,7 @@ public final class SkillHubPage extends SettingsPage {
         });
     }
 
+    /** Renders the result list for the loading, error, empty, or ready state. */
     private void renderList(List<SkillHubEntry> entries, String error) {
         listHost.removeAllViews();
         if (loading) {
@@ -369,6 +397,7 @@ public final class SkillHubPage extends SettingsPage {
         addToHost(pager(), 12);
     }
 
+    /** Builds one result card that opens the detail screen when tapped. */
     private View card(SkillHubEntry entry) {
         Context context = getContext();
         Tokens current = theme.current();
@@ -399,6 +428,7 @@ public final class SkillHubPage extends SettingsPage {
         return row;
     }
 
+    /** Builds the card artwork slot with an async-loaded remote icon over a fallback glyph. */
     private FrameLayout cardArtwork(Context context, SkillHubEntry entry) {
         FrameLayout artwork = new FrameLayout(context);
         artwork.setClipToOutline(true);
@@ -413,6 +443,7 @@ public final class SkillHubPage extends SettingsPage {
         return artwork;
     }
 
+    /** Builds the card label stack: title, author, tags, description, and stats. */
     private LinearLayout cardLabels(Context context, SkillHubEntry entry) {
         Tokens current = theme.current();
         LinearLayout labels = new LinearLayout(context);
@@ -464,6 +495,7 @@ public final class SkillHubPage extends SettingsPage {
         return labels;
     }
 
+    /** Builds at most two category/API-key tags for the card. */
     private LinearLayout cardTags(Context context, SkillHubEntry entry) {
         LinearLayout tags = new LinearLayout(context);
         tags.setOrientation(LinearLayout.HORIZONTAL);
@@ -482,6 +514,7 @@ public final class SkillHubPage extends SettingsPage {
         return tags;
     }
 
+    /** Formats counts above ten thousand using the localized ten-thousand unit. */
     private String formatCount(long value) {
         if (value >= 10000) {
             return getContext().getString(R.string.skillhub_count_wan, value / 10000d);
@@ -489,6 +522,7 @@ public final class SkillHubPage extends SettingsPage {
         return String.valueOf(value);
     }
 
+    /** Builds the previous/next page row; both actions reload from page one of their target. */
     private View pager() {
         LinearLayout row = new LinearLayout(getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -510,6 +544,7 @@ public final class SkillHubPage extends SettingsPage {
         return row;
     }
 
+    /** Builds the centered indeterminate loading spinner. */
     private View spinner() {
         FrameLayout frame = new FrameLayout(getContext());
         Ui.padding(frame, 16, 16, 16, 16);
@@ -520,6 +555,7 @@ public final class SkillHubPage extends SettingsPage {
         return frame;
     }
 
+    /** Creates a centered tertiary status line. */
     private TextView center(String text) {
         TextView view = Ui.text(getContext(), text, Tokens.FONT_SM,
                 theme.current().textTertiary, Typeface.NORMAL);
@@ -528,6 +564,7 @@ public final class SkillHubPage extends SettingsPage {
         return view;
     }
 
+    /** Creates a non-clickable accent-tinted icon of the given size. */
     private IconButton iconView(int icon, int sizeDp) {
         IconButton view = new IconButton(getContext(), icon);
         view.setIconSizeDp(sizeDp, sizeDp);
@@ -536,12 +573,14 @@ public final class SkillHubPage extends SettingsPage {
         return view;
     }
 
+    /** Appends a static page row with an optional top margin. */
     private void addRow(View view, int topDp) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         if (topDp > 0) params.topMargin = Ui.dp(getContext(), topDp);
         content.addView(view, params);
     }
 
+    /** Appends a row to the result list host with the given top margin. */
     private void addToHost(View view, int topDp) {
         ExtensionKit.topMargin(getContext(), view, topDp);
         listHost.addView(view);

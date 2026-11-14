@@ -23,11 +23,18 @@ public final class SqliteSettingsStore implements SettingsStore {
     private final Map<String, String> cache = new HashMap<>();
     private boolean loaded;
 
+    /**
+     * Creates the store.
+     *
+     * @param database shared database connection holder
+     * @param clock clock used to timestamp written settings
+     */
     public SqliteSettingsStore(LineCodeDatabase database, Clock clock) {
         this.database = database;
         this.clock = clock;
     }
 
+    /** Loads the whole settings table once; later calls are no-ops. */
     private synchronized void ensureLoaded() {
         if (loaded) {
             return;
@@ -44,6 +51,13 @@ public final class SqliteSettingsStore implements SettingsStore {
         loaded = true;
     }
 
+    /**
+     * Returns one cached value, loading the table first when necessary.
+     *
+     * @param key settings key
+     * @param fallback value returned when the key is absent
+     * @return stored value or the fallback
+     */
     @Override
     public synchronized String get(String key, String fallback) {
         ensureLoaded();
@@ -51,6 +65,14 @@ public final class SqliteSettingsStore implements SettingsStore {
         return value == null ? fallback : value;
     }
 
+    /**
+     * Returns one cached value parsed as an integer; unparseable values fall back instead of
+     * failing the caller.
+     *
+     * @param key settings key
+     * @param fallback value returned when the key is absent or not parseable
+     * @return stored value or the fallback
+     */
     @Override
     public synchronized int getInt(String key, int fallback) {
         try {
@@ -60,6 +82,14 @@ public final class SqliteSettingsStore implements SettingsStore {
         }
     }
 
+    /**
+     * Writes the value through to the table and the cache in that order, so a failed write never
+     * leaves the cache ahead of the database. A null value is stored as empty.
+     *
+     * @param key settings key
+     * @param value value to store; null is stored as the empty string
+     * @throws DomainException with {@code ErrorCode.STORAGE} when the write fails
+     */
     @Override
     public synchronized void put(String key, String value) {
         ensureLoaded();
@@ -79,6 +109,12 @@ public final class SqliteSettingsStore implements SettingsStore {
         }
     }
 
+    /**
+     * Deletes the row and the cached entry together.
+     *
+     * @param key settings key; unknown keys are ignored
+     * @throws DomainException with {@code ErrorCode.STORAGE} when the delete fails
+     */
     @Override
     public synchronized void remove(String key) {
         ensureLoaded();
@@ -91,12 +127,21 @@ public final class SqliteSettingsStore implements SettingsStore {
         }
     }
 
+    /**
+     * Drops the cache so the next read reloads the table; required after an archive restore so
+     * stale values cannot shadow the restored rows.
+     */
     @Override
     public synchronized void invalidate() {
         cache.clear();
         loaded = false;
     }
 
+    /**
+     * Returns a defensive copy of the whole cache, suitable for one-shot generation snapshots.
+     *
+     * @return snapshot of all settings keyed by their settings key
+     */
     @Override
     public synchronized Map<String, String> all() {
         ensureLoaded();

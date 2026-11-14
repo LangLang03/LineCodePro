@@ -18,9 +18,15 @@ public final class ContextSizes {
     private static final double KILO = 1000d;
     private static final double MEGA = 1000000d;
 
+    /** Non-instantiable utility. */
     private ContextSizes() {
     }
 
+    /**
+     * Parses a size expression into a token count.
+     * @param input text such as {@code "128k"} or {@code "1000000"}, may be null
+     * @return the parsed size, or {@link #UNSET} when blank, invalid or out of range
+     */
     public static int parse(String input) {
         if (input == null) return UNSET;
         String compact = compact(input);
@@ -69,6 +75,7 @@ public final class ContextSizes {
         return String.valueOf(size);
     }
 
+    /** Formats {@code value} with up to three trimmed decimals plus {@code suffix}. */
     private static String scaled(double value, String suffix) {
         String text = String.format(Locale.US, "%.3f", value);
         int end = text.length();
@@ -81,6 +88,7 @@ public final class ContextSizes {
         return text.substring(0, end) + suffix;
     }
 
+    /** Lowercases {@code input} and strips all whitespace. */
     private static String compact(String input) {
         String trimmed = input.trim().toLowerCase(Locale.US);
         if (trimmed.indexOf(' ') < 0 && trimmed.indexOf('\t') < 0) return trimmed;

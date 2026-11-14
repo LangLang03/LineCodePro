@@ -8,6 +8,13 @@ public final class ScannedTerminalProvider {
     public final String serviceClass;
     public final String providerType;
 
+    /**
+     * Creates a scan result, normalising null strings to empty.
+     * @param name provider display name
+     * @param packageName Android package hosting the provider service
+     * @param serviceClass provider service class name
+     * @param providerType provider protocol family
+     */
     public ScannedTerminalProvider(String name, String packageName, String serviceClass,
                                    String providerType) {
         this.name = name == null ? "" : name;

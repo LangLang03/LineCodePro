@@ -1,5 +1,6 @@
 package cn.lineai.core.mvi.present;
 
+/** Pure presentation logic: initial state, serial reductions and IO-bound effects. */
 public interface Presenter<S extends UiState, A extends Action> {
     /** Called once on the Store constructor's thread. */
     S initial();

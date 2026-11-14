@@ -20,11 +20,15 @@ import cn.lineai.ui.tokens.Tokens;
 /** Bottom execution request; occupies the composer's slot without altering its draft. */
 public final class ChatApprovalView extends LinearLayout {
 
+    /** Approval outcomes forwarded to the screen, which routes them to the controller. */
     public interface Listener {
+        /** Refuses the pending tool calls. */
         void onDeny();
 
+        /** Runs the pending batch once, prompting again next time. */
         void onAllowOnce();
 
+        /** Runs the batch and remembers the tool names for the process lifetime. */
         void onAllowAlways();
     }
 
@@ -39,6 +43,7 @@ public final class ChatApprovalView extends LinearLayout {
     private Listener listener;
     private Tokens tokens;
 
+    /** Builds the elevated panel: heading, reason, monospace action line and the button row. */
     public ChatApprovalView(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -109,10 +114,19 @@ public final class ChatApprovalView extends LinearLayout {
         applyTokens(tokens);
     }
 
+    /** Sets the approval callbacks; buttons stay disabled until one is installed. */
     public void setListener(Listener value) {
         listener = value;
     }
 
+    /**
+     * Shows the pending batch: one line per first presentation plus a batch count. Renders the
+     * reason and the action text supplied by {@link ToolPresentation}, falling back to the raw
+     * arguments.
+     *
+     * @param items   pending approvals; empty hides the view
+     * @param current design tokens to apply
+     */
     public void render(List<ToolApprovalItem> items, Tokens current) {
         applyTokens(current);
         if (items == null || items.isEmpty()) {
@@ -137,6 +151,7 @@ public final class ChatApprovalView extends LinearLayout {
         always.setEnabled(enabled);
     }
 
+    /** Applies the current design tokens to the panel and buttons. */
     public void applyTokens(Tokens current) {
         tokens = current;
         setBackgroundColor(current.bg);
@@ -150,18 +165,22 @@ public final class ChatApprovalView extends LinearLayout {
         styleButton(always, false);
     }
 
+    /** Forwards the deny decision. */
     private void submitDeny() {
         if (listener != null) listener.onDeny();
     }
 
+    /** Forwards the allow-once decision. */
     private void submitOnce() {
         if (listener != null) listener.onAllowOnce();
     }
 
+    /** Forwards the allow-always decision. */
     private void submitAlways() {
         if (listener != null) listener.onAllowAlways();
     }
 
+    /** Maps a {@link ToolIcon} category to the matching glyph; unknown categories get a wrench. */
     private static int iconFor(ToolIcon iconType) {
         switch (iconType) {
             case READ:
@@ -190,20 +209,25 @@ public final class ChatApprovalView extends LinearLayout {
                 return Icons.SCROLL_TEXT;
             case AGENT:
                 return Icons.BRAIN;
+            case AGENT_SPAWN:
+            case AGENT_SEND:
+            case AGENT_WAIT:
+            case AGENT_LIST:
+            case AGENT_NOTIFY:
+                return Icons.BOT;
             case MEMORY:
                 return Icons.BOOK_OPEN;
             case PHONE:
                 return Icons.SMARTPHONE;
             case DIFF:
                 return Icons.GIT_COMPARE;
-            case PIPELINE:
-                return Icons.GIT_BRANCH;
             case GENERIC:
             default:
                 return Icons.WRENCH;
         }
     }
 
+    /** Builds one equal-width approval button with minimum touch height. */
     private TextView button(String label, boolean primary) {
         TextView view = Ui.text(getContext(), label, Tokens.FONT_SM, tokens.text, Typeface.NORMAL);
         view.setGravity(Gravity.CENTER);
@@ -213,6 +237,7 @@ public final class ChatApprovalView extends LinearLayout {
         return view;
     }
 
+    /** Restyles a button as filled accent (primary) or outlined. */
     private void styleButton(TextView view, boolean primary) {
         view.setTextColor(primary ? tokens.textOnColor : tokens.text);
         view.setBackground(primary

@@ -17,6 +17,12 @@ public final class ImageData {
     private ImageData() {
     }
 
+    /**
+     * Collects the file paths of image blocks in a message.
+     *
+     * @param message message to scan
+     * @return paths of every image block that carries a reference, in message order
+     */
     public static List<String> paths(Message message) {
         List<String> result = new ArrayList<>();
         for (ContentBlock block : message.blocks) {
@@ -27,11 +33,17 @@ public final class ImageData {
         return result;
     }
 
+    /** Returns {@code true} when the message contains at least one image block with a reference. */
     public static boolean hasImages(Message message) {
         return !paths(message).isEmpty();
     }
 
-    /** Data URL, or an empty string when the file is missing or unreadable. */
+    /**
+     * Encodes a file as a Base64 data URL.
+     *
+     * @param path file path to encode
+     * @return data URL for the file, or an empty string when the file is missing or unreadable
+     */
     public static String dataUrl(String path) {
         try {
             byte[] bytes = Files.readAllBytes(new File(path).toPath());
@@ -42,6 +54,13 @@ public final class ImageData {
         }
     }
 
+    /**
+     * Infers the image media type from the file extension.
+     *
+     * @param path file path; case-insensitive suffix decides the type
+     * @return IANA media type; JPEG is the fallback so unknown extensions still produce a valid
+     *         image part
+     */
     public static String mediaType(String path) {
         String lower = path == null ? "" : path.toLowerCase(Locale.ROOT);
         if (lower.endsWith(".png")) return "image/png";
@@ -51,6 +70,12 @@ public final class ImageData {
         return "image/jpeg";
     }
 
+    /**
+     * Reads and Base64-encodes a file without a data URL wrapper.
+     *
+     * @param path file path to encode
+     * @return Base64-encoded contents, or an empty string when the file is missing or unreadable
+     */
     public static String base64(String path) {
         try {
             return Base64.getEncoder().encodeToString(

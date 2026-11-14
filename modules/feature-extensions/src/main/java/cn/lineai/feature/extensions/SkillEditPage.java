@@ -14,9 +14,20 @@ import cn.lineai.ui.tokens.Tokens;
 /** Create or edit a local SKILL.md extension. */
 public final class SkillEditPage extends ExtensionPage {
 
+    /** Persistence callbacks for the editor. */
     public interface Listener {
+        /**
+         * Persists the edited skill.
+         *
+         * @param skill assembled skill with name, description, and content
+         */
         void onSave(Skill skill);
 
+        /**
+         * Deletes the skill being edited.
+         *
+         * @param id identifier of the skill to delete
+         */
         void onDelete(String id);
     }
 
@@ -26,6 +37,15 @@ public final class SkillEditPage extends ExtensionPage {
     private final FormField description;
     private final FormField content;
 
+    /**
+     * Builds the editor, seeding the form from the skill being edited when present.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param editing skill to edit, or null to create a new one
+     * @param listener persistence callbacks
+     */
     public SkillEditPage(Context context, Tokens tokens, Runnable back, Skill editing,
                          Listener listener) {
         super(context, tokens, back, editing == null || editing.id.isEmpty()
@@ -51,6 +71,7 @@ public final class SkillEditPage extends ExtensionPage {
         if (!this.editing.id.isEmpty()) renderDelete();
     }
 
+    /** Wraps a form field with vertical spacing. */
     private LinearLayout form(FormField field, int topDp, int bottomDp) {
         LinearLayout wrapper = new LinearLayout(getContext());
         wrapper.setOrientation(LinearLayout.VERTICAL);
@@ -60,6 +81,7 @@ public final class SkillEditPage extends ExtensionPage {
         return wrapper;
     }
 
+    /** Adds the delete section with confirmation, shown only when editing an existing skill. */
     private void renderDelete() {
         SettingsSection section = section(R.string.screen_extension_detail_delete_title);
         section.row(ExtensionKit.dangerAction(getContext(), theme, R.string.common_delete,
@@ -69,6 +91,7 @@ public final class SkillEditPage extends ExtensionPage {
                         () -> listener.onDelete(editing.id))), false, 0);
     }
 
+    /** Validates name and content, then hands the assembled skill to the host. */
     private void save() {
         if (name.value().isEmpty() || content.value().isEmpty()) {
             Toast.makeText(getContext(), R.string.screen_skill_save_require,

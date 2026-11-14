@@ -17,10 +17,20 @@ public final class ToolJson {
 
     private final JSONObject value;
 
+    /**
+     * Wraps a parsed object; created only inside this module.
+     *
+     * @param value backing {@code org.json} object, never {@code null}
+     */
     ToolJson(JSONObject value) {
         this.value = value;
     }
 
+    /**
+     * Returns the shared empty instance.
+     *
+     * @return an empty, immutable-shaped view used as a parse fallback
+     */
     public static ToolJson empty() {
         return EMPTY;
     }
@@ -53,31 +63,73 @@ public final class ToolJson {
         return parsed == null ? EMPTY : parsed;
     }
 
+    /**
+     * Whether the wrapped object holds no members.
+     *
+     * @return {@code true} when the object is empty
+     */
     public boolean isEmpty() {
         return value.length() == 0;
     }
 
+    /**
+     * Number of members in the wrapped object.
+     *
+     * @return member count
+     */
     public int length() {
         return value.length();
     }
 
+    /**
+     * Whether a key is present with a non-null value.
+     *
+     * @param key member name
+     * @return {@code true} when the key maps to a value
+     */
     public boolean has(String key) {
         return !value.isNull(key);
     }
 
+    /**
+     * Reads a string member.
+     *
+     * @param key member name
+     * @return string value, or the empty string when absent or non-textual
+     */
     public String text(String key) {
         return value.optString(key, "");
     }
 
+    /**
+     * Reads a string member with a fallback.
+     *
+     * @param key member name
+     * @param fallback value returned when the member is absent, null or JSON {@code null}
+     * @return the string value, or the fallback
+     */
     public String text(String key, String fallback) {
         String result = value.optString(key, fallback);
         return result == null ? fallback : result;
     }
 
+    /**
+     * Reads an integer member.
+     *
+     * @param key member name
+     * @param fallback value returned when the member is absent or non-numeric
+     * @return the integer value, or the fallback
+     */
     public int integer(String key, int fallback) {
         return value.optInt(key, fallback);
     }
 
+    /**
+     * Reads a boolean member.
+     *
+     * @param key member name
+     * @return boolean value, or {@code false} when absent or non-boolean
+     */
     public boolean flag(String key) {
         return value.optBoolean(key, false);
     }

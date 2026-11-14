@@ -81,6 +81,7 @@ final class ToolJsonRepair {
         return null;
     }
 
+    /** Strict {@code org.json} parse that reports failure instead of repairing. */
     private static JSONObject strictObject(String text) {
         try {
             return new JSONObject(text);
@@ -138,6 +139,7 @@ final class ToolJsonRepair {
         return false;
     }
 
+    /** Parses an array wrapper and returns its single object element, or {@code null}. */
     private static JSONObject unwrapArray(String text) {
         try {
             JSONArray array = new JSONArray(text);
@@ -182,6 +184,7 @@ final class ToolJsonRepair {
         return text.trim();
     }
 
+    /** Decodes a bare JSON string literal such as a double-encoded argument payload. */
     private static String decodeString(String text) {
         try {
             return new JSONArray("[" + text + "]").optString(0, "");
@@ -223,6 +226,7 @@ final class ToolJsonRepair {
 
     // ------------------------------------------------------------------ sanitize
 
+    /** Single conservative pass normalizing quotes, comments and Python-style literals. */
     private static String sanitize(String text) {
         StringBuilder out = new StringBuilder(text.length() + 16);
         int index = 0;
@@ -257,6 +261,7 @@ final class ToolJsonRepair {
         return out.toString();
     }
 
+    /** Quotes bare keys preceding a colon and maps Python literals to their JSON equivalents. */
     private static int bareWord(String text, int start, StringBuilder out) {
         int index = start;
         while (index < text.length() && Character.isJavaIdentifierPart(text.charAt(index))) {
@@ -314,6 +319,7 @@ final class ToolJsonRepair {
         return index;
     }
 
+    /** Whether {@code value} terminates the string opened by {@code open}. */
     private static boolean closes(char value, char open) {
         if (open == '"') {
             return value == '"';
@@ -327,6 +333,7 @@ final class ToolJsonRepair {
         return value == '\u2019' || value == '\'';
     }
 
+    /** Emits the JSON escape sequence for one control character. */
     private static void escape(StringBuilder out, char value) {
         switch (value) {
             case '\n':
@@ -352,11 +359,13 @@ final class ToolJsonRepair {
         }
     }
 
+    /** Skips a {@code //} comment up to and including the end of line. */
     private static int lineComment(String text, int start) {
         int end = text.indexOf('\n', start);
         return end < 0 ? text.length() : end + 1;
     }
 
+    /** Skips a {@code /* *}\/ comment up to and including its terminator. */
     private static int blockComment(String text, int start) {
         int end = text.indexOf("*/", start + 2);
         return end < 0 ? text.length() : end + 2;
@@ -364,6 +373,7 @@ final class ToolJsonRepair {
 
     // ------------------------------------------------------------------ balance
 
+    /** Removes commas directly preceding a closing brace or bracket, outside strings. */
     private static String stripTrailingCommas(String text) {
         StringBuilder out = new StringBuilder(text.length());
         boolean inString = false;
@@ -401,6 +411,7 @@ final class ToolJsonRepair {
         return out.toString();
     }
 
+    /** Closes strings and brackets left open by a truncated generation. */
     private static String closeOpen(String text) {
         StringBuilder out = new StringBuilder(text);
         Deque<Character> stack = new ArrayDeque<>();
@@ -438,6 +449,7 @@ final class ToolJsonRepair {
         return out.toString();
     }
 
+    /** Index of the last comma outside any string literal, or {@code -1} when none exists. */
     private static int lastComma(String text) {
         boolean inString = false;
         boolean escaped = false;

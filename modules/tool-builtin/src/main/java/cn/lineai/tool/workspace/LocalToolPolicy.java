@@ -19,9 +19,20 @@ import cn.lineai.tool.workspace.ShellTool;
  */
 public final class LocalToolPolicy {
 
+    /** Utility class; not instantiable. */
     private LocalToolPolicy() {
     }
 
+    /**
+     * Removes the whole shell family from the registry when shell access is disabled.
+     *
+     * <p>The three tools are removed together so the model can never start a task it then
+     * cannot observe or stop.</p>
+     *
+     * @param source registry to filter; returned unchanged when {@code null}
+     * @param shellEnabled {@code true} to keep the shell family untouched
+     * @return the original registry when enabled, otherwise a filtered copy without shell tools
+     */
     public static ToolRegistry apply(ToolRegistry source, boolean shellEnabled) {
         if (source == null || shellEnabled) {
             return source;
@@ -35,6 +46,7 @@ public final class LocalToolPolicy {
         return filtered;
     }
 
+    /** Names of the shell family removed as a unit by {@link #apply}. */
     static final Set<String> SHELL_TOOLS = new HashSet<>(Arrays.asList(
             ShellTool.NAME, ShellOutputTool.NAME, ShellKillTool.NAME));
 }

@@ -31,9 +31,14 @@ import cn.lineai.engine.protocol.StreamEvent;
 /**
  * Blocking HTTP/SSE transport executed on the injected IO scheduler. The wire format is chosen by
  * the model protocol (OpenAI chat, Anthropic Messages, Codex Responses).
+ *
+ * <p>There is no retry: a failed request terminates the stream with a single error callback.
+ * Cancellation disconnects the underlying connection so blocked reads fail promptly, and the
+ * error is then reported as {@link ErrorCode#CANCELLED} rather than as a network failure.</p>
  */
 public final class HttpModelClient implements ModelClient {
 
+    /** Resolved request: endpoint URL, serialized body, headers and the response decoder. */
     private static final class Plan {
         final String url;
         final String body;
@@ -51,10 +56,23 @@ public final class HttpModelClient implements ModelClient {
 
     private final Scheduler scheduler;
 
+    /**
+     * Creates a client over the given scheduler.
+     *
+     * @param scheduler scheduler that runs the blocking transport off the caller's thread
+     */
     public HttpModelClient(Scheduler scheduler) {
         this.scheduler = scheduler;
     }
 
+    /**
+     * Starts a streaming completion on the IO scheduler.
+     *
+     * @param model model configuration selecting protocol, endpoint and credentials
+     * @param request normalized completion request
+     * @param listener callback sink; invoked on the IO thread
+     * @return handle that disconnects the in-flight connection
+     */
     @Override
     public Cancellable stream(ModelConfig model, ChatRequest request, Listener listener) {
         final Connection connection = new Connection();
@@ -62,6 +80,13 @@ public final class HttpModelClient implements ModelClient {
         return connection;
     }
 
+    /**
+     * Executes the request and drives the listener to its terminal callback.
+     *
+     * <p>HTTP 401/403 surface as {@link ErrorCode#AUTH}; other non-2xx statuses and transport
+     * failures surface as {@link ErrorCode#NETWORK}; a cancelled connection surfaces as
+     * {@link ErrorCode#CANCELLED}. Decoder failures abort the stream after one error callback.</p>
+     */
     private void run(ModelConfig model, ChatRequest request, Listener listener, Connection holder) {
         if (!isAllowed(model.baseUrl)) {
             listener.onError(new DomainException(ErrorCode.INVALID_INPUT, "unsupported endpoint"));
@@ -113,6 +138,7 @@ public final class HttpModelClient implements ModelClient {
         }
     }
 
+    /** Selects endpoint, headers, body and decoder for the model protocol. */
     private static Plan plan(ModelConfig model, ChatRequest request) {
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Accept", "text/event-stream");
@@ -158,6 +184,12 @@ public final class HttpModelClient implements ModelClient {
         return new String(out.toByteArray(), StandardCharsets.UTF_8).trim();
     }
 
+    /**
+     * Feeds the response stream through the SSE parser and decoder.
+     *
+     * @return {@code false} when cancelled or when the decoder reported an error; the listener has
+     *         received its terminal callback in both cases
+     */
     private boolean read(InputStream input, Listener listener, Connection holder,
                          StreamDecoder decoder)
             throws IOException {
@@ -175,6 +207,7 @@ public final class HttpModelClient implements ModelClient {
         return dispatch(parser.finish(), decoder, listener);
     }
 
+    /** Delivers decoded events to the listener; returns false after reporting a decoder failure. */
     private static boolean dispatch(List<String> payloads, StreamDecoder decoder, Listener listener) {
         try {
             for (String payload : payloads) {
@@ -189,6 +222,7 @@ public final class HttpModelClient implements ModelClient {
         }
     }
 
+    /** Allows HTTPS everywhere and plain HTTP only for loopback and emulator hosts. */
     private static boolean isAllowed(String baseUrl) {
         String value = baseUrl == null ? "" : baseUrl.trim();
         if (value.startsWith("https://")) {
@@ -206,10 +240,17 @@ public final class HttpModelClient implements ModelClient {
                 || host.startsWith("10.0.2.2");
     }
 
+    /**
+     * Cancellable handle bound to the in-flight {@link HttpURLConnection}.
+     *
+     * <p>Cancellation is safe at any point, including before a connection exists: the handle
+     * records the request and disconnects as soon as one is attached.</p>
+     */
     private static final class Connection implements Cancellable {
         private volatile boolean cancelled;
         private volatile HttpURLConnection connection;
 
+        /** Binds the connection and disconnects immediately when cancellation already happened. */
         void attach(HttpURLConnection value) {
             connection = value;
             if (cancelled) {
@@ -217,6 +258,7 @@ public final class HttpModelClient implements ModelClient {
             }
         }
 
+        /** Marks the request cancelled and disconnects the bound connection. */
         @Override
         public void cancel() {
             cancelled = true;
@@ -226,6 +268,7 @@ public final class HttpModelClient implements ModelClient {
             }
         }
 
+        /** Returns {@code true} once cancellation has been requested. */
         @Override
         public boolean isCancelled() {
             return cancelled;

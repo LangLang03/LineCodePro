@@ -11,11 +11,14 @@ import cn.lineai.data.api.SettingsStore;
  */
 final class ChatContextLimits {
 
+    /** Fallback context window when neither the model nor settings specify one. */
     static final int DEFAULT_CONTEXT = 128000;
 
+    /** Static utility; not instantiable. */
     private ChatContextLimits() {
     }
 
+    /** Context window in tokens for the selected model, with the legacy settings fallback. */
     static int of(ModelConfig model, SettingsStore settings) {
         if (model != null && model.contextSize > ModelConfig.CONTEXT_SIZE_UNSET) {
             return model.contextSize;

@@ -9,13 +9,16 @@ import cn.lineai.ui.i18n.R;
 /** Shell calls (legacy {@code ToolCallShellView}): runnable header row plus a monospace code card. */
 final class ShellToolRenderer implements ToolCardRenderer {
 
+    /** Output characters kept before truncation. */
     private static final int MAX_TEXT = 48_000;
 
+    /** Shared stateless instance. */
     static final ShellToolRenderer INSTANCE = new ShellToolRenderer();
 
     private ShellToolRenderer() {
     }
 
+    /** Renders the command header plus the "$ command + output" code card when expanded. */
     @Override
     public void render(ToolCardFrame frame, ToolCallEntry entry, ToolPresentation presentation) {
         ToolJson arguments = ToolCardSupport.arguments(entry);

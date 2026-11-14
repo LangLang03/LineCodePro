@@ -15,31 +15,57 @@ import cn.lineai.ui.kit.SettingsPage;
 import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
 
-/** Execution target, local shell switch, provider status and per-group tool switches. */
+/**
+ * MCP screen: execution target, provider status, and per-group tool switches.
+ *
+ * <p>Tool groups render as switches backed by {@link McpPreferences}; the page never enumerates
+ * individual tools, so runtime behavior stays decoupled from tool names.</p>
+ */
 public final class McpSettingsPage extends SettingsPage {
 
+    /** Host callbacks for navigation and provider operations. */
     public interface Listener {
+        /** Opens the SSH connection settings screen. */
         void onOpenSshSettings();
 
+        /** Opens the Termux integration screen. */
         void onOpenTermuxIntegration();
 
+        /** Opens the terminal providers management screen. */
         void onOpenTerminalProviders();
 
+        /** Notifies the host that the execution target changed so dependent state can refresh. */
         void onExecutionModeChanged();
 
+        /**
+         * Returns the current terminal provider connection status.
+         *
+         * @return provider status; never null
+         */
         ProviderStatus terminalProviderStatus();
 
+        /** Starts an asynchronous terminal provider connectivity probe. */
         void onTestTerminalProvider();
     }
 
+    /** Connection lifecycle of the terminal provider execution target. */
     public enum ProviderState {
         NONE, DISCONNECTED, CONNECTED
     }
 
+    /** Immutable snapshot of the terminal provider status shown on the page. */
     public static final class ProviderStatus {
+        /** Connection state of the provider. */
         public final ProviderState state;
+        /** Display name of the connected provider; empty when unknown. */
         public final String name;
 
+        /**
+         * Creates a status snapshot, normalizing null fields.
+         *
+         * @param state provider state; null becomes {@link ProviderState#NONE}
+         * @param name provider display name; null becomes an empty string
+         */
         public ProviderStatus(ProviderState state, String name) {
             this.state = state == null ? ProviderState.NONE : state;
             this.name = name == null ? "" : name;
@@ -53,6 +79,15 @@ public final class McpSettingsPage extends SettingsPage {
     private TextView providerTestTitle;
     private TextView providerTestStatus;
 
+    /**
+     * Builds the MCP settings page.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param preferences store-backed MCP switches read and written by this page
+     * @param listener host callbacks for navigation and provider operations
+     */
     public McpSettingsPage(Context context, Tokens tokens, Runnable back, McpPreferences preferences,
                            Listener listener) {
         super(context, R.string.screen_mcp_title, tokens, back);
@@ -66,6 +101,7 @@ public final class McpSettingsPage extends SettingsPage {
         rebuild();
     }
 
+    /** Rebuilds all cards for the current execution target, showing only applicable groups. */
     private void rebuild() {
         cards.removeAllViews();
         providerTestTitle = null;
@@ -81,6 +117,7 @@ public final class McpSettingsPage extends SettingsPage {
         }
     }
 
+    /** Adds the segmented control that selects the MCP execution target. */
     private void executionCard() {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -109,6 +146,7 @@ public final class McpSettingsPage extends SettingsPage {
         addCard(card);
     }
 
+    /** Adds one segment button that persists the new execution target and rebuilds the page. */
     private void modeButton(LinearLayout segment, int label, String value) {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -127,6 +165,7 @@ public final class McpSettingsPage extends SettingsPage {
         segment.addView(button, new LinearLayout.LayoutParams(0, -1, 1f));
     }
 
+    /** Adds the SSH section with links to SSH settings and Termux integration. */
     private void sshCard() {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -153,6 +192,7 @@ public final class McpSettingsPage extends SettingsPage {
         addCard(card);
     }
 
+    /** Adds the terminal provider section with status, manage/test actions, and a probe output area. */
     private void terminalProviderCard() {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -206,6 +246,7 @@ public final class McpSettingsPage extends SettingsPage {
         addCard(card);
     }
 
+    /** Shows the in-progress probe state and asks the host to start the connectivity probe. */
     private void requestTerminalProviderTest() {
         showProviderTestStatus(R.string.screen_mcp_terminal_provider_testing_title,
                 getContext().getString(R.string.screen_mcp_terminal_provider_testing_message),
@@ -221,6 +262,7 @@ public final class McpSettingsPage extends SettingsPage {
                 message, error);
     }
 
+    /** Renders the probe result area; ignored when the provider card is not on screen. */
     private void showProviderTestStatus(int title, CharSequence message, boolean error) {
         if (providerTestTitle == null || providerTestStatus == null) {
             return;
@@ -238,6 +280,7 @@ public final class McpSettingsPage extends SettingsPage {
         providerTestStatus.setVisibility(View.VISIBLE);
     }
 
+    /** Maps a provider status snapshot onto localized status text. */
     private String providerStatusText(ProviderStatus status) {
         if (status == null || status.state == ProviderState.NONE) {
             return getContext().getString(R.string.screen_mcp_terminal_provider_status_none);
@@ -251,6 +294,7 @@ public final class McpSettingsPage extends SettingsPage {
         return getContext().getString(R.string.screen_mcp_terminal_provider_status_connected, name);
     }
 
+    /** Adds one tool group card with a switch persisted per execution target. */
     private void toolCard(ToolGroups.Group group) {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -290,6 +334,7 @@ public final class McpSettingsPage extends SettingsPage {
         addCard(card);
     }
 
+    /** Creates a rounded card container that re-tints on theme changes. */
     private LinearLayout card(Context context, Tokens tokens) {
         LinearLayout card = new LinearLayout(context);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -299,6 +344,7 @@ public final class McpSettingsPage extends SettingsPage {
         return card;
     }
 
+    /** Appends a card to the page with the standard bottom spacing. */
     private void addCard(View card) {
         Context context = getContext();
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
@@ -306,6 +352,7 @@ public final class McpSettingsPage extends SettingsPage {
         cards.addView(card, params);
     }
 
+    /** Builds a compact icon-and-label button in primary or secondary styling. */
     private LinearLayout actionButton(Context context, Tokens tokens, int label, int icon,
                                       boolean primary, Runnable action) {
         LinearLayout button = new LinearLayout(context);
@@ -330,6 +377,7 @@ public final class McpSettingsPage extends SettingsPage {
         return button;
     }
 
+    /** Applies accent-tinted color state lists to a switch thumb and track. */
     private static void tint(android.widget.Switch toggle, Tokens tokens) {
         int[][] states = {{android.R.attr.state_checked}, {-android.R.attr.state_checked}};
         toggle.setThumbTintList(new android.content.res.ColorStateList(states,
@@ -338,6 +386,7 @@ public final class McpSettingsPage extends SettingsPage {
                 new int[] {tokens.accentDim, tokens.surfaceLight}));
     }
 
+    /** Creates the small secondary description text used inside cards. */
     private TextView desc(Context context, Tokens tokens, String text) {
         TextView view = Ui.text(context, text, Tokens.FONT_XS, tokens.textTertiary, Typeface.NORMAL);
         view.setLineSpacing(Ui.dp(context, 3), 1f);

@@ -13,7 +13,9 @@ import android.graphics.Paint;
  */
 public final class DotMatrix {
 
+    /** Duration of one animation frame in milliseconds; shared by every spinner consumer. */
     public static final long FRAME_MS = 90L;
+    /** Duration of one full clockwise walk around the matrix in milliseconds. */
     public static final long CYCLE_MS = 1500L;
 
     private static final int COLUMNS = 3;
@@ -24,10 +26,24 @@ public final class DotMatrix {
     /** 1.35dp dots on a 16dp matrix, expressed as a ratio so every size looks the same. */
     private static final float DOT_RATIO = 0.0845f;
 
+    /** Not instantiable; the matrix is drawn through the static {@link #draw} painter. */
     private DotMatrix() {
     }
 
-    /** Draws one frame; {@code progress} runs 0..1 across {@link #CYCLE_MS}. */
+    /**
+     * Draws one frame of the chase animation.
+     *
+     * @param canvas target canvas; the call is a no-op when null
+     * @param paint shared paint whose color and alpha are mutated during the pass and restored to
+     *     full alpha afterwards
+     * @param progress animation progress in the range 0..1 across {@link #CYCLE_MS}; values outside
+     *     the range wrap deterministically through the frame table
+     * @param left left edge of the square matrix in canvas coordinates
+     * @param top top edge of the square matrix in canvas coordinates
+     * @param size side length of the square matrix in pixels; the call is a no-op when zero or
+     *     negative
+     * @param color accent color of the leading dot; a fully transparent alpha is treated as opaque
+     */
     public static void draw(Canvas canvas, Paint paint, float progress, float left, float top,
                             float size, int color) {
         if (canvas == null || paint == null || size <= 0f) {

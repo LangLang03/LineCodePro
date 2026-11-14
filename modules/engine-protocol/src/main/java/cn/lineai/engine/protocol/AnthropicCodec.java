@@ -9,12 +9,29 @@ import java.util.List;
 import cn.lineai.core.model.Message;
 import cn.lineai.core.model.Role;
 
-/** Anthropic Messages API: streaming request body and SSE event parsing. */
+/**
+ * Anthropic Messages API: streaming request body and SSE event parsing.
+ *
+ * <p>The Messages API requires strictly alternating user and assistant turns, so the request
+ * builder groups consecutive TOOL results into one user turn of {@code tool_result} blocks and
+ * merges injected notices into the preceding user message.</p>
+ */
 public final class AnthropicCodec {
 
     private AnthropicCodec() {
     }
 
+    /**
+     * Builds the JSON body of a Messages API streaming request.
+     *
+     * <p>{@code max_tokens} is mandatory: it is the thinking budget plus headroom when reasoning
+     * is enabled (floored at 4096), and 4096 otherwise. Images are sent as Base64 source blocks
+     * rather than data URLs.</p>
+     *
+     * @param request normalized completion request
+     * @return the request body as JSON text
+     * @throws IllegalStateException when the body cannot be serialized
+     */
     public static String requestBody(ChatRequest request) {
         try {
             JSONObject body = new JSONObject();
@@ -46,6 +63,13 @@ public final class AnthropicCodec {
         }
     }
 
+    /**
+     * Encodes the conversation as Messages API turns.
+     *
+     * <p>Consecutive TOOL messages are grouped into a single user turn of {@code tool_result}
+     * blocks; a text-only user message that would repeat the previous user role is merged into
+     * that turn; assistant tool calls become {@code tool_use} blocks inside the assistant turn.</p>
+     */
     private static JSONArray messages(ChatRequest request) throws JSONException {
         JSONArray messages = new JSONArray();
         int index = 0;
@@ -107,6 +131,7 @@ public final class AnthropicCodec {
         return messages;
     }
 
+    /** Maps a role to the Messages API wire name; TOOL, SYSTEM and unknown roles yield null. */
     private static String role(Role role) {
         if (role == Role.USER) return "user";
         if (role == Role.ASSISTANT) return "assistant";
@@ -133,11 +158,19 @@ public final class AnthropicCodec {
         return true;
     }
 
+    /** Returns a stateless decoder over {@link #parse(String)}. */
     public static StreamDecoder decoder() {
         return AnthropicCodec::parse;
     }
 
-    /** Returns the delta carried by one SSE payload; throws on provider errors. */
+    /**
+     * Parses one Messages API SSE payload.
+     *
+     * @param payload data field of one SSE event
+     * @return decoded event; an empty event for unrecognised event types
+     * @throws IllegalStateException when the provider reports an {@code error} event or the
+     *         payload is not valid JSON
+     */
     public static StreamEvent parse(String payload) {
         try {
             JSONObject event = new JSONObject(payload);
@@ -191,6 +224,12 @@ public final class AnthropicCodec {
         }
     }
 
+    /**
+     * Normalises a base URL to the Messages endpoint.
+     *
+     * @param baseUrl provider base URL, with or without the {@code /v1} prefix
+     * @return URL whose path ends with {@code /v1/messages}
+     */
     public static String messagesEndpoint(String baseUrl) {
         String base = baseUrl == null ? "" : baseUrl.trim();
         while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
@@ -199,6 +238,12 @@ public final class AnthropicCodec {
         return base + "/v1/messages";
     }
 
+    /**
+     * Wraps one message in an immutable single-element list.
+     *
+     * @param message message to wrap
+     * @return single-element list containing {@code message}
+     */
     public static List<Message> asList(Message message) {
         return java.util.Collections.singletonList(message);
     }

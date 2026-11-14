@@ -15,10 +15,14 @@ public interface ToolDiffLookup {
 
     /** Immutable before/after snapshot of one file mutation. */
     final class Snapshot {
+        /** Workspace-relative file path. */
         public final String path;
+        /** File content before the mutation. */
         public final String before;
+        /** File content after the mutation. */
         public final String after;
 
+        /** Null-safe constructor. */
         public Snapshot(String path, String before, String after) {
             this.path = path == null ? "" : path;
             this.before = before == null ? "" : before;

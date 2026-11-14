@@ -26,41 +26,13 @@ import cn.lineai.tool.api.Tool;
 import cn.lineai.tool.api.ToolCall;
 import cn.lineai.tool.api.ToolContext;
 import cn.lineai.tool.api.ToolJson;
+import cn.lineai.tool.api.RuntimeEvent;
+import cn.lineai.tool.api.RuntimeInbox;
 import cn.lineai.tool.api.ToolRegistry;
 import cn.lineai.tool.api.ToolResult;
 
 /** Drives the tool loop: model stream -> tool batch -> model stream ... until a final answer. */
 public final class ToolLoopEngine implements Cancellable {
-
-    public interface Listener {
-        void onTurnStarted();
-
-        void onText(String delta);
-
-        void onReasoning(String delta);
-
-        void onAssistantMessage(Message message);
-
-        /** Delivers the engine-built TOOL row (seq/conversationId still unset). */
-        void onToolFinished(Message toolMessage, ToolCall call, ToolResult result);
-
-        /**
-         * A hidden user message carrying background-task completion notices was appended to the
-         * history; the feature layer persists it so it survives reloads.
-         */
-        default void onNoticeInjected(Message message) { }
-
-        void onConfirmationRequired(List<ToolCall> calls);
-
-        void onFinished(FinishReason reason);
-
-        void onFailed(DomainException error);
-
-        void onBudgetExceeded(int requested, int used, int max);
-
-        /** A transient model failure is about to be retried (attempt starts at 1). */
-        default void onRetry(int attempt, int max, DomainException error) { }
-    }
 
     private static final int MAX_ATTEMPTS = 3;
     private static final long RETRY_DELAY_MS = 800;
@@ -73,7 +45,7 @@ public final class ToolLoopEngine implements Cancellable {
     private final ToolCallMerger merger = new ToolCallMerger();
     private final Observable<ToolLoopState> observable;
 
-    private Listener listener;
+    private java.util.function.Consumer<TimelineEvent> listener;
     private ArrayList<Message> history = new ArrayList<>();
     private String conversationId = "loop";
     private ModelConfig model;
@@ -96,7 +68,13 @@ public final class ToolLoopEngine implements Cancellable {
         return observable;
     }
 
-    public void listener(Listener value) {
+    /**
+     * Registers the single consumer of this loop's {@link TimelineEvent} stream; events are
+     * delivered on the scheduler's main thread, in production order.
+     *
+     * @param value the consumer; null disables delivery
+     */
+    public void listen(java.util.function.Consumer<TimelineEvent> value) {
         listener = value;
     }
 
@@ -133,11 +111,18 @@ public final class ToolLoopEngine implements Cancellable {
             generation = null;
         }
         dispatch(new ToolLoopEvent.Cancel());
-        if (listener != null) listener.onFinished(FinishReason.CANCELLED);
+        emit(new TimelineEvent.TurnFinished(FinishReason.CANCELLED));
     }
 
     @Override public boolean isCancelled() {
         return cancelled;
+    }
+
+    /** Emits one timeline event when a consumer is registered. */
+    private void emit(TimelineEvent event) {
+        if (listener != null) {
+            listener.accept(event);
+        }
     }
 
     private void dispatch(ToolLoopEvent event) {
@@ -152,20 +137,17 @@ public final class ToolLoopEngine implements Cancellable {
         if (effect instanceof NextAction.CallModel) {
             callModel();
         } else if (effect instanceof NextAction.RequestConfirmation) {
-            if (listener != null) listener.onConfirmationRequired(state.pending);
+            emit(new TimelineEvent.ConfirmationRequired(state.pending));
         } else if (effect instanceof NextAction.ExecuteTools) {
             executeBatch(state.pending);
         } else if (effect instanceof NextAction.NotifyFinished) {
-            if (listener != null) listener.onFinished(state.finishReason);
+            emit(new TimelineEvent.TurnFinished(state.finishReason));
         } else if (effect instanceof NextAction.NotifyFailed) {
-            if (listener != null) {
-                listener.onFailed(new DomainException(ErrorCode.UNKNOWN, state.lastError));
-            }
+            emit(new TimelineEvent.TurnFailed(
+                    new DomainException(ErrorCode.UNKNOWN, state.lastError)));
         } else if (effect instanceof NextAction.NotifyBudgetExceeded) {
             NextAction.NotifyBudgetExceeded budget = (NextAction.NotifyBudgetExceeded) effect;
-            if (listener != null) {
-                listener.onBudgetExceeded(budget.requested, budget.used, budget.max);
-            }
+            emit(new TimelineEvent.BudgetExceeded(budget.requested, budget.used, budget.max));
         }
     }
 
@@ -177,7 +159,9 @@ public final class ToolLoopEngine implements Cancellable {
         if (cancelled) return;
         merger.clear();
         text = new StringBuilder();
-        if (attempt == 0 && listener != null) listener.onTurnStarted();
+        if (attempt == 0) {
+            emit(new TimelineEvent.TurnStarted());
+        }
         ChatRequest request = ChatRequest.builder()
                 .model(model.modelId)
                 .system(systemPrompt)
@@ -194,10 +178,10 @@ public final class ToolLoopEngine implements Cancellable {
             @Override public void onEvent(StreamEvent event) {
                 if (event.text.length() > 0) {
                     text.append(event.text);
-                    if (listener != null) listener.onText(event.text);
+                    emit(new TimelineEvent.TextDelta(event.text));
                 }
-                if (event.reasoning.length() > 0 && listener != null) {
-                    listener.onReasoning(event.reasoning);
+                if (event.reasoning.length() > 0) {
+                    emit(new TimelineEvent.ReasoningDelta(event.reasoning));
                 }
                 for (ToolCallDraft draft : event.calls) {
                     merger.accept(draft.index, draft.id, draft.name, draft.arguments);
@@ -216,7 +200,7 @@ public final class ToolLoopEngine implements Cancellable {
                             ? error.code().name() : error.detail()));
                     return;
                 }
-                if (listener != null) listener.onRetry(next, MAX_ATTEMPTS, error);
+                emit(new TimelineEvent.Retry(next, MAX_ATTEMPTS, error));
                 scheduler.io(RETRY_DELAY_MS, () -> callModel(next));
             }
         });
@@ -243,9 +227,7 @@ public final class ToolLoopEngine implements Cancellable {
             history.add(assistant);
         }
         final Message delivered = assistant;
-        scheduler.main(() -> {
-            if (listener != null) listener.onAssistantMessage(delivered);
-        });
+        scheduler.main(() -> emit(new TimelineEvent.AssistantCompleted(delivered)));
         if (calls.isEmpty() && injectNotices()) {
             // A background task finished unnoticed: keep the turn alive with a hidden user
             // message instead of ending it, so the model can read the output and continue.
@@ -270,9 +252,8 @@ public final class ToolLoopEngine implements Cancellable {
                 }
                 final Message toolRow = toolMessage.build();
                 history.add(toolRow);
-                scheduler.main(() -> {
-                    if (listener != null) listener.onToolFinished(toolRow, call, result);
-                });
+                scheduler.main(() ->
+                        emit(new TimelineEvent.ToolCompleted(toolRow, call, result)));
             }
             // The next tool call round is the moment the model learns about background
             // completions; the notice rides along with the tool results in the next request.
@@ -282,21 +263,15 @@ public final class ToolLoopEngine implements Cancellable {
     }
 
     /**
-     * Appends one hidden USER message for background tasks that completed without the model
-     * observing their terminal state. Runs on the IO scheduler; returns true when injected.
+     * Appends one hidden USER message aggregating every runtime event that reached the loop
+     * without the model observing it (shell completions, sub-agent results, routed replies).
+     * Runs on the IO scheduler; returns true when injected.
      */
     private boolean injectNotices() {
-        BackgroundTasks backgrounds = toolContext.backgrounds();
-        if (backgrounds == null) return false;
-        List<String> notices;
-        try {
-            notices = backgrounds.drainCompleted();
-        } catch (Exception error) {
-            return false;
-        }
+        List<String> notices = collectInboxNotices();
         if (notices.isEmpty()) return false;
         StringBuilder body = new StringBuilder(
-                "(background task notice - not from the user)\n");
+                "(runtime event notice - not from the user)\n");
         for (String notice : notices) {
             body.append("- ").append(notice).append('\n');
         }
@@ -309,10 +284,38 @@ public final class ToolLoopEngine implements Cancellable {
                 .build();
         history.add(notice);
         final Message delivered = notice;
-        scheduler.main(() -> {
-            if (listener != null) listener.onNoticeInjected(delivered);
-        });
+        scheduler.main(() -> emit(new TimelineEvent.NoticeInjected(delivered)));
         return true;
+    }
+
+    /**
+     * Collects the notice texts of one destructive inbox drain. When a {@link RuntimeInbox}
+     * is wired it is the only source; otherwise the legacy background-registry drain keeps
+     * working unchanged.
+     */
+    private List<String> collectInboxNotices() {
+        List<String> notices = new ArrayList<>();
+        RuntimeInbox inbox = toolContext.inbox();
+        if (inbox != null) {
+            try {
+                for (RuntimeEvent event : inbox.drain()) {
+                    notices.add(event.noticeText());
+                }
+            } catch (Exception error) {
+                // A failed poll keeps the loop running; the next injection point retries.
+                System.err.println("runtime inbox poll failed: " + error);
+            }
+            return notices;
+        }
+        BackgroundTasks backgrounds = toolContext.backgrounds();
+        if (backgrounds == null) return notices;
+        try {
+            notices.addAll(backgrounds.drainCompleted());
+        } catch (Exception error) {
+            // Same policy as the inbox path: a failed poll retries later.
+            System.err.println("background notice poll failed: " + error);
+        }
+        return notices;
     }
 
     private ToolResult execute(ToolCall call) {

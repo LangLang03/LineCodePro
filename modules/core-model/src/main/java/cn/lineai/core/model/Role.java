@@ -10,6 +10,7 @@ public enum Role {
     SYSTEM,
     TOOL;
 
+    /** Returns the lowercase protocol name, matching the enum constant. */
     public String wireName() {
         return name().toLowerCase(java.util.Locale.ROOT);
     }

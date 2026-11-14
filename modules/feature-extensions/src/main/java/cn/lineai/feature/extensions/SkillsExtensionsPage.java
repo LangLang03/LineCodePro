@@ -16,31 +16,67 @@ import cn.lineai.ui.tokens.Tokens;
 /** Local SKILL.md extension detail: add, install, browse and manage Skills. */
 public final class SkillsExtensionsPage extends ExtensionPage implements Refreshable {
 
+    /** Host callbacks for skill management and store navigation. */
     public interface Listener {
+        /**
+         * Loads the installed skills.
+         *
+         * @return current skills; may be null or empty
+         */
         List<Skill> load();
 
+        /**
+         * Enables or disables one installed skill.
+         *
+         * @param id skill identifier
+         * @param enabled true to enable the skill
+         */
         void setEnabled(String id, boolean enabled);
 
+        /**
+         * Deletes one installed skill.
+         *
+         * @param id skill identifier
+         */
         void delete(String id);
 
+        /** Opens the editor for creating a new skill. */
         void add();
 
+        /**
+         * Opens the editor for an existing skill.
+         *
+         * @param skill skill to edit
+         */
         void edit(Skill skill);
 
+        /** Opens the ZIP import flow; import funnels through the shared install path. */
         void importSkill();
 
+        /** Opens the SkillHub store page. */
         void openHub();
 
+        /** Opens the GitHub skill import page. */
         void openGithub();
 
+        /** Opens the SkillHub login page. */
         void openLogin();
 
+        /** Opens the SkillHub publish page. */
         void openPublish();
     }
 
     private final Listener listener;
     private final LinearLayout installedHost;
 
+    /**
+     * Builds the skills extension page.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     * @param listener host callbacks for skill management and store navigation
+     */
     public SkillsExtensionsPage(Context context, Tokens tokens, Runnable back, Listener listener) {
         super(context, tokens, back, R.string.screen_extensions_section_skills);
         this.listener = listener;
@@ -52,6 +88,7 @@ public final class SkillsExtensionsPage extends ExtensionPage implements Refresh
         build();
     }
 
+    /** Adds the install, store, and installed sections. */
     private void build() {
         SettingsSection create = section(R.string.screen_extension_detail_section_install_skills);
         create.row(ExtensionKit.action(getContext(), theme, Icons.ARCHIVE,
@@ -69,14 +106,17 @@ public final class SkillsExtensionsPage extends ExtensionPage implements Refresh
         renderInstalled();
     }
 
+    /** Re-renders the installed list when the page returns to the foreground. */
     @Override public void onShown() {
         renderInstalled();
     }
 
+    /** Forces a re-render of the installed list after external changes. */
     public void reload() {
         renderInstalled();
     }
 
+    /** Rebuilds the installed skills section with switch rows and empty-state handling. */
     private void renderInstalled() {
         installedHost.removeAllViews();
         SettingsSection installed = ExtensionKit.section(getContext(), theme,
@@ -98,6 +138,7 @@ public final class SkillsExtensionsPage extends ExtensionPage implements Refresh
         }
     }
 
+    /** Resolves the row description, falling back to the skill source label. */
     private String description(Skill skill) {
         if (skill.description != null && !skill.description.isEmpty()) return skill.description;
         return getContext().getString(Skill.SOURCE_PROJECT.equals(skill.source)
@@ -105,6 +146,7 @@ public final class SkillsExtensionsPage extends ExtensionPage implements Refresh
                 : R.string.screen_extension_detail_position_global);
     }
 
+    /** Shows the long-press menu with edit and confirmed delete actions for one skill. */
     private void openItemMenu(Skill skill) {
         List<ExtensionKit.SheetItem> items = new ArrayList<>();
         items.add(new ExtensionKit.SheetItem(R.string.screen_extension_detail_modify,
@@ -121,6 +163,7 @@ public final class SkillsExtensionsPage extends ExtensionPage implements Refresh
         ExtensionKit.sheet(getContext(), theme, skill.name, items);
     }
 
+    /** Shows the add-actions sheet: ZIP import, GitHub import, and manual creation. */
     private void openActions() {
         List<ExtensionKit.SheetItem> items = new ArrayList<>();
         items.add(new ExtensionKit.SheetItem(R.string.screen_extension_detail_install_zip,

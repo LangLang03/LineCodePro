@@ -12,6 +12,13 @@ import cn.lineai.ui.tokens.Tokens;
 /** LineCode native extension family; the package format is not available yet. */
 public final class LineCodeExtensionsPage extends ExtensionPage {
 
+    /**
+     * Builds the placeholder page for the not-yet-released package format.
+     *
+     * @param context Android context used to inflate views
+     * @param tokens design tokens for the current theme
+     * @param back action invoked when the user navigates back
+     */
     public LineCodeExtensionsPage(Context context, Tokens tokens, Runnable back) {
         super(context, tokens, back, R.string.screen_extensions_section_linecode);
         header(R.string.screen_extensions_section_linecode,
@@ -27,6 +34,7 @@ public final class LineCodeExtensionsPage extends ExtensionPage {
                 R.string.screen_extension_detail_empty_linecode), false, 0);
     }
 
+    /** Reports the unavailable package format with a toast. */
     private void unavailable() {
         Toast.makeText(getContext(), R.string.screen_extension_detail_empty_linecode,
                 Toast.LENGTH_SHORT).show();

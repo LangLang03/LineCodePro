@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.Typeface;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
@@ -27,32 +28,48 @@ import cn.lineai.ui.tokens.Tokens;
  */
 public final class ChatHeaderView extends LinearLayout {
 
+    /** Header taps forwarded to the screen. */
     public interface Listener {
+        /** Opens the navigation drawer. */
         void onMenu();
 
+        /** Opens the project picker. */
         void onProject();
 
+        /** Opens the permission-mode sheet. */
         void onPermission();
 
+        /** Starts a new conversation. */
         void onNewConversation();
 
+        /** Opens the more-options sheet. */
         void onMore();
 
+        /** Opens the context-usage detail. */
         void onContext();
+
+        /** Opens the sub agent session picker. */
+        void onAgents();
     }
 
+    /** Fixed header action metrics in dp. */
     private static final int ACTION_WIDTH_DP = 40;
     private static final int ACTION_HEIGHT_DP = 48;
     private static final int ACTION_ICON_DP = 19;
-    private static final int RESERVED_WIDTH_DP = 212;
+    /** Width reserved for trailing actions when clamping the title. */
+    private static final int RESERVED_WIDTH_DP = 288;
 
     private final List<IconButton> actions = new ArrayList<>();
+    private final TextView agentCount;
+    private final IconButton agentGlyph;
+    private final IconButton agentChevron;
     private final TextView projectText;
     private final IconButton chevron;
     private final ContextRing ring;
     private Listener listener;
     private Tokens tokens;
 
+    /** Builds menu, project brand, context ring and the trailing actions in that order. */
     public ChatHeaderView(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -97,6 +114,38 @@ public final class ChatHeaderView extends LinearLayout {
         brand.addView(chevron, new LayoutParams(Ui.dp(context, 24), Ui.dp(context, 32)));
         addView(brand, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
 
+        LinearLayout agentChip = new LinearLayout(context);
+        agentChip.setOrientation(HORIZONTAL);
+        agentChip.setGravity(Gravity.CENTER_VERTICAL);
+        agentChip.setPadding(Ui.dp(context, 6), Ui.dp(context, 4),
+                Ui.dp(context, 6), Ui.dp(context, 4));
+        agentChip.setClickable(true);
+        agentChip.setFocusable(true);
+        agentGlyph = new IconButton(context, Icons.BOT);
+        agentGlyph.setIconSizeDp(15, 15);
+        agentGlyph.setIconColor(tokens.textTertiary);
+        agentGlyph.setClickable(false);
+        agentChip.addView(agentGlyph, new LayoutParams(Ui.dp(context, 15), Ui.dp(context, 15)));
+        agentCount = Ui.text(context, "", 11, tokens.textTertiary, Typeface.NORMAL);
+        agentCount.setSingleLine(true);
+        agentCount.setMaxWidth(Ui.dp(context, 110));
+        TextView countView = agentCount;
+        LayoutParams countParams = new LayoutParams(-2, -2);
+        countParams.leftMargin = Ui.dp(context, 4);
+        agentChip.addView(countView, countParams);
+        agentChevron = new IconButton(context, Icons.CHEVRON_DOWN);
+        agentChevron.setIconSizeDp(12, 12);
+        agentChevron.setIconColor(tokens.textTertiary);
+        agentChevron.setClickable(false);
+        agentChip.addView(agentChevron, new LayoutParams(Ui.dp(context, 12), Ui.dp(context, 12)));
+        agentChip.setOnClickListener(v -> {
+            if (listener != null) {
+                listener.onAgents();
+            }
+        });
+        addView(agentChip, new LayoutParams(LayoutParams.WRAP_CONTENT,
+                Ui.dp(context, ACTION_HEIGHT_DP)));
+
         ring = new ContextRing(context, tokens);
         ring.setContentDescription(context.getString(R.string.context_usage_title));
         ring.setOnClickListener(v -> {
@@ -123,11 +172,13 @@ public final class ChatHeaderView extends LinearLayout {
         });
     }
 
+    /** Fixed 40x48dp parameters shared by every header action. */
     private LinearLayout.LayoutParams actionParams(Context context) {
         return new LayoutParams(Ui.dp(context, ACTION_WIDTH_DP),
                 Ui.dp(context, ACTION_HEIGHT_DP));
     }
 
+    /** Appends one trailing action button with the shared metrics. */
     private void addAction(Context context, int icon, int description, Runnable action) {
         IconButton button = new IconButton(context, icon);
         button.setIconSizeDp(ACTION_WIDTH_DP, ACTION_ICON_DP);
@@ -138,10 +189,12 @@ public final class ChatHeaderView extends LinearLayout {
         addView(button, actionParams(context));
     }
 
+    /** Installs the header callbacks. */
     public void setListener(Listener value) {
         listener = value;
     }
 
+    /** Clamps the title width so the growing label never pushes the actions out. */
     @Override
     protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
         super.onSizeChanged(width, height, oldWidth, oldHeight);
@@ -149,6 +202,17 @@ public final class ChatHeaderView extends LinearLayout {
                 - Ui.dp(getContext(), RESERVED_WIDTH_DP)));
     }
 
+    /** Shows the live sub agent count in the chip; hidden while there is nothing to switch to. */
+    public void setAgentCount(int count) {
+        boolean visible = count > 0;
+        agentCount.setText(visible
+                ? getContext().getString(R.string.drawer_agent_chip, count) : "");
+        agentGlyph.setVisibility(visible ? VISIBLE : GONE);
+        agentChevron.setVisibility(visible ? VISIBLE : GONE);
+        agentCount.setVisibility(visible ? VISIBLE : GONE);
+    }
+
+    /** Renders the project label and the context percentage ring. */
     public void render(ChatState state, Tokens current) {
         applyTokens(current);
         String label = state.projectLabel.isEmpty()
@@ -160,6 +224,7 @@ public final class ChatHeaderView extends LinearLayout {
                 R.string.header_context_desc, state.contextPercent));
     }
 
+    /** The brand container is always the second child. */
     private View findBrand() {
         return getChildAt(1);
     }
@@ -170,12 +235,16 @@ public final class ChatHeaderView extends LinearLayout {
         setBackgroundColor(current.bg);
         projectText.setTextColor(current.text);
         chevron.setIconColor(current.textSecondary);
+        agentCount.setTextColor(current.textTertiary);
+        agentGlyph.setIconColor(current.textTertiary);
+        agentChevron.setIconColor(current.textTertiary);
         for (IconButton action : actions) {
             action.setIconColor(current.textSecondary);
         }
         ring.applyTokens(current);
     }
 
+    /** 2dp circular context-usage ring; turns warning-colored at 80% usage. */
     private static final class ContextRing extends View {
         private final Paint track = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint progress = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -193,16 +262,19 @@ public final class ChatHeaderView extends LinearLayout {
             progress.setStrokeCap(Paint.Cap.ROUND);
         }
 
+        /** Sets the usage percentage, clamped to 0..100, and redraws. */
         void setPercent(int value) {
             percent = Math.max(0, Math.min(100, value));
             invalidate();
         }
 
+        /** Applies tokens and redraws. */
         void applyTokens(Tokens current) {
             tokens = current;
             invalidate();
         }
 
+        /** Draws the full track plus the progress arc starting at 12 o'clock. */
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);

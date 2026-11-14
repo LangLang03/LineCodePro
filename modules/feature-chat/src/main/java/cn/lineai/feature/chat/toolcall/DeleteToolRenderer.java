@@ -16,11 +16,13 @@ final class DeleteToolRenderer implements ToolCardRenderer {
 
     private static final String ITEM_SEPARATOR = " \u00b7 ";
 
+    /** Shared stateless instance. */
     static final DeleteToolRenderer INSTANCE = new DeleteToolRenderer();
 
     private DeleteToolRenderer() {
     }
 
+    /** Renders the status header plus the reason/paths code card when expanded. */
     @Override
     public void render(ToolCardFrame frame, ToolCallEntry entry, ToolPresentation presentation) {
         ToolJson arguments = ToolCardSupport.arguments(entry);
@@ -45,6 +47,7 @@ final class DeleteToolRenderer implements ToolCardRenderer {
         frame.body.addView(box, frame.fill());
     }
 
+    /** Affected paths from the "paths" array or the singular path keys, deduplicated. */
     private static ArrayList<String> paths(ToolJson arguments) {
         ArrayList<String> values = new ArrayList<>();
         ToolJsonArray array = arguments.array("paths");

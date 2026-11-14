@@ -14,6 +14,7 @@ import java.util.Objects;
  */
 public final class Message {
 
+    /** Delivery lifecycle of a message within the transcript. */
     public enum Status {
         PENDING,
         STREAMING,
@@ -22,6 +23,7 @@ public final class Message {
         CANCELLED
     }
 
+    /** Controls whether a message renders in the transcript. */
     public enum Visibility {
         VISIBLE,
         HIDDEN
@@ -48,6 +50,7 @@ public final class Message {
     public final long createdAt;
     public final long updatedAt;
 
+    /** Creates a message from builder state; lists become unmodifiable and null strings empty. */
     private Message(Builder b) {
         this.id = b.id;
         this.conversationId = b.conversationId;
@@ -72,6 +75,7 @@ public final class Message {
         this.updatedAt = b.updatedAt;
     }
 
+    /** Returns {@code value}, or an empty string when null. */
     private static String orEmpty(String value) {
         return value == null ? "" : value;
     }
@@ -113,10 +117,12 @@ public final class Message {
         return sb.toString();
     }
 
+    /** Returns whether the message is currently being streamed. */
     public boolean isStreaming() {
         return status == Status.STREAMING;
     }
 
+    /** Returns a builder pre-filled with every field of this message. */
     public Builder toBuilder() {
         return new Builder()
                 .id(id)
@@ -136,6 +142,7 @@ public final class Message {
                 .times(createdAt, updatedAt);
     }
 
+    /** Messages are equal when their identifiers match. */
     @Override
     public boolean equals(Object other) {
         if (this == other) {
@@ -147,11 +154,13 @@ public final class Message {
         return id.equals(((Message) other).id);
     }
 
+    /** Hashes the identifier. */
     @Override
     public int hashCode() {
         return Objects.hashCode(id);
     }
 
+    /** Returns a new builder with the documented defaults. */
     public static Builder builder() {
         return new Builder();
     }
@@ -179,46 +188,91 @@ public final class Message {
         private long createdAt;
         private long updatedAt;
 
+        /**
+         * Sets the identifier.
+         * @param value identifier to assign
+         * @return this builder
+         */
         public Builder id(String value) {
             id = value;
             return this;
         }
 
+        /**
+         * Sets the owning conversation.
+         * @param value conversation identifier to assign
+         * @return this builder
+         */
         public Builder conversationId(String value) {
             conversationId = value;
             return this;
         }
 
+        /**
+         * Sets the order within the conversation.
+         * @param value sequence number to assign
+         * @return this builder
+         */
         public Builder seq(long value) {
             seq = value;
             return this;
         }
 
+        /**
+         * Sets the message role.
+         * @param value role to assign
+         * @return this builder
+         */
         public Builder role(Role value) {
             role = value;
             return this;
         }
 
+        /**
+         * Sets the tool calls to remember for protocol replay.
+         * @param value records to copy, null yields an empty list
+         * @return this builder
+         */
         public Builder toolCalls(List<ToolCallRecord> value) {
             toolCalls = value == null ? new ArrayList<ToolCallRecord>() : new ArrayList<>(value);
             return this;
         }
 
+        /**
+         * Sets the delivery status.
+         * @param value status to assign
+         * @return this builder
+         */
         public Builder status(Status value) {
             status = value;
             return this;
         }
 
+        /**
+         * Sets the transcript visibility.
+         * @param value visibility to assign
+         * @return this builder
+         */
         public Builder visibility(Visibility value) {
             visibility = value;
             return this;
         }
 
+        /**
+         * Replaces the content blocks.
+         * @param value blocks to copy, null yields an empty list
+         * @return this builder
+         */
         public Builder blocks(List<ContentBlock> value) {
             blocks = value == null ? new ArrayList<>() : new ArrayList<>(value);
             return this;
         }
 
+        /**
+         * Appends one content block.
+         * @param block block to append; null calls are ignored
+         * @return this builder
+         */
         public Builder addBlock(ContentBlock block) {
             if (block != null) {
                 blocks.add(block);
@@ -226,33 +280,67 @@ public final class Message {
             return this;
         }
 
+        /**
+         * Sets the model and provider that produced this message.
+         * @param modelIdValue model identifier
+         * @param providerIdValue provider identifier
+         * @return this builder
+         */
         public Builder model(String modelIdValue, String providerIdValue) {
             modelId = modelIdValue;
             providerId = providerIdValue;
             return this;
         }
 
+        /**
+         * Sets the single tool-call identity carried by protocol messages.
+         * @param callId provider tool-call identifier
+         * @param name tool name
+         * @return this builder
+         */
         public Builder tool(String callId, String name) {
             toolCallId = callId;
             toolName = name;
             return this;
         }
 
+        /**
+         * Sets the failure code.
+         * @param code error code, null becomes empty
+         * @return this builder
+         */
         public Builder error(String code) {
             errorCode = code;
             return this;
         }
 
+        /**
+         * Sets the provider finish reason.
+         * @param value finish reason, null becomes empty
+         * @return this builder
+         */
         public Builder finishReason(String value) {
             finishReason = value;
             return this;
         }
 
+        /**
+         * Sets the review workflow state.
+         * @param value review state, null becomes empty
+         * @return this builder
+         */
         public Builder reviewState(String value) {
             reviewState = value;
             return this;
         }
 
+        /**
+         * Sets the token accounting.
+         * @param input prompt tokens
+         * @param output completion tokens
+         * @param cached tokens served from cache
+         * @return this builder
+         */
         public Builder tokens(int input, int output, int cached) {
             inputTokens = input;
             outputTokens = output;
@@ -260,12 +348,22 @@ public final class Message {
             return this;
         }
 
+        /**
+         * Sets the lifecycle timestamps.
+         * @param created creation timestamp in epoch milliseconds
+         * @param updated last modification timestamp in epoch milliseconds
+         * @return this builder
+         */
         public Builder times(long created, long updated) {
             createdAt = created;
             updatedAt = updated;
             return this;
         }
 
+        /**
+         * Returns the immutable message accumulated by this builder.
+         * @return a new {@link Message}
+         */
         public Message build() {
             return new Message(this);
         }

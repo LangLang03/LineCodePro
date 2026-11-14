@@ -14,11 +14,22 @@ public final class SqliteStorageStatsStore implements StorageStatsStore {
     private final LineCodeDatabase database;
     private final File home;
 
+    /**
+     * Creates the store.
+     *
+     * @param database shared database connection holder
+     * @param home app home directory walked recursively for the home usage category
+     */
     public SqliteStorageStatsStore(LineCodeDatabase database, File home) {
         this.database = database;
         this.home = home;
     }
 
+    /**
+     * Measures database text columns per category and walks the home directory recursively.
+     *
+     * @return usage snapshot covering diffs, chat, configuration and home files
+     */
     @Override
     public StorageStats load() {
         SQLiteDatabase db = database.open();
@@ -34,6 +45,7 @@ public final class SqliteStorageStatsStore implements StorageStatsStore {
                 configBytes, configCount, homeUsage[0], (int) homeUsage[1]);
     }
 
+    /** Deletes all blocks, messages and conversations in one transaction. */
     @Override
     public void clearChatHistory() {
         SQLiteDatabase db = database.open();
@@ -48,11 +60,13 @@ public final class SqliteStorageStatsStore implements StorageStatsStore {
         }
     }
 
+    /** Deletes every stored diff snapshot without touching workspace files. */
     @Override
     public void clearDiffCache() {
         database.open().delete("file_diffs", null, null);
     }
 
+    /** Sums the stored lengths of one text column; table and column come from internal callers. */
     private static long length(SQLiteDatabase db, String table, String column) {
         try (Cursor cursor = db.rawQuery(
                 "SELECT COALESCE(SUM(LENGTH(" + column + ")), 0) FROM " + table, null)) {
@@ -60,12 +74,14 @@ public final class SqliteStorageStatsStore implements StorageStatsStore {
         }
     }
 
+    /** Counts the rows of one table. */
     private static int count(SQLiteDatabase db, String table) {
         try (Cursor cursor = db.rawQuery("SELECT COUNT(*) FROM " + table, null)) {
             return cursor.moveToFirst() ? cursor.getInt(0) : 0;
         }
     }
 
+    /** Recursively totals file bytes and file count; returns {@code {bytes, files}}. */
     private static long[] homeUsage(File directory) {
         if (directory == null || !directory.exists()) return new long[] {0L, 0L};
         long bytes = 0L;

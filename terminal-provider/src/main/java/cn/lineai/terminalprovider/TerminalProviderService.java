@@ -46,6 +46,7 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
     /** Created lazily: getFilesDir() is unavailable before the service context is attached. */
     private BackgroundShellTasks backgroundTasks;
 
+    /** Delivers an error to the callback, tolerating a null callback or a dead binder. */
     private static void notifyError(ITerminalProviderCallback callback, String message) {
         if (callback == null) {
             return;
@@ -57,6 +58,7 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
         }
     }
 
+    /** Builds the AIDL stub implementing the frozen terminal provider contract. */
     @Override
     protected IBinder createBinder() {
         if (backgroundTasks == null) {
@@ -64,11 +66,13 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
         }
         return new ITerminalProviderService.Stub() {
 
+            /** Returns the stable provider id; must match {@code IpcProviderType.TERMINAL}. */
             @Override
             public String getProviderType() {
                 return "terminal";
             }
 
+            /** Returns the provider metadata JSON: name, version, shell path, home and capabilities. */
             @Override
             public String getProviderInfo() {
                 JSONObject info = new JSONObject();
@@ -92,11 +96,29 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 return info.toString();
             }
 
+            /** Returns true only when the guest shell binary exists on this device. */
             @Override
             public boolean isAvailable() {
                 return new File(SHELL).exists();
             }
 
+            /**
+             * Runs one shell command to completion on the shared executor and blocks the
+             * Binder thread until it exits or the timeout elapses.
+             *
+             * <p>Return-code contract: a value greater than or equal to zero is the guest
+             * shell exit status; {@code -1} means an empty command or a failed launch;
+             * {@code -2} means the timeout elapsed, in which case the whole process tree
+             * is killed and {@code ERROR_TIMEOUT} is delivered to the callback. Failure
+             * details are reported through {@code onError} with the stable
+             * {@code ERROR_*} protocol strings, never by throwing.
+             *
+             * @param command the command line for {@code /system/bin/sh -c}
+             * @param cwd working directory; empty or null selects the provider home
+             * @param timeoutMs timeout in millis; non-positive values default to 30 seconds
+             * @param callback streaming sink for output and completion; may be null
+             * @return the guest exit status, or the negative error codes described above
+             */
             @Override
             public int executeShell(String command, String cwd, long timeoutMs,
                                      ITerminalProviderCallback callback) {
@@ -160,7 +182,11 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 }
             }
 
-            /** Runs the shell to completion with per-stream pump threads. */
+            /**
+             * Runs the shell to completion. Output is drained by the sanctioned daemon
+             * pump threads of {@link ShellPumps#pump} so the guest never blocks on full
+             * pipes; {@code finished} gates further output once the exit code is known.
+             */
             private int runWithPumps(Process process, ITerminalProviderCallback callback,
                                      AtomicBoolean finished) throws InterruptedException {
                 Thread stdoutThread = ShellPumps.pump(process.getInputStream(), callback,
@@ -184,6 +210,12 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 return exitCode;
             }
 
+            /**
+             * Starts a detached shell command managed by {@link BackgroundShellTasks};
+             * empty commands report {@code ERROR_EMPTY_COMMAND} and return {@code -1}.
+             *
+             * @return the background handle, or a negative value on failure
+             */
             @Override
             public long startShellBackground(String command, String cwd,
                                              ITerminalProviderCallback callback) {
@@ -194,21 +226,31 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 return backgroundTasks.start(command, cwd, callback);
             }
 
+            /** Returns the task snapshot and output recorded after the given offset. */
             @Override
             public TerminalShellBackgroundState readShellBackground(long handleId, long offset) {
                 return backgroundTasks.read(handleId, offset);
             }
 
+            /** Kills the task's whole process tree and frees its handle. */
             @Override
             public boolean killShellBackground(long handleId) {
                 return backgroundTasks.kill(handleId);
             }
 
+            /** Drops the handle without killing the intentionally detached process. */
             @Override
             public void forgetShellBackground(long handleId) {
                 backgroundTasks.forget(handleId);
             }
 
+            /**
+             * Reads a whole file in chunked sub-reads, rejecting anything above the
+             * 32 MB cap; callers of larger files must fall back to {@code readFileChunk}.
+             *
+             * @return the file content, or an empty array for missing, unreadable or
+             *         oversized files
+             */
             @Override
             public byte[] readFile(String path) {
                 if (path == null || path.length() == 0) {
@@ -252,6 +294,7 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 }
             }
 
+            /** Writes (truncating) a whole file; null data writes an empty file. */
             @Override
             public boolean writeFile(String path, byte[] data) {
                 if (path == null || path.length() == 0) {
@@ -261,6 +304,7 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 return writeFileChunk(path, 0L, payload);
             }
 
+            /** Deletes an existing file; directories are not removed. */
             @Override
             public boolean deleteFile(String path) {
                 if (path == null || path.length() == 0) {
@@ -273,6 +317,7 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 return file.delete();
             }
 
+            /** Lists entry names; null or empty resolves to the provider home. */
             @Override
             public String[] listDir(String path) {
                 if (path == null || path.length() == 0) {
@@ -293,6 +338,7 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 return result.toArray(new String[0]);
             }
 
+            /** Reports whether the path exists. */
             @Override
             public boolean fileExists(String path) {
                 if (path == null || path.length() == 0) {
@@ -301,6 +347,7 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 return new File(path).exists();
             }
 
+            /** Returns the file size, or {@code -1} when the path is missing or not a regular file. */
             @Override
             public long fileSize(String path) {
                 if (path == null || path.length() == 0) {
@@ -313,6 +360,11 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 return file.length();
             }
 
+            /**
+             * Reads at most {@code size} bytes from the offset, keeping each AIDL
+             * transaction below the binder limit; non-positive sizes select the default
+             * chunk size, oversized requests are capped.
+             */
             @Override
             public byte[] readFileChunk(String path, long offset, int size) {
                 if (path == null || path.length() == 0) {
@@ -359,6 +411,7 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 }
             }
 
+            /** Writes at the offset, creating parent directories; a negative offset appends. */
             @Override
             public boolean writeFileChunk(String path, long offset, byte[] data) {
                 if (path == null || path.length() == 0) {
@@ -394,11 +447,13 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
                 }
             }
 
+            /** Alias of {@link #fileSize(String)} kept for contract compatibility. */
             @Override
             public long getFileSize(String path) {
                 return fileSize(path);
             }
 
+            /** Lists entries as a JSON array of name/dir/size objects; empty input resolves to the home. */
             @Override
             public String listDirDetailed(String path) {
                 if (path == null || path.length() == 0) {
@@ -429,6 +484,7 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
         };
     }
 
+    /** Tears down every still-running background task so no process outlives the service. */
     @Override
     protected void onProviderDestroy() {
         // Provider teardown kills every still-running background task.
@@ -438,8 +494,14 @@ public final class TerminalProviderService extends AbstractIpcProviderService {
         Log.i(TAG, "TerminalProviderService destroyed");
     }
 
-    /** Pump threads shared by the blocking execute path. */
+    /**
+     * Pump threads shared by the blocking execute path. The blocking reads are the
+     * sanctioned drain pattern: without them a guest writing more than the pipe buffer
+     * would deadlock, so these daemon threads are expected to outlive short commands and
+     * are stopped by the stream closing or the finished gate.
+     */
     private static final class ShellPumps {
+        /** Returns a started-not-yet daemon thread forwarding each line to the callback. */
         static Thread pump(java.io.InputStream stream, ITerminalProviderCallback callback,
                            AtomicBoolean finished, String name) {
             return new Thread(() -> {

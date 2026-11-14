@@ -15,21 +15,50 @@ import cn.lineai.ui.kit.SettingsPage;
 import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
 
-/** Entry screen for adding a model: a custom endpoint, or one of the provider presets. */
+/**
+ * Entry screen for adding a model: a custom endpoint, or one of the provider presets.
+ *
+ * <p>The page is built once from the static preset catalog; every card and row reports through
+ * {@link Listener} instead of navigating itself, keeping the flow wiring in the host. Theme changes
+ * restyle the existing cards and rows in place through the inherited binder.</p>
+ */
 public final class ModelAddOptionsPage extends SettingsPage {
 
+    /**
+     * Outcome consumer for the option cards and preset rows.
+     */
     public interface Listener {
+        /** Reports that the custom-endpoint card was chosen. */
         void onCustom();
 
+        /**
+         * Reports a chosen provider preset.
+         *
+         * @param presetId id of the selected preset
+         */
         void onProvider(String presetId);
 
+        /** Reports that the local-models card was chosen. */
         void onLocal();
 
+        /**
+         * Decides whether the local-models card is offered.
+         *
+         * @return true when the runtime supports on-device models; defaults to false
+         */
         default boolean localModelsAvailable() {
             return false;
         }
     }
 
+    /**
+     * Builds the option cards, the preset section header and one row per catalog preset.
+     *
+     * @param context hosting context
+     * @param tokens initial palette snapshot
+     * @param back action run by the header back button
+     * @param listener outcome consumer; card taps delegate to its methods
+     */
     public ModelAddOptionsPage(Context context, Tokens tokens, Runnable back, Listener listener) {
         super(context, R.string.screen_model_add_options_title, tokens, back);
         Ui.padding(content, 16, 16, 16, 16);
@@ -62,6 +91,8 @@ public final class ModelAddOptionsPage extends SettingsPage {
         for (ModelPreset preset : ModelPreset.all()) addProvider(preset, listener);
     }
 
+    /** Builds the large icon-plus-text card used for the custom and local entries, registering its
+     * theme binding for in-place restyling. */
     private void addLargeCard(int iconType, int label, int description, Runnable action) {
         Context context = getContext();
         Tokens tokens = theme.current();
@@ -110,6 +141,7 @@ public final class ModelAddOptionsPage extends SettingsPage {
         });
     }
 
+    /** Builds one preset row with an initial-letter avatar, description and protocol caption. */
     private void addProvider(ModelPreset preset, Listener listener) {
         Context context = getContext();
         Tokens tokens = theme.current();

@@ -29,11 +29,18 @@ import cn.lineai.core.kernel.error.ErrorCode;
 import cn.lineai.core.kernel.time.Clock;
 import cn.lineai.data.api.ArchiveService;
 
-/** JSON-in-ZIP archive of every table owned by the rewritten shell. */
+/**
+ * JSON-in-ZIP archive of every table owned by the rewritten shell.
+ *
+ * <p>Export serializes each table to one JSON entry and strips secrets. Import validates the
+ * manifest and every file entry before any live data is touched, then replaces the tables inside
+ * one transaction and activates staged files only afterwards, so a malformed archive cannot leave
+ * the database restored while the files are destroyed.</p>
+ */
 public final class SqliteArchiveService implements ArchiveService {
 
     private static final String FORMAT = "linecode-archive";
-    private static final int VERSION = 2;
+    private static final int VERSION = 3;
     private static final long MAX_ENTRY_BYTES = 64L * 1024 * 1024;
     /** Per-file cap mirrored from {@link #writeDirectory}; enforced again on import. */
     private static final int MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -42,29 +49,57 @@ public final class SqliteArchiveService implements ArchiveService {
             java.util.Arrays.asList("workspace", "skills", "attachments");
     /** Order matters: parents must be restored before the rows that reference them. */
     private static final String[] TABLES = {
-            "conversations", "messages", "message_blocks", "message_tool_calls",
-            "settings", "models", "error_logs", "memories",
+            "conversations", "agent_sessions", "messages", "message_blocks",
+            "message_tool_calls", "settings", "models", "error_logs", "memories",
             "extension_agents", "extension_mcps", "file_diffs", "projects", "ipc_providers"
     };
     /** v1 archives carried only the conversation/settings core. */
     private static final String[] V1_TABLES = {
             "conversations", "messages", "message_blocks", "settings", "models", "error_logs"
     };
+    /** v2 archives added the tool-call, memory and extension tables. */
+    private static final String[] V2_TABLES = {
+            "conversations", "messages", "message_blocks", "message_tool_calls",
+            "settings", "models", "error_logs", "memories",
+            "extension_agents", "extension_mcps", "file_diffs", "projects", "ipc_providers"
+    };
 
     private final LineCodeDatabase database;
     private final Clock clock;
     private final File filesDir;
 
+    /**
+     * Creates the service without file backup: only database tables participate.
+     *
+     * @param database shared database connection holder
+     * @param clock clock used for the manifest timestamp
+     */
     public SqliteArchiveService(LineCodeDatabase database, Clock clock) {
         this(database, clock, null);
     }
 
+    /**
+     * Creates the service with file backup: the workspace, skills and attachments roots under
+     * {@code filesDir} join the archive alongside the tables.
+     *
+     * @param database shared database connection holder
+     * @param clock clock used for the manifest timestamp
+     * @param filesDir app files directory containing the backed-up roots, or null to disable
+     */
     public SqliteArchiveService(LineCodeDatabase database, Clock clock, File filesDir) {
         this.database = database;
         this.clock = clock;
         this.filesDir = filesDir;
     }
 
+    /**
+     * Writes the manifest, the optional file trees and one sanitized JSON dump per table. Export
+     * never contains secrets: model API keys are removed and secret settings rows are dropped.
+     *
+     * @param output stream receiving the ZIP content; not closed by this call
+     * @return row counts of the exported conversations, models and settings
+     * @throws DomainException with {@code ErrorCode.STORAGE} when serialization or I/O fails
+     */
     @Override
     public Summary export(OutputStream output) {
         try {
@@ -93,6 +128,16 @@ public final class SqliteArchiveService implements ArchiveService {
         }
     }
 
+    /**
+     * Replaces the current user data with the archive content. The manifest and all required
+     * entries are validated and files are staged before the transaction starts; the staged files
+     * replace the live roots only after the database commit succeeds.
+     *
+     * @param input stream holding the ZIP content
+     * @return row counts of the imported conversations, models and settings
+     * @throws DomainException with {@code ErrorCode.INVALID_INPUT} when the archive is unreadable,
+     *         unsupported, or fails validation
+     */
     @Override
     public Summary importFrom(InputStream input) {
         Map<String, byte[]> entries = readZip(input);
@@ -135,8 +180,9 @@ public final class SqliteArchiveService implements ArchiveService {
         }
     }
 
+    /** Rejects archives that miss any table required by their declared format version. */
     private static void requireEntries(Map<String, byte[]> entries, int version) {
-        String[] required = version < 2 ? V1_TABLES : TABLES;
+        String[] required = version < 2 ? V1_TABLES : version < 3 ? V2_TABLES : TABLES;
         for (String table : required) {
             if (!entries.containsKey(table + ".json")) {
                 throw new DomainException(ErrorCode.INVALID_INPUT, "missing " + table);
@@ -165,6 +211,7 @@ public final class SqliteArchiveService implements ArchiveService {
             "apikey", "password", "privatekey", "passphrase"
     };
 
+    /** Matches settings keys whose normalized name ends with a known secret suffix. */
     private static boolean isSecretSetting(String key) {
         String normalized = key.toLowerCase(java.util.Locale.ROOT)
                 .replace("_", "").replace("-", "");
@@ -174,6 +221,7 @@ public final class SqliteArchiveService implements ArchiveService {
         return false;
     }
 
+    /** Dumps one table to a JSON array of column-name-to-value objects. */
     private static JSONArray readTable(SQLiteDatabase db, String table) throws JSONException {
         JSONArray rows = new JSONArray();
         try (Cursor cursor = db.query(table, null, null, null, null, null, null)) {
@@ -187,6 +235,7 @@ public final class SqliteArchiveService implements ArchiveService {
         return rows;
     }
 
+    /** Converts one column value to its JSON counterpart, preserving type where possible. */
     private static Object value(Cursor cursor, int index) {
         switch (cursor.getType(index)) {
             case Cursor.FIELD_TYPE_INTEGER: return cursor.getLong(index);
@@ -197,6 +246,7 @@ public final class SqliteArchiveService implements ArchiveService {
         }
     }
 
+    /** Converts one JSON row back into insertable values, mapping JSON null to SQL null. */
     private static ContentValues values(JSONObject row) throws JSONException {
         ContentValues values = new ContentValues();
         java.util.Iterator<String> keys = row.keys();
@@ -213,17 +263,20 @@ public final class SqliteArchiveService implements ArchiveService {
         return values;
     }
 
+    /** Writes one UTF-8 text entry into the archive. */
     private static void write(ZipOutputStream zip, String name, String content) throws IOException {
         zip.putNextEntry(new ZipEntry(name));
         zip.write(content.getBytes(StandardCharsets.UTF_8));
         zip.closeEntry();
     }
 
+    /** Decodes one entry as UTF-8 text; missing entries decode as empty. */
     private static String text(Map<String, byte[]> entries, String name) {
         byte[] bytes = entries.get(name);
         return bytes == null ? "" : new String(bytes, StandardCharsets.UTF_8);
     }
 
+    /** Adds the workspace, skills and attachments trees under the {@code files/} prefix. */
     private void writeFiles(ZipOutputStream zip) throws IOException {
         for (String name : new String[] {"workspace", "skills", "attachments"}) {
             File root = new File(filesDir, name);
@@ -232,6 +285,7 @@ public final class SqliteArchiveService implements ArchiveService {
         }
     }
 
+    /** Recursively writes one directory, skipping files above the per-file cap and depth 32. */
     private static void writeDirectory(ZipOutputStream zip, File dir, String prefix,
                                        int depth) throws IOException {
         if (depth > 32) return;
@@ -269,6 +323,7 @@ public final class SqliteArchiveService implements ArchiveService {
         }
     }
 
+    /** Stages the archive files, then swaps them over the live roots after validation. */
     private void restoreFiles(Map<String, byte[]> entries) throws IOException {
         // Stage every file first, swap the roots in only after the database has committed.
         File staging = new File(filesDir, STAGING_DIR);
@@ -294,6 +349,7 @@ public final class SqliteArchiveService implements ArchiveService {
         deleteTree(staging);
     }
 
+    /** Writes every archive file into the staging directory instead of its live location. */
     private static void stageFiles(Map<String, byte[]> entries, File staging) throws IOException {
         for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
             String key = entry.getKey();
@@ -308,6 +364,7 @@ public final class SqliteArchiveService implements ArchiveService {
         }
     }
 
+    /** Deletes a directory tree recursively; missing paths are ignored. */
     private static void deleteTree(File file) {
         File[] children = file.isDirectory() ? file.listFiles() : null;
         if (children != null) {
@@ -316,12 +373,17 @@ public final class SqliteArchiveService implements ArchiveService {
         file.delete();
     }
 
+    /** Writes one binary entry into the archive. */
     private static void write(ZipOutputStream zip, String name, byte[] bytes) throws IOException {
         zip.putNextEntry(new ZipEntry(name));
         zip.write(bytes);
         zip.closeEntry();
     }
 
+    /**
+     * Reads every entry into memory, rejecting archives whose total size exceeds the entry cap
+     * before their content can be trusted.
+     */
     private static Map<String, byte[]> readZip(InputStream input) {
         Map<String, byte[]> entries = new LinkedHashMap<>();
         long total = 0;

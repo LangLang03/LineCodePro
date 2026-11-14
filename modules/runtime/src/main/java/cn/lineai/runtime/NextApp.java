@@ -15,6 +15,10 @@ public final class NextApp extends Application {
         graph = AppGraph.create(this);
     }
 
+    /**
+     * Detects the {@code :crash} process so it never builds the graph: the crash screen
+     * only reads files, and a partial graph there would duplicate the database locks.
+     */
     private boolean isCrashProcess() {
         try {
             byte[] bytes = java.nio.file.Files.readAllBytes(
@@ -28,6 +32,12 @@ public final class NextApp extends Application {
         }
     }
 
+    /**
+     * Returns the application graph, rebuilding it lazily when it was never created or was
+     * terminated, so tool contexts on secondary processes still resolve dependencies.
+     *
+     * @return the live application graph
+     */
     public AppGraph graph() {
         if (graph == null) {
             graph = AppGraph.create(this);
@@ -35,6 +45,7 @@ public final class NextApp extends Application {
         return graph;
     }
 
+    /** Closes the graph, releasing the database and scheduler; not called on real devices. */
     @Override
     public void onTerminate() {
         if (graph != null) {

@@ -22,10 +22,12 @@ import cn.lineai.feature.settings.ErrorLogFiles;
  */
 public final class ErrorLogFileProvider extends ContentProvider {
 
+    /** No initialization required; the provider resolves files per request. */
     @Override public boolean onCreate() {
         return true;
     }
 
+    /** Reports display name and size of the requested log file. */
     @Override public Cursor query(Uri uri, String[] projection, String selection,
                                   String[] selectionArgs, String sortOrder) {
         File file = requireFile(uri);
@@ -35,23 +37,28 @@ public final class ErrorLogFileProvider extends ContentProvider {
         return cursor;
     }
 
+    /** All exposed logs are plain text. */
     @Override public String getType(Uri uri) {
         return "text/plain";
     }
 
+    /** Unsupported: the provider is read-only. */
     @Override public Uri insert(Uri uri, ContentValues values) {
         throw new UnsupportedOperationException("read-only provider");
     }
 
+    /** Unsupported: the provider is read-only. */
     @Override public int delete(Uri uri, String selection, String[] selectionArgs) {
         throw new UnsupportedOperationException("read-only provider");
     }
 
+    /** Unsupported: the provider is read-only. */
     @Override public int update(Uri uri, ContentValues values, String selection,
                                 String[] selectionArgs) {
         throw new UnsupportedOperationException("read-only provider");
     }
 
+    /** Opens the resolved log read-only; write modes are rejected. */
     @Override public ParcelFileDescriptor openFile(Uri uri, String mode)
             throws FileNotFoundException {
         if (!"r".equals(mode)) throw new FileNotFoundException("read-only provider");
@@ -59,6 +66,7 @@ public final class ErrorLogFileProvider extends ContentProvider {
                 ParcelFileDescriptor.MODE_READ_ONLY);
     }
 
+    /** Resolves the last path segment to a validated log file or throws. */
     private File requireFile(Uri uri) {
         Context context = getContext();
         String name = uri == null ? null : uri.getLastPathSegment();

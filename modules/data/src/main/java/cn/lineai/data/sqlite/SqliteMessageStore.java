@@ -23,10 +23,23 @@ public final class SqliteMessageStore implements MessageStore {
 
     private final LineCodeDatabase database;
 
+    /**
+     * Creates the store.
+     *
+     * @param database shared database connection holder
+     */
     public SqliteMessageStore(LineCodeDatabase database) {
         this.database = database;
     }
 
+    /**
+     * Loads one conversation as an ordered aggregate: message rows in sequence order with blocks
+     * and tool call records attached in their stored order.
+     *
+     * @param conversationId conversation whose messages are loaded
+     * @return messages ordered by sequence number, ascending
+     * @throws DomainException with {@code ErrorCode.STORAGE} when the query fails
+     */
     @Override
     public List<Message> load(String conversationId) {
         SQLiteDatabase db = database.open();
@@ -70,6 +83,7 @@ public final class SqliteMessageStore implements MessageStore {
         return messages;
     }
 
+    /** Loads the content blocks of one conversation, grouped by message id in block order. */
     private Map<String, List<ContentBlock>> loadBlocks(SQLiteDatabase db, String conversationId) {
         Map<String, List<ContentBlock>> result = new HashMap<>();
         String sql = "SELECT b.message_id, b.type, b.text, b.ref_id, b.status "
@@ -85,6 +99,7 @@ public final class SqliteMessageStore implements MessageStore {
         return result;
     }
 
+    /** Loads the tool call records of one conversation, grouped by message id in call order. */
     private Map<String, List<ToolCallRecord>> loadToolCalls(SQLiteDatabase db, String conversationId) {
         Map<String, List<ToolCallRecord>> result = new HashMap<>();
         String sql = "SELECT c.message_id, c.call_id, c.name, c.arguments "
@@ -100,6 +115,7 @@ public final class SqliteMessageStore implements MessageStore {
         return result;
     }
 
+    /** Rebuilds the block subtype matching the stored type tag. */
     private static ContentBlock block(String type, String text, String refId, String status) {
         ContentBlock.Type kind = ContentBlock.Type.valueOf(type);
         switch (kind) {
@@ -121,6 +137,13 @@ public final class SqliteMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * Inserts the message row, its blocks and its tool calls inside one transaction, so a failure
+     * cannot leave a message without its blocks.
+     *
+     * @param message message to insert; the identifier must not collide with an existing row
+     * @throws DomainException with {@code ErrorCode.STORAGE} when any insert fails
+     */
     @Override
     public void append(Message message) {
         SQLiteDatabase db = database.open();
@@ -137,6 +160,13 @@ public final class SqliteMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * Replaces the message row and rewrites all blocks and tool calls inside one transaction, so
+     * stale children from the previous version cannot survive.
+     *
+     * @param message message to store; must carry the identifier of an existing row
+     * @throws DomainException with {@code ErrorCode.STORAGE} when any write fails
+     */
     @Override
     public void update(Message message) {
         SQLiteDatabase db = database.open();
@@ -155,11 +185,22 @@ public final class SqliteMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * Deletes one message; dependent blocks and tool calls are removed by foreign keys.
+     *
+     * @param messageId message identifier; unknown identifiers are ignored
+     */
     @Override
     public void delete(String messageId) {
         database.open().delete("messages", "id=?", new String[] {messageId});
     }
 
+    /**
+     * Counts the messages of one conversation.
+     *
+     * @param conversationId conversation to count
+     * @return number of stored messages for the conversation
+     */
     @Override
     public int count(String conversationId) {
         try (Cursor cursor = database.open().rawQuery(
@@ -168,6 +209,7 @@ public final class SqliteMessageStore implements MessageStore {
         }
     }
 
+    /** Builds the message row values; blocks and tool calls get their own tables. */
     private static ContentValues values(Message message) {
         ContentValues values = new ContentValues();
         values.put("id", message.id);
@@ -191,6 +233,7 @@ public final class SqliteMessageStore implements MessageStore {
         return values;
     }
 
+    /** Inserts one block row per content block, keeping the list order as the block index. */
     private static void insertBlocks(SQLiteDatabase db, Message message) {
         for (int i = 0; i < message.blocks.size(); i++) {
             ContentBlock block = message.blocks.get(i);
@@ -205,6 +248,7 @@ public final class SqliteMessageStore implements MessageStore {
         }
     }
 
+    /** Inserts one row per tool call record, keeping the list order as the call index. */
     private static void insertToolCalls(SQLiteDatabase db, Message message) {
         for (int i = 0; i < message.toolCalls.size(); i++) {
             ToolCallRecord call = message.toolCalls.get(i);

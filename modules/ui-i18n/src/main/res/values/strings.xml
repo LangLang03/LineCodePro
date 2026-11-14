@@ -51,7 +51,12 @@
     <string name="drawer_project_remove_cancel">Cancel</string>
 
     <string name="composer_hint_default">Type a message…</string>
+    <string name="composer_hint_busy_elsewhere">Another conversation is still generating — switch back to watch or stop it</string>
     <string name="composer_hint_no_model">Please configure a model first in Settings → Model management</string>
+    <string name="composer_hint_transient">One-shot agent — this session is not messageable</string>
+    <string name="drawer_agent_chip">%d sub agents</string>
+    <string name="chat_agents_title">Agents</string>
+    <string name="drawer_agent_root">Root (this conversation)</string>
     <string name="composer_attachment_remove_desc">Remove attachment</string>
     <string name="composer_image_button_desc">Pick an image to send</string>
     <string name="composer_image_remove_desc">Remove selected image</string>
@@ -327,7 +332,7 @@
     <string name="screen_security_section_http">HTTP restrictions</string>
     <string name="screen_security_section_browser">Built-in browser</string>
     <string name="tool_group_local_shell_name">Shell</string>
-    <string name="tool_group_local_shell_desc">Run shell commands in the local workspace, including background tasks readable via shell_output and stoppable via shell_kill. Turn off to block local shell execution</string>
+    <string name="tool_group_local_shell_desc">Run shell commands in the local workspace, including background tasks</string>
     <string name="screen_security_section_extensions">Extensions</string>
     <string name="settings_row_security_trust_extensions_title">Trust extensions with a different signature</string>
     <string name="settings_row_security_trust_extensions_desc">Automatically load provider and extension packages signed with a different certificate</string>
@@ -487,7 +492,7 @@
     <string name="screen_tools_hint_key_query">api_key, can be empty</string>
 
     <string name="screen_mcp_execution_local_desc">Local workspace runs file read/write, file search, Agent, web search, image understanding and image generation inside the current workspace path. Search API and image models are configured in Tool settings.</string>
-    <string name="screen_mcp_execution_ssh_desc">SSH Shell mode disables local file read/write and file search. Agent, Agent pipeline, todos, web search, image understanding and image generation remain available. File operations should be performed via shell commands inside the SSH environment.</string>
+    <string name="screen_mcp_execution_ssh_desc">SSH Shell mode disables local file read/write and file search. Agents, todos, web search, image understanding and image generation remain available. File operations should be performed via shell commands inside the SSH environment.</string>
     <string name="screen_mcp_ssh_overview">SSH Shell can connect to a remote Linux server, desktop dev machine, NAS, or Termux on the phone itself. Termux is a separate option and is not the only target.</string>
 
     <string name="screen_mcp_hint_name">e.g. Company MCP server</string>
@@ -647,7 +652,7 @@
     <string name="screen_mcp_ssh_settings">SSH connection settings</string>
     <string name="screen_mcp_termux_integration">Termux integration</string>
     <string name="screen_mcp_section_terminal_provider">Terminal provider</string>
-    <string name="screen_mcp_terminal_provider_overview">Terminal provider mode runs shell commands and file transfer through an external provider app over IPC. Scan and add a provider app on the terminal providers page before using this mode.</string>
+    <string name="screen_mcp_terminal_provider_overview">Terminal provider mode runs shell commands and file transfer through an external provider app over IPC. Scan and add a provider app on the terminal providers page before using this mode. If the test connection fails, check that associated launch (autostart) is enabled for the provider app.</string>
 
     <string name="screen_mcp_edit_title">Edit MCP</string>
     <string name="screen_mcp_list_empty">No MCP extensions yet.</string>
@@ -1199,13 +1204,6 @@
     <!-- Agent messages -->
     <string name="message_generation_interrupted">Previous generation was interrupted.</string>
     <string name="message_agent_terminated">Agent terminated.</string>
-    <string name="message_agent_pipeline_running">Agent pipeline running.</string>
-    <string name="message_agent_pipeline_no_model">No model available, unable to run the agent pipeline.</string>
-    <string name="message_agent_pipeline_agents_empty">agent_pipeline.agents cannot be empty.</string>
-    <string name="message_agent_pipeline_circular">Agent pipeline has a circular dependency or duplicate id, unable to execute.</string>
-    <string name="message_agent_pipeline_completed">Agent pipeline completed: %1$d tasks</string>
-    <string name="message_agent_pipeline_terminated">Agent pipeline terminated.</string>
-    <string name="message_agent_pipeline_self_dependency">Agent cannot depend on itself: %1$s</string>
     <string name="tool_call_limit_not_executed">Tool call limit reached; this round of calls was not executed.</string>
 
     <string name="settings_row_error_logs_title">Error logs</string>
@@ -1245,7 +1243,7 @@
     <string name="tool_group_image_understanding_desc">Read local or SSH workspace images and call the selected vision model to understand the content</string>
     <string name="tool_group_image_generation_name">Image generation</string>
     <string name="tool_group_image_generation_desc">Call the selected image model to generate images, returned as inline Markdown images</string>
-    <string name="tool_group_shell_desc">Run shell commands on the remote host via SSH or a terminal provider, including background tasks readable via shell_output and stoppable via shell_kill</string>
+    <string name="tool_group_shell_desc">Run shell commands on the remote host (SSH or terminal provider), including background tasks</string>
     <string name="tool_group_web_search_name">Web search</string>
     <string name="tool_group_web_search_desc">Search the internet and view web pages</string>
     <string name="tool_group_memory_name">Memory</string>
@@ -1648,6 +1646,10 @@
     <string name="tool_call_status_done">Done</string>
     <string name="tool_call_status_running">Running</string>
     <string name="tool_call_status_failed">Failed</string>
+    <string name="tool_call_status_interrupted">Interrupted</string>
+    <string name="tool_call_agent_context_label">Context</string>
+    <string name="tool_call_agent_send_to">to %1$s</string>
+    <string name="tool_call_agent_list_summary">%1$d sessions</string>
     <string name="tool_call_status_pending_review">Needs confirmation</string>
     <string name="tool_call_agent_tool_count">%1$d tools</string>
     <string name="tool_call_agent_type_explore">Explore</string>

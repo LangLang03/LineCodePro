@@ -49,6 +49,7 @@ final class WorkingStatusView extends View {
     private float textBaseline;
     private String fitted = "";
 
+    /** Prepares paints, fixed metrics and the working/thinking labels. */
     WorkingStatusView(Context context, Tokens tokens) {
         super(context);
         this.tokens = tokens;
@@ -66,6 +67,11 @@ final class WorkingStatusView extends View {
         applyTokens(tokens);
     }
 
+    /**
+     * Switches between the "working" and "thinking" labels; an unchanged state skips the layout.
+     *
+     * @param thinking true when reasoning tokens are streaming but no answer yet
+     */
     void bind(boolean thinking) {
         if (this.thinking == thinking) {
             return;
@@ -76,6 +82,7 @@ final class WorkingStatusView extends View {
         invalidate();
     }
 
+    /** Activates the animation once attached; recycled views start on attach instead. */
     void start() {
         if (working) {
             return;
@@ -87,6 +94,7 @@ final class WorkingStatusView extends View {
         }
     }
 
+    /** Deactivates the animation so recycled rows never keep it alive. */
     void stop() {
         working = false;
         stopAnimator();
@@ -94,6 +102,7 @@ final class WorkingStatusView extends View {
         invalidate();
     }
 
+    /** Applies the current design tokens to the label. */
     void applyTokens(Tokens current) {
         tokens = current;
         textPaint.setColor(current.textSecondary);
@@ -132,11 +141,13 @@ final class WorkingStatusView extends View {
         drawLabel(canvas);
     }
 
+    /** Draws the walking perimeter dot matrix on the leading edge. */
     private void drawDotMatrix(Canvas canvas) {
         DotMatrix.draw(canvas, dotPaint, progress, horizontalPadding,
                 (getHeight() - matrixSize) / 2f, matrixSize, tokens.accent);
     }
 
+    /** Draws the monospace label with the sweeping highlight gradient. */
     private void drawLabel(Canvas canvas) {
         if (fitted.isEmpty()) {
             return;
@@ -153,6 +164,7 @@ final class WorkingStatusView extends View {
         textPaint.setShader(null);
     }
 
+    /** Lightened variant of the base color used as the shimmer highlight. */
     static int highlightColor(int baseColor) {
         return (0xff << 24)
                 | (blendChannel((baseColor >> 16) & 0xff) << 16)
@@ -160,10 +172,12 @@ final class WorkingStatusView extends View {
                 | blendChannel(baseColor & 0xff);
     }
 
+    /** Blends one channel 72% toward white. */
     private static int blendChannel(int value) {
         return Math.round(value + (255 - value) * 0.72f);
     }
 
+    /** Ellipsizes the label to the measured width and centers the baseline. */
     private void fitSummary(int measuredWidth) {
         textStart = Math.round(horizontalPadding + matrixSize + summaryGap);
         float available = Math.max(0f, measuredWidth - textStart - horizontalPadding);
@@ -173,10 +187,12 @@ final class WorkingStatusView extends View {
         textBaseline = Math.round((getMeasuredHeight() - metrics.bottom - metrics.top) / 2f);
     }
 
+    /** The label for the current mode. */
     private String label() {
         return thinking ? thinkingLabel : workingLabel;
     }
 
+    /** Starts the looping animator; respects the reduced-motion preference. */
     private void startAnimator() {
         if (animator != null && animator.isStarted()) {
             return;
@@ -197,6 +213,7 @@ final class WorkingStatusView extends View {
         animator.start();
     }
 
+    /** Cancels the animator if one is running. */
     private void stopAnimator() {
         if (animator != null) {
             animator.cancel();

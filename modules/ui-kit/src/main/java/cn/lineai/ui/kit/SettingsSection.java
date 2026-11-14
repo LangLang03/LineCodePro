@@ -7,14 +7,36 @@ import android.widget.TextView;
 import cn.lineai.ui.tokens.ThemeBinder;
 import java.util.Locale;
 
+/**
+ * Titled group of rows used on settings-style pages.
+ *
+ * <p>The section renders an uppercase heading followed by a vertical group with an elevated rounded
+ * background. Rows are appended with {@link #row}; the section never rebuilds its children, and
+ * restyling on theme changes goes through {@link ThemeBinder} bindings that mutate the existing
+ * views in place.</p>
+ */
 public final class SettingsSection extends LinearLayout {
     private final LinearLayout group;
     private final ThemeBinder theme;
 
+    /**
+     * Creates a section titled from a string resource.
+     *
+     * @param context hosting context
+     * @param title resource id of the section heading; rendered uppercase
+     * @param theme binder used to register restyle callbacks; never null
+     */
     public SettingsSection(Context context, int title, ThemeBinder theme) {
         this(context, context.getString(title), theme);
     }
 
+    /**
+     * Creates a section titled from raw text.
+     *
+     * @param context hosting context
+     * @param title heading text; a null value is rendered as an empty heading
+     * @param theme binder used to register restyle callbacks; never null
+     */
     public SettingsSection(Context context, CharSequence title, ThemeBinder theme) {
         super(context);
         this.theme = theme;
@@ -38,6 +60,13 @@ public final class SettingsSection extends LinearLayout {
         });
     }
 
+    /**
+     * Appends a row to the section, optionally followed by a hairline divider.
+     *
+     * @param row view to append; width matches the section, height wraps content
+     * @param divider true to draw a 1px separator under the row
+     * @param inset left inset of the divider in dp, letting it start after a leading icon
+     */
     public void row(View row, boolean divider, int inset) {
         group.addView(row, new LayoutParams(-1, -2));
         if (!divider) return;

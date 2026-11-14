@@ -18,12 +18,19 @@ import cn.lineai.engine.prompt.SystemPromptAssembler;
 import cn.lineai.tool.api.Tool;
 import cn.lineai.tool.api.ToolRegistry;
 
-/** Reads per-turn prompt and reasoning settings. */
+/**
+ * Reads per-turn prompt and reasoning settings.
+ *
+ * <p>Static helper over settings and prompt templates: assembles the system prompt (tone, chat
+ * mode, tool fallback sections, agent/skill extensions, compaction summary), converts streamed
+ * buffers into content blocks, and estimates context usage with the 4-chars-per-token rule.</p>
+ */
 final class ChatTurnConfig {
 
     private ChatTurnConfig() {
     }
 
+    /** Assembles the system prompt without tool registries; see the full overload. */
     static String systemPrompt(SystemPromptAssembler prompts, SettingsStore settings,
                                ModelConfig model, String extensionSection,
                                String summarySection, String learningSection) {
@@ -31,6 +38,11 @@ final class ChatTurnConfig {
                 learningSection, null, null);
     }
 
+    /**
+     * Assembles the system prompt for one generation. Models with native tool support carry
+     * their schemas in the request, so the prompt omits tool names entirely; other models keep
+     * the prompt-name fallback listing allowed and blocked tools.
+     */
     static String systemPrompt(SystemPromptAssembler prompts, SettingsStore settings,
                                ModelConfig model, String extensionSection,
                                String summarySection, String learningSection,
@@ -57,6 +69,7 @@ final class ChatTurnConfig {
         return extra.isEmpty() ? base : base + extra;
     }
 
+    /** Comma-separated names of the active tools; "none" when the registry is empty. */
     private static String toolNames(ToolRegistry registry) {
         if (registry == null) return "none";
         StringBuilder out = new StringBuilder();
@@ -67,6 +80,7 @@ final class ChatTurnConfig {
         return out.length() == 0 ? "none" : out.toString();
     }
 
+    /** Comma-separated names present in {@code all} but not in the active registry. */
     private static String blockedToolNames(ToolRegistry active, ToolRegistry all) {
         if (all == null) return "none";
         StringBuilder out = new StringBuilder();
@@ -78,6 +92,7 @@ final class ChatTurnConfig {
         return out.length() == 0 ? "none" : out.toString();
     }
 
+    /** Content blocks for a streamed draft: reasoning first, then answer text; empty omitted. */
     static List<ContentBlock> blocks(CharSequence text, CharSequence reasoning) {
         List<ContentBlock> blocks = new ArrayList<>();
         if (reasoning != null && reasoning.length() > 0) {
@@ -89,6 +104,7 @@ final class ChatTurnConfig {
         return blocks;
     }
 
+    /** Estimated context usage percentage, clamped to 0..100 (4 chars per token). */
     static int percent(List<Message> messages, int contextSize) {
         long chars = 0;
         for (Message message : messages) {
@@ -98,11 +114,13 @@ final class ChatTurnConfig {
         return (int) Math.min(100, tokens * 100 / Math.max(1, contextSize));
     }
 
+    /** Single-line conversation title: the prompt, truncated to 30 characters. */
     static String titleFor(String prompt) {
         String single = prompt.replace('\n', ' ').trim();
         return single.length() <= 30 ? single : single.substring(0, 30);
     }
 
+    /** Markdown section describing enabled custom agents; empty when none qualify. */
     static String agentSection(List<AgentExtension> agents) {
         if (agents == null) return "";
         StringBuilder out = new StringBuilder();
@@ -119,6 +137,7 @@ final class ChatTurnConfig {
         return "\n\n## Custom Agent extensions" + out;
     }
 
+    /** Markdown section embedding enabled skill contents; empty when none qualify. */
     static String skillSection(List<Skill> skills) {
         if (skills == null) return "";
         StringBuilder out = new StringBuilder();
@@ -133,6 +152,7 @@ final class ChatTurnConfig {
         return "\n\n## Skills" + out;
     }
 
+    /** Appends image and file attachment blocks; files are inlined as text or labeled as video. */
     static void addAttachments(Message.Builder builder, List<String> images, List<String> files) {
         for (String image : images) builder.addBlock(ContentBlock.image(image));
         for (String file : files) {
@@ -142,12 +162,14 @@ final class ChatTurnConfig {
         }
     }
 
+    /** True when the file extension is a known video container. */
     static boolean isVideo(String path) {
         String lower = path == null ? "" : path.toLowerCase(java.util.Locale.ROOT);
         return lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".webm")
                 || lower.endsWith(".mkv") || lower.endsWith(".3gp") || lower.endsWith(".m4v");
     }
 
+    /** UTF-8 text of an attachment, truncated at 20000 chars; unreadable files are labeled. */
     static String readAttachment(String path) {
         try {
             byte[] bytes = java.nio.file.Files.readAllBytes(new java.io.File(path).toPath());
@@ -158,6 +180,7 @@ final class ChatTurnConfig {
         }
     }
 
+    /** Conversation title derived from the prompt or the first attachment's file name. */
     static String attachmentTitle(String prompt, List<String> images, List<String> files) {
         if (!prompt.isEmpty()) return titleFor(prompt);
         if (!images.isEmpty()) return new java.io.File(images.get(0)).getName();
@@ -165,6 +188,7 @@ final class ChatTurnConfig {
         return "New chat";
     }
 
+    /** Markdown TODO checklist section; empty when there are no items. */
     static String todoSection(List<TodoItem> items) {
         if (items == null || items.isEmpty()) return "";
         StringBuilder out = new StringBuilder("\n\n## TODO");
@@ -176,6 +200,7 @@ final class ChatTurnConfig {
         return out.toString();
     }
 
+    /** Resolves the reasoning spec; models without reasoning support are locked to "off". */
     static ReasoningSpec reasoningSpec(SettingsStore settings, ModelConfig model) {
         // A model without reasoning support is locked to "off" regardless of the stored level.
         String effort = model != null && !model.supportsReasoning ? "off"

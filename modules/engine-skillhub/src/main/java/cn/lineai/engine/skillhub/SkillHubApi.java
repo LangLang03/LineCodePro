@@ -18,18 +18,39 @@ import cn.lineai.core.model.SkillHubComment;
 import cn.lineai.core.model.SkillHubEntry;
 import cn.lineai.core.model.SkillHubMeta;
 
-/** Minimal read-only SkillHub client: search and download. */
+/**
+ * Minimal read-only SkillHub client: search and download.
+ *
+ * <p>Every request is synchronous, size-capped and unauthenticated; download sizes and icon hosts
+ * are validated so the client cannot be tricked into fetching arbitrary payloads.</p>
+ */
 public final class SkillHubApi {
 
     private static final String ROOT = "https://api.skillhub.cn";
     private static final int MAX_ZIP_BYTES = 20 * 1024 * 1024;
     private static final int MAX_ICON_BYTES = 4 * 1024 * 1024;
 
+    /**
+     * Lists one page of entries in the service default order.
+     *
+     * @param keyword free-text filter; blank lists everything
+     * @param page one-based page index
+     * @return the entries of that page
+     * @throws IOException on network failure or when the service reports an error
+     */
     public List<SkillHubEntry> list(String keyword, int page) throws IOException {
         return list(keyword, page, "");
     }
 
-    /** Lists one page ordered by {@code sort} ({@code downloads}, {@code stars}, {@code updated_at}). */
+    /**
+     * Lists one page ordered by {@code sort} ({@code downloads}, {@code stars}, {@code updated_at}).
+     *
+     * @param keyword free-text filter; blank lists everything
+     * @param page one-based page index, clamped to at least one
+     * @param sort server-side sort key; blank uses the service default
+     * @return the entries of that page
+     * @throws IOException on network failure or when the service reports an error
+     */
     public List<SkillHubEntry> list(String keyword, int page, String sort) throws IOException {
         int safePage = Math.max(1, page);
         StringBuilder url = new StringBuilder(ROOT + "/api/skills?page=")
@@ -46,6 +67,14 @@ public final class SkillHubApi {
         return entries;
     }
 
+    /**
+     * Fetches one skill detail together with its SKILL.md content. A missing SKILL.md degrades to
+     * empty content rather than failing the call.
+     *
+     * @param slug skill slug
+     * @return the detail record including the fetched markdown when a version exists
+     * @throws IOException when the slug is blank, the skill is unknown, or the request fails
+     */
     public SkillHubDetail detail(String slug) throws IOException {
         String safeSlug = slug == null ? "" : slug.trim();
         if (safeSlug.isEmpty()) throw new IOException("Invalid SkillHub slug");
@@ -65,7 +94,14 @@ public final class SkillHubApi {
                 detail.meta);
     }
 
-    /** Downloads a remote skill icon after validating the host allow-list. */
+    /**
+     * Downloads a remote skill icon after validating the host allow-list.
+     *
+     * @param rawUrl icon URL advertised by the service
+     * @return the icon bytes
+     * @throws IOException when the URL host is not allowed, the icon is empty, or the download
+     *         fails
+     */
     public byte[] icon(String rawUrl) throws IOException {
         String url = requireIconUrl(rawUrl);
         byte[] bytes = getBytes(url, MAX_ICON_BYTES);
@@ -73,6 +109,13 @@ public final class SkillHubApi {
         return bytes;
     }
 
+    /**
+     * Enforces the icon host allow-list over HTTPS and returns the normalized ASCII URL.
+     *
+     * @param rawUrl icon URL advertised by the service
+     * @return the validated URL string
+     * @throws IOException when the URL is malformed or its host is not on the allow-list
+     */
     static String requireIconUrl(String rawUrl) throws IOException {
         String value = rawUrl == null ? "" : rawUrl.trim();
         try {
@@ -91,6 +134,13 @@ public final class SkillHubApi {
         }
     }
 
+    /**
+     * Reads the comment thread of one skill.
+     *
+     * @param slug skill slug
+     * @return the parsed comments in service order; empty when none exist
+     * @throws IOException when the slug is blank or the request fails
+     */
     public java.util.List<SkillHubComment> comments(String slug) throws IOException {
         String safeSlug = slug == null ? "" : slug.trim();
         if (safeSlug.isEmpty()) throw new IOException("Invalid SkillHub slug");
@@ -99,6 +149,7 @@ public final class SkillHubApi {
         return parseComments(body);
     }
 
+    /** Parses a comment list payload; malformed items and bodies are skipped silently. */
     static java.util.List<SkillHubComment> parseComments(String body) {
         java.util.List<SkillHubComment> result = new java.util.ArrayList<>();
         try {
@@ -121,6 +172,7 @@ public final class SkillHubApi {
         return result;
     }
 
+    /** Parses one detail payload; returns null when the payload has no skill object. */
     static SkillHubDetail parseDetail(String slug, String body) {
         try {
             JSONObject root = new JSONObject(body);
@@ -151,12 +203,21 @@ public final class SkillHubApi {
         }
     }
 
+    /** Prefers the dedicated SkillHub security report over the static analysis one. */
     private static JSONObject preferredSecurity(JSONObject reports) {
         if (reports == null) return null;
         JSONObject preferred = reports.optJSONObject("skillhub");
         return preferred == null ? reports.optJSONObject("static") : preferred;
     }
 
+    /**
+     * Downloads one skill package and verifies it is a ZIP payload before handing it over.
+     *
+     * @param slug skill slug
+     * @param version package version; blank resolves to the latest version
+     * @return the ZIP bytes of the package
+     * @throws IOException when the slug is blank, the payload is not a ZIP, or the download fails
+     */
     public byte[] download(String slug, String version) throws IOException {
         String safeSlug = slug == null ? "" : slug.trim();
         if (safeSlug.isEmpty()) throw new IOException("Invalid SkillHub slug");
@@ -170,6 +231,10 @@ public final class SkillHubApi {
         return bytes;
     }
 
+    /**
+     * Parses one list payload. Returns null to signal a service-reported error, distinguishing it
+     * from a valid empty page.
+     */
     static List<SkillHubEntry> parseList(String body) {
         try {
             JSONObject root = new JSONObject(body);
@@ -211,6 +276,7 @@ public final class SkillHubApi {
                 first(skill.optString("summary_zh"), skill.optString("summary")));
     }
 
+    /** Resolves the display author, preferring the nested owner over flat payload fields. */
     private static String author(JSONObject skill, JSONObject owner) {
         if (owner != null) {
             String name = first(owner.optString("displayName"), owner.optString("handle"));
@@ -223,15 +289,18 @@ public final class SkillHubApi {
                 : first(namespace.optString("displayName"), namespace.optString("handle"));
     }
 
+    /** Resolves the latest version, preferring the nested version object. */
     private static String version(JSONObject skill, JSONObject latest) {
         String value = latest == null ? "" : latest.optString("version");
         return value.isEmpty() ? skill.optString("version") : value;
     }
 
+    /** Reads the download counter from the flat or nested location. */
     private static long downloads(JSONObject skill, JSONObject stats) {
         return skill.optLong("downloads", stats == null ? 0 : stats.optLong("downloads"));
     }
 
+    /** Assembles the metadata record: icon, stars, verification, category and key requirement. */
     private static SkillHubMeta meta(JSONObject skill, JSONObject stats) {
         JSONObject labels = skill.optJSONObject("labels");
         long stars = skill.optLong("stars", stats == null ? 0 : stats.optLong("stars"));
@@ -242,10 +311,12 @@ public final class SkillHubApi {
                 skill.optString("category"), apiKey);
     }
 
+    /** Returns the first non-empty argument, else empty. */
     private static String first(String first, String second) {
         return first == null || first.isEmpty() ? (second == null ? "" : second) : first;
     }
 
+    /** Percent-encodes one query component; the value is returned unchanged on failure. */
     private static String encode(String value) {
         try {
             return URLEncoder.encode(value, StandardCharsets.UTF_8.name());
@@ -254,10 +325,15 @@ public final class SkillHubApi {
         }
     }
 
+    /** Performs a GET request and decodes the capped body as UTF-8 text. */
     private static String get(String url, int maxBytes) throws IOException {
         return new String(getBytes(url, maxBytes), StandardCharsets.UTF_8);
     }
 
+    /**
+     * Performs a GET request with fixed timeouts and aborts as soon as the body exceeds
+     * {@code maxBytes}, so a hostile response cannot exhaust memory.
+     */
     private static byte[] getBytes(String url, int maxBytes) throws IOException {
         HttpURLConnection connection = null;
         try {
