@@ -101,7 +101,6 @@ public final class MainActivity extends Activity implements cn.lineai.feature.ch
         graph.setAgentRuntime(graph.subAgents());
         graph.chat().setSubApprovalSource(graph.subAgents()::pendingSubApprovals,
                 allowed -> graph.subAgents().resolveAllPending(allowed));
-        graph.subAgents().entries().observe(list -> chat.setAgents(list));
         showCrashIfNeeded();
         importCrashLog();
         tokens = graph.theme().current();
@@ -110,6 +109,9 @@ public final class MainActivity extends Activity implements cn.lineai.feature.ch
         root.setBackgroundColor(tokens.bg);
         chat = new ChatScreenView(this, graph.chat(), tokens);
         chat.setHost(this);
+        // Observing the registry publishes the current list immediately, so it must only be
+        // wired after the chat view exists; the scope unsubscribes on activity teardown.
+        scope.track(graph.subAgents().entries().observe(list -> chat.setAgents(list)));
         root.addView(chat, new FrameLayout.LayoutParams(-1, -1));
         FrameLayout overlay = new FrameLayout(this);
         overlay.setClickable(true);
