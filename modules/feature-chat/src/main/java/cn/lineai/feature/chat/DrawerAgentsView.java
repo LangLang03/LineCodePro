@@ -152,6 +152,8 @@ final class DrawerAgentsView extends LinearLayout {
                 return getContext().getString(R.string.tool_call_status_failed);
             case WAITING_INPUT:
                 return getContext().getString(R.string.tool_call_status_pending_review);
+            case INTERRUPTED:
+                return getContext().getString(R.string.tool_call_status_interrupted);
             default:
                 return getContext().getString(R.string.tool_call_status_done);
         }
@@ -163,6 +165,7 @@ final class DrawerAgentsView extends LinearLayout {
             case WAITING_INPUT:
                 return tokens.accent;
             case FAILED:
+            case INTERRUPTED:
                 return tokens.danger;
             default:
                 return tokens.textTertiary;

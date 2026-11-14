@@ -20,7 +20,7 @@ import cn.lineai.core.kernel.error.ErrorCode;
 public final class LineCodeDatabase {
 
     /** Current schema version; bumping it triggers {@link #migrate} on the next open. */
-    public static final int VERSION = 14;
+    public static final int VERSION = 15;
 
     private final File file;
     private SQLiteDatabase database;
@@ -299,6 +299,18 @@ public final class LineCodeDatabase {
     /** Project and IPC provider tables. */
     private static List<String> projectSchema() {
         List<String> statements = new ArrayList<>();
+        statements.add("CREATE TABLE IF NOT EXISTS agent_sessions ("
+                + "id TEXT PRIMARY KEY,"
+                + "name TEXT NOT NULL DEFAULT '',"
+                + "parent_conversation_id TEXT NOT NULL DEFAULT '',"
+                + "conversation_id TEXT NOT NULL DEFAULT '',"
+                + "agent_definition_id TEXT NOT NULL DEFAULT '',"
+                + "workspace_binding TEXT NOT NULL DEFAULT '',"
+                + "status TEXT NOT NULL DEFAULT 'COMPLETED',"
+                + "persistent INTEGER NOT NULL DEFAULT 1,"
+                + "created_at INTEGER NOT NULL DEFAULT 0,"
+                + "updated_at INTEGER NOT NULL DEFAULT 0,"
+                + "last_turn_id TEXT NOT NULL DEFAULT '')");
         statements.add("CREATE TABLE IF NOT EXISTS projects ("
                 + "id TEXT PRIMARY KEY,"
                 + "name TEXT NOT NULL DEFAULT '',"

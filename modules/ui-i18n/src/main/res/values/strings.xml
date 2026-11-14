@@ -1644,6 +1644,7 @@
     <string name="tool_call_status_done">Done</string>
     <string name="tool_call_status_running">Running</string>
     <string name="tool_call_status_failed">Failed</string>
+    <string name="tool_call_status_interrupted">Interrupted</string>
     <string name="tool_call_status_pending_review">Needs confirmation</string>
     <string name="tool_call_agent_tool_count">%1$d tools</string>
     <string name="tool_call_agent_type_explore">Explore</string>

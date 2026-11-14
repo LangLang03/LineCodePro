@@ -1645,6 +1645,7 @@
     <string name="tool_call_status_done">完成</string>
     <string name="tool_call_status_running">运行中</string>
     <string name="tool_call_status_failed">失败</string>
+    <string name="tool_call_status_interrupted">已中断</string>
     <string name="tool_call_status_pending_review">需要确认</string>
     <string name="tool_call_agent_tool_count">%1$d 工具</string>
     <string name="tool_call_agent_type_explore">探索</string>

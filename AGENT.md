@@ -39,7 +39,7 @@ the original repository. All code now lives under `modules/` (plus the thin `:ap
 
 ## Data
 
-`modules/data/.../LineCodeDatabase` owns schema **VERSION = 14**: conversations, messages,
+`modules/data/.../LineCodeDatabase` owns schema **VERSION = 15**: conversations, messages,
 message_blocks, message_tool_calls, settings, models, error_logs, memories, extension_agents,
 extension_mcps, ipc_providers, projects, file_diffs. Conversations carry `kind` (`''` user,
 `agent`, `agent_transient`) and `parent_id`; `ConversationStore.list()` returns user
@@ -75,9 +75,16 @@ root view folds background-shell completions into the same stream. An idle root 
 non-empty inbox after each finished turn (`ChatInboxWake`), which starts a hidden-notice turn.
 
 Sub agents: `SubAgentRegistry` (runtime) implements the `AgentRuntime` tool contract. Every
-sub agent owns a conversation row (kind `agent` or `agent_transient`) and a full
-`ChatController`, so transcripts persist, compaction works and sessions run in parallel (one
-single-threaded loop per agent; no shared locks). Agent tools (`agent_<slug>`) always return a
+sub agent owns a conversation row (kind `agent` or `agent_transient`), an `agent_sessions`
+record (schema v15: parent conversation, transcript conversation, agent definition slug,
+workspace binding, status, last turn id) and a full `ChatController`, so transcripts and
+session identity persist, compaction works and sessions run in parallel (one single-threaded
+loop per agent; no shared locks). Creating a session and restoring one are separate paths:
+`start()` creates the conversation and record, `restore()` reattaches to the record's
+conversation (`openThen` restores history and seq), rebuilds the inbox and rebinds the stored
+workspace path. Records still marked RUNNING/WAITING_INPUT at load time become INTERRUPTED
+(the process died mid-turn) and revive on the next message; pre-v15 agent conversations are
+migrated into records on first load. Agent tools (`agent_<slug>`) always return a
 handle immediately and deliver their final output through the inbox. `persistent=true` creates
 a messageable, revivable session with mutating tools allowed; its approvals surface in the root
 approval panel (`ChatState.pendingApprovals` merge, routed back by agentId). The default

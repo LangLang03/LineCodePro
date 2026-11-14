@@ -1642,6 +1642,7 @@
     <string name="tool_call_status_done">Готово</string>
     <string name="tool_call_status_running">Выполняется</string>
     <string name="tool_call_status_failed">Сбой</string>
+    <string name="tool_call_status_interrupted">Прервано</string>
     <string name="tool_call_status_pending_review">Требует подтверждения</string>
     <string name="tool_call_agent_tool_count">%1$d инструментов</string>
     <string name="tool_call_agent_type_explore">Исследование</string>

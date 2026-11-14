@@ -9,5 +9,7 @@ public enum AgentStatus {
     /** The sub agent's last turn failed. */
     FAILED,
     /** The sub agent is blocked waiting for an approval decision. */
-    WAITING_INPUT
+    WAITING_INPUT,
+    /** The provider process stopped mid-turn; the session revives on the next message. */
+    INTERRUPTED
 }

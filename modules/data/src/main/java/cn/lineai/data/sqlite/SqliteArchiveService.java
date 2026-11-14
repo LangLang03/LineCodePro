@@ -40,7 +40,7 @@ import cn.lineai.data.api.ArchiveService;
 public final class SqliteArchiveService implements ArchiveService {
 
     private static final String FORMAT = "linecode-archive";
-    private static final int VERSION = 2;
+    private static final int VERSION = 3;
     private static final long MAX_ENTRY_BYTES = 64L * 1024 * 1024;
     /** Per-file cap mirrored from {@link #writeDirectory}; enforced again on import. */
     private static final int MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -49,13 +49,19 @@ public final class SqliteArchiveService implements ArchiveService {
             java.util.Arrays.asList("workspace", "skills", "attachments");
     /** Order matters: parents must be restored before the rows that reference them. */
     private static final String[] TABLES = {
-            "conversations", "messages", "message_blocks", "message_tool_calls",
-            "settings", "models", "error_logs", "memories",
+            "conversations", "agent_sessions", "messages", "message_blocks",
+            "message_tool_calls", "settings", "models", "error_logs", "memories",
             "extension_agents", "extension_mcps", "file_diffs", "projects", "ipc_providers"
     };
     /** v1 archives carried only the conversation/settings core. */
     private static final String[] V1_TABLES = {
             "conversations", "messages", "message_blocks", "settings", "models", "error_logs"
+    };
+    /** v2 archives added the tool-call, memory and extension tables. */
+    private static final String[] V2_TABLES = {
+            "conversations", "messages", "message_blocks", "message_tool_calls",
+            "settings", "models", "error_logs", "memories",
+            "extension_agents", "extension_mcps", "file_diffs", "projects", "ipc_providers"
     };
 
     private final LineCodeDatabase database;
@@ -176,7 +182,7 @@ public final class SqliteArchiveService implements ArchiveService {
 
     /** Rejects archives that miss any table required by their declared format version. */
     private static void requireEntries(Map<String, byte[]> entries, int version) {
-        String[] required = version < 2 ? V1_TABLES : TABLES;
+        String[] required = version < 2 ? V1_TABLES : version < 3 ? V2_TABLES : TABLES;
         for (String table : required) {
             if (!entries.containsKey(table + ".json")) {
                 throw new DomainException(ErrorCode.INVALID_INPUT, "missing " + table);

@@ -32,6 +32,7 @@ import cn.lineai.data.migration.LegacyFiles;
 import cn.lineai.data.migration.LegacyMigration;
 import cn.lineai.data.api.SkillStore;
 import cn.lineai.data.sqlite.LineCodeDatabase;
+import cn.lineai.data.sqlite.SqliteAgentSessionStore;
 import cn.lineai.data.sqlite.SqliteConversationStore;
 import cn.lineai.data.sqlite.SqliteDiffStore;
 import cn.lineai.data.sqlite.SqliteMessageStore;
@@ -110,6 +111,7 @@ public final class AppGraph implements AutoCloseable {
     private final BackgroundShellRegistry backgroundShellRegistry;
     final AgentEventBus agentEventBus = new AgentEventBus();
     private MessageStore messageStore;
+    private cn.lineai.data.api.AgentSessionStore agentSessionStore;
     private SystemPromptAssembler systemPromptAssembler;
     private PromptExtensions promptExtensions;
     private Clock appClock;
@@ -217,6 +219,7 @@ public final class AppGraph implements AutoCloseable {
         this.modelClient = client;
         this.toolContextForAgents = toolContext;
         this.messageStore = messages;
+        this.agentSessionStore = new SqliteAgentSessionStore(database, clock);
         this.appClock = clock;
         this.systemPromptAssembler = new SystemPromptAssembler(promptStore);
         this.promptExtensions = new DefaultPromptExtensions(agentExtensionStore::list,
@@ -450,7 +453,7 @@ public final class AppGraph implements AutoCloseable {
      *  Called from the main thread only (activity startup and drawer callbacks). */
     public SubAgentRegistry subAgents() {
         if (subAgentRegistry == null) {
-            subAgentRegistry = new SubAgentRegistry(this, agentEventBus);
+            subAgentRegistry = new SubAgentRegistry(this, agentEventBus, agentSessionStore);
         }
         return subAgentRegistry;
     }
