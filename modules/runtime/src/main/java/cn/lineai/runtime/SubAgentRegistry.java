@@ -37,6 +37,11 @@ import cn.lineai.tool.api.ToolRegistry;
  * status, last turn) so a process restart restores the agent instead of recreating it.
  * Sessions whose process died mid-turn load as {@code INTERRUPTED} and revive on the next
  * message; creating a session and restoring one are deliberately separate code paths.</p>
+ *
+ * <p>Every dispatch binds the session to one local directory: that directory becomes the
+ * session's {@code ToolContext.workspaceRoot()}, so {@code "."} and every relative path inside
+ * the sub agent resolve there instead of the parent's root. The binding is persisted with the
+ * session and reused when the session is restored.</p>
  */
 public final class SubAgentRegistry implements AgentRuntime {
 
@@ -134,10 +139,21 @@ public final class SubAgentRegistry implements AgentRuntime {
         return session == null ? null : session.controller;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The explicit binding is re-checked here so a session is never created in a directory
+     * that vanished between the dispatch check and the start; an empty binding inherits the
+     * selected project root, the only option for SSH and terminal-provider workspaces.</p>
+     */
     @Override
-    public AgentEntry start(AgentExtension agent, String task, boolean persistent) {
+    public AgentEntry start(AgentExtension agent, String task, boolean persistent,
+                            String workspace) {
         String kind = persistent ? Conversation.KIND_AGENT : Conversation.KIND_AGENT_TRANSIENT;
-        String binding = workspaceBinding();
+        String binding = bindingFor(workspace);
+        if (binding == null) {
+            return null;
+        }
         long now = graph.clock().nowMs();
         Conversation conversation = graph.conversations().create(
                 agent.name.isEmpty() ? agent.slug : agent.name + ": " + firstLine(task),
@@ -310,8 +326,9 @@ public final class SubAgentRegistry implements AgentRuntime {
         cn.lineai.tool.api.ToolContext shared = graph.agentToolContext();
         cn.lineai.tool.api.ToolContext context = new cn.lineai.tool.api.ToolContext() {
             @Override public File workspaceRoot() {
-                // A restored session keeps the workspace it was spawned in when that path
-                // still exists; otherwise it falls back to the current selection.
+                // The session stays bound to the directory chosen at dispatch time. A restored
+                // session keeps that directory while it still exists; once it is gone the
+                // session falls back to the current selection.
                 if (!binding.isEmpty()) {
                     File bound = new File(binding);
                     if (bound.isDirectory()) return bound;
@@ -502,10 +519,21 @@ public final class SubAgentRegistry implements AgentRuntime {
         });
     }
 
-    /** The workspace path a session binds to at spawn time. */
-    private String workspaceBinding() {
-        cn.lineai.core.model.Project project = graph.projects().selected();
-        return project == null ? "" : project.path;
+    /**
+     * Resolves a fresh session's binding: an explicit local directory must still exist, while
+     * an empty binding falls back to the selected project root, which is also the only option
+     * for remote workspaces because SSH and terminal-provider workspaces cannot bind locally.
+     *
+     * @param workspace canonical directory chosen by the dispatcher; may be null or empty
+     * @return the binding to persist, or null when the explicit directory no longer exists
+     */
+    private String bindingFor(String workspace) {
+        if (workspace == null || workspace.trim().isEmpty()) {
+            cn.lineai.core.model.Project project = graph.projects().selected();
+            return project == null ? "" : project.path;
+        }
+        File bound = new File(workspace.trim());
+        return bound.isDirectory() ? bound.getAbsolutePath() : null;
     }
 
     private static String displayName(AgentExtension agent) {

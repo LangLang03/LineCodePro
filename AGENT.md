@@ -79,7 +79,13 @@ sub agent owns a conversation row (kind `agent` or `agent_transient`), an `agent
 record (schema v15: parent conversation, transcript conversation, agent definition slug,
 workspace binding, status, last turn id) and a full `ChatController`, so transcripts and
 session identity persist, compaction works and sessions run in parallel (one single-threaded
-loop per agent; no shared locks). Creating a session and restoring one are separate paths:
+loop per agent; no shared locks). Every dispatch requires a `workspace` argument: the tool
+resolves it relative to the caller's root through the same `PathPolicy` containment as the file
+tools and binds the session's `ToolContext.workspaceRoot()` to that existing directory, so `.`
+inside the sub agent is the bound directory rather than the parent's root; the binding is
+persisted in the session record and reused on revive. SSH and terminal-provider workspaces are
+unsupported: the dispatch accepts only `.` there and the sub agent keeps inheriting the parent
+workspace. Creating a session and restoring one are separate paths:
 `start()` creates the conversation and record, `restore()` reattaches to the record's
 conversation (`openThen` restores history and seq), rebuilds the inbox and rebinds the stored
 workspace path. Records still marked RUNNING/WAITING_INPUT at load time become INTERRUPTED

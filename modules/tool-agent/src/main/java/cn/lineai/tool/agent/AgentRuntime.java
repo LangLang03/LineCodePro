@@ -17,15 +17,25 @@ import cn.lineai.tool.api.AgentEntry;
 public interface AgentRuntime {
 
     /**
-     * Starts a sub agent session and begins its first turn.
+     * Starts a sub agent session bound to one local workspace directory and begins its first
+     * turn.
+     *
+     * <p>The binding defines the session's {@code ToolContext.workspaceRoot()}: {@code "."} and
+     * every relative path inside the session resolve against it, and the shell runs there by
+     * default. The caller resolves and validates the directory before starting the session.
+     * SSH and terminal-provider workspaces are not supported because their tools operate on a
+     * remote host where a local directory has no meaning; they pass an empty binding and the
+     * session keeps inheriting the parent workspace.</p>
      *
      * @param agent agent extension providing name, prompt and tool permissions
      * @param task task text handed to the agent as its first user message
      * @param persistent true for a messageable, revivable session; false for a
      *                   one-shot transient run
+     * @param workspace canonical absolute local directory the session is bound to; empty to
+     *                  inherit the parent workspace
      * @return the started entry (status running), or null when the runtime is unavailable
      */
-    AgentEntry start(AgentExtension agent, String task, boolean persistent);
+    AgentEntry start(AgentExtension agent, String task, boolean persistent, String workspace);
 
     /**
      * Lists every known sub agent session with its live status.

@@ -15,13 +15,15 @@ import static org.junit.Assert.assertFalse;
 
 /**
  * Agent tools must stay visible in remote workspace modes (SSH and terminal provider):
- * the workspace policy filters on {@code needsLocalWorkspace}, and the sub agent session
- * inherits the remote-aware context.
+ * the workspace policy filters on {@code needsLocalWorkspace}, and a remote dispatch passes no
+ * workspace binding because those modes cannot bind a local directory, so the sub agent
+ * session inherits the parent remote workspace.
  */
 public class AgentToolsRemoteTest {
 
     private static final AgentRuntime RUNTIME = new AgentRuntime() {
-        public AgentEntry start(AgentExtension agent, String task, boolean persistent) {
+        public AgentEntry start(AgentExtension agent, String task, boolean persistent,
+                                String workspace) {
             return new AgentEntry("sa", agent.name, "agent", "conv", AgentStatus.RUNNING);
         }
         public java.util.List<AgentEntry> list() { return java.util.Collections.emptyList(); }
