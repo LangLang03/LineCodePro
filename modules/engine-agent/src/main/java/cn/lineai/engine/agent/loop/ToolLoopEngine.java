@@ -303,6 +303,7 @@ public final class ToolLoopEngine implements Cancellable {
                 }
             } catch (Exception error) {
                 // A failed poll keeps the loop running; the next injection point retries.
+                System.err.println("runtime inbox poll failed: " + error);
             }
             return notices;
         }
@@ -312,6 +313,7 @@ public final class ToolLoopEngine implements Cancellable {
             notices.addAll(backgrounds.drainCompleted());
         } catch (Exception error) {
             // Same policy as the inbox path: a failed poll retries later.
+            System.err.println("background notice poll failed: " + error);
         }
         return notices;
     }
