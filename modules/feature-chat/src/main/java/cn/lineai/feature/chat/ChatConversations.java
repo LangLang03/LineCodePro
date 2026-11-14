@@ -40,8 +40,12 @@ final class ChatConversations {
      * @param afterBind action queued after the conversation is bound; may be null
      */
     static void open(ChatController chat, String id, Runnable afterBind) {
-        if (chat.engine != null) chat.stop();
-        chat.invalidatePendingGeneration();
+        // Switching to look at another conversation must not interrupt the running turn:
+        // the loop keeps writing to its own rows while the view detaches.
+        if (chat.engine == null) {
+            chat.invalidatePendingGeneration();
+        }
+        final boolean background = chat.engine != null;
         chat.scheduler.io(() -> {
             List<Message> loaded = chat.messages.load(id);
             final int nextSeq = loaded.isEmpty() ? 1
@@ -52,9 +56,25 @@ final class ChatConversations {
                     .contextPercent(ChatTurnConfig.percent(loaded,
                             ChatContextLimits.of(chat.modelConfig(), chat.settings)))
                     .model(chat.modelLabel())
+                    .busyElsewhere(background)
                     .revision(System.nanoTime())
                     .build();
             chat.events.post(() -> {
+                if (background) {
+                    if (id.equals(chat.conversationId)) {
+                        // Back on the running conversation: reattach and resume rendering.
+                        chat.reattachView();
+                        chat.publish(chat.state.value().toBuilder()
+                                .messages(loaded)
+                                .streaming(true)
+                                .revision(System.nanoTime())
+                                .build());
+                    } else {
+                        chat.detachView(id, nextSeq);
+                        chat.publish(snapshot);
+                    }
+                    return;
+                }
                 chat.conversationId = id;
                 chat.seq = nextSeq;
                 chat.discardPipeline();
@@ -68,11 +88,18 @@ final class ChatConversations {
 
     /** Clears the transcript and returns to the unsaved empty conversation. */
     static void newConversation(ChatController chat) {
-        if (chat.engine != null) chat.stop();
-        chat.invalidatePendingGeneration();
+        final boolean background = chat.engine != null;
+        if (!background) {
+            chat.invalidatePendingGeneration();
+        }
         chat.scheduler.io(() -> {
             final String label = chat.modelLabel();
             chat.events.post(() -> {
+                if (background) {
+                    chat.detachView("", 1);
+                    chat.publish(ChatState.empty().toBuilder().model(label).build());
+                    return;
+                }
                 chat.conversationId = "";
                 chat.seq = 1;
                 chat.discardPipeline();
@@ -86,6 +113,9 @@ final class ChatConversations {
         if (id.equals(chat.conversationId)) {
             chat.stop();
             chat.discardPipeline();
+            if (id.equals(chat.viewedConversationId())) {
+                chat.reattachView();
+            }
         }
         chat.scheduler.io(() -> {
             chat.conversations.delete(id);

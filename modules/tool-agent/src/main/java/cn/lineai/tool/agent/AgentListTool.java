@@ -49,7 +49,7 @@ final class AgentListTool implements Tool {
 
     /** {@inheritDoc} */
     @Override public ToolPresentation presentation(JSONObject arguments) {
-        return new ToolPresentation("Sub agents", ToolIcon.AGENT, "list sessions",
+        return new ToolPresentation("Sub agents", ToolIcon.AGENT_LIST, "list sessions",
                 ToolPresentation.reason(arguments));
     }
 

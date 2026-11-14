@@ -82,6 +82,7 @@ public final class ChatComposer extends LinearLayout {
     private boolean streaming;
     private String modelLabel = "";
     private boolean modelSwitchable = true;
+    private boolean busyElsewhere;
     private boolean enterSends = true;
     /** Builds attachment strip, input panel, model pill and the attach/send controls. */
     public ChatComposer(Context context, Tokens tokens) {
@@ -379,6 +380,7 @@ public final class ChatComposer extends LinearLayout {
         modelText.setText(modelLabel);
         modelPill.setContentDescription(state.modelLabel.isEmpty()
                 ? modelLabel : state.modelLabel);
+        busyElsewhere = state.busyElsewhere;
         boolean agentView = !state.agentId.isEmpty();
         boolean transientAgent = state.transientAgent;
         boolean locked = agentView && transientAgent;
@@ -554,7 +556,7 @@ public final class ChatComposer extends LinearLayout {
 
     /** Syncs the send/stop button and the attach button with streaming and content state. */
     private void updateSend() {
-        boolean canSend = streaming || hasContent();
+        boolean canSend = !busyElsewhere && (streaming || hasContent());
         boolean idleStop = streaming && !hasContent();
         send.setIconType(idleStop ? Icons.STOP : Icons.ARROW_UP);
         send.setIconSizeDp(44, idleStop ? 17 : 20);

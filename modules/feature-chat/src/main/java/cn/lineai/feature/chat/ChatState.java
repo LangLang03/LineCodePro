@@ -34,6 +34,8 @@ public final class ChatState {
     public final String agentId;
     /** True when the viewed conversation belongs to a transient (not messageable) agent. */
     public final boolean transientAgent;
+    /** True when a background turn is running in another conversation than the viewed one. */
+    public final boolean busyElsewhere;
     /** Monotonic revision stamp; identical values let views skip a rebind. */
     public final long revision;
 
@@ -54,6 +56,7 @@ public final class ChatState {
         this.hasModel = b.hasModel;
         this.agentId = b.agentId;
         this.transientAgent = b.transientAgent;
+        this.busyElsewhere = b.busyElsewhere;
         this.revision = b.revision;
     }
 
@@ -86,6 +89,7 @@ public final class ChatState {
                 .hasModel(hasModel)
                 .agentId(agentId)
                 .transientAgent(transientAgent)
+                .busyElsewhere(busyElsewhere)
                 .revision(revision);
     }
 
@@ -107,6 +111,7 @@ public final class ChatState {
         private boolean hasModel;
         private String agentId = "";
         private boolean transientAgent;
+        private boolean busyElsewhere;
         private long revision;
 
         /** Replaces the transcript; null yields an empty list, otherwise a defensive copy. */
@@ -184,6 +189,12 @@ public final class ChatState {
         /** Sets whether the viewed conversation belongs to a transient agent. */
         public Builder transientAgent(boolean value) {
             transientAgent = value;
+            return this;
+        }
+
+        /** Sets whether a background turn owns another conversation right now. */
+        public Builder busyElsewhere(boolean value) {
+            busyElsewhere = value;
             return this;
         }
 

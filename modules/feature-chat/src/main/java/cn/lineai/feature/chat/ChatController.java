@@ -73,6 +73,12 @@ public final class ChatController {
     final SerialEvents events;
 
     String conversationId = "";
+    /** Conversation shown in the UI; differs from {@code conversationId} while detached. */
+    String viewedConversationId = "";
+    /** True while a background turn drives another conversation than the viewed one. */
+    boolean detached;
+    /** Seq counter of the viewed conversation, captured when detaching. */
+    int viewedSeq;
     ToolLoopEngine engine;
     /** Agent view marker: non-empty when this controller drives a sub agent conversation. */
     private String agentId = "";
@@ -122,6 +128,11 @@ public final class ChatController {
     public void setModelMissingHandler(Runnable handler) {
         this.modelMissingHandler = handler;
     }
+
+    /** Callback invoked when a send finds no configured model. */
+    Runnable getModelMissingHandler() {
+        return modelMissingHandler;
+    }
     /** Current immutable snapshot. */
     public ChatState state() {
         return state.value();
@@ -143,9 +154,42 @@ public final class ChatController {
         ChatConversations.start(this);
     }
 
-    /** Loads a conversation; a running loop is stopped first so it cannot write into the new list. */
+    /** Loads a conversation; a running loop keeps running and keeps writing to its own rows. */
     public void open(String id) {
         ChatConversations.open(this, id, null);
+    }
+
+    /** Conversation currently displayed; the running turn may belong to another one. */
+    public String viewedConversationId() {
+        return ChatDetachedView.viewed(this);
+    }
+
+    /** Conversation a background turn is writing into; empty when idle. */
+    public String runningConversationId() {
+        return ChatDetachedView.running(this);
+    }
+
+    /** True while the displayed conversation differs from the one a turn is writing into. */
+    boolean detached() {
+        return ChatDetachedView.detached(this);
+    }
+
+    /** Marks the controller as viewing another conversation while the turn keeps running. */
+    void detachView(String id, int seqAtView) {
+        ChatDetachedView.detach(this, id, seqAtView);
+    }
+
+    /** Rebinds the view to the running conversation; called when the user opens it again. */
+    void reattachView() {
+        ChatDetachedView.reattach(this);
+    }
+
+    /**
+     * Hands the write target over to the viewed conversation once the background turn ended,
+     * so the next send appends to the conversation the user is looking at.
+     */
+    void adoptViewAfterBackgroundTurn() {
+        ChatDetachedView.adopt(this);
     }
 
     /** Clears the transcript and returns to the unsaved empty conversation. */
@@ -205,44 +249,23 @@ public final class ChatController {
         return engine != null || starting;
     }
 
+    /** Sends a prompt with no attachments; ignored while a generation is active. */
     public void send(String text) {
-        send(text, Collections.<String>emptyList(), Collections.<String>emptyList());
-    }
-    public void send(String text, List<String> imagePaths) {
-        send(text, imagePaths, Collections.<String>emptyList());
-    }
-    /** Sends a prompt with images and file references; ignored while a generation is active. */
-    public void send(String text, List<String> imagePaths, List<String> filePaths) {
-        String prompt = text == null ? "" : text.trim();
-        final List<String> images = imagePaths == null
-                ? Collections.<String>emptyList() : new ArrayList<>(imagePaths);
-        final List<String> files = filePaths == null ? Collections.<String>emptyList() : new ArrayList<>(filePaths);
-        if ((prompt.isEmpty() && images.isEmpty() && files.isEmpty())
-                || engine != null || starting) {
-            return;
-        }
-        starting = true;
-        ModelConfig model = modelConfig();
-        if (model == null) {
-            starting = false;
-            if (modelMissingHandler != null) {
-                modelMissingHandler.run();
-            }
-            return;
-        }
-        final int generation = ++generationSeq;
-        scheduler.io(() -> {
-            try {
-                startGeneration(prompt, images, files, model, generation);
-            } catch (RuntimeException error) {
-                events.post(() -> starting = false);
-                throw error;
-            }
-        });
+        ChatSends.send(this, text, Collections.<String>emptyList(),
+                Collections.<String>emptyList());
     }
 
-    /** IO-side setup: creates the conversation if needed, persists the user row, posts the start. */
-    private void startGeneration(String prompt, List<String> images, List<String> files,
+    /** Sends a prompt with image attachments; ignored while a generation is active. */
+    public void send(String text, List<String> imagePaths) {
+        ChatSends.send(this, text, imagePaths, Collections.<String>emptyList());
+    }
+
+    /** Sends a prompt with images and file references; ignored while a generation is active. */
+    public void send(String text, List<String> imagePaths, List<String> filePaths) {
+        ChatSends.send(this, text, imagePaths, filePaths);
+    }
+
+    void startGeneration(String prompt, List<String> images, List<String> files,
                                  ModelConfig model, int generation) {
         if (generation != generationSeq) {
             return;
@@ -499,6 +522,11 @@ public final class ChatController {
     }
 
     void publish(ChatState snapshot) {
+        // The background turn keeps persisting rows, but its state must not replace the
+        // conversation the user is reading.
+        if (detached) {
+            return;
+        }
         boolean hasModel = modelConfig() != null;
         java.util.List<ToolApprovalItem> merged = mergeSubApprovals(snapshot.pendingApprovals);
         ChatState ready = snapshot.toBuilder().hasModel(hasModel)

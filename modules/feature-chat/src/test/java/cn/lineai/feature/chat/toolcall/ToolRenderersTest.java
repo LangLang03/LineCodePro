@@ -28,7 +28,11 @@ public final class ToolRenderersTest {
         assertSame(ShellToolRenderer.INSTANCE, ToolRenderers.renderer(ToolIcon.TERMINAL));
         assertSame(DeleteToolRenderer.INSTANCE, ToolRenderers.renderer(ToolIcon.DELETE));
         assertSame(TodoToolRenderer.INSTANCE, ToolRenderers.renderer(ToolIcon.TODO));
-        assertSame(AgentToolRenderer.INSTANCE, ToolRenderers.renderer(ToolIcon.AGENT));
+        assertSame(AgentToolRenderers.SPAWN, ToolRenderers.renderer(ToolIcon.AGENT));
+        assertSame(AgentToolRenderers.SPAWN, ToolRenderers.renderer(ToolIcon.AGENT_SPAWN));
+        assertSame(AgentToolRenderers.SEND, ToolRenderers.renderer(ToolIcon.AGENT_SEND));
+        assertSame(AgentToolRenderers.WAIT, ToolRenderers.renderer(ToolIcon.AGENT_WAIT));
+        assertSame(AgentToolRenderers.LIST, ToolRenderers.renderer(ToolIcon.AGENT_LIST));
         assertSame(MemoryToolRenderer.INSTANCE, ToolRenderers.renderer(ToolIcon.MEMORY));
         assertSame(ImageToolRenderer.INSTANCE, ToolRenderers.renderer(ToolIcon.IMAGE));
         assertSame(ImageToolRenderer.INSTANCE, ToolRenderers.renderer(ToolIcon.SPARKLES));

@@ -28,6 +28,9 @@ import cn.lineai.ui.tokens.Tokens;
 public final class ChatScreenView extends FrameLayout implements Observable.Observer<ChatState> {
 
     private ChatController controller;
+    /** Latest sub agent snapshot, shared by the header chip, the sheet and the drawer. */
+    private java.util.List<cn.lineai.tool.api.AgentEntry> agents =
+            java.util.Collections.emptyList();
     private Scope scope;
     private final LinearLayout content;
     private final ChatHeaderView header;
@@ -133,6 +136,14 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
                 if (host != null) {
                     host.onMore();
                 }
+            }
+
+            @Override
+            public void onAgents() {
+                AgentSessionSheet.show(getContext(), tokens, agents, currentAgentId(),
+                        agentId -> {
+                            if (host != null) host.onSelectAgent(agentId);
+                        });
             }
 
             @Override
@@ -417,7 +428,7 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         scope.track(controller.observe(this));
         scope.track(controller.observeConversations(list -> {
             conversations = list;
-            drawer.setConversations(list, controller.conversationId());
+            refreshDrawerConversations();
         }));
     }
 
@@ -438,9 +449,19 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
         }
     }
 
+    /** Re-renders the drawer list with the viewed and running conversation ids. */
+    private void refreshDrawerConversations() {
+        drawer.setConversations(conversations, controller.viewedConversationId(),
+                controller.runningConversationId());
+    }
+
     /** Updates the drawer's live sub agent list; called by the host from the registry. */
     public void setAgents(java.util.List<cn.lineai.tool.api.AgentEntry> agents) {
-        drawer.setAgents(agents, currentAgentId());
+        this.agents = agents == null
+                ? java.util.Collections.<cn.lineai.tool.api.AgentEntry>emptyList()
+                : new java.util.ArrayList<>(agents);
+        drawer.setAgents(this.agents, currentAgentId());
+        header.setAgentCount(this.agents.size());
     }
 
     /** The sub agent owning the currently displayed conversation; empty for the root view. */
@@ -451,10 +472,10 @@ public final class ChatScreenView extends FrameLayout implements Observable.Obse
     /** Re-renders every child from one snapshot; also syncs the drawer id/project caches. */
     @Override
     public void onChanged(ChatState state) {
-        String currentId = controller.conversationId();
+        String currentId = controller.viewedConversationId();
         if (!currentId.equals(drawerConversationId)) {
             drawerConversationId = currentId;
-            drawer.setConversations(conversations, currentId);
+            refreshDrawerConversations();
         }
         if (!state.projectLabel.equals(drawerProject)) {
             drawerProject = state.projectLabel;

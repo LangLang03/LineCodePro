@@ -99,7 +99,7 @@ final class AgentTool implements Tool {
     /** {@inheritDoc} */
     @Override public ToolPresentation presentation(JSONObject arguments) {
         return new ToolPresentation(agent.name.isEmpty() ? agent.slug : agent.name,
-                ToolIcon.AGENT, arguments == null ? "" : arguments.optString("task", ""),
+                ToolIcon.AGENT_SPAWN, arguments == null ? "" : arguments.optString("task", ""),
                 ToolPresentation.reason(arguments));
     }
 

@@ -54,7 +54,8 @@ public final class SubAgentRegistry implements AgentRuntime {
         final ChatController controller;
         /** Owner-scoped inbox of this session; receives the root's messages while running. */
         final RuntimeInbox inbox;
-        volatile boolean hadPendingApprovals;
+        /** Last status announced to the parent; null until the first observed state. */
+        volatile AgentStatus lastStatus;
 
         Session(String agentId, String name, boolean persistent, AgentExtension agent,
                 ChatController controller, RuntimeInbox inbox) {
@@ -186,6 +187,7 @@ public final class SubAgentRegistry implements AgentRuntime {
         ChatController controller = buildController(agent, persistent, agentId, inbox, binding);
         Session session = new Session(agentId, displayName(agent), persistent, agent,
                 controller, inbox);
+        session.lastStatus = AgentStatus.RUNNING;
         sessions.put(agentId, session);
         controller.observe(state -> onSessionState(session, state));
         return session;
@@ -361,7 +363,6 @@ public final class SubAgentRegistry implements AgentRuntime {
     }
 
     private void onSessionState(Session session, cn.lineai.feature.chat.ChatState state) {
-        AgentStatus previous = statusOf(session);
         AgentStatus status;
         if (!state.pendingApprovals.isEmpty()) {
             status = AgentStatus.WAITING_INPUT;
@@ -372,14 +373,11 @@ public final class SubAgentRegistry implements AgentRuntime {
         } else {
             status = AgentStatus.FAILED;
         }
-        if (status != AgentStatus.RUNNING && session.hadPendingApprovals) {
-            session.hadPendingApprovals = false;
-        }
-        if (state.pendingApprovals.isEmpty() && !session.hadPendingApprovals) {
-            session.hadPendingApprovals = false;
-        }
-        session.hadPendingApprovals = !state.pendingApprovals.isEmpty();
-
+        // Compare against the last announced value: the controller has already published the
+        // new state, so reading it back here would always equal the fresh status and suppress
+        // every transition — including the completion event the parent waits for.
+        AgentStatus previous = session.lastStatus;
+        session.lastStatus = status;
         if (status == previous) {
             return;
         }

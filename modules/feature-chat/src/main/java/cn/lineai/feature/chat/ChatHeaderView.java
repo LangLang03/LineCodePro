@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.Typeface;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
@@ -46,6 +47,9 @@ public final class ChatHeaderView extends LinearLayout {
 
         /** Opens the context-usage detail. */
         void onContext();
+
+        /** Opens the sub agent session picker. */
+        void onAgents();
     }
 
     /** Fixed header action metrics in dp. */
@@ -53,9 +57,12 @@ public final class ChatHeaderView extends LinearLayout {
     private static final int ACTION_HEIGHT_DP = 48;
     private static final int ACTION_ICON_DP = 19;
     /** Width reserved for trailing actions when clamping the title. */
-    private static final int RESERVED_WIDTH_DP = 212;
+    private static final int RESERVED_WIDTH_DP = 288;
 
     private final List<IconButton> actions = new ArrayList<>();
+    private final TextView agentCount;
+    private final IconButton agentGlyph;
+    private final IconButton agentChevron;
     private final TextView projectText;
     private final IconButton chevron;
     private final ContextRing ring;
@@ -106,6 +113,38 @@ public final class ChatHeaderView extends LinearLayout {
         chevron.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         brand.addView(chevron, new LayoutParams(Ui.dp(context, 24), Ui.dp(context, 32)));
         addView(brand, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+
+        LinearLayout agentChip = new LinearLayout(context);
+        agentChip.setOrientation(HORIZONTAL);
+        agentChip.setGravity(Gravity.CENTER_VERTICAL);
+        agentChip.setPadding(Ui.dp(context, 6), Ui.dp(context, 4),
+                Ui.dp(context, 6), Ui.dp(context, 4));
+        agentChip.setClickable(true);
+        agentChip.setFocusable(true);
+        agentGlyph = new IconButton(context, Icons.BOT);
+        agentGlyph.setIconSizeDp(15, 15);
+        agentGlyph.setIconColor(tokens.textTertiary);
+        agentGlyph.setClickable(false);
+        agentChip.addView(agentGlyph, new LayoutParams(Ui.dp(context, 15), Ui.dp(context, 15)));
+        agentCount = Ui.text(context, "", 11, tokens.textTertiary, Typeface.NORMAL);
+        agentCount.setSingleLine(true);
+        agentCount.setMaxWidth(Ui.dp(context, 110));
+        TextView countView = agentCount;
+        LayoutParams countParams = new LayoutParams(-2, -2);
+        countParams.leftMargin = Ui.dp(context, 4);
+        agentChip.addView(countView, countParams);
+        agentChevron = new IconButton(context, Icons.CHEVRON_DOWN);
+        agentChevron.setIconSizeDp(12, 12);
+        agentChevron.setIconColor(tokens.textTertiary);
+        agentChevron.setClickable(false);
+        agentChip.addView(agentChevron, new LayoutParams(Ui.dp(context, 12), Ui.dp(context, 12)));
+        agentChip.setOnClickListener(v -> {
+            if (listener != null) {
+                listener.onAgents();
+            }
+        });
+        addView(agentChip, new LayoutParams(LayoutParams.WRAP_CONTENT,
+                Ui.dp(context, ACTION_HEIGHT_DP)));
 
         ring = new ContextRing(context, tokens);
         ring.setContentDescription(context.getString(R.string.context_usage_title));
@@ -163,6 +202,16 @@ public final class ChatHeaderView extends LinearLayout {
                 - Ui.dp(getContext(), RESERVED_WIDTH_DP)));
     }
 
+    /** Shows the live sub agent count in the chip; hidden while there is nothing to switch to. */
+    public void setAgentCount(int count) {
+        boolean visible = count > 0;
+        agentCount.setText(visible
+                ? getContext().getString(R.string.drawer_agent_chip, count) : "");
+        agentGlyph.setVisibility(visible ? VISIBLE : GONE);
+        agentChevron.setVisibility(visible ? VISIBLE : GONE);
+        agentCount.setVisibility(visible ? VISIBLE : GONE);
+    }
+
     /** Renders the project label and the context percentage ring. */
     public void render(ChatState state, Tokens current) {
         applyTokens(current);
@@ -186,6 +235,9 @@ public final class ChatHeaderView extends LinearLayout {
         setBackgroundColor(current.bg);
         projectText.setTextColor(current.text);
         chevron.setIconColor(current.textSecondary);
+        agentCount.setTextColor(current.textTertiary);
+        agentGlyph.setIconColor(current.textTertiary);
+        agentChevron.setIconColor(current.textTertiary);
         for (IconButton action : actions) {
             action.setIconColor(current.textSecondary);
         }

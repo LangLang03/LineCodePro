@@ -29,7 +29,15 @@ final class ToolRenderers {
             case TODO:
                 return TodoToolRenderer.INSTANCE;
             case AGENT:
-                return AgentToolRenderer.INSTANCE;
+                return AgentToolRenderers.SPAWN;
+            case AGENT_SPAWN:
+                return AgentToolRenderers.SPAWN;
+            case AGENT_SEND:
+                return AgentToolRenderers.SEND;
+            case AGENT_WAIT:
+                return AgentToolRenderers.WAIT;
+            case AGENT_LIST:
+                return AgentToolRenderers.LIST;
             case MEMORY:
                 return MemoryToolRenderer.INSTANCE;
             case IMAGE:

@@ -54,6 +54,7 @@
     <string name="composer_hint_no_model">Please configure a model first in Settings → Model management</string>
     <string name="composer_hint_transient">One-shot agent — this session is not messageable</string>
     <string name="drawer_agent_chip">%d sub agents</string>
+    <string name="chat_agents_title">Agents</string>
     <string name="drawer_agent_root">Root (this conversation)</string>
     <string name="composer_attachment_remove_desc">Remove attachment</string>
     <string name="composer_image_button_desc">Pick an image to send</string>
@@ -1645,6 +1646,9 @@
     <string name="tool_call_status_running">Running</string>
     <string name="tool_call_status_failed">Failed</string>
     <string name="tool_call_status_interrupted">Interrupted</string>
+    <string name="tool_call_agent_context_label">Context</string>
+    <string name="tool_call_agent_send_to">to %1$s</string>
+    <string name="tool_call_agent_list_summary">%1$d sessions</string>
     <string name="tool_call_status_pending_review">Needs confirmation</string>
     <string name="tool_call_agent_tool_count">%1$d tools</string>
     <string name="tool_call_agent_type_explore">Explore</string>

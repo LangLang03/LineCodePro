@@ -240,6 +240,7 @@ final class ChatTurnPipeline {
                     chat.messages.count(conversation));
             chat.publishConversations(chat.conversations.list());
         });
+        chat.adoptViewAfterBackgroundTurn();
         // Runtime events may have queued while the model was finishing: a non-empty inbox
         // starts the next turn immediately instead of idling until the user types.
         chat.events.post(chat::wakeFromInbox);
@@ -280,6 +281,7 @@ final class ChatTurnPipeline {
                 .revision(System.nanoTime())
                 .build());
         chat.writes.submit(() -> chat.messages.append(failed));
+        chat.adoptViewAfterBackgroundTurn();
         final String conversation = chat.conversationId;
         chat.writes.submit(() -> {
             chat.conversations.touch(conversation, chat.clock.nowMs(),

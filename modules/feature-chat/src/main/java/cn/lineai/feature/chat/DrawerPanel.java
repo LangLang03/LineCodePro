@@ -23,6 +23,7 @@ import java.util.function.Consumer;
 import cn.lineai.core.model.Conversation;
 import cn.lineai.ui.i18n.R;
 import cn.lineai.ui.kit.IconButton;
+import cn.lineai.ui.kit.DotMatrixSpinner;
 import cn.lineai.ui.kit.Icons;
 import cn.lineai.ui.kit.Ui;
 import cn.lineai.ui.tokens.Tokens;
@@ -118,6 +119,8 @@ public final class DrawerPanel extends FrameLayout {
     private Listener listener;
     private Tokens tokens;
     private String currentId = "";
+    /** Conversation currently streaming; empty when idle. */
+    private String runningId = "";
     private boolean filesMode;
 
     /** Builds scrim, sidebar, header, tabs, conversation list and the files group. */
@@ -363,78 +366,45 @@ public final class DrawerPanel extends FrameLayout {
     }
 
     public void setConversations(List<Conversation> conversations) {
-        setConversations(conversations, currentId);
+        setConversations(conversations, currentId, runningId);
     }
 
     /** Re-renders the conversation list with the given selection; null input means empty. */
     public void setConversations(List<Conversation> conversations, String currentId) {
+        setConversations(conversations, currentId, runningId);
+    }
+
+    /**
+     * Re-renders the conversation list with the selection and the conversation whose turn is
+     * currently running (its delete action is replaced by a progress spinner).
+     */
+    public void setConversations(List<Conversation> conversations, String currentId,
+                                 String runningId) {
         this.currentId = currentId == null ? "" : currentId;
+        this.runningId = runningId == null ? "" : runningId;
         conversationList.removeAllViews();
         List<Conversation> items = conversations == null
                 ? Collections.<Conversation>emptyList() : conversations;
         emptyConversations.setVisibility(items.isEmpty() ? VISIBLE : GONE);
         for (Conversation conversation : items) {
-            conversationList.addView(new ConversationRow(conversation,
-                    conversation.id.equals(this.currentId)), margins(-1, -2, 0, 0, 0, 8));
-        }
-    }
-
-    /** One selectable conversation row with title, timestamp and delete action. */
-    private final class ConversationRow extends LinearLayout {
-        private final TextView title;
-        private final TextView time;
-        private final IconButton trash;
-        private final boolean selected;
-
-        /** Builds the row; the selected one is highlighted and opens on tap. */
-        ConversationRow(Conversation conversation, boolean selected) {
-            super(DrawerPanel.this.getContext());
-            this.selected = selected;
-            setOrientation(HORIZONTAL);
-            setGravity(Gravity.CENTER_VERTICAL);
-            setClickable(true);
-            setFocusable(true);
-            Ui.padding(this, 8, 16, 4, 16);
-            setOnClickListener(v -> {
-                if (listener != null) {
-                    listener.onSelect(conversation.id);
+            DrawerConversationRow row = new DrawerConversationRow(getContext(), tokens,
+                    conversation, conversation.id.equals(this.currentId),
+                    conversation.id.equals(this.runningId));
+            row.callback(new DrawerConversationRow.Callback() {
+                @Override public void onSelect(String id) {
+                    if (listener != null) {
+                        listener.onSelect(id);
+                    }
+                    close();
                 }
-                close();
-            });
-            LinearLayout labels = column(getContext());
-            Ui.padding(labels, 8, 0, 8, 0);
-            title = selected
-                    ? Ui.medium(getContext(), conversation.title, Tokens.FONT_MD, tokens.text)
-                    : Ui.text(getContext(), conversation.title, Tokens.FONT_MD, tokens.text,
-                            Typeface.NORMAL);
-            title.setMaxHeight(dp(21));
-            title.setSingleLine(true);
-            title.setEllipsize(TextUtils.TruncateAt.END);
-            labels.addView(title, lp(-1, -2));
-            time = Ui.text(getContext(), formatTime(conversation.updatedAt), Tokens.FONT_XS,
-                    tokens.textTertiary, Typeface.NORMAL);
-            labels.addView(time, margins(-1, -2, 0, 6, 0, 0));
-            addView(labels, lp(0, -2, 1f));
-            trash = new IconButton(getContext(), Icons.TRASH_2);
-            trash.setIconSizeDp(48, 16);
-            trash.setContentDescription(string(R.string.common_delete));
-            trash.setOnClickListener(v -> {
-                if (listener != null) {
-                    listener.onDelete(conversation.id);
+
+                @Override public void onDelete(String id) {
+                    if (listener != null) {
+                        listener.onDelete(id);
+                    }
                 }
             });
-            addView(trash, lp(48, 48));
-            restyle();
-        }
-
-        /** Applies the selected or plain card styling. */
-        void restyle() {
-            setBackground(Ui.roundedStroke(getContext(),
-                    selected ? tokens.inputBg : tokens.surfaceElevated, 12,
-                    selected ? tokens.accent : tokens.borderLight));
-            title.setTextColor(tokens.text);
-            time.setTextColor(tokens.textTertiary);
-            trash.setIconColor(tokens.textTertiary);
+            conversationList.addView(row, margins(-1, -2, 0, 0, 0, 8));
         }
     }
 
@@ -506,8 +476,8 @@ public final class DrawerPanel extends FrameLayout {
         filesTab.restyle();
         for (int i = 0; i < conversationList.getChildCount(); i++) {
             View child = conversationList.getChildAt(i);
-            if (child instanceof ConversationRow) {
-                ((ConversationRow) child).restyle();
+            if (child instanceof DrawerConversationRow) {
+                ((DrawerConversationRow) child).restyle();
             }
         }
     }

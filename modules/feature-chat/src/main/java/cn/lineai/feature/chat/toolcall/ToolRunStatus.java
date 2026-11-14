@@ -23,7 +23,9 @@ public enum ToolRunStatus {
     WAITING_UNLOCK("waiting_unlock"),
     REJECTED("rejected"),
     IN_PROGRESS("in_progress"),
-    COMPLETED("completed");
+    COMPLETED("completed"),
+    INTERRUPTED("interrupted"),
+    WAITING_INPUT("waiting_input");
 
     /** Wire token of the status. */
     public final String wire;

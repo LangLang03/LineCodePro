@@ -50,8 +50,8 @@ final class AgentSendTool implements Tool {
 
     /** {@inheritDoc} */
     @Override public ToolPresentation presentation(JSONObject arguments) {
-        return new ToolPresentation("Sub agents", ToolIcon.AGENT,
-                "send → " + (arguments == null ? "" : arguments.optString("agent_id", "")),
+        return new ToolPresentation("Send message", ToolIcon.AGENT_SEND,
+                arguments == null ? "" : arguments.optString("agent_id", ""),
                 ToolPresentation.reason(arguments));
     }
 

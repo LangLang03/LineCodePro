@@ -54,6 +54,7 @@
     <string name="composer_hint_no_model">Сначала настройте модель в Настройки → Управление моделями</string>
     <string name="composer_hint_transient">Одноразовый агент — этот чат недоступен для сообщений</string>
     <string name="drawer_agent_chip">%d субагентов</string>
+    <string name="chat_agents_title">Агенты</string>
     <string name="drawer_agent_root">Root (текущий чат)</string>
     <string name="composer_attachment_remove_desc">Удалить вложение</string>
     <string name="composer_image_button_desc">Выбрать изображение для отправки</string>
@@ -1643,6 +1644,9 @@
     <string name="tool_call_status_running">Выполняется</string>
     <string name="tool_call_status_failed">Сбой</string>
     <string name="tool_call_status_interrupted">Прервано</string>
+    <string name="tool_call_agent_context_label">Контекст</string>
+    <string name="tool_call_agent_send_to">кому: %1$s</string>
+    <string name="tool_call_agent_list_summary">%1$d сеансов</string>
     <string name="tool_call_status_pending_review">Требует подтверждения</string>
     <string name="tool_call_agent_tool_count">%1$d инструментов</string>
     <string name="tool_call_agent_type_explore">Исследование</string>

@@ -54,6 +54,7 @@
     <string name="composer_hint_no_model">请先到设置 → 模型管理配置模型</string>
     <string name="composer_hint_transient">一次性Agent——本会话不可交流</string>
     <string name="drawer_agent_chip">%d 个子代理</string>
+    <string name="chat_agents_title">代理会话</string>
     <string name="drawer_agent_root">Root（当前会话）</string>
     <string name="composer_attachment_remove_desc">移除附件</string>
     <string name="composer_image_button_desc">选择图片发送</string>
@@ -1646,6 +1647,9 @@
     <string name="tool_call_status_running">运行中</string>
     <string name="tool_call_status_failed">失败</string>
     <string name="tool_call_status_interrupted">已中断</string>
+    <string name="tool_call_agent_context_label">上下文</string>
+    <string name="tool_call_agent_send_to">发给 %1$s</string>
+    <string name="tool_call_agent_list_summary">%1$d 个会话</string>
     <string name="tool_call_status_pending_review">需要确认</string>
     <string name="tool_call_agent_tool_count">%1$d 工具</string>
     <string name="tool_call_agent_type_explore">探索</string>

@@ -41,6 +41,10 @@ final class ToolGlyphs {
             case TODO:
                 return Icons.SCROLL_TEXT;
             case AGENT:
+            case AGENT_SPAWN:
+            case AGENT_SEND:
+            case AGENT_WAIT:
+            case AGENT_LIST:
                 return Icons.BOT;
             case MEMORY:
                 return Icons.BOOK_OPEN;

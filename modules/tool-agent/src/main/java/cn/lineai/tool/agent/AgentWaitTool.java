@@ -57,8 +57,10 @@ final class AgentWaitTool implements Tool {
 
     /** {@inheritDoc} */
     @Override public ToolPresentation presentation(JSONObject arguments) {
-        return new ToolPresentation("Sub agents", ToolIcon.AGENT, "wait for activity",
-                ToolPresentation.reason(arguments));
+        long timeoutMs = arguments == null ? DEFAULT_WAIT_MS
+                : arguments.optLong("timeout_ms", DEFAULT_WAIT_MS);
+        return new ToolPresentation("Wait", ToolIcon.AGENT_WAIT,
+                "wait " + timeoutMs + " ms", ToolPresentation.reason(arguments));
     }
 
     /** {@inheritDoc} */
