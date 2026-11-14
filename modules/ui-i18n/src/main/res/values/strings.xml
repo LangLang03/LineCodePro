@@ -650,7 +650,7 @@
     <string name="screen_mcp_ssh_settings">SSH connection settings</string>
     <string name="screen_mcp_termux_integration">Termux integration</string>
     <string name="screen_mcp_section_terminal_provider">Terminal provider</string>
-    <string name="screen_mcp_terminal_provider_overview">Terminal provider mode runs shell commands and file transfer through an external provider app over IPC. Scan and add a provider app on the terminal providers page before using this mode.</string>
+    <string name="screen_mcp_terminal_provider_overview">Terminal provider mode runs shell commands and file transfer through an external provider app over IPC. Scan and add a provider app on the terminal providers page before using this mode. If the test connection fails, check that associated launch (autostart) is enabled for the provider app.</string>
 
     <string name="screen_mcp_edit_title">Edit MCP</string>
     <string name="screen_mcp_list_empty">No MCP extensions yet.</string>

@@ -652,7 +652,7 @@
     <string name="screen_mcp_ssh_settings">SSH 连接设置</string>
     <string name="screen_mcp_termux_integration">Termux 对接</string>
     <string name="screen_mcp_section_terminal_provider">终端提供者</string>
-    <string name="screen_mcp_terminal_provider_overview">终端提供者模式通过 IPC 调用外部提供者应用执行 Shell 命令和传输文件。使用前请先在终端提供者页面扫描并添加提供者应用。</string>
+    <string name="screen_mcp_terminal_provider_overview">终端提供者模式通过 IPC 调用外部提供者应用执行 Shell 命令和传输文件。使用前请先在终端提供者页面扫描并添加提供者应用；如果测试连接失败，请检查提供者应用的「关联启动」是否已启用。</string>
 
     <string name="screen_mcp_edit_title">编辑 MCP</string>
     <string name="screen_mcp_list_empty">还没有 MCP 扩展。</string>

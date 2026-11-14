@@ -632,7 +632,7 @@
     <string name="screen_mcp_ssh_settings">Настройки SSH подключения</string>
     <string name="screen_mcp_termux_integration">Интеграция с Termux</string>
     <string name="screen_mcp_section_terminal_provider">Терминальный провайдер</string>
-    <string name="screen_mcp_terminal_provider_overview">Режим терминального провайдера выполняет shell-команды и передаёт файлы через внешнее приложение-провайдер по IPC. Перед использованием отсканируйте и добавьте приложение-провайдер на странице терминальных провайдеров.</string>
+    <string name="screen_mcp_terminal_provider_overview">Режим терминального провайдера выполняет shell-команды и передаёт файлы через внешнее приложение-провайдер по IPC. Перед использованием добавьте приложение-провайдер на странице терминальных провайдеров. Если проверка подключения не удалась, проверьте, включён ли «связанный запуск».</string>
 
     <string name="screen_mcp_edit_title">Изменить MCP</string>
     <string name="screen_mcp_list_empty">Расширений MCP пока нет.</string>
